@@ -161,6 +161,8 @@ local TRANSFORMER_TYPES = {
   ["chemical-plant"] = true,
   ["oil-refinery"] = true,
   ["boiler"] = true,
+  ["lab"] = true,
+  ["rocket-silo"] = true,
 }
 local GENERATOR_TYPES = {
   ["generator"] = true,
