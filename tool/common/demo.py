@@ -26,7 +26,10 @@ def build_demo_db() -> VanillaDB:
         "copper-cable",
         "electronic-circuit",
         "pipe",
+        "pipe-to-ground",
         "transport-belt",
+        "splitter",
+        "underground-belt",
         "burner-inserter",
     ]
     for name in intermediate:
@@ -69,6 +72,8 @@ def build_demo_db() -> VanillaDB:
     building("electric-mining-drill", "extractor", medium="ground", energy_type="electric",
              resource_categories=("basic-solid",))
     building("offshore-pump", "extractor", medium="water", energy_type="void", pumped_fluid="water")
+    building("pumpjack", "extractor", etype="pumpjack", medium="ground", energy_type="electric",
+             fluid_outputs=1)
     building("stone-furnace", "transformer", crafting_categories=("smelting",),
              energy_type="burner", fuel_categories=("chemical",))
     building("assembling-machine-1", "transformer", crafting_categories=("crafting",),

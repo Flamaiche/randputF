@@ -35,7 +35,7 @@ def generate_seed(db: VanillaDB, config: dict | None = None) -> dict:
         "map": {"patches": [p.to_seed() for p in patches]},
         "starter_kit": starter.kit,
         "free_researches": starter.free_researches,
-        "recipes": recursive_phase.recipes_to_seed(),
+        "recipes": starter.recipes + recursive_phase.recipes_to_seed(),
         "technologies": technologies,
         "progression_order": [t["id"] for t in technologies],
     }
