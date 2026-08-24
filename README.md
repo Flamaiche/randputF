@@ -94,6 +94,9 @@ contenu arbitraire.
   ultérieurs.
 - **Slot** : emplacement d'entrée ou de sortie d'un bâtiment ou d'une recette,
   caractérisé par son type (item, fluide, combustible, énergie).
+- **Milieu** : environnement d'où un extracteur tire sa ressource (sol, eau,
+  …). Deux extracteurs de milieux différents restent du même type : une pompe
+  et une pompe offshore sont toutes les deux des extracteurs.
 - **Directive** : possibilité déclarée d'un bâtiment — une capacité optionnelle
   qui distingue deux bâtiments d même type (voir §5).
 - **Pool atteignable** : ensemble des choses que le joueur peut obtenir à un
@@ -176,7 +179,7 @@ que repose le randomizer : c'est elle qui permet des combinaisons
 
 | Type | Rôle | Exemples vanilles |
 |---|---|---|
-| Extracteur | Sort une ressource brute d'un milieu | perceuse, pompe offshore, pompette |
+| Extracteur | Sort une ressource brute d'un milieu | perceuse, pompe offshore, tour de pompage |
 | Transformateur | Convertit des entrées en sorties | fours, assembleurs, usine chimique, raffinerie, **chaudière** |
 | Producteur d'énergie | Output spécial « énergie » | chaudière+turbine, panneau solaire, réacteur |
 | Consommateur d'énergie | Input spécial « énergie » | perceuse électrique, assembleur électrique… |
@@ -216,9 +219,10 @@ type. Exemples canoniques :
   entrée est un fluide ;
 - une **perceuse électrique** peut, dès le début du jeu, exiger un fluide pour
   fonctionner (directive « input auxiliaire »). Le moteur garantit alors que
-  ce fluide est obtenable par une branche indépendante — par exemple via des
-  tuyaux fabriqués à partir d'une *autre* ressource que celle que la perceuse
-  produit (jamais auto-dépendante).
+  ce fluide est obtenable : les tuyaux qui le transportent peuvent être
+  fabriqués **à partir de ce fluide lui-même**, ou d'une **autre ressource** —
+  mais **jamais à partir de la ressource qui en a besoin** (règle anti-cycle,
+  §8 et §15).
 
 C'est cette matrice type × tier × directives qui remplace toute classification
 manuelle figée.
@@ -279,18 +283,21 @@ première boucle de production :
    sentir.
 
 **Contrainte anti-cycle fondamentale** : si un bâtiment de cette phase exige
-une entrée supplémentaire (le fluide d'une perceuse électrique par exemple),
-cette entrée doit provenir d'une **autre branche déjà valide** — jamais de la
-ressource que le bâtiment produit lui-même. C'est le cas d'école : la
-perceuse boit un fluide → il faut pouvoir produire ce fluide → les tuyaux qui
-le transportent doivent être fabriqués à partir d'une ressource *autre* que
-celle extraite par cette perceuse.
+une entrée supplémentaire (le cas d'école : une perceuse électrique qui boit
+un fluide dès le début), alors :
+
+1. ce fluide doit pouvoir être obtenu ;
+2. les tuyaux qui le transportent peuvent être fabriqués **à partir de ce
+   fluide**, ou **d'une autre ressource** ;
+3. mais **jamais à partir de la ressource qui en a besoin** — l'entrée
+   auxiliaire provient toujours d'une branche déjà valide, indépendante du
+   bâtiment qu'elle alimente.
 
 ## 9. La phase récursive
 
-Après le starter, la génération devient récursive. Là où le début est géré
-avec des pourcentages ciblés pour obtenir telle ou telle chose, ici le
-mécanisme général prend le relais :
+Après le starter, la génération devient récursive. Le début aussi s'appuie
+sur des pourcentages pour obtenir telle ou telle chose — mais ici ils sont
+utilisés massivement et systématiquement :
 
 ### 9.1 Tirages pondérés
 
@@ -403,8 +410,10 @@ acceptée (§15).
 Trois invariants, vérifiés par le tool externe avant validation d'une seed :
 
 1. **Anti-cycle** : aucun maillon ne peut dépendre de sa propre production.
-   Toute entrée auxiliaire d'un bâtiment provient d'une branche déjà valide
-   (règle des tuyaux, §8).
+   Toute entrée auxiliaire d'un bâtiment provient d'une branche déjà valide ;
+   les tuyaux d'un fluide requis peuvent être faits de ce fluide ou d'une
+   autre ressource, jamais de la ressource qui en a besoin (règle des tuyaux,
+   §8).
 2. **Progressivité** : chaque nouveau maillon (recette, bâtiment, combustible,
    ressource) n'est ajouté que si ses prérequis sont satisfaits par le pool
    atteignable — ou rendus satisfaits immédiatement par déblocage sur le tas
