@@ -18,15 +18,17 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
     db = VanillaDB(seed_value=int(meta.get("game_version_numeric", 0)))
 
     for name, entry in (dump.get("items") or {}).items():
+        itype = entry.get("type", "item")
+        subgroup = _safe_group(entry)
         db.items[name] = ItemDef(
             name=name,
-            subgroup=_safe_group(entry),
+            subgroup=subgroup,
             place_result=entry.get("place_result"),
             fuel_value=_fuel_value(entry.get("fuel_value")),
-            is_ammo=bool(entry.get("is_ammo")),
-            is_gun=bool(entry.get("is_gun")),
-            is_science_pack=bool(entry.get("is_science_pack")),
-            is_tool=bool(entry.get("is_tool")),
+            is_ammo=itype == "ammo",
+            is_gun=itype == "gun",
+            is_science_pack=subgroup == "science-pack",
+            is_tool=itype == "tool",
         )
 
     for name, entry in (dump.get("fluids") or {}).items():
