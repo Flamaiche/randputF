@@ -211,7 +211,7 @@ end
 
 script.on_init(function()
   local payload = {
-    meta = {game_version = game.active_mods["base"]},
+    meta = {game_version = script.active_mods["base"]},
     items = dump_items(),
     special_items = dump_special_items(),
     fluids = dump_fluids(),
