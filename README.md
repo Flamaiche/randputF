@@ -373,10 +373,12 @@ transformateur (type chaudière) alimenté par un combustible assigné ou créé
 
 ## 12. Transports avancés
 
-Trains, véhicules et logistique avancée suivent exactement le même modèle que
-le reste : ce sont simplement des **catégories d'objets** — comme les balles —
-avec quelques dépendances propres (rails nécessitent des plaques, locomotives
-des composants…), calées sur les besoins au moment de leur tirage. Aucun
+Trains, véhicules et logistique avancée suivent exactement le même modèle
+que les armes : ce sont simplement des **catégories d'objets** déblocables par
+les mêmes pourcentages, avec si besoin des dépendances — toujours
+**minimes**, posées au moment du tirage. Forme attendue de ces dépendances :
+un véhicule peut exiger un **combustible** pour être utilisable ; un train
+exige les **rails avant ou en même temps** que lui. Rien de plus : aucun
 traitement spécial.
 
 ## 13. L'arbre technologique
