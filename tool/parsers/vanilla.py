@@ -13,11 +13,51 @@ from pathlib import Path
 from tool.common.db import BuildingDef, FluidDef, ItemDef, RecipeRef, VanillaDB
 
 
+JUNK_PREFIXES = ("parameter-",)
+JUNK_SUFFIXES = ("-unknown",)
+JUNK_NAMES = {
+    "no-item",
+    "science",
+    "electric-energy-interface",
+    "heat-interface",
+    "bottomless-chest",
+    "proxy-container",
+    "empty-module-slot",
+    "lane-splitter",
+    "one-way-valve",
+    "overflow-valve",
+    "top-up-valve",
+    "linked-belt",
+    "linked-chest",
+    "infinity-pipe",
+    "infinity-chest",
+    "infinity-cargo-wagon",
+    "simple-entity-with-force",
+    "simple-entity-with-owner",
+    "cut-paste-tool",
+    "loader",
+    "fast-loader",
+    "express-loader",
+    "coin",
+    "copper-wire",
+}
+
+
+def is_junk(name: str) -> bool:
+    return (
+        name in JUNK_NAMES
+        or any(name.startswith(p) for p in JUNK_PREFIXES)
+        or any(name.endswith(s) for s in JUNK_SUFFIXES)
+    )
+
+
 def load_db_from_dump(dump: dict) -> VanillaDB:
     meta = dump.get("meta", {})
     db = VanillaDB(seed_value=int(meta.get("game_version_numeric", 0)))
 
     for name, entry in (dump.get("items") or {}).items():
+        if is_junk(name):
+            continue
         itype = entry.get("type", "item")
         subgroup = _safe_group(entry)
         db.items[name] = ItemDef(
@@ -32,6 +72,8 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         )
 
     for name, entry in (dump.get("fluids") or {}).items():
+        if is_junk(name):
+            continue
         db.fluids[name] = FluidDef(
             name=name,
             fuel_value=_fuel_value(entry.get("fuel_value")),
