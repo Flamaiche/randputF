@@ -498,10 +498,16 @@ Le tool ne devine rien : il consomme un **dump JSON des prototypes** produit
 par ton propre jeu, via le mod compagnon `exporter/` :
 
 1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.0/` ;
+   si le symlink n'est pas détecté (sandbox Flatpak), utilise une copie du dossier ;
 2. lance Factorio une partie quelques secondes — à l'init, il écrit
    `script-output/randputF/vanilla_dump.json` dans le dossier user-data ;
 3. copie ce fichier dans `data/vanilla_dump.json` du projet ;
-4. désactive `randputf-exporter` (il ne doit jamais coexister avec randputF).
+4. **désactive `randputf-exporter` avant toute partie avec le mod principal.**
+
+> ⚠️ **Pour l'instant, `randputF` et `randputf-exporter` ne peuvent pas être
+> lancés ensemble : ne cohabitent pas.** C'est temporaire : par la suite, ils
+> iront naturellement ensemble — l'exporter n'est qu'un outil compagnon de
+> développement destiné à disparaître ou fusionner dans le mod principal.
 
 ### 20.3 Générer et jouer une seed
 
