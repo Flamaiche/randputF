@@ -18,6 +18,11 @@ htmlcov/
 # Factorio (archives exportées, sorties locales)
 *.zip
 
+# Artefacts générés (le tool les régénère)
+mod/seed/seed.json
+mod/seed/seed.lua
+data/vanilla_dump.json
+
 # IDE / éditeurs
 .idea/
 .vscode/

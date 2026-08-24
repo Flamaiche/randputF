@@ -1,0 +1,11 @@
+{
+  "name": "randputF",
+  "version": "0.1.0",
+  "title": "randputF",
+  "author": "hrichard",
+  "contact": "",
+  "homepage": "",
+  "description": "Randomizer total Factorio 2.0 : ressources au sol, recettes randput, bâtiments, arbre technologique. Seed générée par le tool externe Python.",
+  "factorio_version": "2.0",
+  "dependencies": ["base >= 2.0"]
+}

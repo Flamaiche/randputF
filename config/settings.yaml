@@ -1,0 +1,24 @@
+seed: 20260825
+factorio_version: "2.0"
+
+paths:
+  mod_dir: mod
+  vanilla_dump: data/vanilla_dump.json
+
+map:
+  patches_min: 3
+  patches_max: 8
+  richness_item: [50000, 300000]
+  richness_fluid: [100000, 600000]
+
+pools:
+  exclude_items: []
+  exclude_fluids: []
+  exclude_building_types: []
+
+weights:
+  building_types: {}
+  science_packs: {}
+
+starter:
+  free_researches_count: [1, 2]

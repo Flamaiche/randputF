@@ -481,6 +481,57 @@ haut niveau restent ceux décrits en §4.)
    contenu arbitraire (Krastorio, Py, …). Bien plus tardif, conditionné au
    succès du moteur sur vanilla.
 
+## 20. Mise en route
+
+### 20.1 Environnement de développement
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+### 20.2 Récupérer la base vanilla (une fois par version du jeu)
+
+Le tool ne devine rien : il consomme un **dump JSON des prototypes** produit
+par ton propre jeu, via le mod compagnon `exporter/` :
+
+1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.0/` ;
+2. lance Factorio une partie quelques secondes — à l'init, il écrit
+   `script-output/randputF/vanilla_dump.json` dans le dossier user-data ;
+3. copie ce fichier dans `data/vanilla_dump.json` du projet ;
+4. désactive `randputf-exporter` (il ne doit jamais coexister avec randputF).
+
+### 20.3 Générer et jouer une seed
+
+```bash
+.venv/bin/python -m tool parse --demo      # vérifie la base (mode synthétique)
+.venv/bin/python -m tool generate          # génère + valide + exporte mod/seed/
+```
+
+Puis symlink le mod principal : `~/.factorio/mods/randputF_0.1.0 -> mod/`,
+lance Factorio : les patchs tirés remplacent toutes les ressources vanilles
+autour du spawn, le kit de départ est injecté, les recherches gratuites
+déblocées.
+
+### 20.4 État actuel du code
+
+| Composant | État |
+|---|---|
+| `tool/parsers/vanilla.py` | Normalisation dump → `VanillaDB` (items/fluides/bâtiments classés/recettes) |
+| `tool/generator/map_patches.py` | Phase 1 implémentée (3–8 patchs, types aléatoires, richesse variable) |
+| `tool/generator/starter_chain.py` | Kit de départ (arme + munitions calées) implémenté ; chaîne extraction→transformation→transport **à écrire** (contrat en docstring) |
+| `tool/generator/recursive_phase.py` | Phase récursive pondérée **à écrire** (contrat en docstring) |
+| `tool/generator/electricity.py` | Générateur + combustible à la demande **à écrire** (contrat en docstring) |
+| `tool/generator/tech_tree.py` | Arbre linéaire assemblé génériquement depuis les étapes |
+| `tool/validator/solver.py` | Invariants §15 : anti-cycle (Kahn), progressivité, complétude |
+| `mod/data.lua` | Lit la seed : entités ressources cachées, recettes, technologies ; option désactivation arbre vanilla |
+| `mod/control.lua` | Runtime : destruction ressources vanilles, placement patchs déterministe, kit départ, recherches gratuites |
+
+La seed générée en mode demo est volontairement partielle (patchs + kit) :
+les phases restantes sont les points d'entrée documentés du développement à
+deux.
+
+
 ---
 
 *randputF — chaque partie est un jeu que personne n'a jamais vu.*
