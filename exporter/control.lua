@@ -104,23 +104,28 @@ local function fluidbox_info(proto)
     return inputs, outputs, details
   end
   for index, box in ipairs(boxes) do
-    local direction = nil
+    local production = nil
     local filter_name = nil
+    -- 2.0 : production_type ("input", "output", "input-output") ;
+    -- flow_direction etait l'ancien nom 1.x.
     pcall(function()
-      direction = box.flow_direction
+      production = box.production_type or box.flow_direction
     end)
     pcall(function()
       if box.filter then
         filter_name = box.filter.name
       end
     end)
-    if direction == "input" then
+    if production == "input" then
       inputs = inputs + 1
-    elseif direction == "output" then
+    elseif production == "output" then
+      outputs = outputs + 1
+    elseif production == "input-output" then
+      inputs = inputs + 1
       outputs = outputs + 1
     end
     details[tostring(index)] = {
-      flow_direction = direction,
+      production_type = production,
       filter = filter_name,
     }
   end
@@ -128,17 +133,32 @@ local function fluidbox_info(proto)
 end
 
 local function string_list(list)
+  -- Gere arrays ET dictionnaires LuaCustomTable (cle = valeur utile).
   local out = {}
   if list then
-    for _, entry in ipairs(list) do
+    for key, entry in pairs(list) do
       if type(entry) == "string" then
         table.insert(out, entry)
       elseif type(entry) == "table" and entry.name then
         table.insert(out, entry.name)
+      elseif type(key) == "string" then
+        table.insert(out, key)
       end
     end
   end
   return out
+end
+
+local function first_ok(proto, names)
+  for _, n in ipairs(names) do
+    local ok, value = pcall(function()
+      return proto[n]
+    end)
+    if ok and value ~= nil then
+      return value
+    end
+  end
+  return nil
 end
 
 local function crafting_categories_of(proto)
@@ -149,6 +169,38 @@ local function crafting_categories_of(proto)
     return categories
   end
   return nil
+end
+
+local ENERGY_SOURCE_PROPS = {
+  "energy_source",
+  "burner_energy_source_prototype",
+  "electric_energy_source_prototype",
+  "fluid_energy_source_prototype",
+  "heat_energy_source_prototype",
+  "void_energy_source_prototype",
+}
+
+local function energy_source_info(proto)
+  local info = {}
+  local source = first_ok(proto, ENERGY_SOURCE_PROPS)
+  if source == nil then
+    return info
+  end
+  local ok_type, source_type = pcall(function()
+    return source.type
+  end)
+  if ok_type and source_type ~= nil then
+    info.type = source_type
+  else
+    info.type = "unknown"
+  end
+  local ok_fuel, categories = pcall(function()
+    return source.fuel_categories
+  end)
+  if ok_fuel and categories then
+    info.fuel_categories = string_list(categories)
+  end
+  return info
 end
 
 local EXTRACTOR_TYPES = {
@@ -189,11 +241,18 @@ local function dump_entities()
         end)
       end
       if proto.type == "offshore-pump" then
+        local fluid = first_ok(proto, {"fluid"})
         pcall(function()
-          if proto.fluid then
-            entry.pumped_fluid = proto.fluid.name
+          if fluid then
+            entry.pumped_fluid = fluid.name
           end
         end)
+      end
+      if TRANSFORMER_TYPES[proto.type] then
+        local cats = entry.crafting_categories or {}
+        if #cats == 0 then
+          log("randputF exporter: aucune categorie de craft pour " .. proto.name)
+        end
       end
       out[proto.name] = entry
     end
