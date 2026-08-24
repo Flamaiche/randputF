@@ -181,7 +181,7 @@ que repose le randomizer : c'est elle qui permet des combinaisons
 |---|---|---|
 | Extracteur | Sort une ressource brute d'un milieu | perceuse, pompe offshore, tour de pompage |
 | Transformateur | Convertit des entrées en sorties | fours, assembleurs, usine chimique, raffinerie, **chaudière** |
-| Producteur d'énergie | Output spécial « énergie » | chaudière+turbine, panneau solaire, réacteur |
+| Producteur d'énergie | Output spécial « énergie » | turbine, panneau solaire, réacteur |
 | Consommateur d'énergie | Input spécial « énergie » | perceuse électrique, assembleur électrique… |
 | Transport | Déplace items/fluides | tapis, splitters, undergrounds, tuyaux, pompes |
 | Logistique | Manipule les objets sans flux continu | bras robotisés |
