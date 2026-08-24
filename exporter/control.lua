@@ -14,7 +14,17 @@ local function fuel_value_of(proto)
   return nil
 end
 
-local function dump_items()
+local function prototypes_dict(key)
+  local ok, dict = pcall(function()
+    return prototypes[key]
+  end)
+  if ok and dict ~= nil then
+    return dict
+  end
+  return nil
+end
+
+local function dump_all_items()
   local out = {}
   for _, proto in pairs(prototypes.item) do
     out[proto.name] = {
@@ -24,19 +34,20 @@ local function dump_items()
       fuel_value = fuel_value_of(proto),
     }
   end
-  return out
-end
-
-local function dump_special_items()
-  local out = {}
-  for _, proto in pairs(prototypes.gun or {}) do
-    out[proto.name] = {type = "gun"}
-  end
-  for _, proto in pairs(prototypes.ammo or {}) do
-    out[proto.name] = {type = "ammo"}
-  end
-  for _, proto in pairs(prototypes.tool or {}) do
-    out[proto.name] = {type = "tool"}
+  for _, key in ipairs({"gun", "ammo", "tool", "capsule", "module", "armor"}) do
+    local dict = prototypes_dict(key)
+    if dict then
+      for _, proto in pairs(dict) do
+        if not out[proto.name] then
+          out[proto.name] = {
+            type = proto.type,
+            subgroup = proto.subgroup and proto.subgroup.name or "",
+            place_result = nil,
+            fuel_value = fuel_value_of(proto),
+          }
+        end
+      end
+    end
   end
   return out
 end
@@ -212,8 +223,7 @@ end
 script.on_init(function()
   local payload = {
     meta = {game_version = script.active_mods["base"]},
-    items = dump_items(),
-    special_items = dump_special_items(),
+    items = dump_all_items(),
     fluids = dump_fluids(),
     entities = dump_entities(),
     recipes = dump_recipes(),
