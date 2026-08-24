@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "randputf"
+version = "0.1.0"
+description = "randputF - generateur externe de seeds pour le randomizer total Factorio 2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+randputf = "tool.__main__:main"
+
+[tool.setuptools]
+packages = ["tool", "tool.common", "tool.parsers", "tool.generator", "tool.validator", "tool.exporters"]
