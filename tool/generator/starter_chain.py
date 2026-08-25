@@ -45,6 +45,7 @@ class StarterChain:
     kit: list[dict] = field(default_factory=list)
     free_researches: list[str] = field(default_factory=list)
     steps: list[dict] = field(default_factory=list)
+    tech_steps: list[dict] = field(default_factory=list)
     buildings: list[str] = field(default_factory=list)
     recipes: list[dict] = field(default_factory=list)
     state: ProgressionState = field(default_factory=ProgressionState)
@@ -71,6 +72,7 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch])
     chain.steps = state.steps
     chain.buildings = sorted(state.unlocked_buildings)
     chain.recipes = state.recipes
+    chain.tech_steps = _build_tech_steps(state, rng)
     return chain
 
 
@@ -79,6 +81,41 @@ def _unique_resources(patches: list[Patch]) -> list[tuple[str, str]]:
     for patch in patches:
         seen.setdefault((patch.kind, patch.resource))
     return list(seen)
+
+
+def _build_tech_steps(state: ProgressionState, rng: random.Random) -> list[dict]:
+    """Regroupe les micro-steps en macro-steps pour le tech tree."""
+    tech_steps = []
+    
+    # Regrouper par type de ressource
+    extraction_steps = [s for s in state.steps if s.get("type") == "extract"]
+    craft_steps = [s for s in state.steps if s.get("type") == "craft"]
+    
+    # Créer une macro-step pour l'extraction
+    if extraction_steps:
+        step = {
+            "id": "randputf-starter-extraction",
+            "title": "Extraction initiale",
+            "unlocks_recipes": [],
+            "unlocks_buildings": [s["extractor"] for s in extraction_steps],
+            "cost": [],
+            "count": 10,
+        }
+        tech_steps.append(step)
+    
+    # Créer une macro-step pour la transformation
+    if craft_steps:
+        step = {
+            "id": "randputf-starter-transformation",
+            "title": "Transformation initiale",
+            "unlocks_recipes": [s["recipe"] for s in craft_steps if "recipe" in s],
+            "unlocks_buildings": [],
+            "cost": [],
+            "count": 10,
+        }
+        tech_steps.append(step)
+    
+    return tech_steps
 
 
 def _ensure_extraction(

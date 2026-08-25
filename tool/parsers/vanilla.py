@@ -167,10 +167,9 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     elif supply_area:
         # Poteaux electriques : distribution du reseau.
         functional = "distribution"
-    elif resource_categories or pumped_fluid or (pumping_speed is not None and not e.get("energy_usage")):
-        # Un extracteur CREE sa ressource depuis le monde (minage ou pompage
-        # de source). Un simple pompe de transport consomme de l'energie du
-        # reseau pour deplacer un fluide existant : ce n'est pas un extracteur.
+    elif resource_categories or pumped_fluid or (pumping_speed is not None and fluid_in == 0 and fluid_out > 0):
+        # Un extracteur CREE sa ressource depuis le monde : fluides sortants
+        # sans entree (offshore-pump, pumpjack) ou categories de minage.
         functional = "extractor"
     else:
         # Aucune capacite reconnue : range en "other", jamais perdu.
@@ -178,10 +177,11 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
 
     if pumped_fluid:
         medium = "water"
-    elif "basic-fluid" in resource_categories or (
-        functional == "extractor" and fluid_out > 0
-    ):
+    elif "basic-fluid" in resource_categories:
         medium = "fluid"
+    elif functional == "extractor" and fluid_out > 0 and not resource_categories:
+        # Sortie de fluide sans categorie de minage = source d'eau (offshore-pump).
+        medium = "water"
     elif functional == "extractor":
         medium = "ground"
     else:
