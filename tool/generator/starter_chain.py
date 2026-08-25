@@ -87,11 +87,9 @@ def _build_tech_steps(state: ProgressionState, rng: random.Random) -> list[dict]
     """Regroupe les micro-steps en macro-steps pour le tech tree."""
     tech_steps = []
     
-    # Regrouper par type de ressource
     extraction_steps = [s for s in state.steps if s.get("type") == "extract"]
     craft_steps = [s for s in state.steps if s.get("type") == "craft"]
     
-    # Créer une macro-step pour l'extraction
     if extraction_steps:
         step = {
             "id": "randputf-starter-extraction",
@@ -99,11 +97,10 @@ def _build_tech_steps(state: ProgressionState, rng: random.Random) -> list[dict]
             "unlocks_recipes": [],
             "unlocks_buildings": [s["extractor"] for s in extraction_steps],
             "cost": [],
-            "count": 10,
+            "count": 1,
         }
         tech_steps.append(step)
     
-    # Créer une macro-step pour la transformation
     if craft_steps:
         step = {
             "id": "randputf-starter-transformation",
@@ -111,7 +108,7 @@ def _build_tech_steps(state: ProgressionState, rng: random.Random) -> list[dict]
             "unlocks_recipes": [s["recipe"] for s in craft_steps if "recipe" in s],
             "unlocks_buildings": [],
             "cost": [],
-            "count": 10,
+            "count": 1,
         }
         tech_steps.append(step)
     
