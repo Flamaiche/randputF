@@ -60,18 +60,19 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
       amount = result.amount,
     })
   end
-  data:extend({
-    {
+  local recipe_def = {
       type = "recipe",
       name = recipe_seed.name,
       enabled = recipe_seed.enabled == true,
       subgroup = "randputf",
-      category = recipe_seed.category,
       energy_required = recipe_seed.energy or 0.5,
       ingredients = ingredients,
       results = results,
-    },
-  })
+    }
+    if recipe_seed.category and data.raw["recipe-category"][recipe_seed.category] then
+      recipe_def.category = recipe_seed.category
+    end
+    data:extend({recipe_def})
 end
 
 local tech_template = data.raw.technology["automation"]

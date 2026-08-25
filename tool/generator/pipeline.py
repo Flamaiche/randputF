@@ -30,6 +30,9 @@ def generate_seed(db: VanillaDB, config: dict | None = None) -> dict:
     all_tech_steps = starter.tech_steps + recursive_phase.steps()
     technologies = tech_tree.build_linear_tech_tree(all_tech_steps)
 
+    # Les techs du starter sont gratuites (count=1, cost=[] = pas de packs)
+    starter.free_researches = [s["id"] for s in starter.tech_steps]
+
     # Assemblage de la seed
     return {
         "meta": {
