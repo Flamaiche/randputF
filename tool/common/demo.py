@@ -59,9 +59,9 @@ def build_demo_db() -> VanillaDB:
     for pack in ["automation-science-pack"]:
         db.items[pack] = ItemDef(name=pack, subgroup="science", is_science_pack=True)
 
-    db.fluids["water"] = FluidDef(name="water", default_temperature=15.0)
+    db.fluids["water"] = FluidDef(name="water")
     db.fluids["crude-oil"] = FluidDef(name="crude-oil")
-    db.fluids["steam-demo"] = FluidDef(name="steam-demo", default_temperature=100.0)
+    db.fluids["steam-demo"] = FluidDef(name="steam-demo")
     db.fluids["lubricant"] = FluidDef(name="lubricant")
 
     def building(name, ftype, **kw):

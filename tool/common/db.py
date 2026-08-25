@@ -30,9 +30,11 @@ class ItemDef:
 
 @dataclass(frozen=True)
 class FluidDef:
+    """Un fluide est identifie par son nom uniquement (README §6) :
+    la temperature n'est pas une dimension, elle n'existe pas ici."""
+
     name: str
     fuel_value: float | None = None
-    default_temperature: float | None = None
 
 
 @dataclass
