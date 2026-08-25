@@ -35,15 +35,18 @@ local function dump_all_items()
     }
     -- Categorie de munitions : cote munition ET cote arme, pour caler
     -- le kit de depart (arme + munitions compatibles).
+    -- Munition : objet LuaAmmoCategoryPrototype avec .name.
     pcall(function()
       if proto.ammo_category then
         entry.ammo_category = proto.ammo_category.name
       end
     end)
+    -- Arme : AttackParameters runtime expose ammo_categories (ARRAY DE
+    -- STRINGS, pluriel) - pas un objet, pas "ammo_category".
     pcall(function()
       local params = proto.attack_parameters
-      if params and params.ammo_category then
-        entry.ammo_category = params.ammo_category.name
+      if params and params.ammo_categories then
+        entry.ammo_category = params.ammo_categories[1]
       end
     end)
     out[proto.name] = entry
@@ -283,10 +286,18 @@ local function dump_entities()
     end
 
     -- Energie produite : generateurs (max_power_output > 0) et reacteurs.
+    -- get_max_power_output = generateurs a fluide ; get_max_energy_production
+    -- couvre aussi les panneaux solaires.
     local pwr = probe(proto, "max_power_output")
     if pwr == nil then
       local ok, value = pcall(function()
         return proto.get_max_power_output()
+      end)
+      pwr = ok and value or nil
+    end
+    if pwr == nil then
+      local ok, value = pcall(function()
+        return proto.get_max_energy_production()
       end)
       pwr = ok and value or nil
     end
@@ -298,8 +309,11 @@ local function dump_entities()
     end
 
     -- Distribution electrique : les poteaux ont une zone de desserte.
-    local supply = probe(proto, "supply_area_distance")
-    if supply then
+    -- supply_area_distance est une METHODE en 2.0, pas une propriete.
+    local ok_supply, supply = pcall(function()
+      return proto.get_supply_area_distance()
+    end)
+    if ok_supply and supply then
       entry.supply_area_distance = supply
     end
 
