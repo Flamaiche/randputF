@@ -17,6 +17,7 @@ htmlcov/
 
 # Factorio (archives exportées, sorties locales)
 *.zip
+output/
 
 # Artefacts générés (le tool les régénère)
 mod/seed/seed.json
