@@ -120,72 +120,75 @@ def _parse_stack(stack: dict) -> tuple:
 
 
 def _parse_entity(name: str, e: dict) -> BuildingDef | None:
-    etype = e.get("type", "")
-    extractor_types = {"mining-drill", "offshore-pump"}
-    transformer_types = {
-        "assembling-machine",
-        "furnace",
-        "chemical-plant",
-        "oil-refinery",
-        "boiler",
-        "lab",
-        "rocket-silo",
-    }
-    generator_types = {"generator", "solar-panel", "reactor", "burner-generator"}
+    """Classement fonctionnel PAR CAPACITES intrinseques, sans liste de types :
+    - categories de craft / entrees de lab / pieces de fusee / temperature
+      cible  -> transformateur ;
+    - production electrique ou chaleur -> generateur ;
+    - categories de ressources minables ou pompage -> extracteur.
+    """
+    directives: dict = {}
 
-    functional = ""
-    if etype in extractor_types:
-        functional = "extractor"
-    elif etype in transformer_types:
-        functional = "transformer"
-    elif etype in generator_types:
-        functional = "generator"
-
-    energy_src = e.get("energy_source") or {}
-    known_burners = {"furnace", "boiler", "burner-generator"}
-    energy_type = (
-        energy_src.get("type")
-        if isinstance(energy_src, dict) and energy_src.get("type")
-        else ("burner" if etype in known_burners else "electric")
-    )
+    craft_categories = tuple(e.get("crafting_categories") or ())
+    resource_categories = tuple(e.get("resource_categories") or ())
+    lab_inputs = e.get("lab_inputs") or []
+    rocket_parts = e.get("rocket_parts_required")
+    target_temp = e.get("target_temperature")
+    max_power = float(e.get("max_power_output") or 0)
+    energy_prod = float((e.get("energy_source") or {}).get("production") or 0)
+    has_heat = bool(e.get("has_heat_output"))
+    supply_area = e.get("supply_area_distance")
+    pumping_speed = e.get("pumping_speed")
+    pumped_fluid = e.get("pumped_fluid")
 
     fluidboxes = e.get("fluidboxes") or {}
     fluid_in = int(fluidboxes.get("input", 0) or 0)
     fluid_out = int(fluidboxes.get("output", 0) or 0)
 
-    if functional == "" and not (fluid_in or fluid_out):
-        return None
-
-    resource_categories = tuple(e.get("resource_categories") or ())
-    if etype == "offshore-pump":
-        medium = "water"
-    elif fluid_out > 0 or "basic-fluid" in resource_categories:
-        # Extracteur de fluides profonds (pumpjack).
-        medium = "fluid"
-    else:
-        medium = "ground"
-
-    directives = {}
-    if functional == "generator":
-        directives["energy_output"] = True
-    if fluid_in > 0 and functional != "generator":
-        directives["fluid_inputs"] = True
-    lab_inputs = e.get("lab_inputs") or []
     if lab_inputs:
         directives["lab_inputs"] = tuple(lab_inputs)
-    if e.get("rocket_parts_required"):
-        directives["rocket_parts_required"] = int(e["rocket_parts_required"])
+    if rocket_parts:
+        directives["rocket_parts_required"] = int(rocket_parts)
+
+    if craft_categories or lab_inputs or rocket_parts or target_temp is not None:
+        functional = "transformer"
+    elif max_power > 0 or energy_prod > 0 or has_heat:
+        functional = "generator"
+        directives["energy_output"] = True
+    elif supply_area:
+        # Poteaux electriques : distribution du reseau.
+        functional = "distribution"
+    elif resource_categories or pumping_speed is not None:
+        functional = "extractor"
+    else:
+        return None
+
+    if pumped_fluid:
+        medium = "water"
+    elif "basic-fluid" in resource_categories or (
+        functional == "extractor" and fluid_out > 0
+    ):
+        medium = "fluid"
+    elif functional == "extractor":
+        medium = "ground"
+    else:
+        medium = ""
+
+    if fluid_in > 0 and functional != "generator":
+        directives["fluid_inputs"] = True
+
+    energy_src = e.get("energy_source") or {}
+    energy_type = energy_src.get("type") or ""
 
     return BuildingDef(
         name=name,
-        entity_type=etype,
+        entity_type=e.get("type", ""),
         functional_type=functional,
         medium=medium,
-        crafting_categories=tuple(e.get("crafting_categories") or ()),
+        crafting_categories=craft_categories,
         energy_type=energy_type,
-        fuel_categories=tuple(energy_src.get("fuel_categories") or ()) if isinstance(energy_src, dict) else (),
+        fuel_categories=tuple(energy_src.get("fuel_categories") or ()),
         resource_categories=resource_categories,
-        pumped_fluid=e.get("pumped_fluid"),
+        pumped_fluid=pumped_fluid,
         item_input_slots=int(e.get("ingredient_count") or 0),
         fluid_inputs=fluid_in,
         fluid_outputs=fluid_out,

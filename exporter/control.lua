@@ -163,26 +163,8 @@ local function string_list(list)
   return out
 end
 
-local function first_ok(proto, names)
-  for _, n in ipairs(names) do
-    local ok, value = pcall(function()
-      return proto[n]
-    end)
-    if ok and value ~= nil then
-      return value
-    end
-  end
-  return nil
-end
-
-local function crafting_categories_of(proto)
-  local ok, categories = pcall(function()
-    return proto.crafting_categories
-  end)
-  if ok then
-    return categories
-  end
-  return nil
+local function non_empty(list)
+  return list and #list > 0 and list or nil
 end
 
 -- En 2.0 il n'y a PAS de propriete generique energy_source : chaque type
@@ -220,82 +202,149 @@ local function energy_source_info(proto)
   if ok_fuel and categories then
     info.fuel_categories = string_list(categories)
   end
+  -- Production electrique (panneaux solaires : pas de max_power_output).
+  local ok_prod, production = pcall(function()
+    return source.production
+  end)
+  if ok_prod and production and production > 0 then
+    info.production = production
+  end
   return info
 end
 
-local EXTRACTOR_TYPES = {
-  ["mining-drill"] = true,
-  ["offshore-pump"] = true,
-}
-local TRANSFORMER_TYPES = {
-  ["assembling-machine"] = true,
-  ["furnace"] = true,
-  ["chemical-plant"] = true,
-  ["oil-refinery"] = true,
-  ["boiler"] = true,
-  ["lab"] = true,
-  ["rocket-silo"] = true,
-}
-local GENERATOR_TYPES = {
-  ["generator"] = true,
-  ["solar-panel"] = true,
-  ["reactor"] = true,
-  ["burner-generator"] = true,
-}
+-- Aucune liste de types en dur : chaque entite est decrite par ses
+-- CAPACITES intrinseques (craft, extraction, fluide, energie, science,
+-- victoire). Le classement fonctionnel se fait cote outil Python.
+local function probe(proto, prop)
+  local ok, value = pcall(function()
+    return proto[prop]
+  end)
+  if ok then
+    return value
+  end
+  return nil
+end
+
+local function non_empty(list)
+  return list and #list > 0 and list or nil
+end
 
 local function dump_entities()
   local out = {}
   for _, proto in pairs(prototypes.entity) do
-    local interesting = EXTRACTOR_TYPES[proto.type] or TRANSFORMER_TYPES[proto.type] or GENERATOR_TYPES[proto.type]
-    local inputs, outputs, fluidboxes = fluidbox_info(proto)
-    if interesting or inputs > 0 or outputs > 0 then
-      local entry = {
-        type = proto.type,
-        crafting_categories = string_list(crafting_categories_of(proto)),
-        energy_source = energy_source_info(proto),
-        fluidboxes = {input = inputs, output = outputs, detail = fluidboxes},
-      }
-      if EXTRACTOR_TYPES[proto.type] then
-        pcall(function()
-          entry.resource_categories = string_list(proto.resource_categories)
-        end)
+    local entry = {type = proto.type}
+    local meaningful = false
+
+    -- Capacite de transformation : categories de craft supportees.
+    local cats = non_empty(string_list(probe(proto, "crafting_categories")))
+    if cats then
+      entry.crafting_categories = cats
+      meaningful = true
+      local count = probe(proto, "ingredient_count")
+      if count then
+        entry.ingredient_count = count
       end
-      -- Slots de craft : nombre max d'ingredients supportes (2.0).
-      pcall(function()
-        if proto.ingredient_count then
-          entry.ingredient_count = proto.ingredient_count
-        end
-      end)
-      -- Consommation de science packs du lab.
-      pcall(function()
-        if proto.lab_inputs then
-          entry.lab_inputs = string_list(proto.lab_inputs)
-        end
-      end)
-      pcall(function()
-        if proto.rocket_parts_required then
-          entry.rocket_parts_required = proto.rocket_parts_required
-        end
-      end)
-      pcall(function()
-        if proto.energy_usage then
-          entry.energy_usage = proto.energy_usage
-        end
-      end)
-      if proto.type == "offshore-pump" then
-        local fluid = first_ok(proto, {"fluid"})
-        pcall(function()
-          if fluid then
-            entry.pumped_fluid = fluid.name
-          end
-        end)
+    end
+
+    -- Capacite d'extraction : categories de ressources minables.
+    local rescats = non_empty(string_list(probe(proto, "resource_categories")))
+    if rescats then
+      entry.resource_categories = rescats
+      meaningful = true
+      local speed = probe(proto, "mining_speed")
+      if speed then
+        entry.mining_speed = speed
       end
-      if TRANSFORMER_TYPES[proto.type] then
-        local cats = entry.crafting_categories or {}
-        if #cats == 0 then
-          log("randputF exporter: aucune categorie de craft pour " .. proto.name)
+    end
+
+    -- Capacite de pompage (offshore-pump, pump).
+    local pspeed = probe(proto, "pumping_speed")
+    if pspeed then
+      entry.pumping_speed = pspeed
+      meaningful = true
+      local fluid = probe(proto, "fluid")
+      pcall(function()
+        if fluid then
+          entry.pumped_fluid = fluid.name
         end
+      end)
+    end
+
+    -- Fluides : boites d'entree/sortie avec filtres eventuels.
+    local inputs, outputs, details = fluidbox_info(proto)
+    if inputs > 0 or outputs > 0 then
+      entry.fluidboxes = {input = inputs, output = outputs, detail = details}
+      meaningful = true
+    end
+
+    -- Energie consommee : source (burner/electric/fluid/heat/void) + usage.
+    local esrc = energy_source_info(proto)
+    if esrc.type then
+      entry.energy_source = esrc
+    end
+    local eusage = probe(proto, "energy_usage")
+    if eusage then
+      entry.energy_usage = eusage
+    end
+
+    -- Energie produite : generateurs (max_power_output > 0) et reacteurs.
+    local pwr = probe(proto, "max_power_output")
+    if pwr == nil then
+      local ok, value = pcall(function()
+        return proto.get_max_power_output()
+      end)
+      pwr = ok and value or nil
+    end
+    if pwr and pwr > 0 then
+      entry.max_power_output = pwr
+      meaningful = true
+    end
+    if probe(proto, "heat_buffer_prototype") then
+      entry.has_heat_output = true
+      meaningful = true
+    end
+
+    -- Distribution electrique : les poteaux ont une zone de desserte.
+    local supply = probe(proto, "supply_area_distance")
+    if supply then
+      entry.supply_area_distance = supply
+      meaningful = true
+    end
+
+    -- Chaudiere : temperature cible sans categorie de craft.
+    local target_temp = probe(proto, "target_temperature")
+    if target_temp then
+      entry.target_temperature = target_temp
+      meaningful = true
+    end
+
+    -- Science : entrées de lab.
+    local labs = non_empty(string_list(probe(proto, "lab_inputs")))
+    if labs then
+      entry.lab_inputs = labs
+      meaningful = true
+    end
+
+    -- Victoire : silo orbital.
+    local rpr = probe(proto, "rocket_parts_required")
+    if rpr then
+      entry.rocket_parts_required = rpr
+      meaningful = true
+    end
+
+    -- Lien inverse : quels items placent cette entite.
+    local itp = probe(proto, "items_to_place_this")
+    if itp and meaningful then
+      local names = {}
+      for _, item in ipairs(itp) do
+        table.insert(names, item.name)
       end
+      if #names > 0 then
+        entry.items_to_place_this = names
+      end
+    end
+
+    if meaningful then
       out[proto.name] = entry
     end
   end
