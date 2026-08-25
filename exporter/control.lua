@@ -27,12 +27,26 @@ end
 local function dump_all_items()
   local out = {}
   for _, proto in pairs(prototypes.item) do
-    out[proto.name] = {
+    local entry = {
       type = proto.type,
       subgroup = proto.subgroup and proto.subgroup.name or "",
       place_result = proto.place_result and proto.place_result.name or nil,
       fuel_value = fuel_value_of(proto),
     }
+    -- Categorie de munitions : cote munition ET cote arme, pour caler
+    -- le kit de depart (arme + munitions compatibles).
+    pcall(function()
+      if proto.ammo_category then
+        entry.ammo_category = proto.ammo_category.name
+      end
+    end)
+    pcall(function()
+      local params = proto.attack_parameters
+      if params and params.ammo_category then
+        entry.ammo_category = params.ammo_category.name
+      end
+    end)
+    out[proto.name] = entry
   end
   for _, key in ipairs({"gun", "ammo", "tool", "capsule", "module", "armor"}) do
     local dict = prototypes_dict(key)

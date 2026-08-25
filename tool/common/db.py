@@ -25,6 +25,7 @@ class ItemDef:
     is_gun: bool = False
     is_science_pack: bool = False
     is_tool: bool = False
+    ammo_category: str = ""
 
 
 @dataclass(frozen=True)
