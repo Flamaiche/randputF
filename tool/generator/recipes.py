@@ -178,7 +178,8 @@ def _pick_building(
 ):
     def fits(b) -> bool:
         return (
-            b.item_input_slots >= n_item_ing
+            b.functional_type != "other"
+            and b.item_input_slots >= n_item_ing
             and b.fluid_inputs >= n_fluid_ing
             and (not needs_fluid_out or b.fluid_outputs >= 1)
         )

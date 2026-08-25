@@ -68,6 +68,10 @@ class VanillaDB:
     fluids: dict[str, FluidDef] = field(default_factory=dict)
     buildings: dict[str, BuildingDef] = field(default_factory=dict)
     recipes: dict[str, RecipeRef] = field(default_factory=dict)
+    # Bac a rien-decide : items/fluides ecartes des pools (junk) et entites
+    # sans capacite reconnue. Conserve pour requalification ulterieure.
+    excluded_items: dict[str, dict] = field(default_factory=dict)
+    excluded_fluids: dict[str, dict] = field(default_factory=dict)
 
     def beltable_items(self) -> list[ItemDef]:
         return [i for i in self.items.values() if not i.is_tool]

@@ -57,6 +57,7 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
 
     for name, entry in (dump.get("items") or {}).items():
         if is_junk(name):
+            db.excluded_items[name] = entry
             continue
         itype = entry.get("type", "item")
         subgroup = _safe_group(entry)
@@ -74,6 +75,7 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
 
     for name, entry in (dump.get("fluids") or {}).items():
         if is_junk(name):
+            db.excluded_fluids[name] = entry
             continue
         db.fluids[name] = FluidDef(
             name=name,
@@ -160,7 +162,8 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     elif resource_categories or pumping_speed is not None:
         functional = "extractor"
     else:
-        return None
+        # Aucune capacite reconnue : range en "other", jamais perdu.
+        functional = "other"
 
     if pumped_fluid:
         medium = "water"
@@ -198,14 +201,17 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
 
 def summarize_db(db: VanillaDB) -> str:
     mediums = sorted({b.medium for b in db.buildings.values() if b.functional_type == "extractor" and b.medium})
+    others = sum(1 for b in db.buildings.values() if b.functional_type == "other")
     lines = [
-        f"Items: {len(db.items)} ({len(db.fuel_items())} combustibles)",
-        f"Fluides: {len(db.fluids)} ({len(db.fuel_fluids())} combustibles)",
+        f"Items: {len(db.items)} ({len(db.fuel_items())} combustibles) + {len(db.excluded_items)} exclus",
+        f"Fluides: {len(db.fluids)} ({len(db.fuel_fluids())} combustibles) + {len(db.excluded_fluids)} exclus",
         f"Bâtiments classés: {len(db.buildings)}",
         f"  extracteurs: total={len(db.buildings_of_type('extractor'))} "
         + ", ".join(f"{m}={len(db.extractors_for_medium(m))}" for m in mediums),
         f"  transformateurs: {len(db.buildings_of_type('transformer'))}",
         f"  générateurs: {len(db.buildings_of_type('generator'))}",
+        f"  distribution: {len(db.buildings_of_type('distribution'))}",
+        f"  non classés (other): {others}",
         f"Recettes vanilla connues: {len(db.recipes)}",
     ]
     return "\n".join(lines)
