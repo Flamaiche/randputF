@@ -69,6 +69,7 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             is_gun=itype == "gun",
             is_science_pack=subgroup == "science-pack",
             is_tool=itype == "tool",
+            ammo_category=entry.get("ammo_category") or "",
         )
 
     for name, entry in (dump.get("fluids") or {}).items():
@@ -121,7 +122,15 @@ def _parse_stack(stack: dict) -> tuple:
 def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     etype = e.get("type", "")
     extractor_types = {"mining-drill", "offshore-pump"}
-    transformer_types = {"assembling-machine", "furnace", "chemical-plant", "oil-refinery", "boiler"}
+    transformer_types = {
+        "assembling-machine",
+        "furnace",
+        "chemical-plant",
+        "oil-refinery",
+        "boiler",
+        "lab",
+        "rocket-silo",
+    }
     generator_types = {"generator", "solar-panel", "reactor", "burner-generator"}
 
     functional = ""
@@ -133,7 +142,12 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
         functional = "generator"
 
     energy_src = e.get("energy_source") or {}
-    energy_type = energy_src.get("type", "burner") if isinstance(energy_src, dict) else "burner"
+    known_burners = {"furnace", "boiler", "burner-generator"}
+    energy_type = (
+        energy_src.get("type")
+        if isinstance(energy_src, dict) and energy_src.get("type")
+        else ("burner" if etype in known_burners else "electric")
+    )
 
     fluidboxes = e.get("fluidboxes") or {}
     fluid_in = int(fluidboxes.get("input", 0) or 0)
@@ -142,12 +156,25 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     if functional == "" and not (fluid_in or fluid_out):
         return None
 
-    medium = "water" if etype == "offshore-pump" else "ground"
+    resource_categories = tuple(e.get("resource_categories") or ())
+    if etype == "offshore-pump":
+        medium = "water"
+    elif fluid_out > 0 or "basic-fluid" in resource_categories:
+        # Extracteur de fluides profonds (pumpjack).
+        medium = "fluid"
+    else:
+        medium = "ground"
+
     directives = {}
     if functional == "generator":
         directives["energy_output"] = True
     if fluid_in > 0 and functional != "generator":
         directives["fluid_inputs"] = True
+    lab_inputs = e.get("lab_inputs") or []
+    if lab_inputs:
+        directives["lab_inputs"] = tuple(lab_inputs)
+    if e.get("rocket_parts_required"):
+        directives["rocket_parts_required"] = int(e["rocket_parts_required"])
 
     return BuildingDef(
         name=name,
@@ -157,8 +184,9 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
         crafting_categories=tuple(e.get("crafting_categories") or ()),
         energy_type=energy_type,
         fuel_categories=tuple(energy_src.get("fuel_categories") or ()) if isinstance(energy_src, dict) else (),
-        resource_categories=tuple(e.get("resource_categories") or ()),
+        resource_categories=resource_categories,
         pumped_fluid=e.get("pumped_fluid"),
+        item_input_slots=int(e.get("ingredient_count") or 0),
         fluid_inputs=fluid_in,
         fluid_outputs=fluid_out,
         directives=directives,
