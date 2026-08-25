@@ -53,9 +53,9 @@ def build_demo_db() -> VanillaDB:
         db.items[name] = ItemDef(name=name, subgroup="logistics", place_result=place)
 
     for gun in ["pistol"]:
-        db.items[gun] = ItemDef(name=gun, subgroup="combat", is_gun=True)
+        db.items[gun] = ItemDef(name=gun, subgroup="combat", is_gun=True, ammo_category="bullet")
     for ammo in ["firearm-magazine"]:
-        db.items[ammo] = ItemDef(name=ammo, subgroup="combat", is_ammo=True)
+        db.items[ammo] = ItemDef(name=ammo, subgroup="combat", is_ammo=True, ammo_category="bullet")
     for pack in ["automation-science-pack"]:
         db.items[pack] = ItemDef(name=pack, subgroup="science", is_science_pack=True)
 

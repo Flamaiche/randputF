@@ -178,6 +178,10 @@ def _roll_starter_kit(rng: random.Random, db: VanillaDB) -> list[dict]:
         gun = rng.choice(guns)
         kit.append({"type": "item", "name": gun.name, "count": 1})
         if ammos:
-            ammo = rng.choice(ammos)
+            # Munitions calees : meme categorie que l'arme si connue.
+            matching = [
+                a for a in ammos if gun.ammo_category and a.ammo_category == gun.ammo_category
+            ]
+            ammo = rng.choice(matching or ammos)
             kit.append({"type": "item", "name": ammo.name, "count": KIT_AMMO_COUNT})
     return kit
