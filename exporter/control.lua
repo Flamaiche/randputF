@@ -171,29 +171,35 @@ local function crafting_categories_of(proto)
   return nil
 end
 
+-- En 2.0 il n'y a PAS de propriete generique energy_source : chaque type
+-- d'energie a sa propre propriete, et ces objets n'exposent pas de champ
+-- "type". On sonde donc chaque nom et on deduit le type de la cle trouvee.
 local ENERGY_SOURCE_PROPS = {
-  "energy_source",
-  "burner_energy_source_prototype",
-  "electric_energy_source_prototype",
-  "fluid_energy_source_prototype",
-  "heat_energy_source_prototype",
-  "void_energy_source_prototype",
+  {name = "burner_prototype", type = "burner"},
+  {name = "electric_energy_source_prototype", type = "electric"},
+  {name = "fluid_energy_source_prototype", type = "fluid"},
+  {name = "heat_energy_source_prototype", type = "heat"},
+  {name = "void_energy_source_prototype", type = "void"},
 }
 
 local function energy_source_info(proto)
   local info = {}
-  local source = first_ok(proto, ENERGY_SOURCE_PROPS)
+  local matched_type = nil
+  local source = nil
+  for _, probe in ipairs(ENERGY_SOURCE_PROPS) do
+    local ok, value = pcall(function()
+      return proto[probe.name]
+    end)
+    if ok and value ~= nil then
+      source = value
+      matched_type = probe.type
+      break
+    end
+  end
   if source == nil then
     return info
   end
-  local ok_type, source_type = pcall(function()
-    return source.type
-  end)
-  if ok_type and source_type ~= nil then
-    info.type = source_type
-  else
-    info.type = "unknown"
-  end
+  info.type = matched_type
   local ok_fuel, categories = pcall(function()
     return source.fuel_categories
   end)
@@ -240,6 +246,28 @@ local function dump_entities()
           entry.resource_categories = string_list(proto.resource_categories)
         end)
       end
+      -- Slots de craft : nombre max d'ingredients supportes (2.0).
+      pcall(function()
+        if proto.ingredient_count then
+          entry.ingredient_count = proto.ingredient_count
+        end
+      end)
+      -- Consommation de science packs du lab.
+      pcall(function()
+        if proto.lab_inputs then
+          entry.lab_inputs = string_list(proto.lab_inputs)
+        end
+      end)
+      pcall(function()
+        if proto.rocket_parts_required then
+          entry.rocket_parts_required = proto.rocket_parts_required
+        end
+      end)
+      pcall(function()
+        if proto.energy_usage then
+          entry.energy_usage = proto.energy_usage
+        end
+      end)
       if proto.type == "offshore-pump" then
         local fluid = first_ok(proto, {"fluid"})
         pcall(function()
