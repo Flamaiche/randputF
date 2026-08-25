@@ -80,7 +80,6 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         db.fluids[name] = FluidDef(
             name=name,
             fuel_value=_fuel_value(entry.get("fuel_value")),
-            default_temperature=entry.get("default_temperature"),
         )
 
     for name, entry in (dump.get("entities") or {}).items():
