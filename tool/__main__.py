@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+import yaml
 from pathlib import Path
 
 from tool.common.db import VanillaDB
@@ -11,6 +12,15 @@ from tool.exporters.mod_seed import write_seed_files
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump, summarize_db
 from tool.validator.solver import validate_seed
+
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
+
+
+def _load_config() -> dict:
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
@@ -33,6 +43,13 @@ def cmd_parse(args: argparse.Namespace) -> None:
 
 def cmd_generate(args: argparse.Namespace) -> None:
     db = _load_db(args.demo, Path(args.dump))
+
+    if args.seed is not None:
+        db.seed_value = args.seed
+    else:
+        cfg = _load_config()
+        db.seed_value = cfg.get("seed", 0)
+
     seed = generate_seed(db)
     issues = validate_seed(seed)
     if issues:
@@ -42,7 +59,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
     out_dir = Path(args.mod_dir) / "seed" if not args.out else Path(args.out)
     write_seed_files(seed, out_dir)
     print(summarize_db(db))
-    print(f"Seed valide exportee vers {out_dir}/ (seed.json + seed.lua)")
+    print(f"Seed {db.seed_value} valide exportee vers {out_dir}/ (seed.json + seed.lua)")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -59,6 +76,7 @@ def main(argv: list[str] | None = None) -> None:
     p_gen.add_argument("--dump", default="data/vanilla_dump.json")
     p_gen.add_argument("--mod-dir", default="mod")
     p_gen.add_argument("--out", default=None, help="Dossier de sortie alternatif (defaut: mod/seed)")
+    p_gen.add_argument("--seed", type=int, default=None, help="Seed (defaut: lit config/settings.yaml)")
     p_gen.set_defaults(func=cmd_generate)
 
     args = parser.parse_args(argv)
