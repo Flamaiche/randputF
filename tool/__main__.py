@@ -24,10 +24,26 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 
 def _load_config() -> dict:
-    if not CONFIG_PATH.exists() or yaml is None:
+    if not CONFIG_PATH.exists():
         return {}
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    if yaml is not None:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    # Fallback: parse le YAML a la main (seule la ligne factorio_mods compte)
+    result = {}
+    for line in CONFIG_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if ":" in line and not line.startswith("#"):
+            key, _, val = line.partition(":")
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            if key == "factorio_mods":
+                result["factorio_mods"] = val
+            elif key == "seed":
+                try:
+                    result["seed"] = int(val)
+                except ValueError:
+                    pass
+    return result
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
@@ -44,47 +60,37 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
 
 
 def _build_mod(seed: dict, dest: Path) -> Path:
-    """Assemble le mod complet dans un .zip dans dest. Retourne le chemin du zip."""
-    import tempfile
-    import zipfile
-
+    """Assemble le mod complet dans dest. Retourne le chemin du dossier."""
     mod_name = "randputF_0.1.0"
-    zip_path = dest / f"{mod_name}.zip"
+    mod_dir = dest / mod_name
     dest.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp) / mod_name
-        tmp_path.mkdir()
+    if mod_dir.exists():
+        shutil.rmtree(mod_dir)
+    mod_dir.mkdir()
 
-        for item in MOD_SOURCE.iterdir():
-            if item.name == "seed" or item.is_symlink():
-                continue
-            target = tmp_path / item.name
-            if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, target)
+    for item in MOD_SOURCE.iterdir():
+        if item.name == "seed" or item.is_symlink():
+            continue
+        target = mod_dir / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, target)
 
-        write_seed_files(seed, tmp_path / "seed")
-
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for file in tmp_path.rglob("*"):
-                if file.is_file():
-                    zf.write(file, f"{mod_name}/{file.relative_to(tmp_path)}")
-
-    return zip_path
+    write_seed_files(seed, mod_dir / "seed")
+    return mod_dir
 
 
 def _install_mod(seed: dict, mods_dir: Path) -> None:
-    """Cree le zip et le copie dans le dossier Factorio mods + met a jour mod-list.json."""
+    """Copie le mod dans le dossier Factorio mods + met a jour mod-list.json."""
     mod_name = "randputF_0.1.0"
     dest = mods_dir / mod_name
 
-    if dest.is_symlink() or dest.exists():
-        if dest.is_dir() and not dest.is_symlink():
-            shutil.rmtree(dest)
-        else:
-            dest.unlink()
+    if dest.is_symlink():
+        dest.unlink()
+    elif dest.exists():
+        shutil.rmtree(dest)
 
     _build_mod(seed, mods_dir)
 
@@ -131,16 +137,16 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
     if args.install:
         cfg = _load_config()
-        raw_path = cfg.get("paths", {}).get("factorio_mods", "")
+        raw_path = cfg.get("factorio_mods", "")
         mods_dir = Path(raw_path).expanduser() if raw_path else Path()
-        if mods_dir.exists():
+        if mods_dir.exists() and mods_dir.is_dir():
             _install_mod(seed, mods_dir)
             print(f"Seed {db.seed_value} valide, mod installe dans {mods_dir}/")
         else:
             out_dir = OUTPUT_DIR
-            zip_path = _build_mod(seed, out_dir)
+            mod_path = _build_mod(seed, out_dir)
             print(f"Dossier Factorio mods introuvable ({raw_path})")
-            print(f"Seed {db.seed_value} valide, mod assemblé dans {zip_path}")
+            print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
             print(f"Copie-le manuellement dans ton dossier mods Factorio.")
     else:
         out_dir = Path(args.out) if args.out else OUTPUT_DIR
