@@ -248,6 +248,21 @@ Conséquence structurelle : plus aucune plaque de fer/cuivre/charbon ni gisement
 de pétrole classique n'est garantie au sol — le joueur découvre à chaque
 partie de quoi son monde est fait.
 
+#### Identité des fluides : la température n'existe pas
+
+Un fluide est défini uniquement par son **identité de ressource pipable** —
+« tout ce qui peut circuler dans un tuyau ». Deux fluides portant le même nom
+mais à des températures différentes sont **le même fluide** : pour randputF,
+la température n'est pas une dimension, elle n'existe pas en tant que critère
+de distinction.
+
+Cette règle neutralise les cas ambigus du jeu (chaudière, réacteur nucléaire,
+échangeurs de chaleur) : ces bâtiments **font une action** (chauffer,
+transférer de la chaleur) mais leur chaleur n'est pas considérée comme une
+transformation du fluide. Un fluide chauffé ou refroidi reste ce fluide ; seul
+un changement de nom (eau → vapeur) constitue une autre ressource, et il passe
+alors par une recette classique, jamais par un simple écart de température.
+
 ## 7. La phase de démarrage
 
 Le randomizer détermine tout dès le spawn (l'électricité suivra sa propre
