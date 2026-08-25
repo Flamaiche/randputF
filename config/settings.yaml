@@ -4,6 +4,7 @@ factorio_version: "2.0"
 paths:
   mod_dir: mod
   vanilla_dump: data/vanilla_dump.json
+  factorio_mods: ~/.var/app/com.valvesoftware.Steam/.factorio/mods
 
 map:
   patches_min: 3

@@ -20,7 +20,6 @@ from tool.validator.solver import validate_seed
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
 MOD_SOURCE = Path(__file__).resolve().parent.parent / "mod"
-FACTORIO_MODS = Path.home() / ".var/app/com.valvesoftware.Steam/.factorio/mods"
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 
@@ -76,21 +75,20 @@ def _build_mod(seed: dict, dest: Path) -> Path:
     return zip_path
 
 
-def _install_mod(seed: dict) -> None:
+def _install_mod(seed: dict, mods_dir: Path) -> None:
     """Cree le zip et le copie dans le dossier Factorio mods + met a jour mod-list.json."""
     mod_name = "randputF_0.1.0"
-    dest = FACTORIO_MODS / mod_name
+    dest = mods_dir / mod_name
 
-    # Supprimer l'ancien zip ou dossier
     if dest.is_symlink() or dest.exists():
         if dest.is_dir() and not dest.is_symlink():
             shutil.rmtree(dest)
         else:
             dest.unlink()
 
-    zip_path = _build_mod(seed, FACTORIO_MODS)
+    _build_mod(seed, mods_dir)
 
-    mod_list = FACTORIO_MODS / "mod-list.json"
+    mod_list = mods_dir / "mod-list.json"
     if mod_list.exists():
         data = json.loads(mod_list.read_text(encoding="utf-8"))
     else:
@@ -132,9 +130,18 @@ def cmd_generate(args: argparse.Namespace) -> None:
         sys.exit(2)
 
     if args.install:
-        _install_mod(seed)
-        mod_name = "randputF_0.1.0"
-        print(f"Seed {db.seed_value} valide, mod installe dans {FACTORIO_MODS}/{mod_name}.zip")
+        cfg = _load_config()
+        raw_path = cfg.get("paths", {}).get("factorio_mods", "")
+        mods_dir = Path(raw_path).expanduser() if raw_path else Path()
+        if mods_dir.exists():
+            _install_mod(seed, mods_dir)
+            print(f"Seed {db.seed_value} valide, mod installe dans {mods_dir}/")
+        else:
+            out_dir = OUTPUT_DIR
+            zip_path = _build_mod(seed, out_dir)
+            print(f"Dossier Factorio mods introuvable ({raw_path})")
+            print(f"Seed {db.seed_value} valide, mod assemblé dans {zip_path}")
+            print(f"Copie-le manuellement dans ton dossier mods Factorio.")
     else:
         out_dir = Path(args.out) if args.out else OUTPUT_DIR
         zip_path = _build_mod(seed, out_dir)
