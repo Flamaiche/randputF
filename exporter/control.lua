@@ -233,13 +233,11 @@ local function dump_entities()
   local out = {}
   for _, proto in pairs(prototypes.entity) do
     local entry = {type = proto.type}
-    local meaningful = false
 
     -- Capacite de transformation : categories de craft supportees.
     local cats = non_empty(string_list(probe(proto, "crafting_categories")))
     if cats then
       entry.crafting_categories = cats
-      meaningful = true
       local count = probe(proto, "ingredient_count")
       if count then
         entry.ingredient_count = count
@@ -250,7 +248,6 @@ local function dump_entities()
     local rescats = non_empty(string_list(probe(proto, "resource_categories")))
     if rescats then
       entry.resource_categories = rescats
-      meaningful = true
       local speed = probe(proto, "mining_speed")
       if speed then
         entry.mining_speed = speed
@@ -261,7 +258,6 @@ local function dump_entities()
     local pspeed = probe(proto, "pumping_speed")
     if pspeed then
       entry.pumping_speed = pspeed
-      meaningful = true
       local fluid = probe(proto, "fluid")
       pcall(function()
         if fluid then
@@ -274,7 +270,6 @@ local function dump_entities()
     local inputs, outputs, details = fluidbox_info(proto)
     if inputs > 0 or outputs > 0 then
       entry.fluidboxes = {input = inputs, output = outputs, detail = details}
-      meaningful = true
     end
 
     -- Energie consommee : source (burner/electric/fluid/heat/void) + usage.
@@ -297,44 +292,41 @@ local function dump_entities()
     end
     if pwr and pwr > 0 then
       entry.max_power_output = pwr
-      meaningful = true
     end
     if probe(proto, "heat_buffer_prototype") then
       entry.has_heat_output = true
-      meaningful = true
     end
 
     -- Distribution electrique : les poteaux ont une zone de desserte.
     local supply = probe(proto, "supply_area_distance")
     if supply then
       entry.supply_area_distance = supply
-      meaningful = true
     end
+
+    -- Extraction TOTALE : on garde toute entite, meme sans capacite
+    -- reconnue (l'outil la rangera en "other"). Rien ne doit se perdre.
 
     -- Chaudiere : temperature cible sans categorie de craft.
     local target_temp = probe(proto, "target_temperature")
     if target_temp then
       entry.target_temperature = target_temp
-      meaningful = true
     end
 
     -- Science : entrées de lab.
     local labs = non_empty(string_list(probe(proto, "lab_inputs")))
     if labs then
       entry.lab_inputs = labs
-      meaningful = true
     end
 
     -- Victoire : silo orbital.
     local rpr = probe(proto, "rocket_parts_required")
     if rpr then
       entry.rocket_parts_required = rpr
-      meaningful = true
     end
 
     -- Lien inverse : quels items placent cette entite.
     local itp = probe(proto, "items_to_place_this")
-    if itp and meaningful then
+    if itp then
       local names = {}
       for _, item in ipairs(itp) do
         table.insert(names, item.name)
@@ -344,9 +336,7 @@ local function dump_entities()
       end
     end
 
-    if meaningful then
-      out[proto.name] = entry
-    end
+    out[proto.name] = entry
   end
   return out
 end
