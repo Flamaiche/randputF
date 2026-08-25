@@ -129,6 +129,7 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     """
     directives: dict = {}
 
+    energy_src = e.get("energy_source") or {}
     craft_categories = tuple(e.get("crafting_categories") or ())
     resource_categories = tuple(e.get("resource_categories") or ())
     lab_inputs = e.get("lab_inputs") or []
@@ -151,14 +152,25 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
         directives["rocket_parts_required"] = int(rocket_parts)
 
     if craft_categories or lab_inputs or rocket_parts or target_temp is not None:
+        # Le personnage lui-meme tombe ici (categories de craft) :
+        # c'est la fabrication a la main, le premier fabricant gratuit.
         functional = "transformer"
-    elif max_power > 0 or energy_prod > 0 or has_heat:
+    elif (
+        max_power > 0
+        or energy_prod > 0
+        or (has_heat and bool(energy_src.get("type")))
+    ):
+        # Un conducteur de chaleur seul (heat-pipe) n'a pas de source
+        # d'energie et n'est pas un generateur.
         functional = "generator"
         directives["energy_output"] = True
     elif supply_area:
         # Poteaux electriques : distribution du reseau.
         functional = "distribution"
-    elif resource_categories or pumping_speed is not None:
+    elif resource_categories or pumped_fluid or (pumping_speed is not None and not e.get("energy_usage")):
+        # Un extracteur CREE sa ressource depuis le monde (minage ou pompage
+        # de source). Un simple pompe de transport consomme de l'energie du
+        # reseau pour deplacer un fluide existant : ce n'est pas un extracteur.
         functional = "extractor"
     else:
         # Aucune capacite reconnue : range en "other", jamais perdu.
@@ -178,7 +190,6 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     if fluid_in > 0 and functional != "generator":
         directives["fluid_inputs"] = True
 
-    energy_src = e.get("energy_source") or {}
     energy_type = energy_src.get("type") or ""
 
     return BuildingDef(
