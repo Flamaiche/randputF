@@ -94,6 +94,9 @@ def _install_mod(seed: dict, mods_dir: Path) -> None:
 
     _build_mod(seed, mods_dir)
 
+    info = json.loads((dest / "info.json").read_text(encoding="utf-8"))
+    mod_list_name = info.get("name", mod_name)
+
     mod_list = mods_dir / "mod-list.json"
     if mod_list.exists():
         data = json.loads(mod_list.read_text(encoding="utf-8"))
@@ -101,11 +104,11 @@ def _install_mod(seed: dict, mods_dir: Path) -> None:
         data = {"mods": [{"name": "base", "enabled": True}]}
 
     names = {m["name"] for m in data["mods"]}
-    if mod_name not in names:
-        data["mods"].append({"name": mod_name, "enabled": True})
+    if mod_list_name not in names:
+        data["mods"].append({"name": mod_list_name, "enabled": True})
     else:
         for m in data["mods"]:
-            if m["name"] == mod_name:
+            if m["name"] == mod_list_name:
                 m["enabled"] = True
     for m in data["mods"]:
         if m["name"] == "randputf-exporter":
@@ -121,14 +124,14 @@ def cmd_parse(args: argparse.Namespace) -> None:
 
 def cmd_generate(args: argparse.Namespace) -> None:
     db = _load_db(args.demo, Path(args.dump))
+    cfg = _load_config()
 
     if args.seed is not None:
         db.seed_value = args.seed
     else:
-        cfg = _load_config()
         db.seed_value = cfg.get("seed", 0)
 
-    seed = generate_seed(db)
+    seed = generate_seed(db, config=cfg)
     issues = validate_seed(seed)
     if issues:
         for issue in issues:
@@ -136,8 +139,8 @@ def cmd_generate(args: argparse.Namespace) -> None:
         sys.exit(2)
 
     if args.install:
-        cfg = _load_config()
-        raw_path = cfg.get("factorio_mods", "")
+        paths = cfg.get("paths", {})
+        raw_path = paths.get("factorio_mods", "") or cfg.get("factorio_mods", "")
         mods_dir = Path(raw_path).expanduser() if raw_path else Path()
         if mods_dir.exists() and mods_dir.is_dir():
             _install_mod(seed, mods_dir)

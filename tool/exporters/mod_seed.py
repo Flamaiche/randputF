@@ -8,8 +8,11 @@ Ecrit deux fichiers :
 Structure seed :
 {
   meta: {seed, generator_version, factorio_version},
-  pools: {item_resources: [...], fluid_resources: [...]},
-  map:   {patches: [{kind, resource, richness}]},
+  pools: {item_resources: [...], fluid_resources: [...],
+          vehicle_weapons: [<items gun de la pool montée §7/§12.1>],
+          vehicle_range_scaling: {base_size, scale}},
+  map:   {patches: [{kind, resource, richness}],
+          lakes: [{resource, richness}]}, -- lacs de fluide §7.5
   starter_kit: [{type, name, count}],
   free_researches: [...],
   recipes: [{name, ingredients:[{type,name,amount,produced_by?}],
@@ -17,7 +20,10 @@ Structure seed :
              on_the_spot_unlock?}],
   technologies: [{id, localised_name, prerequisites, unit{count,ingredients},
                   effects}],
-  progression_order: [...]
+  progression_order: [...],
+  vehicle_armament: {<véhicule>: [<items gun assignés §7>]} -- pool cachée :
+                 ne sert QU'à l'assignation ; le mod CLONE chaque arme pour
+                 le véhicule (arme dans arme) et l'arme (jamais craftée).
 }
 """
 
@@ -37,6 +43,30 @@ def write_seed_files(seed: dict, out_dir: Path) -> None:
     (out_dir / "seed.lua").write_text(
         LUA_HEADER + "return " + _to_lua(seed) + "\n", encoding="utf-8"
     )
+    locale_dir = out_dir.parent / "locale" / "en"
+    if locale_dir.exists():
+        locale_dir.mkdir(parents=True, exist_ok=True)
+        (locale_dir / "seed.cfg").write_text(
+            _locale_cfg(seed), encoding="utf-8"
+        )
+
+
+def _locale_cfg(seed: dict) -> str:
+    """[autoplace-control-names] pour chaque patch (alias index -> resource) et
+    chaque lac (§7.5, contrôle `randputf-lac-ctl-N` -> fluide)."""
+    lines = ["[autoplace-control-names]"]
+    seen = {}
+    index = 0
+    for patch in (seed.get("map") or {}).get("patches") or []:
+        resource = patch.get("resource", "")
+        if resource in seen:
+            continue
+        seen[resource] = True
+        index += 1
+        lines.append(f"randputf-ctl-{index}={resource}")
+    for i, lake in enumerate((seed.get("map") or {}).get("lakes") or [], start=1):
+        lines.append(f"randputf-lac-ctl-{i}={lake.get('resource', '')}")
+    return "\n".join(lines) + "\n"
 
 
 def _to_lua(value, indent: int = 0) -> str:

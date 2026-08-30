@@ -14,6 +14,19 @@ local function fuel_value_of(proto)
   return nil
 end
 
+local function stack_size_of(proto)
+  -- Empilabilité réelle (armures/armes/véhicules = 1) : c'est la source de
+  -- vérité une fois le dump régénéré ; sinon l'outil Python se rabat sur le
+  -- type (NON_STACKABLE_ITEM_TYPES dans tool/common/db.py).
+  local ok, size = pcall(function()
+    return proto.stack_size
+  end)
+  if ok and type(size) == "number" then
+    return size
+  end
+  return nil
+end
+
 local function prototypes_dict(key)
   local ok, dict = pcall(function()
     return prototypes[key]
@@ -32,6 +45,7 @@ local function dump_all_items()
       subgroup = proto.subgroup and proto.subgroup.name or "",
       place_result = proto.place_result and proto.place_result.name or nil,
       fuel_value = fuel_value_of(proto),
+      stack_size = stack_size_of(proto),
     }
     -- Categorie de munitions : cote munition ET cote arme, pour caler
     -- le kit de depart (arme + munitions compatibles).
@@ -61,6 +75,7 @@ local function dump_all_items()
             subgroup = proto.subgroup and proto.subgroup.name or "",
             place_result = nil,
             fuel_value = fuel_value_of(proto),
+            stack_size = stack_size_of(proto),
           }
         end
       end

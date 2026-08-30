@@ -19,6 +19,7 @@ JUNK_NAMES = {
     "no-item",
     "science",
     "electric-energy-interface",
+    "hidden-electric-energy-interface",
     "heat-interface",
     "bottomless-chest",
     "proxy-container",
@@ -68,9 +69,12 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             fuel_value=_fuel_value(entry.get("fuel_value")),
             is_ammo=itype == "ammo",
             is_gun=itype == "gun",
+            is_armor=itype == "armor",
             is_science_pack=subgroup == "science-pack",
             is_tool=itype == "tool",
             ammo_category=entry.get("ammo_category") or "",
+            item_type=itype,
+            stack_size=int(entry.get("stack_size") or 0),
         )
 
     for name, entry in (dump.get("fluids") or {}).items():
@@ -83,6 +87,12 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         )
 
     for name, entry in (dump.get("entities") or {}).items():
+        # Les entités cheat/junk (electric-energy-interface, bottomless-chest,
+        # linked-belt...) n'ont aucun intérêt : un bâtiment classé "other" ou
+        # générateur sans effet finirait par remplir l'arbre tech de fillers.
+        if is_junk(name):
+            db.excluded_items[name] = entry
+            continue
         bdef = _parse_entity(name, entry)
         if bdef:
             db.buildings[name] = bdef
@@ -122,8 +132,10 @@ def _parse_stack(stack: dict) -> tuple:
 
 def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     """Classement fonctionnel PAR CAPACITES intrinseques, sans liste de types :
-    - categories de craft / entrees de lab / pieces de fusee / temperature
-      cible  -> transformateur ;
+    - consommation de science packs (lab_inputs) -> "recherche" : premier-
+      plan, le lab est une brique de base, pas un atelier de craft ;
+    - categories de craft / pieces de fusee / temperature cible
+      -> transformateur ;
     - production electrique ou chaleur -> generateur ;
     - categories de ressources minables ou pompage -> extracteur.
     """
@@ -146,22 +158,26 @@ def _parse_entity(name: str, e: dict) -> BuildingDef | None:
     fluid_in = int(fluidboxes.get("input", 0) or 0)
     fluid_out = int(fluidboxes.get("output", 0) or 0)
 
-    if lab_inputs:
-        directives["lab_inputs"] = tuple(lab_inputs)
     if rocket_parts:
         directives["rocket_parts_required"] = int(rocket_parts)
 
-    if craft_categories or lab_inputs or rocket_parts or target_temp is not None:
+    if lab_inputs:
+        # Le lab consomme des science packs : c'est un bâtiment de RECHERCHE,
+        # pas un atelier de craft (anti-cycle §8) ni un générateur. Ce type
+        # premier-plan est garanti dès le starter (§8 - "un par gameplay").
+        directives["lab_inputs"] = tuple(lab_inputs)
+        functional = "research"
+    elif craft_categories or rocket_parts or target_temp is not None:
         # Le personnage lui-meme tombe ici (categories de craft) :
         # c'est la fabrication a la main, le premier fabricant gratuit.
         functional = "transformer"
     elif (
-        max_power > 0
-        or energy_prod > 0
-        or (has_heat and bool(energy_src.get("type")))
+        e.get("type") != "accumulator"
+        and (max_power > 0 or energy_prod > 0 or (has_heat and bool(energy_src.get("type"))))
     ):
-        # Un conducteur de chaleur seul (heat-pipe) n'a pas de source
-        # d'energie et n'est pas un generateur.
+        # Un accumulateur affiche un max_power_output (decharge) mais ne
+        # PRODUIT pas d'energie : il n'a rien a faire parmi les generateurs
+        # (electricite §10 le prendrait pour source de courant -> faux depart).
         functional = "generator"
         directives["energy_output"] = True
     elif supply_area:
@@ -219,6 +235,7 @@ def summarize_db(db: VanillaDB) -> str:
         f"  extracteurs: total={len(db.buildings_of_type('extractor'))} "
         + ", ".join(f"{m}={len(db.extractors_for_medium(m))}" for m in mediums),
         f"  transformateurs: {len(db.buildings_of_type('transformer'))}",
+        f"  recherche: {len(db.buildings_of_type('research'))}",
         f"  générateurs: {len(db.buildings_of_type('generator'))}",
         f"  distribution: {len(db.buildings_of_type('distribution'))}",
         f"  non classés (other): {others}",

@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import random
 
-from tool.common.db import SLOT_FLUID, SLOT_ITEM
+from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_FLUID, SLOT_ITEM, VanillaDB
 from tool.common.demo import build_demo_db
-from tool.generator.map_patches import Patch
+from tool.generator.map_patches import Patch, generate_patches, make_rng
 from tool.generator.starter_chain import build_starter_chain
 from tests.test_recipes import replay
 
@@ -66,3 +66,70 @@ def test_state_partage_avec_phases_suivantes():
     assert chain.state.obtained_fluids >= {"lubricant"}
     assert len(chain.state.unlocked_buildings) >= 2
     assert chain.buildings == sorted(chain.state.unlocked_buildings)
+
+
+def test_pool_environnemental_disponible_des_le_depart():
+    """Arbres/rochers/poissons (README §3, §6) : items obtenus dès le départ,
+    avant tout patch — ils alimentent le pool d'ingrédients initial."""
+    db = build_demo_db()
+    chain = build_starter_chain(random.Random(1), db, make_patches(("fluid", "water")))
+    assert set(chain.state.obtained_items) >= set(ENVIRONMENTAL_ITEMS)
+
+
+def test_batiment_recherche_debloque():
+    """§8 : le starter doit toujours garantir un bâtiment de type "recherche"
+    (un lab) dès les techs gratuites."""
+    db = build_demo_db()
+    chain = build_starter_chain(random.Random(3), db, make_patches(("item", "iron-ore")))
+    unlocked_research = {
+        b.name for b in db.buildings.values()
+        if b.functional_type == "research" and b.name in chain.state.unlocked_buildings
+    }
+    assert unlocked_research
+
+
+def test_recherche_obligatoire_dans_2eme_research_gratuite():
+    """§8 : la recette du bâtiment de recherche tombe dans la 2e recherche
+    gratuite (starter-transformation), jamais dans la tech d'extraction."""
+    db = build_demo_db()
+    chain = build_starter_chain(
+        random.Random(5),
+        db,
+        make_patches(("item", "iron-ore"), ("fluid", "water")),
+    )
+    assert len(chain.tech_steps) >= 2
+    extraction, transformation = chain.tech_steps[:2]
+    assert extraction["id"] == "randputf-starter-extraction"
+    assert transformation["id"] == "randputf-starter-transformation"
+
+    research_items = {
+        i.name for i in db.items.values()
+        if i.place_result
+        and db.buildings.get(i.place_result)
+        and db.buildings[i.place_result].functional_type == "research"
+    }
+    lab_recipes = {f"randputf-{item}" for item in research_items}
+    assert not (set(extraction["unlocks_recipes"]) & lab_recipes)
+    assert set(transformation["unlocks_recipes"]) & lab_recipes
+
+
+def test_items_environnementaux_jamais_en_patch():
+    """§6 : les ressources non automatisables (wood/stone/raw-fish) ne
+    constituent jamais un patch, même sur de nombreuses générations."""
+    db = build_demo_db()
+    for seed in range(50):
+        rng = make_rng(seed)
+        patches = generate_patches(rng, db, {})
+        resources = {p.resource for p in patches}
+        assert not resources & set(ENVIRONMENTAL_ITEMS)
+
+
+def test_patches_sans_ressource_dupliquee():
+    """Chaque ressource apparait au plus une fois sur une seed (tirage sans
+    remise) : deux patchs de petroleum-gas sont impossibles."""
+    db = build_demo_db()
+    for seed in range(50):
+        rng = make_rng(seed)
+        patches = generate_patches(rng, db, {})
+        resources = [p.resource for p in patches]
+        assert len(resources) == len(set(resources)), f"seed {seed}: {resources}"

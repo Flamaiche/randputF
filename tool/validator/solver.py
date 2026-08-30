@@ -10,6 +10,8 @@ IMPLEMENTE generiquement sur la structure seed :
 
 from __future__ import annotations
 
+from tool.common.db import ENVIRONMENTAL_ITEMS
+
 
 def validate_seed(seed: dict) -> list[str]:
     issues: list[str] = []
@@ -53,7 +55,12 @@ def _check_anti_cycle(seed: dict) -> list[str]:
 
 def _check_progressivity(seed: dict) -> list[str]:
     issues: list[str] = []
+    # Pool initial : patchs + lacs (§7.5) + ressources environnementales
+    # (arbres/rochers/poissons) toujours récoltables à la main (README §3, §6
+    # et §9.3).
     pool: set[str] = {p["resource"] for p in seed.get("map", {}).get("patches", [])}
+    pool |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
+    pool |= set(ENVIRONMENTAL_ITEMS)
     for recipe in seed.get("recipes", []):
         missing = [ing["name"] for ing in recipe.get("ingredients", []) if ing["name"] not in pool]
         if missing and not recipe.get("on_the_spot_unlock"):
@@ -69,6 +76,7 @@ def _check_completeness(seed: dict) -> list[str]:
     required = seed.get("victory_requirements", [])
     produced = {p["name"] for r in seed.get("recipes", []) for p in r.get("results", [])}
     patched = {p["resource"] for p in seed.get("map", {}).get("patches", [])}
+    patched |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
     missing = [req for req in required if req not in produced | patched]
     if missing:
         return [f"complétude: exigences de victoire inatteignables: {missing}"]
