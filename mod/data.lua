@@ -16,31 +16,30 @@ data:extend({
 })
 
 local pools = seed.pools or {}
-local item_template = data.raw.resource["iron-ore"]
-local fluid_template = data.raw.resource["crude-oil"]
 
-for _, name in ipairs(pools.item_resources or {}) do
-  local proto = table.deepcopy(item_template)
-  proto.name = "randputf-item-" .. name
-  proto.autoplace = nil
-  proto.localised_name = {"", name}
-  proto.minable = {
-    mining_time = 1,
-    results = {{type = "item", name = name, amount = 1}},
-  }
-  data:extend({proto})
-end
+-- Types de prototypes « objet » (item-like). Un item Factorio n'est PAS
+-- toujours stocké dans `data.raw.item` : les armes (gun), capsules, munitions,
+-- armures, science-packs (tool), modules, etc. ont leur propre table
+-- `data.raw.<type>`. Sans cette recherche, une recette produisant l'un d'eux
+-- perdait son sous-groupe d'inventaire (le « randputf » de secours y était
+-- collé) et son icône.
+local ITEM_LIKE_TYPES = {
+  "item", "gun", "tool", "capsule", "ammo", "armor",
+  "repair-tool", "mining-tool", "module", "item-with-entity-data",
+  "selection-tool", "blueprint", "copy-paste-tool",
+  "deconstruction-item", "upgrade-item", "rail-planner",
+}
 
-for _, name in ipairs(pools.fluid_resources or {}) do
-  local proto = table.deepcopy(fluid_template)
-  proto.name = "randputf-fluid-" .. name
-  proto.autoplace = nil
-  proto.localised_name = {"", name}
-  proto.minable = {
-    mining_time = 1,
-    results = {{type = "fluid", name = name, amount = 10}},
-  }
-  data:extend({proto})
+local function find_item_proto(name)
+  if not name then return nil end
+  if data.raw.item and data.raw.item[name] then return data.raw.item[name] end
+  for _, t in ipairs(ITEM_LIKE_TYPES) do
+    local table_proto = data.raw[t]
+    if table_proto and table_proto[name] then
+      return table_proto[name]
+    end
+  end
+  return nil
 end
 
 for _, recipe_seed in ipairs(seed.recipes or {}) do
@@ -53,18 +52,40 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
     })
   end
   local results = {}
+  local main_product = nil
   for _, result in ipairs(recipe_seed.results or {}) do
     table.insert(results, {
       type = result.type or "item",
       name = result.name,
       amount = result.amount,
     })
+    if not main_product then main_product = result end
   end
+
+  local subgroup = "randputf"
+  local order = ""
+  if main_product and main_product.type == "item" then
+    -- Sous-groupe d'inventaire hérité du proto produit (item OU item-like :
+    -- gun/tool/capsule/ammo/armor/module...). Même logique que les techs
+    -- (find_item_proto) : sans cela la recette d'un science-pack, d'un gun ou
+    -- d'une munition atterrissait dans le sous-groupe « randputf » de secours.
+    local item_proto = find_item_proto(main_product.name)
+    if item_proto then
+      subgroup = item_proto.subgroup or subgroup
+      order = item_proto.order or ""
+    end
+  elseif main_product and main_product.type == "fluid" then
+    subgroup = "fluid"
+    order = ""
+  end
+
   local recipe_def = {
       type = "recipe",
       name = recipe_seed.name,
+      localised_name = {"", (recipe_seed.name:gsub("^randputf%-", ""):gsub("-", " "))},
       enabled = recipe_seed.enabled == true,
-      subgroup = "randputf",
+      subgroup = subgroup,
+      order = order,
       energy_required = recipe_seed.energy or 0.5,
       ingredients = ingredients,
       results = results,
@@ -77,6 +98,68 @@ end
 
 local tech_template = data.raw.technology["automation"]
 
+-- Icônes des recettes/items DÉBLOQUÉS par une tech : chaque nœud affiche
+-- l'image de ce qu'il débloque (unités, bâtiments, armes, packs) au lieu de
+-- l'icône par défaut du template (assembling machine). Grille 2x2, max 4
+-- icônes, comme les techs multi-icônes vanilla (§13).
+local ICON_OUTPUT_SIZE = 64 -- taille d'affichage par icône sur le canvas 128
+local icon_layouts = {
+  {1, {{0, 0}}},
+  {2, {{-32, 0}, {32, 0}}},
+  {3, {{-32, 32}, {32, 32}, {0, -32}}},
+  {4, {{-32, -32}, {32, -32}, {-32, 32}, {32, 32}}},
+}
+
+local function proto_icon(proto)
+  if not proto then return nil end
+  if proto.icons and #proto.icons > 0 then
+    return {icon = proto.icons[1].icon, icon_size = proto.icons[1].icon_size or proto.icon_size}
+  end
+  if proto.icon then
+    return {icon = proto.icon, icon_size = proto.icon_size}
+  end
+  return nil
+end
+
+local function tech_icons_for_effects(effects)
+  local picked = {}
+  for _, effect in ipairs(effects or {}) do
+    if effect.type ~= "unlock-recipe" then goto continue end
+    local recipe = data.raw.recipe[effect.recipe]
+    if recipe then
+      for _, result in ipairs(recipe.results or {}) do
+        local proto = (result.type == "fluid") and data.raw.fluid[result.name]
+          or find_item_proto(result.name)
+        local ic = proto_icon(proto)
+        if ic then
+          table.insert(picked, ic)
+          if #picked >= 4 then break end
+        end
+      end
+    end
+    ::continue::
+  end
+  if #picked == 0 then return nil end
+
+  local count = math.min(#picked, 4)
+  local shifts = nil
+  for _, layout in ipairs(icon_layouts) do
+    if layout[1] == count then shifts = layout[2] end
+  end
+  local icons = {}
+  for i = 1, count do
+    local ic = picked[i]
+    local source = ic.icon_size or 64
+    table.insert(icons, {
+      icon = ic.icon,
+      icon_size = source,
+      scale = ICON_OUTPUT_SIZE / source,
+      shift = {shifts[i][1], shifts[i][2]},
+    })
+  end
+  return icons
+end
+
 for _, tech_seed in ipairs(seed.technologies or {}) do
   local proto = table.deepcopy(tech_template)
   proto.name = tech_seed.id
@@ -87,22 +170,43 @@ for _, tech_seed in ipairs(seed.technologies or {}) do
   end
   local unit_ingredients = {}
   for _, ingredient in ipairs(tech_seed.unit.ingredients or {}) do
-    table.insert(unit_ingredients, {
-      type = ingredient.type or "item",
-      name = ingredient.name,
-      amount = ingredient.amount,
-    })
+    table.insert(unit_ingredients, {ingredient.name, ingredient.amount})
   end
   proto.unit = {
     count = tech_seed.unit.count,
     time = tech_seed.unit.time or 30,
     ingredients = unit_ingredients,
   }
+  -- Déblocage par HAND-CRAFT (prologue relais) : la tech s'active dès que le
+  -- joueur fabrique à la main l'item déclencheur, façon vanilla
+  -- (automation/logistics). Pas de packs à fournir en laboratoire : la `unit`
+  -- reste vide et le `research_trigger` fait le travail.
+  if tech_seed.craft_trigger then
+    proto.unit = {
+      count = 1,
+      time = 1,
+      ingredients = {},
+    }
+    proto.research_trigger = {
+      type = "craft-item",
+      item = tech_seed.craft_trigger,
+      count = tech_seed.craft_trigger_count or 1,
+    }
+    proto.enabled = true
+  end
   proto.effects = {}
   for _, effect in ipairs(tech_seed.effects or {}) do
     table.insert(proto.effects, effect)
   end
+  -- Icônes des items/recettes DÉBLOQUÉS (visible sur le nœud de tech).
+  local icons = tech_icons_for_effects(proto.effects)
+  if icons then
+    proto.icon = nil
+    proto.icons = icons
+  end
   proto.upgrade = false
+  proto.level = nil
+  proto.max_level = nil
   data:extend({proto})
 end
 

@@ -12,9 +12,15 @@ import random
 
 import pytest
 
-from tool.common.db import SLOT_FLUID, SLOT_ITEM, VanillaDB
+from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_FLUID, SLOT_ITEM, VanillaDB
 from tool.common.demo import build_demo_db
-from tool.generator.recipes import ProgressionState, ensure_obtainable, make_recipe
+from tool.generator.recipes import (
+    ProgressionState,
+    _has_production_item,
+    _sample_items_weighed,
+    ensure_obtainable,
+    make_recipe,
+)
 
 
 def make_state(*raw_items: str) -> tuple[VanillaDB, ProgressionState]:
@@ -104,3 +110,56 @@ def test_dependance_circulaire_detectee():
     state.pending.add(f"{SLOT_ITEM}:iron-plate")
     with pytest.raises(ValueError, match="circulaire"):
         ensure_obtainable(rng, db, state, SLOT_ITEM, "iron-plate")
+
+
+def test_cold_start_environnemental_sans_patch_item():
+    """Sans item de production (seed 100% fluides), les ressources
+    environnementales (arbres/rochers/poissons) sont LA matière première :
+    priorité dans le tirage, en petite quantité."""
+    db, state = make_state("water")  # aucun patch item, juste l'eau
+    for item in ENVIRONMENTAL_ITEMS:
+        state.mark_obtained(SLOT_ITEM, item)
+    assert _has_production_item(db, state) is False
+
+    rng = random.Random(4)
+    eligible = [(SLOT_ITEM, n) for n in state.obtained_items]
+    picked = _sample_items_weighed(rng, db, eligible, 2, state)
+    assert all(name in ENVIRONMENTAL_ITEMS for name in {n for _, n in picked})
+
+
+def test_environnemental_rare_des_qu_item_de_production_existe():
+    """Dès qu'un patch item ou un item fabriqué existe, les items
+    environnementaux ne sont plus prioritaires : poids faible."""
+    db, state = make_state("iron-ore", "water")  # patch item présent
+    for item in ENVIRONMENTAL_ITEMS:
+        state.mark_obtained(SLOT_ITEM, item)
+    assert _has_production_item(db, state) is True
+
+    rng = random.Random(4)
+    eligible = [(SLOT_ITEM, n) for n in state.obtained_items]
+    picked = _sample_items_weighed(rng, db, eligible, 2, state)
+    assert not all(name in ENVIRONMENTAL_ITEMS for name in {n for _, n in picked})
+
+
+def test_extracteurs_se_craftent_uniquement_avec_des_items():
+    """Anti-cycle §8 : la recette d'un extracteur (perceuse, pumpjack, pompe
+    offshore) n'utilise jamais de fluide comme ingrédient — surtout pas celui
+    qu'il sert à extraire."""
+    db = build_demo_db()
+    extractor_items = {
+        i.name for i in db.items.values()
+        if i.place_result and db.buildings.get(i.place_result) is not None
+        and db.buildings[i.place_result].functional_type == "extractor"
+    }
+    assert extractor_items  # la démo doit en contenir
+    for target in extractor_items:
+        state = ProgressionState()
+        for name in ("iron-ore", "copper-ore", "stone", "coal", "water"):
+            state.mark_obtained(SLOT_FLUID if name == "water" else SLOT_ITEM, name)
+        for env in ENVIRONMENTAL_ITEMS:
+            state.mark_obtained(SLOT_ITEM, env)
+        rng = random.Random(abs(hash(target)) % 99991)
+        ensure_obtainable(rng, db, state, SLOT_ITEM, target)
+        recipe = next(r for r in state.recipes if r["results"][0]["name"] == target)
+        fluid_ings = [i for i in recipe["ingredients"] if i["type"] == SLOT_FLUID]
+        assert not fluid_ings, f"{recipe['name']} utilise un fluide: {fluid_ings}"
