@@ -1,4 +1,4 @@
-seed: 20260825
+seed: 5
 factorio_version: "2.0"
 
 paths:
@@ -21,5 +21,67 @@ weights:
   building_types: {}
   science_packs: {}
 
+recursive:
+  # Randomisation des armes montées (§7/§12.1) : pool d'ITEMS GUN réels
+  # (DÉFAUT du prototype, aucun pool autre que celui-ci). Chaque véhicule armé
+  # reçoit vehicle_slots_min..max armes tirées dans la pool (avec remise
+  # configurable), puis le mod CLONE chaque arme pour le véhicule (« arme dans
+  # arme ») et remplace l'armement vanilla. AUCUNE recette/unlock n'est généré
+  # pour ces armes — la pool ne sert qu'à l'assignation. La portée du clone
+  # croît avec la taille de l'entité : facteur = 1 + max(taille - base_size, 0)
+  # * scale (ex. tank 2.6 → x1.24, artillery-wagon 6 → x2.6).
+  armed_vehicles: [tank, spidertron, artillery-wagon]
+  vehicle_weapons:
+    - tank-cannon
+    - vehicle-machine-gun
+    - tank-flamethrower
+    - artillery-wagon-cannon
+    - spidertron-rocket-launcher-1
+    - pistol
+    - submachine-gun
+    - shotgun
+    - combat-shotgun
+    - rocket-launcher
+    - flamethrower
+  vehicle_slots_min: 1
+  vehicle_slots_max: 4
+  vehicle_slots_with_replacement: true
+  vehicle_range_base_size: 2.0
+  vehicle_range_scale: 0.4
+
 starter:
   free_researches_count: [1, 2]
+
+wreck:
+  # Site de crash (§7) : chaque slot est rempli de n ∈ {0,1,2,3} items d'un
+  # matériau aléatoire. Loi pondérée STRICTEMENT décroissante via la formule
+  # c3=t, c2=t+a, c1=100-5t-2a, c0=c1+b (contraintes 6t+3a<100, b>=1) → somme
+  # des valeurs 0*c0+1*c1+2*c2+3*c3 = 100, 0 le plus fréquent, 3 le plus rare.
+  t: 12
+  a: 9
+  b: 53
+  loot:
+    # Ressources NON-infinies uniquement (bois, pierre, poisson) : les seules
+    # que le joueur ne pourra jamais miner/automatiser — le crash sert de
+    # bootstrap à ces matières, pas à redonner des plaques/fours dont les
+    # recettes ne sont pas forcément débloquées par l'arbre randomisé.
+    - wood
+    - stone
+    - raw-fish
+
+lakes:
+  # Lacs de fluide (§7.5) : nappes d'eau teintées de la couleur du fluide,
+  # pompées à la POMPE OFFSHORE vanilla (le fluide sorti = `fluid` de la tuile,
+  # infini comme l'eau). 1 lac GARANTI, la seed peut en tirer jusqu'à `max` ;
+  # chaque lac reçoit un fluide aléatoire du pool des patchs fluides (tout
+  # fluide pipable) ; un fluide non tiré n'a simplement AUCUN lac. La richesse
+  # ne règle que la TAILLE/densité du lac (le volume est infini).
+  min: 1
+  max: 3
+  richness_fluid: [100000, 600000]
+
+tree:
+  # Nombre d'objets (unlocks) par tech (§13) : 1 objet de base, puis tirage
+  # en chaîne d'extensions — 75 % de chance d'un 2e, 65 % d'un 3e, 35 % d'un
+  # 4e, 15 % d'un 5e. Le premier tirage raté stoppe le groupe (max 5).
+  group_chances: [0.75, 0.65, 0.35, 0.15]

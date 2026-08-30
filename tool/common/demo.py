@@ -13,6 +13,8 @@ def build_demo_db() -> VanillaDB:
         "copper-ore": ("raw-resource", None),
         "stone": ("raw-resource", None),
         "coal": ("raw-resource", 4.0),
+        "wood": ("raw-resource", 2.0),
+        "raw-fish": ("raw-resource", None),
     }
     for name, (subgroup, fuel) in raw_items.items():
         db.items[name] = ItemDef(name=name, subgroup=subgroup, fuel_value=fuel)
@@ -53,7 +55,8 @@ def build_demo_db() -> VanillaDB:
         db.items[name] = ItemDef(name=name, subgroup="logistics", place_result=place)
 
     for gun in ["pistol"]:
-        db.items[gun] = ItemDef(name=gun, subgroup="combat", is_gun=True, ammo_category="bullet")
+        db.items[gun] = ItemDef(name=gun, subgroup="combat", is_gun=True,
+                                ammo_category="bullet", item_type="gun", stack_size=1)
     for ammo in ["firearm-magazine"]:
         db.items[ammo] = ItemDef(name=ammo, subgroup="combat", is_ammo=True, ammo_category="bullet")
     for pack in ["automation-science-pack"]:
@@ -73,18 +76,20 @@ def build_demo_db() -> VanillaDB:
              resource_categories=("basic-solid",))
     building("offshore-pump", "extractor", medium="water", energy_type="void", pumped_fluid="water")
     building("pumpjack", "extractor", etype="pumpjack", medium="ground", energy_type="electric",
-             fluid_outputs=1)
+             resource_categories=("basic-fluid",), fluid_outputs=1)
     building("stone-furnace", "transformer", crafting_categories=("smelting",),
              energy_type="burner", fuel_categories=("chemical",))
     building("assembling-machine-1", "transformer", crafting_categories=("crafting",),
              energy_type="electric", item_input_slots=2)
-    building("assembling-machine-2", "transformer", crafting_categories=("crafting", "advanced-crafting"),
-             energy_type="electric", item_input_slots=2, fluid_inputs=1,
+    building("assembling-machine-2", "transformer", crafting_categories=("crafting", "advanced-crafting", "crafting-with-fluid"),
+             energy_type="electric", item_input_slots=2, fluid_inputs=1, fluid_outputs=1,
              directives={"fluid_inputs": True})
     building("boiler", "transformer", crafting_categories=("boiler",), etype="boiler",
              energy_type="burner", fuel_categories=("chemical",), fluid_inputs=1, fluid_outputs=1)
     building("steam-engine", "generator", etype="steam-engine", energy_type="electric",
              fluid_inputs=1, directives={"energy_output": True})
+    building("lab", "research", energy_type="electric", item_input_slots=1,
+             directives={"lab_inputs": ("automation-science-pack",)})
 
     def recipe(name, ingredients, products, category=""):
         db.recipes[name] = RecipeRef(
