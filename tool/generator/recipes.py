@@ -435,28 +435,35 @@ def _pick_building(
         return _blocked_building(db, state, b.name)
 
     if whitelist is not None:
-        # Whitelist = pas de déblocage sur le tas : uniquement les bâtiments
-        # déjà obtenables (relais §9.3, gelés sur le pool de début de run).
-        candidates = [
-            b
-            for b in db.buildings.values()
-            if b.name in whitelist and b.name not in exclude_buildings and fits(b)
-        ]
+        candidates = sorted(
+            (
+                b
+                for b in db.buildings.values()
+                if b.name in whitelist and b.name not in exclude_buildings and fits(b)
+            ),
+            key=lambda b: b.name,
+        )
         return rng.choice(candidates) if candidates else None
 
-    candidates = [
-        b
-        for b in db.buildings.values()
-        if b.name in state.unlocked_buildings and b.name not in exclude_buildings and fits(b)
-    ]
+    candidates = sorted(
+        (
+            b
+            for b in db.buildings.values()
+            if b.name in state.unlocked_buildings and b.name not in exclude_buildings and fits(b)
+        ),
+        key=lambda b: b.name,
+    )
     if candidates:
         return rng.choice(candidates)
 
-    candidates = [
-        b
-        for b in db.buildings.values()
-        if b.name not in exclude_buildings and fits(b) and not blocked(b)
-    ]
+    candidates = sorted(
+        (
+            b
+            for b in db.buildings.values()
+            if b.name not in exclude_buildings and fits(b) and not blocked(b)
+        ),
+        key=lambda b: b.name,
+    )
     if not candidates:
         return None
     building = rng.choice(candidates)

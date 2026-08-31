@@ -253,14 +253,17 @@ def _ensure_research(rng: random.Random, db: VanillaDB, state: ProgressionState)
     donc une brique indispensable du bootstrap, au même titre que les
     transports : cette recette de craft est unlockée par la 2e recherche
     gratuite (starter-transformation)."""
-    candidates = [
-        i
-        for i in db.items.values()
-        if i.place_result is not None
-        and db.buildings.get(i.place_result) is not None
-        and db.buildings[i.place_result].functional_type == "research"
-        and i.name not in state.obtained_items
-    ]
+    candidates = sorted(
+        (
+            i
+            for i in db.items.values()
+            if i.place_result is not None
+            and db.buildings.get(i.place_result) is not None
+            and db.buildings[i.place_result].functional_type == "research"
+            and i.name not in state.obtained_items
+        ),
+        key=lambda i: i.name,
+    )
     if not candidates:
         return
     item = rng.choice(candidates)
@@ -287,10 +290,11 @@ def _ensure_first_science_pack(
     §13 : la recette du pack est tirée SANS ressource brute (patches,
     environnement, fluides d'extraction eau/pétrole/vapeur — infinis ou non) :
     les packs ne se craftent jamais à partir de matières extraites du sol."""
-    packs = [
-        i for i in db.items.values()
-        if i.is_science_pack and i.name not in state.obtained_items
-    ]
+    packs = sorted(
+        (i for i in db.items.values()
+         if i.is_science_pack and i.name not in state.obtained_items),
+        key=lambda i: i.name,
+    )
     if not packs:
         return
     item = rng.choice(packs)
@@ -330,11 +334,14 @@ def _ensure_transport_item(
     role: str,
 ) -> None:
     patterns = _config.transport_patterns[role]
-    candidates = [
-        i
-        for i in db.items.values()
-        if any(pattern in i.name for pattern in patterns) and not i.is_tool
-    ]
+    candidates = sorted(
+        (
+            i
+            for i in db.items.values()
+            if any(pattern in i.name for pattern in patterns) and not i.is_tool
+        ),
+        key=lambda i: i.name,
+    )
     if not candidates:
         return
     chosen = rng.choice(candidates)
@@ -342,8 +349,14 @@ def _ensure_transport_item(
 
 
 def _roll_starter_kit(rng: random.Random, db: VanillaDB) -> list[dict]:
-    guns = [i for i in db.items.values() if i.is_handheld_gun]
-    ammos = [i for i in db.items.values() if i.is_ammo]
+    guns = sorted(
+        (i for i in db.items.values() if i.is_handheld_gun),
+        key=lambda i: i.name,
+    )
+    ammos = sorted(
+        (i for i in db.items.values() if i.is_ammo),
+        key=lambda i: i.name,
+    )
     kit: list[dict] = []
     if guns:
         gun = rng.choice(guns)

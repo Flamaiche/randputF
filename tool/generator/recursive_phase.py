@@ -458,14 +458,18 @@ def _pick_element(
         ]
         return rng.choice(candidates) if candidates else None
     elif category == "combat":
-        candidates = [
-            i for i in db.items.values()
-            if i.is_handheld_gun
-            and i.name not in state.obtained_items
-        ]
+        candidates = sorted(
+            (i for i in db.items.values()
+             if i.is_handheld_gun
+             and i.name not in state.obtained_items),
+            key=lambda i: i.name,
+        )
         return rng.choice(candidates) if candidates else None
     elif category == "science":
-        candidates = [i for i in db.items.values() if i.is_science_pack and i.name not in state.obtained_items]
+        candidates = sorted(
+            (i for i in db.items.values() if i.is_science_pack and i.name not in state.obtained_items),
+            key=lambda i: i.name,
+        )
         return rng.choice(candidates) if candidates else None
     return None
 
@@ -607,16 +611,16 @@ def _pick_product(
         if r["results"] and r["results"][0]["type"] == kind
     }
     if kind == SLOT_ITEM:
-        candidates = [
-            n for n in state.obtained_items
-            if not n.startswith("randputf-")
-            and n not in ENVIRONMENTAL_ITEMS
-            and n not in already
-            and not _is_building_item(db, n)
-            and n not in _ROCKET_CHAIN_ITEM_NAMES
-        ]
+        candidates = sorted(
+            (n for n in state.obtained_items
+             if not n.startswith("randputf-")
+             and n not in ENVIRONMENTAL_ITEMS
+             and n not in already
+             and not _is_building_item(db, n)
+             and n not in _ROCKET_CHAIN_ITEM_NAMES),
+        )
     else:
-        candidates = [n for n in state.obtained_fluids if n not in already]
+        candidates = sorted(n for n in state.obtained_fluids if n not in already)
     return rng.choice(candidates) if candidates else None
 
 
