@@ -44,7 +44,7 @@ def ensure_rocket_chain(
     LUI-MÊME : la victoire passe par y crafter ``rocket-part`` ; si la
     récursion s'arrête avant de déployer le silo, aucune seed ne pourrait
     finir. Les 4 recettes sont unlockées par ``randputf-endgame-rocket``."""
-    targets = list(ROCKET_CHAIN)
+    targets = sorted(ROCKET_CHAIN)
     silo = db.items.get("rocket-silo")
     if silo is not None and silo.place_result in db.buildings:
         targets.append("rocket-silo")
