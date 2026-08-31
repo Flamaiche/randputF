@@ -376,10 +376,10 @@ def _create_fuel_recipe(
     # si l'item n'est pas vraiment combustible.
 
     # Dernier recours : un item du pool comme combustible "virtuel"
-    pool_items = [
+    pool_items = sorted(
         name for name in state.obtained_items
         if not name.startswith("randputf-")
-    ]
+    )
     if pool_items:
         chosen = rng.choice(pool_items)
         return (SLOT_ITEM, chosen)

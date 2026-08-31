@@ -195,10 +195,13 @@ class VanillaDB:
     excluded_fluids: dict[str, dict] = field(default_factory=dict)
 
     def beltable_items(self) -> list[ItemDef]:
-        return [i for i in self.items.values() if not i.is_tool]
+        return sorted(
+            (i for i in self.items.values() if not i.is_tool),
+            key=lambda i: i.name,
+        )
 
     def pipable_fluids(self) -> list[FluidDef]:
-        return list(self.fluids.values())
+        return sorted(self.fluids.values(), key=lambda f: f.name)
 
     @property
     def extraction_only_fluids(self) -> frozenset[str]:
@@ -227,17 +230,29 @@ class VanillaDB:
         return frozenset(patch_resources) | set(ENVIRONMENTAL_ITEMS) | self.extraction_only_fluids
 
     def fuel_items(self) -> list[ItemDef]:
-        return [i for i in self.items.values() if i.fuel_value]
+        return sorted(
+            (i for i in self.items.values() if i.fuel_value),
+            key=lambda i: i.name,
+        )
 
     def fuel_fluids(self) -> list[FluidDef]:
-        return [f for f in self.fluids.values() if f.fuel_value]
+        return sorted(
+            (f for f in self.fluids.values() if f.fuel_value),
+            key=lambda f: f.name,
+        )
 
     def buildings_of_type(self, functional_type: str) -> list[BuildingDef]:
-        return [b for b in self.buildings.values() if b.functional_type == functional_type]
+        return sorted(
+            (b for b in self.buildings.values() if b.functional_type == functional_type),
+            key=lambda b: b.name,
+        )
 
     def extractors_for_medium(self, medium: str) -> list[BuildingDef]:
-        return [
-            b
-            for b in self.buildings.values()
-            if b.functional_type == "extractor" and (not medium or b.medium == medium)
-        ]
+        return sorted(
+            (
+                b
+                for b in self.buildings.values()
+                if b.functional_type == "extractor" and (not medium or b.medium == medium)
+            ),
+            key=lambda b: b.name,
+        )
