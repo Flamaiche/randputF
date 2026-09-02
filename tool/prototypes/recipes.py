@@ -1,30 +1,19 @@
-"""Prototype : recettes (§7 et §8).
+"""Configuration : recettes (§7 et §8).
 
-Gère les paramètres de génération de recettes :
+Configuration lue par le générateur recipes.py :
 - nombre d'ingrédients par recette
 - montants des résultats
 - temps de craft (énergie)
 - montants des ingrédients
-
-Configuration :
-- distributions pondérées pour ingrédients et résultats
-- plages de montants
-- pool de temps de craft
 """
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
-from tool.common.db import VanillaDB
-from tool.common.pool_manager import PoolManager
-from tool.common.weighted_picker import WeightedPicker, weighted_choice
-from tool.prototypes.base import MechanicPrototype, PrototypeConfig
-
-if TYPE_CHECKING:
-    from tool.generator.recipes import ProgressionState
+from tool.common.weighted_picker import weighted_choice
+from tool.prototypes.base import PrototypeConfig
 
 
 @dataclass
@@ -94,47 +83,3 @@ class RecipeConfig(PrototypeConfig):
 
     def recipe_name(self, product_name: str) -> str:
         return f"{self.recipe_prefix}{product_name}"
-
-
-class RecipePrototype(MechanicPrototype):
-    """Prototype pour la génération de recettes.
-
-    Fournit les pools et paramètres pour la création de recettes.
-    Utilisé par les primitives make_recipe / ensure_obtainable.
-    """
-
-    def __init__(self, config: RecipeConfig, pool: PoolManager) -> None:
-        super().__init__(config, pool)
-        self._config = config
-
-    def build_picker(self) -> WeightedPicker:
-        """Pool de tous les items/fluides disponibles comme ingrédients."""
-        picker = WeightedPicker()
-        for name in sorted(self.pool.state.obtained_items):
-            picker.add(name, weight=1.0, tags={"item"})
-        for name in sorted(self.pool.state.obtained_fluids):
-            picker.add(name, weight=1.0, tags={"fluid"})
-        return picker
-
-    def roll_ingredient_count(self, rng: random.Random) -> int:
-        """Nombre d'ingrédients pour une recette."""
-        return weighted_choice(rng, self._config.ingredient_counts)
-
-    def roll_result_amount(self, rng: random.Random) -> int:
-        """Nombre de résultats pour une recette."""
-        return weighted_choice(rng, self._config.result_amounts)
-
-    def roll_energy(self, rng: random.Random) -> float:
-        """Temps de craft (énergie) pour une recette."""
-        return float(rng.choice(self._config.recipe_energies))
-
-    def roll_ingredient_amount(self, rng: random.Random) -> int:
-        """Montant d'un ingrédient individuel."""
-        return rng.randint(
-            self._config.ingredient_amount_min,
-            self._config.ingredient_amount_max,
-        )
-
-    def recipe_name(self, product_name: str) -> str:
-        """Génère le nom d'une recette pour un produit."""
-        return f"{self._config.recipe_prefix}{product_name}"

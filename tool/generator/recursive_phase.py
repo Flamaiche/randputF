@@ -323,6 +323,38 @@ def _dispatch_vehicle_ammo(rng: random.Random, db: VanillaDB, state: Progression
     return steps
 
 
+def _ensure_handheld_ammo(
+    rng: random.Random, db: VanillaDB, state: ProgressionState, gun
+) -> list[str]:
+    """Garantit une munition à une arme de poing débloquée par une tech combat
+    (§11).
+
+    Règle : si AUCUNE munition de la catégorie de l'arme n'a encore de recette,
+    on génère les munitions manquantes (déblocage sur le tas §9.3) et on les
+    ajoute à la MÊME tech que l'arme — sinon une arme débloquée seule serait
+    inutilisable (flamethrower sans flamethrower-ammo, etc.). Si au moins une
+    munition de la catégorie est déjà débloquée, on ne force rien (l'arme a
+    déjà de quoi tirer).
+    Retourne les recettes randputf-<munition> à unlocked la même tech."""
+    category = gun.ammo_category if gun is not None else ""
+    if not category:
+        return []
+    ammos = [
+        a.name for a in db.items.values()
+        if a.is_ammo and a.ammo_category == category
+    ]
+    if not ammos:
+        return []
+    missing = [a for a in ammos if not _has_product_recipe(state, a)]
+    if not missing:
+        return []
+    unlocked: list[str] = []
+    for ammo in missing:
+        make_recipe(rng, db, state, SLOT_ITEM, ammo)
+        unlocked.append(f"randputf-{ammo}")
+    return unlocked
+
+
 def _ensure_pole_cadence(
     rng: random.Random,
     db: VanillaDB,
@@ -528,6 +560,11 @@ def _generate_for_element(
         item = element
         ensure_obtainable(rng, db, state, SLOT_ITEM, item.name)
         step_recipes.append(f"randputf-{item.name}")
+        # Munitions (§11) : si AUCUNE munition de la catégorie de l'arme n'est
+        # encore débloquée, on génère les manquantes avec l'arme, dans la MÊME
+        # tech — sinon l'arme débloquée serait inutilisable. Si une munition est
+        # déjà obtenable (avant ou à la même tech), on n'ajoute rien.
+        step_recipes.extend(_ensure_handheld_ammo(rng, db, state, item))
 
     elif category == "science":
         item = element
