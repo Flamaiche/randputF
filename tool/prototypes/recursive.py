@@ -1,30 +1,21 @@
-"""Prototype : récursion pondérée (§9.1).
+"""Configuration : récursion pondérée (§9.1).
 
-Gère la génération récursive de bâtiments, armes et science packs.
-Chaque catégorie a un poids configurable qui évolue avec la progression.
-
-Configuration :
+Configuration lue par le générateur recursive_phase :
 - poids de base par catégorie
 - facteur d'accélération progressive
 - nombre max d'itérations
 - seuil de stall (itérations sans nouveauté)
 - bornes de recipes par bâtiment
 - bornes de count pour les tech steps
+- randomisation des armes montées (§12.1)
 """
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
-from tool.common.db import VanillaDB
-from tool.common.pool_manager import PoolManager
-from tool.common.weighted_picker import WeightedPicker
-from tool.prototypes.base import MechanicPrototype, PrototypeConfig
-
-if TYPE_CHECKING:
-    from tool.generator.recipes import ProgressionState
+from tool.prototypes.base import PrototypeConfig
 
 
 @dataclass
@@ -157,123 +148,3 @@ class RecursiveConfig(PrototypeConfig):
         """Nombre d'emplacements d'armes d'un véhicule (§7) :
         bornes min/max de config."""
         return rng.randint(self.vehicle_slots_min, self.vehicle_slots_max)
-
-
-class RecursivePrototype(MechanicPrototype):
-    """Prototype pour la récursion pondérée.
-
-    Fournit les pools pondérés pour les catégories et éléments.
-    Les poids progressifs sont calculés dynamiquement selon le nombre
-    de bâtiments débloqués dans chaque catégorie.
-    """
-
-    def __init__(self, config: RecursiveConfig, pool: PoolManager) -> None:
-        super().__init__(config, pool)
-        self._config = config
-
-    def build_picker(self) -> WeightedPicker:
-        """Pool combiné de toutes les catégories non déployées."""
-        return self.pool.all_undeployed(
-            base_weights=self._config.category_weights
-        )
-
-    def available_categories(self, state: ProgressionState) -> list[str]:
-        """Liste des catégories ayant des éléments non déployés."""
-        available = []
-        for cat in ("transformer", "extractor", "generator", "distribution"):
-            if self._has_undeployed_buildings(cat, state):
-                available.append(cat)
-        if self._has_undeployed_weapons(state):
-            available.append("combat")
-        if self._has_undeployed_science(state):
-            available.append("science")
-        return available
-
-    def pick_category(
-        self, rng: random.Random, categories: list[str], state: ProgressionState
-    ) -> str | None:
-        """Pioche une catégorie avec poids progressifs."""
-        if not categories:
-            return None
-
-        weights = []
-        for cat in categories:
-            base = self._config.category_weights.get(cat, 10.0)
-            # Compter les bâtiments de cette catégorie déjà débloqués
-            cat_count = sum(
-                1 for b in state.unlocked_buildings
-                if b in self._buildings_of_category(cat)
-            )
-            progressive = base * (1 + cat_count * self._config.progressive_factor)
-            weights.append(progressive)
-
-        return rng.choices(categories, weights=weights, k=1)[0]
-
-    def pick_element(
-        self, rng: random.Random, category: str, state: ProgressionState
-    ):
-        """Pioche un élément dans la catégorie donnée."""
-        if category in ("transformer", "extractor", "generator", "distribution"):
-            candidates = [
-                b for b in self.pool.db.buildings_of_type(category)
-                if b.name not in self._config.excluded_buildings
-                and b.name not in state.unlocked_buildings
-            ]
-            return rng.choice(candidates) if candidates else None
-        elif category == "combat":
-            candidates = [
-                i for i in self.pool.db.items.values()
-                if i.is_handheld_gun and i.name not in state.obtained_items
-            ]
-            return rng.choice(candidates) if candidates else None
-        elif category == "science":
-            candidates = [
-                i for i in self.pool.db.items.values()
-                if i.is_science_pack and i.name not in state.obtained_items
-            ]
-            return rng.choice(candidates) if candidates else None
-        return None
-
-    def roll_recipes_count(self, rng: random.Random) -> int:
-        """Nombre de recettes à générer pour un bâtiment."""
-        return rng.randint(
-            self._config.recipes_per_building_min,
-            self._config.recipes_per_building_max,
-        )
-
-    def roll_tech_count(self, rng: random.Random) -> int:
-        """Nombre de cycles de recherche pour un tech step."""
-        return rng.randint(
-            self._config.tech_count_min,
-            self._config.tech_count_max,
-        )
-
-    def roll_science_cost(self, rng: random.Random) -> int:
-        """Montant du coût pour un science pack."""
-        return rng.randint(
-            self._config.science_cost_min,
-            self._config.science_cost_max,
-        )
-
-    def _has_undeployed_buildings(self, functional_type: str, state: ProgressionState) -> bool:
-        for b in self.pool.db.buildings_of_type(functional_type):
-            if (b.name not in self._config.excluded_buildings
-                    and b.name not in state.unlocked_buildings):
-                return True
-        return False
-
-    def _has_undeployed_weapons(self, state: ProgressionState) -> bool:
-        return any(
-            i.is_handheld_gun and i.name not in state.obtained_items
-            for i in self.pool.db.items.values()
-        )
-
-    def _has_undeployed_science(self, state: ProgressionState) -> bool:
-        return any(
-            i.is_science_pack and i.name not in state.obtained_items
-            for i in self.pool.db.items.values()
-        )
-
-    def _buildings_of_category(self, cat: str) -> set[str]:
-        """Retourne les noms de bâtiments connus pour une catégorie."""
-        return set()
