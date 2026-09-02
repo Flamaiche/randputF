@@ -201,6 +201,50 @@ def test_munitions_vehicules_dispatch_apres(seeds):
                     )
 
 
+def test_munitions_armes_de_poing(seeds):
+    """§11 : une arme de poing débloquée par une tech combat ne doit JAMAIS être
+    sans munition. Règle : si AUCUNE munition de sa catégorie n'est débloquée
+    avant, les munitions manquantes sont générées dans la MÊME tech que l'arme.
+    Invariant vérifié : une munition de chaque arme de poing craftable est
+    unlockée AU PLUS TARD à la tech de l'arme (idx_ammo <= idx_arme)."""
+    for s, seed in seeds.items():
+        order = seed["progression_order"]
+        idx = {tid: i for i, tid in enumerate(order)}
+
+        def unlocker(item):
+            for t in seed["technologies"]:
+                for e in t.get("effects") or []:
+                    if e.get("type") == "unlock-recipe" and e["recipe"].removeprefix("randputf-") == item:
+                        return t["id"]
+            return None
+
+        # Armes de poing réellement craftées par la seed (exclut les armes
+        # montées-uniquement, jamais craftées).
+        crafted_guns = {
+            r["results"][0]["name"] for r in seed["recipes"]
+            if r["results"] and DB.items.get(r["results"][0]["name"]) is not None
+            and DB.items[r["results"][0]["name"]].is_handheld_gun
+        }
+        for gun in crafted_guns:
+            gtech = unlocker(gun)
+            assert gtech is not None, f"seed {s}: arme de poing {gun} sans tech"
+            g_idx = idx[gtech]
+            cat = DB.items[gun].ammo_category
+            if not cat:
+                continue
+            ammos = [a.name for a in DB.items.values() if a.is_ammo and a.ammo_category == cat]
+            assert ammos, f"seed {s}: arme {gun} sans munition vanilla ({cat})"
+            timings = []
+            for ammo in ammos:
+                atech = unlocker(ammo)
+                assert atech is not None, f"seed {s}: munition {ammo} ({gun}) jamais unlockée"
+                timings.append(idx[atech])
+            assert min(timings) <= g_idx, (
+                f"seed {s}: arme de poing {gun} débloquée @{g_idx} sans munition "
+                f"disponible (munitions @{sorted(timings)})"
+            )
+
+
 def test_assignation_armes_deterministe_et_distincte():
     import random as _random
 

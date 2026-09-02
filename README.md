@@ -678,11 +678,14 @@ transformateur (type chaudière) alimenté par un combustible assigné ou créé
 - **Les armes sont randomisées** : elles sont déblocables selon le même
   système de pourcentages que les autres bâtiments.
 - **Munitions** : chaque arme est obtensible avec un type de balles calé sur
-  elle. Les *autres* types de munitions sont ensuite vus comme de simples
-  crafts — plus tard ; ou potentiellement avant, s'ils ont été choisis comme
-  recette plus tôt. Il est donc parfaitement possible qu'une arme soit
-  débloquée **sans** sa munition dédiée : celle-ci a pu être entièrement
-  débloquée avant.
+  elle. Les *autres* types de munitions (hors catégorie alignée) sont ensuite
+  vus comme de simples crafts — plus tard ; ou potentiellement avant, s'ils
+  ont été choisis comme recette plus tôt. **Garantie jouable** : quand une
+  arme de poing est débloquée par une tech, si **aucune** munition de sa
+  catégorie n'est encore débloquée, les munitions manquantes sont générées et
+  unlockées dans **la même tech** que l'arme — jamais une arme inutilisable.
+  Si une munition de la catégorie est déjà débloquée (avant ou dans la même
+  tech), rien n'est ajouté : l'arme peut déjà tirer.
 
 ## 12. Transports avancés
 
