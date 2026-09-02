@@ -119,7 +119,8 @@ contenu arbitraire.
   moment même où il en a besoin, tout ce qui manque pour rendre une recette
   valide (extraction, craft, combustible…).
 - **Graine / seed** : valeur déterministe pilotant tous les tirages du
-  randomizer.
+  randomizer. Par défaut tirée de l'instant présent (millisecondes) à chaque
+  génération, donc unique ; on peut imposer une valeur via `--seed` (§16).
 
 ## 4. Architecture générale
 
@@ -880,8 +881,27 @@ jamais livrée au joueur.
 
 ## 16. Seed et configuration
 
-- Pour l'instant, la seed est fixe et renseignée dans **le fichier des
-  settings** (`config/settings.yaml`, key `seed`).
+- **Défaut : seed temporelle.** Sans `--seed`, la commande génère une seed
+  depuis l'instant présent — `int(time.time() * 1000)` = millisecondes écoulées
+  depuis l'époque (Soit *aaaa-mm-jj hh:mm:ss.mmm*). Deux générations
+  successives obtiennent donc presque toujours des seeds (et des mods)
+  différents. La seed choisie est affichée en sortie pour reproductibilité.
+- **Imposer une valeur.** `tool generate --seed <n>` (ou la key `seed` de
+  `config/settings.yaml`, désormais réservée à un défaut explicite) fige une
+  seed : relancer avec la même valeur reproduit exactement le même mod
+  (déterminisme vérifié, octet-pour-octet).
+- **Pas de borne haute (« seed max »).** La seed est injectée comme *chaîne*
+  dans `random.Random(f"randputF:{seed}")` (et `randputF:lakes:{seed}`), que
+  Python hache déterministiquement. Aucune limite supérieure n'est imposée par
+  le générateur ni le validateur : des valeurs jusqu'à 19+ chiffres
+  (`12345678901234567890`, `10^30`, sys.maxsize, …) sont acceptées et
+  produisent un mod valide. La seule limite pratique est l'entier Python
+  (précision arbitraire). Le validateur ne vérifie que la **solvabilité**
+  (anti-cycle, progressivité, complétude §15) — jamais la valeur numérique ;
+  une seed qui tombe sur un cas non solvable est re-tirée automatiquement
+  (boucle bornée à 10 essais) avant de rendre la main.
+- **Diversité / unicité.** Sur 61 seeds consécutives + 8 aléatoires testées,
+  aucune collision : chaque seed → un `seed.lua` unique (sha256 distinct).
 - La config est **réellement consommée** par la génération : `seed`, `paths`,
   `map`, la section `recursive:` (poids des catégories, cadence des
   pylônes §9.4, **armes montées §12.1** : `armed_vehicles`, `vehicle_weapons`,
@@ -895,9 +915,6 @@ jamais livrée au joueur.
   `vehicle_armament` (assignation véhicule → armes de la graine courante) et
   `pools.raw_resources` (ressources brutes de la graine, §3 — vérifiable sans
   re-génération).
-- Ultérieurement, une génération automatique pourra être ajoutée (probablement
-  dérivée de la date et de l'heure) — mais on démarre volontairement avec une
-  seed fixe pour maîtriser le développement et le débogage.
 
 ## 17. Pipeline technique
 
@@ -946,7 +963,8 @@ haut niveau restent ceux décrits en §4.)
    (starter récursif, électricité, armes, arbre linéaire, fusée).
 2. **Fins d'implémentation v1** :
    - passage possible de l'arbre technologique linéaire à un arbre **branché** ;
-   - génération automatique de seed (date/heure).
+   - génération automatique de seed (date/heure) — *fait* (seed temporelle
+     par défaut, §16).
 3. **Projet futur séparé** : support de **mods tiers** — parsing dynamique du
    contenu arbitraire (Krastorio, Py, …). Bien plus tardif, conditionné au
    succès du moteur sur vanilla.
@@ -983,13 +1001,28 @@ par ton propre jeu, via le mod compagnon `exporter/` :
 
 ```bash
 .venv/bin/python -m tool parse --demo      # vérifie la base (mode synthétique)
-.venv/bin/python -m tool generate          # génère + valide + exporte mod/seed/
+.venv/bin/python -m tool generate          # génère + valide (seed temporelle par défaut)
+.venv/bin/python -m tool generate --seed 5 # seed figée, déterministe (reproductible)
 ```
 
-Puis symlink le mod principal : `~/.factorio/mods/randputF_0.1.0 -> mod/`,
-lance Factorio : les patchs tirés remplacent toutes les ressources vanilles
-autour du spawn, le kit de départ est injecté, les recherches gratuites
-déblocées.
+Sans `--seed`, la seed est tirée de l'instant présent (millisecondes, §16) ;
+avec `--seed <n>`, la même valeur reproduit exactement le même mod.
+
+**Installation dans Factorio** — le chemin du dossier mods est lu dans
+`config/settings.yaml`, clé `factorio_mods` (dossier complet, ex.
+`~/.var/app/com.valvesoftware.Steam/.factorio/mods` pour un install Steam
+flatpak). Ensuite :
+
+```bash
+.venv/bin/python -m tool generate --seed 5 --install
+```
+
+`--install` assemble le mod et le copie dans `factorio_mods/randputF_0.1.0/`
+en mettant à jour `mod-list.json`. Si `factorio_mods` est absent ou
+introuvable, le mod est assemblé dans `output/` et son chemin est affiché
+pour copie manuelle. Au lancement de Factorio : les patchs tirés remplacent
+toutes les ressources vanilles autour du spawn, le kit de départ est injecté,
+les recherches gratuites déblocées.
 
 ### 20.4 État actuel du code
 
