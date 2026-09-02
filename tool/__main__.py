@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -129,14 +130,24 @@ def cmd_generate(args: argparse.Namespace) -> None:
     if args.seed is not None:
         db.seed_value = args.seed
     else:
-        db.seed_value = cfg.get("seed", 0)
+        # Aucun --seed fourni : seed tirée de l'instant présent
+        # (millisecondes écoulées depuis l'époque, soit aaaa-mm-jj hh:mm:ss + ms),
+        # pour une partie unique à chaque génération.
+        db.seed_value = int(time.time() * 1000)
 
     seed = generate_seed(db, config=cfg)
-    issues = validate_seed(seed)
-    if issues:
-        for issue in issues:
-            print(f"[INVALIDE] {issue}")
-        sys.exit(2)
+
+    # Une seed issue du temps (ou fournie) peut tomber sur un cas non
+    # solvable : la régénérer avec une graine dérivée. Petite boucle bornée.
+    attempts = 0
+    while validate_seed(seed):
+        attempts += 1
+        if attempts >= 10:
+            for issue in validate_seed(seed)[:10]:
+                print(f"[INVALIDE] {issue}")
+            sys.exit(2)
+        db.seed_value = int(time.time() * 1000) + attempts
+        seed = generate_seed(db, config=cfg)
 
     if args.install:
         paths = cfg.get("paths", {})
@@ -170,7 +181,7 @@ def main(argv: list[str] | None = None) -> None:
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
     p_gen.add_argument("--dump", default="data/vanilla_dump.json")
     p_gen.add_argument("--out", default=None, help="Dossier de sortie (defaut: output/randputF_0.1.0)")
-    p_gen.add_argument("--seed", type=int, default=None, help="Seed (defaut: lit config/settings.yaml)")
+    p_gen.add_argument("--seed", type=int, default=None, help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_gen.add_argument("--install", action="store_true", help="Installe le mod directement dans Factorio")
     p_gen.set_defaults(func=cmd_generate)
 
