@@ -53,7 +53,7 @@ class StarterChain:
     extractors: list[str] = field(default_factory=list)
 
 
-def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch]) -> StarterChain:
+def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch], *, has_lakes: bool = False) -> StarterChain:
     chain = StarterChain()
     chain.kit = _roll_starter_kit(rng, db)
 
@@ -77,6 +77,12 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch])
     _ensure_first_science_pack(
         rng, db, state, chain, db.raw_resources({p.resource for p in patches})
     )
+    # C4 : un lac tiré (donc plus d'eau vanilla) = le (ou les) lac(s) sont un
+    # mur sur la carte. Le landfill doit être craftable DÈS LE DÉPART (unlocké
+    # par starter-transformation), jamais au hasard en profondeur de seed —
+    # sinon le joueur ne peut pas traverser son lac de spawn.
+    if has_lakes:
+        _ensure_landfill(rng, db, state)
 
     # Kit de départ : arme(s) de poing + munitions ALIGNÉES (roulé en tête de
     # build_starter_chain). On rend ensuite l'arme et les munitions REFABRI-
@@ -193,7 +199,7 @@ def _ensure_extraction(
 def _extractors_for_resource(db: VanillaDB, kind: str, name: str):
     if kind == SLOT_FLUID:
         fluid_extractors = [
-            b for b in db.buildings_of_type("extractor") if b.fluid_outputs > 0
+            b for b in db.buildings_with_tag("is_extractor") if b.fluid_outputs > 0
         ]
         if name == "water":
             water_pumps = [b for b in fluid_extractors if b.pumped_fluid == "water"]
@@ -230,7 +236,7 @@ _EXCLUDED_BUILDINGS = frozenset({"character", "lab", "rocket-silo", "centrifuge"
 
 def _ensure_transformer(rng: random.Random, db: VanillaDB, state: ProgressionState, chain: StarterChain) -> None:
     transformers = [
-        b for b in db.buildings_of_type("transformer")
+        b for b in db.buildings_with_tag("is_crafter")
         if b.name in _STARTER_TRANSFORMERS and b.name not in _EXCLUDED_BUILDINGS
     ]
     if not transformers:
@@ -259,7 +265,7 @@ def _ensure_research(rng: random.Random, db: VanillaDB, state: ProgressionState)
             for i in db.items.values()
             if i.place_result is not None
             and db.buildings.get(i.place_result) is not None
-            and db.buildings[i.place_result].functional_type == "research"
+            and db.buildings[i.place_result].is_research
             and i.name not in state.obtained_items
         ),
         key=lambda i: i.name,
@@ -346,6 +352,24 @@ def _ensure_transport_item(
         return
     chosen = rng.choice(candidates)
     ensure_obtainable(rng, db, state, SLOT_ITEM, chosen.name, exclude_buildings=_EXCLUDED_BUILDINGS)
+
+
+def _ensure_landfill(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
+    """C4 : garantit le landfill craftable dès le bootstrap quand un lac est tiré.
+
+    Plus d'eau vanilla : un lac (fluide, infini) est un MUR sur la carte. Sa
+    recette de craft (obtenue par le balayage §9.6) arrive au hasard en
+    profondeur de seed — trop tard pour traverser le lac de spawn. Ici on la
+    rend obtenable dès le départ (recette randomisée randputf-landfill unlockée
+    par la tech gratuite starter-transformation comme les autres crafts du
+    bootstrap)."""
+    if "landfill" not in db.items:
+        return
+    if state.is_obtained(SLOT_ITEM, "landfill"):
+        return
+    ensure_obtainable(
+        rng, db, state, SLOT_ITEM, "landfill", exclude_buildings=_EXCLUDED_BUILDINGS
+    )
 
 
 def _roll_starter_kit(rng: random.Random, db: VanillaDB) -> list[dict]:

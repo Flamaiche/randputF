@@ -46,6 +46,7 @@ def build_demo_db() -> VanillaDB:
         ("assembling-machine-2", "assembling-machine-2", None),
         ("boiler", "boiler", None),
         ("steam-engine", "steam-engine", None),
+        ("burner-generator", "burner-generator", None),
         ("pipe-item", "pipe", None),
         ("belt-item", "transport-belt", None),
         ("inserter-item", "burner-inserter", None),
@@ -62,13 +63,27 @@ def build_demo_db() -> VanillaDB:
     for pack in ["automation-science-pack"]:
         db.items[pack] = ItemDef(name=pack, subgroup="science", is_science_pack=True)
 
+    db.items["landfill"] = ItemDef(name="landfill", subgroup="terrain", stack_size=100)
+
     db.fluids["water"] = FluidDef(name="water")
     db.fluids["crude-oil"] = FluidDef(name="crude-oil")
     db.fluids["steam-demo"] = FluidDef(name="steam-demo")
     db.fluids["lubricant"] = FluidDef(name="lubricant")
 
     def building(name, ftype, **kw):
-        db.buildings[name] = BuildingDef(name=name, entity_type=kw.pop("etype", name), functional_type=ftype, **kw)
+        etype = kw.pop("etype", name)
+        tags = {
+            "extractor": {"is_extractor": True},
+            "transformer": {"is_crafter": True},
+            "generator": {"is_generator": True},
+            "research": {"is_research": True},
+            "distribution": {"is_distribution": True},
+            "rocket_silo": {"is_crafter": True},
+            "other": {"is_other": True},
+        }
+        db.buildings[name] = BuildingDef(
+            name=name, entity_type=etype, **tags[ftype], **kw
+        )
 
     building("burner-mining-drill", "extractor", medium="ground", energy_type="burner",
              resource_categories=("basic-solid",), item_input_slots=1)
@@ -87,9 +102,16 @@ def build_demo_db() -> VanillaDB:
     building("boiler", "transformer", crafting_categories=("boiler",), etype="boiler",
              energy_type="burner", fuel_categories=("chemical",), fluid_inputs=1, fluid_outputs=1)
     building("steam-engine", "generator", etype="steam-engine", energy_type="electric",
-             fluid_inputs=1, directives={"energy_output": True})
+             fluid_inputs=1, produces_electricity=True)
+    building("burner-generator", "generator", etype="burner-generator", energy_type="burner",
+             fuel_categories=("chemical",), produces_electricity=True)
     building("lab", "research", energy_type="electric", item_input_slots=1,
              directives={"lab_inputs": ("automation-science-pack",)})
+    # rocket-silo : le building existe en base vanilla (entity rocket-silo) ;
+    # sans lui, la phase endgame (endgame_phase.py) ne licencierait pas la
+    # recette randputf-rocket-silo et la validation de complétude échouerait.
+    building("rocket-silo", "rocket_silo", etype="rocket-silo", energy_type="electric",
+             crafting_categories=("rocket-building",))
 
     def recipe(name, ingredients, products, category=""):
         db.recipes[name] = RecipeRef(

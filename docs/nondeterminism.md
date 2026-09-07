@@ -182,49 +182,36 @@ et chaque seed = une combinaison unique de choix.
 ## 5. Électricité (electricity.py)
 
 ### 5a. Pylône
-- **Fichier** : `tool/generator/electricity.py:73`
+- **Fichier** : `tool/generator/electricity.py` (`_pick_pole`)
 - **Code** : `rng.choice(poles)`
-- **Pool** : `db.buildings_of_type("distribution")` = **5**
+- **Pool** : bâtiments taggés `is_distribution` = **5**
 - **Impact** : type de pylône généré
 
 ### 5b. Générateur
-- **Fichier** : `tool/generator/electricity.py:136`
-- **Code** : `rng.choice(generators)`
-- **Pool** : `db.buildings_of_type("generator")` = **5** (steam-engine, solar-panel, nuclear-reactor, steam-turbine, burner-generator)
-- **Impact** : type de générateur électrigénéré
+- **Fichier** : `tool/generator/electricity.py` (`_pick_functional_generator`)
+- **Code** : shuffle + test des générateurs candidats (`_candidate_generators`)
+- **Pool** : bâtiments taggés `is_generator` + `produces_electricity` = **4**
+- **Impact** : type de générateur qui amorce le réseau (C1)
+
+### 5c. Fluide du générateur à vapeur — ⚠️ point non déterministe corrigé
+- **Fichier** : `tool/generator/electricity.py` (`_unlock_generator`)
+- **Code** (avant fix) : `available = [f for f in lake_resources if ...]` puis `rng.choice(available)`
+- **Pool** : `lake_resources` (set) = fluides des lacs (0-8)
+- **Impact** : quel fluide de lac le premier steam-engine/steam-turbine consomme
+- **Risque** : l'itération d'un **set** alimente un `rng.choice` → ordre variable
+  entre processus (`PYTHONHASHSEED`) → le `input` du générateur changeait
+  (`heavy-oil` vs `water` sur la même seed).
+- **Fix** : `sorted(lake_resources)` avant la dérivation de la liste.
+- **Même motif ailleurs** : `building_fluids.py` (`assign_building_fluids`) faisait
+  `available = list(lake_resources)` → corrigé avec `sorted(lake_resources)`.
+- **Garde** : `tests/test_determinism.py` régénère la seed en sous-processus
+  sous `PYTHONHASHSEED` 0/1 et compare `seed.json` octet par octet.
 
 ---
 
-## 6. Électricité v2 (electricity_v2.py)
+## 6. Lacs (lakes.py)
 
-### 6a. Générateur (variante)
-- **Fichier** : `tool/generator/electricity_v2.py:234`
-- **Code** : `rng.choice(generators)`
-- **Pool** : même que 5b = **5**
-
-### 6b. Combustible (items + fluids)
-- **Fichier** : `tool/generator/electricity_v2.py:305`
-- **Code** : `rng.choice(candidates)`
-- **Pool** : `db.fuel_items()` + `db.fuel_fluids()` = **~6 items + 0 fluids**
-- **Impact** : combustible assigné au générateur
-
-### 6c. Combustible disponible
-- **Fichier** : `tool/generator/electricity_v2.py:362`
-- **Code** : `rng.choice(available_fuels)`
-- **Pool** : même type que 6b
-- **Impact** : combustible fallback
-
-### 6d. Item du pool pour ingrédient
-- **Fichier** : `tool/generator/electricity_v2.py:384`
-- **Code** : `rng.choice(pool_items)`
-- **Pool** : `state.obtained_items` (set) = variable
-- **Impact** : item choisi comme ingrédient
-
----
-
-## 7. Lacs (lakes.py)
-
-### 7a. Fluide du lac
+### 6a. Fluide du lac
 - **Fichier** : `tool/generator/lakes.py:63`
 - **Code** : `rng.choice(candidates)`
 - **Pool** : `db.pipable_fluids()` = **8** fluids

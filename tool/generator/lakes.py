@@ -41,6 +41,11 @@ def make_rng(seed_value: int) -> random.Random:
     return random.Random(f"randputF:lakes:{seed_value}")
 
 
+def pipable_lake_resources(db: VanillaDB) -> list[str]:
+    """Pool des fluides pouvant devenir un LAC (extractibles sans électricité)."""
+    return [f.name for f in db.pipable_fluids()]
+
+
 def generate_lakes(rng: random.Random, db: VanillaDB, config: dict) -> list[Lake]:
     cfg = config.get("lakes", {})
     low = int(cfg.get("min", DEFAULT_MIN))
@@ -58,8 +63,12 @@ def generate_lakes(rng: random.Random, db: VanillaDB, config: dict) -> list[Lake
     if not candidates or count == 0:
         return []
 
+    # (A5) Échantillonnage SANS remise : au plus un lac par fluide. Si `count`
+    # dépasse le nombre de fluides pipables, on plafonne au pool (aucun doublon).
+    rng.shuffle(candidates)
+    count = min(count, len(candidates))
+
     lakes = []
-    for _ in range(count):
-        resource, (res_lo, res_hi) = rng.choice(candidates)
+    for resource, (res_lo, res_hi) in candidates[:count]:
         lakes.append(Lake(resource, rng.randint(res_lo, res_hi)))
     return lakes
