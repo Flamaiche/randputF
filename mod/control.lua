@@ -124,25 +124,41 @@ end
 -- marque sa provenance (d'où elle vient) en plus de son nom. 2 sources :
 --   [LAC]   = lac de fluide (tuile randputf-lac-<fluide>) — volume INFINI,
 --            pompé par une pompe offshore posée sur la tuile ;
---   [PATCH] = patch posé en carte à l'autoplace — pumpjack pour un fluide,
---            extraction au sol pour un item (patch kind item/fluid).
+--   [PATCH] = gisement posé au RUNTIME par le mod (§6.5) — puits (pumpjack)
+--            pour un fluide, blocs (foreuse) pour un item.
+-- Chaque nom est affiché avec son ICONE (texte enrichi : `[item=...]` pour un
+-- item, `[fluid=...]` pour un fluide) : le nom seul ne suffit pas pour les
+-- pétroles (petroleum-gas, light-oil, ...) qui se ressemblent à l'écran.
+local function resource_label(kind, resource)
+  local tag = (kind == "item") and "item" or "fluid"
+  return "[" .. tag .. "=" .. resource .. "]"
+end
+
 local function describe_patches()
   local lines = {}
   table.insert(lines, "[randputF] RESSOURCES DE LA SEED #" .. tostring(seed.meta and seed.meta.seed or "?"))
   for _, lake in ipairs((seed.map or {}).lakes or {}) do
     table.insert(lines, string.format(
       "  [LAC] %s (infini, richesse=%s)",
-      lake.resource,
+      resource_label("fluid", lake.resource),
       lake.richness
     ))
   end
   for _, patch in ipairs((seed.map or {}).patches or {}) do
-    local origin = patch.kind == "item" and "en carte, mine" or "en carte, pumpjack"
+    local origin
+    if patch.kind == "item" then
+      origin = "gisement " .. tostring(patch.count or 0) .. " blocs"
+    else
+      origin = "puits oil " .. tostring(patch.count or 0) .. " puits"
+    end
+    local extra = ", centre=" .. tostring((patch.center or {}).x) .. ","
+      .. tostring((patch.center or {}).y)
     table.insert(lines, string.format(
-      "  [PATCH] %s (%s, richesse=%s)",
-      patch.resource,
+      "  [PATCH] %s (%s, richesse=%s%s)",
+      resource_label(patch.kind, patch.resource),
       origin,
-      patch.richness
+      patch.richness,
+      extra
     ))
   end
   return table.concat(lines, "\n")
@@ -213,7 +229,7 @@ local function init_storage()
 end
 
 -- ____________________________________________________________________________
--- Purge de l'eau vanilla §7.6
+-- Purge de l'eau vanilla §7.5
 --
 -- Le fix API (`autoplace probability_expression` + `property_expression_names`)
 -- n'agit que sur les chunks GENERES APRES son activation. Une carte créée avant
@@ -290,7 +306,7 @@ local function kit_correct(player)
   local gun_inv = character.get_inventory(defines.inventory.character_guns)
   local ammo_inv = character.get_inventory(defines.inventory.character_ammo)
   local main_inv = player.get_main_inventory()
-  if not (gun_inv and ammo_inv) then
+  if not (gun_inv and ammo_inv and main_inv) then
     return false
   end
 
@@ -383,7 +399,212 @@ local function apply_spawn_kit(player)
 end
 
 -- ____________________________________________________________________________
--- Handlers
+-- §7.5 — REMPLISSAGE DES LACS PAR FLOOD-FILL
+--
+-- Les lacs sont DESSINÉS par le moteur d'altitude natif de Factorio : toute
+-- l'eau devient la tuile « fantôme » randputf-lac-neutre (fluide inexistant —
+-- voire les définitions data-updates.lua). Au runtime on les REMPLIT : quand
+-- un chunk est généré, chaque tuile fantôme entreprise une flood-fill (BFS)
+-- de tout le lac connexe contenu dans le chunk, et toutes ses tuiles sont
+-- remplacées par la tuile-par-fluide choisie. La sélection :
+--   * si une tuile VOISINE (dans le chunk OU d'un chunk déjà généré) est déjà
+--     une tuile-par-fluide → le lac ADOPTE ce fluide (propagation le long du
+--     lac, y compris à travers les limites de chunks : un même lac n'a jamais
+--     deux fluides) ;
+--   * sinon (lac « frais », sans voisin coloré) → on tire le PROCHAIN fluide
+--     de la seed, en boucle (tourniquet) : chaque lac indépendant reçoit un
+--     fluide, et s'il y a plus de lacs que de fluides on réutilise en boucle.
+-- Une tuile transformée n'est plus fantôme, donc jamais re-traversée : c'est
+-- le « visited » naturel — on ne repasse jamais deux fois sur le même lac.
+local PHANTOM_TILE = "randputf-lac-neutre"
+
+-- Tuiles-par-fluide dans l'ordre de la seed ; lookup nom de tuile -> fluide.
+local LAKE_FLUID_TILES = {}
+local LAKE_FLUID_LOOKUP = {}
+
+local function init_lake_fluids()
+  LAKE_FLUID_TILES = {}
+  LAKE_FLUID_LOOKUP = {}
+  local lakes = (seed.map or {}).lakes or {}
+  for _, lk in ipairs(lakes) do
+    local tile = "randputf-lac-" .. lk.resource
+    LAKE_FLUID_TILES[#LAKE_FLUID_TILES + 1] = lk.resource
+    LAKE_FLUID_LOOKUP[tile] = lk.resource
+  end
+end
+
+-- Prochain fluide de la seed, en boucle (persisté dans storage pour rester
+-- stable entre chunks/sessions). N'est appelé que pour un lac FRAIS.
+local function next_lake_fluid_tile()
+  local n = #LAKE_FLUID_TILES
+  if n == 0 then return nil end
+  local idx = storage.randputf.lake_index or 0
+  idx = idx % n + 1
+  storage.randputf.lake_index = idx
+  return LAKE_FLUID_TILES[idx]
+end
+
+-- Flood-fill d'un lac connexe contenu dans `area` (un chunk) à partir de la
+-- tuile fantôme (x0,y0). Retourne la liste des positions fantômes du lac.
+local function flood_fill_phantom(surface, x0, y0, area)
+  local minx, maxx = area.left_top.x, area.right_bottom.x - 1
+  local miny, maxy = area.left_top.y, area.right_bottom.y - 1
+  local region = {}
+  local seen = {}
+  local queue = { {x0, y0} }
+  seen[x0 .. "," .. y0] = true
+  local head = 1
+  while head <= #queue do
+    local p = queue[head]
+    head = head + 1
+    local px, py = p[1], p[2]
+    local tile = surface.get_tile(px, py)
+    if tile.valid and tile.name == PHANTOM_TILE then
+      region[#region + 1] = { px, py }
+      local dirs = { {1, 0}, {-1, 0}, {0, 1}, {0, -1} }
+      for _, d in ipairs(dirs) do
+        local nx, ny = px + d[1], py + d[2]
+        if nx >= minx and nx <= maxx and ny >= miny and ny <= maxy then
+          local key = nx .. "," .. ny
+          if not seen[key] then
+            seen[key] = true
+            queue[#queue + 1] = { nx, ny }
+          end
+        end
+      end
+    end
+  end
+  return region
+end
+
+-- Détermine le fluide d'un lac frais : réutilise le fluide d'un voisin déjà
+-- coloré (propagation inter-chunks), sinon retourne nil.
+local function neighbor_lake_fluid(surface, region)
+  local dirs = { {1, 0}, {-1, 0}, {0, 1}, {0, -1} }
+  for _, p in ipairs(region) do
+    for _, d in ipairs(dirs) do
+      local t = surface.get_tile(p[1] + d[1], p[2] + d[2])
+      if t.valid then
+        local fluid = LAKE_FLUID_LOOKUP[t.name]
+        if fluid then
+          return fluid
+        end
+      end
+    end
+  end
+  return nil
+end
+
+-- Remplit un lac connexe dans `area` en partant d'une tuile fantôme (x0,y0).
+local function fill_lake(surface, x0, y0, area)
+  local region = flood_fill_phantom(surface, x0, y0, area)
+  if #region == 0 then return end
+  local fluid = neighbor_lake_fluid(surface, region) or next_lake_fluid_tile()
+  if not fluid then
+    return
+  end
+  local tile_name = "randputf-lac-" .. fluid
+  local tiles = {}
+  for i, p in ipairs(region) do
+    tiles[i] = { position = p, name = tile_name }
+  end
+  -- correct_tiles = true (défaut) : le remplacement tuile-fantôme -> tuile-lac
+  -- recalcule les bords autour des tuiles modifiées. Les tuiles-lac étant déjà
+  -- ciblées par les transitions des tuiles de terre (data-updates §7.5), les
+  -- berges sable/herbe du biome se dessinent autour du lac rempli.
+  surface.set_tiles(tiles)
+end
+
+-- Balaye le chunk généré : chaque tuile fantôme non encore remplie démarre un
+-- fill_lake sur tout son lac connexe. (Appelé depuis on_chunk_generated.)
+local function fill_lakes_in_area(surface, area)
+  if #LAKE_FLUID_TILES == 0 then return end
+  local minx, maxx = area.left_top.x, area.right_bottom.x - 1
+  local miny, maxy = area.left_top.y, area.right_bottom.y - 1
+  for y = miny, maxy do
+    for x = minx, maxx do
+      local tile = surface.get_tile(x, y)
+      if tile.valid and tile.name == PHANTOM_TILE then
+        fill_lake(surface, x, y, area)
+      end
+    end
+  end
+end
+
+-- ── Gisements posés au runtime (§6.5) ──────────────────────────────────────
+-- Les patchs (ITEMS et FLUIDES) ne sont plus placés par le mapgen (autoplace à
+-- base_density=0 dans data-updates). Ici, à chaque chunk généré, on pose les
+-- blocs/puits du gisement sur ce chunk : entité-resource
+-- `randputf-minerai-<item>` (minée par une foreuse) ou `randputf-oil-<fluide>`
+-- (pompée par un pumpjack). La position de chaque bloc est dérivée de façon
+-- REPRODUCTIBLE et INDÉPENDANTE de l'ordre de génération des chunks : on crée
+-- un PRNG frais par bloc (seed = well_seed + index), donc l'ordre
+-- chunk-par-chunk n'importe pas. Richesse = celle de la seed, appliquée au
+-- runtime via entity.amount.
+local WELL_MIX = 2654435761 -- constant de mélange (Knuth), masqué sous 2^31
+
+local function place_resource_block(surface, entity_name, x, y, richness)
+  local pos = { x, y }
+  if not surface.can_place_entity{ name = entity_name, position = pos, forced = true } then
+    return false
+  end
+  local e = surface.create_entity{ name = entity_name, position = pos }
+  if not (e and e.valid) then
+    return false
+  end
+  if richness and richness > 0 then
+    e.amount = richness
+    e.initial_amount = richness
+  end
+  return true
+end
+
+-- Positions des blocs/puits du gisement `patch` qui tombent dans l'aire `area`.
+local function block_positions_in_area(patch, area)
+  local out = {}
+  local center = patch.center or {}
+  local cx, cy = center.x or 0, center.y or 0
+  local radius = patch.cluster_radius or 10
+  local count = patch.count or 0
+  local well_seed = patch.well_seed or 0
+  local minx, maxx = area.left_top.x, area.right_bottom.x - 1
+  local miny, maxy = area.left_top.y, area.right_bottom.y - 1
+  for idx = 0, count - 1 do
+    local g = game.create_random_generator((well_seed + idx * WELL_MIX) % 2147483648)
+    local ang = g() * 2 * math.pi
+    local rd = radius * (0.25 + g() * 0.75) -- éparpillés, jamais au centre exact
+    local wx = math.floor(cx + 0.5 + math.cos(ang) * rd)
+    local wy = math.floor(cy + 0.5 + math.sin(ang) * rd)
+    if wx >= minx and wx <= maxx and wy >= miny and wy <= maxy then
+      out[#out + 1] = { wx, wy }
+    end
+  end
+  return out
+end
+
+-- Balaye `area` et pose les blocs/puits des patchs (item ET fluide) qui y
+-- tombent. (Appelé depuis on_chunk_generated, APRÈS les lacs.) Un bloc qui
+-- tomberait sur un lac (eau) ou un autre obstacle est simplement ignoré : la
+-- position est un obstacle = on saute, le gisement garde ses autres blocs.
+local function place_patch_gisements_in_area(surface, area)
+  for _, patch in ipairs((seed.map or {}).patches or {}) do
+    local entity_name
+    if patch.kind == "fluid" then
+      entity_name = "randputf-oil-" .. patch.resource
+    else
+      entity_name = "randputf-minerai-" .. patch.resource
+    end
+    local richness = patch.richness
+    for _, pos in ipairs(block_positions_in_area(patch, area)) do
+      place_resource_block(surface, entity_name, pos[1], pos[2], richness)
+    end
+  end
+end
+
+-- Calculé une fois au chargement du mod (re-calculé à chaque chargement de
+-- session) : indépendant de game, donc fiable aussi en on_load.
+init_lake_fluids()
+
 
 script.on_configuration_changed(function()
   configure_freeplay_kit()
@@ -418,22 +639,8 @@ script.on_init(function()
     process_crash_site(surface)
   end
 
-  -- Diagnostic des lacs (§7.5) : les tuiles `randputf-lac-<fluid>` sont posées
-  -- par autoplace (data stage) ; on compte celles du voisinage du spawn.
-  local nauvis = game.surfaces[1]
-  if nauvis then
-    for _, lake in ipairs((seed.map or {}).lakes or {}) do
-      local tiles = nauvis.find_tiles_filtered{
-        area = {{-320, -320}, {320, 320}},
-        name = "randputf-lac-" .. lake.resource,
-      }
-      log(string.format(
-        "[randputF] lac: %s -> %d tuiles à proximité du spawn",
-        lake.resource,
-        #tiles
-      ))
-    end
-  end
+  -- Lacs (§7.5) : remplissage fait dans on_chunk_generated (flood-fill), les
+  -- fluides/positions sont déjà initialisés au module scope (init_lake_fluids).
 end)
 
 script.on_load(function()
@@ -482,7 +689,7 @@ script.on_event(defines.events.on_tick, function()
     end
   end
 
-  -- Purge de l'eau vanilla (§7.6) : les cartes générées AVANT le fix
+  -- Purge de l'eau vanilla (§7.5) : les cartes générées AVANT le fix
   -- property_expression_names gardent leurs tuiles water/deepwater sur les
   -- chunks déjà créés. Balayage incrémental de chunks générés (32 par tick) en
   -- carré croissant jusqu'à épuisement de la zone explorée. Le curseur est
@@ -532,6 +739,33 @@ script.on_event(defines.events.on_tick, function()
     end
   end
 
+  -- DIAG TEMPORAIRE (§7.5) : une fois, scanne une zone autour du spawn et
+  -- journalise la composition des tuiles-lac (fantôme restantes vs fluides).
+  if storage.randputf.__diag_lakes_done == nil and game.tick > 30 then
+    storage.randputf.__diag_lakes_done = true
+    local s = game.surfaces[1]
+    if s then
+      local counts = {}
+      local phantom = 0
+      for dy = -256, 256, 2 do
+        for dx = -256, 256, 2 do
+          local t = s.get_tile(dx, dy)
+          if t and t.valid then
+            if t.name == PHANTOM_TILE then
+              phantom = phantom + 1
+            elseif LAKE_FLUID_LOOKUP[t.name] then
+              counts[t.name] = (counts[t.name] or 0) + 1
+            end
+          end
+        end
+      end
+      local parts = {}
+      for k, v in pairs(counts) do parts[#parts + 1] = k .. "=" .. v end
+      table.sort(parts)
+      log("[randputF][DIAG] phantom=" .. phantom .. " fluids={" .. table.concat(parts, ", ") .. "}")
+    end
+  end
+
   -- Balayage du site de crash : pendant la fenêtre de démarrage, on ratisse
   -- régulièrement les surfaces pour traiter les conteneurs du crash créés par
   -- le scénario APRES notre on_init (l'idempotence est garantie par la marque
@@ -559,5 +793,14 @@ script.on_event(defines.events.on_chunk_generated, function(event)
   local surface = event.surface
   if surface and surface.valid then
     process_crash_site(surface, event.area)
+    -- (§7.5) Remplissage des lacs : à chaque chunk généré, chaque tuile
+    -- fantôme démarre une flood-fill de son lac connexe, qui adopte le fluide
+    -- d'un voisin déjà coloré (propagation inter-chunks) sinon le prochain de
+    -- la seed (tourniquet).
+    fill_lakes_in_area(surface, event.area)
+    -- (§6.5) Gisements (items + fluides) : pose explicite des blocs/puits des
+    -- patchs sur ce chunk (plus d'autoplace mapgen).
+    place_patch_gisements_in_area(surface, event.area)
   end
 end)
+

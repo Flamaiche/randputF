@@ -11,6 +11,7 @@ import logging
 
 from tool.common.db import VanillaDB
 from tool.generator import (
+    building_fluids,
     electricity,
     endgame_phase,
     lakes,
@@ -39,28 +40,73 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
 
     rng = map_patches.make_rng(db.seed_value)
 
-    # Phase 1 : Ressources au sol
-    patches = map_patches.generate_patches(rng, db, cfg)
-
     # Phase 1bis : Lacs de fluide (§7.5). Flux RNG INDÉPENDANT (make_rng dédié)
     # pour ne pas perturber le tirage des phases suivantes. 3e type de raw,
     # même système que les patchs : `count ∈ [min, max]` (défaut 1), chaque lac
     # un fluide du pool pipable ; 0 lac tiré = aucun lac sur la carte (le mod
-    # supprime aussi l'eau vanilla).
+    # supprime aussi l'eau vanilla). Les lacs sont tirés AVANT les patchs pour
+    # que ceux-ci évitent de reposer en patch un fluide déjà en lac (IDEES C6).
     lake_list = lakes.generate_lakes(lakes.make_rng(db.seed_value), db, cfg)
     log.debug("lacs tirés: %s", [la.to_seed() for la in lake_list])
 
-    # Phase 2 : Chaîne initiale (starter)
-    starter = starter_chain.build_starter_chain(rng, db, patches)
+    # Phase 1 : Ressources au sol. Un fluide déjà posé en lac n'est jamais
+    # re-tiré en patch (une même ressource brute n'apparaît qu'une fois, C6).
+    patches = map_patches.generate_patches(
+        rng, db, cfg, lake_resources={la.resource for la in lake_list}
+    )
 
-    # Phase 3 : Électricité (déclenchement à la demande, combustible assigné)
-    electricity.resolve_electricity(rng, db, starter)
+    # Phase 2 : Chaîne initiale (starter). ``has_lakes`` : si la seed tire au
+    # moins un lac, le landfill est rendu craftable dès le bootstrap (C4).
+    starter = starter_chain.build_starter_chain(
+        rng, db, patches, has_lakes=bool(lake_list)
+    )
+
+    # Phase 3 : Électricité (déclenchement à la demande, combustible assigné).
+    # ``lake_resources`` : les fluides EXTRACTIBLES SANS ÉLECTRICITÉ (les lacs
+    # tirés par la seed). Un générateur à vapeur (turbine/steam-engine) est
+    # amorçable si et seulement si un tel fluide existe (IDEES C1) — il prend
+    # n'importe QUEL fluide pipable, pas spécifiquement l'eau. Si aucun
+    # générateur n'est fonctionnel, la phase FORCE un patch réparateur (lac
+    # fluide ou item) et le MÈLE au pool de la seed (§10, C1).
+    lake_resources = {la.resource for la in lake_list}
+    used_resources = {p.resource for p in patches} | lake_resources
+    repairs = electricity.resolve_electricity(
+        rng, db, starter, lake_resources, used_resources
+    )
+    for kind, value in repairs:
+        if kind == "lac":
+            lake_list.append(value)
+        elif kind == "item":
+            patches.append(value)
 
     # Rejoue les macro-techs du starter : les recettes créées par l'électricité
     # (générateur, combustible) doivent être unlockées par une tech, jamais
     # rester orphelines (sinon un relais pourrait en dépendre sans pouvoir la
     # fabriquer).
     starter.tech_steps = starter_chain.build_tech_steps(starter.state, db)
+
+    # Phase 2bis : Assignation de fluides aux bâtiments à comportement fixe
+    # (§6/§10). Détecte automatiquement les steam-generators (turbine, steam-
+    # engine) et les transformateurs à recette fixe (boiler, heat-exchanger) qui
+    # n'ont pas encore reçu de fluide, et leur assigne un fluide obtainable
+    # (un lac). La turbine du premier générateur a déjà reçu son fluide dans
+    # resolve_electricity ; cette phase couvre le reste.
+    lake_res = {la.resource for la in lake_list}
+    building_fluid_assignments = building_fluids.assign_building_fluids(
+        rng, db, starter.state, lake_res
+    )
+    # Fusionne avec les assignations déjà faites par resolve_electricity
+    # (turbine du premier générateur).
+    for bld, assignment in starter.state.building_fluid_assignments.items():
+        if bld not in building_fluid_assignments:
+            building_fluid_assignments[bld] = assignment
+
+    # Phase 1ter : Gisements posés au runtime (§6.5). Après l'électricité (la
+    # liste de patchs est finale : les réparations n'ajoutent que des lacs ou
+    # des patchs item — ces derniers reçoivent alors leur gisement ici). TOUS
+    # les patchs (items ET fluides) reçoivent leur gisement de blocs/puits posés
+    # au runtime autour d'un centre proche du spawn.
+    map_patches.assign_patch_gisements(patches, db.seed_value, cfg)
 
     # INSTANTANÉ GELÉ du pool de début de run : pris APRÈS le starter +
     # électricité, AVANT le récursif. C'est la ressource exclusive des recettes
@@ -69,7 +115,7 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     base = copy.deepcopy(starter.state)
 
     # Phase 4 : Récursion pondérée
-    recursive_phase.expand_recursive(rng, db, patches, starter)
+    recursive_phase.expand_recursive(rng, db, patches, starter, lake_res)
 
     # Phase 4ter : chaîne fusée intable (victoire possible, §14). Consomme le
     # pool profond ; passe AVANT les relais pour qu'aucun ingrédient
@@ -135,9 +181,12 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         from tool.validator.pipeline_validator import validate_pipeline
 
         patch_resources = {p.resource for p in patches}
+        lake_resources = {la.resource for la in lake_list}
         all_recipes = starter.recipes + recursive_phase.recipes_to_seed()
         state = starter.state
-        vr = validate_pipeline(state, technologies, db, patch_resources)
+        vr = validate_pipeline(
+            state, technologies, db, patch_resources, lake_resources
+        )
         if not vr.is_valid:
             log.warning("[randputF] validation FAILED: %s", "; ".join(vr.issues))
         else:
@@ -184,4 +233,14 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         "technologies": technologies,
         "progression_order": [t["id"] for t in technologies],
         "vehicle_armament": recursive_phase.vehicle_armament(),
+        # Assignation de fluides aux bâtiments à comportement fixe (§6/§10) :
+        # {building_name: {"input": fluid, "output"?: fluid}}. Le mod lit cette
+        # section en data-stage pour assigner les filters et tooltips des fluid
+        # boxes — plus aucun bâtiment n'est figé sur steam/water. La clé fait
+        # autorité : les assignations du récursif (fabricateurs à recette fixe,
+        # recette réelle = source de vérité) écrasent celles de `building_fluids`.
+        "building_fluid_assignments": {
+            **building_fluid_assignments,
+            **starter.state.building_fluid_assignments,
+        },
     }

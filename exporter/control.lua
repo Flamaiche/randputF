@@ -47,6 +47,25 @@ local function dump_all_items()
       fuel_value = fuel_value_of(proto),
       stack_size = stack_size_of(proto),
     }
+    -- Combustible : categorie de fuel (faite pour etre brûlée dans quels
+    -- brûleurs) et RESIDU de combustion (item produit quand on le brûle) :
+    -- ex. uranium-fuel-cell (categorie "nuclear") -> depleted-uranium-fuel-cell.
+    -- C'est le RESIDU du combustible qui est la SORTIE recevable (item) d'un
+    -- générateur à combustible (réacteur) : pas la chaleur ni l'électricité.
+    pcall(function()
+      if proto.fuel_category then
+        entry.fuel_category = proto.fuel_category
+      end
+    end)
+    pcall(function()
+      local resid = proto.burnt_result
+      if resid then
+        local name = resid.name or resid
+        if type(name) == "string" then
+          entry.burnt_result = name
+        end
+      end
+    end)
     -- Categorie de munitions : cote munition ET cote arme, pour caler
     -- le kit de depart (arme + munitions compatibles).
     -- Munition : objet LuaAmmoCategoryPrototype avec .name.

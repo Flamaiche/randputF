@@ -260,6 +260,15 @@ Au spawn, la carte est entièrement re-décidée :
   n'être que des fluides, d'autres que des items, ou un mélange des deux ;
   c'est totalement aléatoire ;
 - l'abondance (richesse) des patchs est également variable ;
+- **Patchs item et fluides** : tous posés au sol par le mod **au runtime**
+  (pose explicite des gisements, §6.5), le mapgen n'en dessine plus aucun.
+  La seed fournit pour chaque patch un **centre** (serré au spawn), un **rayon
+  de dispersion** et un **nombre aléatoire de blocs/puits** (`wells_per_patch`,
+  défaut 3..8) ; le mod **pose chaque bloc/puits au runtime** — entité-resource
+  `randputf-minerai-<item>` (minée par une foreuse) ou `randputf-oil-<fluide>`
+  (pompée par un pumpjack) — dispersé aléatoirement autour du centre, jamais
+  alignés, fidèle à l'esprit vanilla. Richesse par bloc/puits = celle de la
+  seed (blocs/puits profonds) ;
 - les ressources **non automatisables** (arbres, poissons, etc.) sont
   **exclues** du calcul des ressources brutes : elles ne constituent jamais un
   patch. Elles demeurent **récoltables à la main dès le départ** (pool
@@ -277,10 +286,50 @@ Au spawn, la carte est entièrement re-décidée :
   les 3 ingrédients de la fusée et le rocket-silo (§14). Ce sont des recettes
   générées et unlockées par une tech précise ; si un tel item tombait au sol,
   la recette garantie n'existerait pas et l'invariant d'endgame serait cassé.
+- les **science packs** ne sont **jamais** des patchs (§13) : leur économie
+  repose sur le craft (chaque pack se fabrique, jamais extrait du sol). Posé
+  au sol, un pack briserait la filière de coût des techs — le premier pack,
+  seedé par le starter, n'aurait pas de recette et les techs récursives n'auraient
+  aucun coût à payer au démarrage.
 
 Conséquence structurelle : plus aucune plaque de fer/cuivre/charbon ni gisement
 de pétrole classique n'est garantie au sol — le joueur découvre à chaque
 partie de quoi son monde est fait.
+
+### 6.5 Pose explicite des gisements (runtime)
+
+Tous les patchs — **item ET fluide** — n'utilisent plus le
+`resource-autoplace` vanilla (qui produisait des gisements réguliers/alignés) :
+le mod les **pose au runtime**.
+
+Pour chaque patch, la seed embarque :
+- `center {x,y}` — le **centre du gisement**, déterministe : le premier est
+  posé ~25 tuiles du spawn (une ressource disponible dès le début), puis chaque
+  gisement ~24 tuiles plus loin, à des **angles éparpillés** (jamais alignés,
+  pour casser l'aspect « rangée » du vanilla) — **cluster serré au spawn** :
+  les 3..8 gisements restent tous dans un rayon accessible à pied très tôt
+  (~25..193 tuiles au pire cas de 8 patchs, ~25..145 pour les 3..6 usuels) ;
+- `count` — le **nombre aléatoire de blocs/puits** (config `wells_per_patch`,
+  défaut `[3, 8]`) ;
+- `cluster_radius` — le **rayon de dispersion** des blocs/puits autour du centre ;
+- `well_seed` — la **graine locale** pour dériver chaque position de bloc/puits.
+
+Au runtime (`on_chunk_generated`), quand un chunk contenant le gisement est
+généré, chaque bloc/puits est posé en entité-resource
+`randputf-minerai-<item>` / `randputf-oil-<fluide>` par `surface.create_entity`,
+avec sa **richesse appliquée via `entity.amount`**.
+La position de chaque bloc/puits est dérivée de façon **reproductible et
+indépendante de l'ordre de génération des chunks** : un PRNG frais par
+bloc/puits (`well_seed + index`), donc l'ordre chunk-par-chunk n'a aucune
+influence. Les blocs/puits sont éparpillés aléatoirement (angle + rayon
+fractionnaire) autour du centre — **jamais alignés**. Un bloc/puits qui
+tomberait sur un lac ou un obstacle est simplement ignoré (position non
+posable), les autres restent.
+
+En `data-updates`, ces entités ont `autoplace` avec `base_density = 0` : le
+mapgen ne les instancie jamais (spécification requise — le moteur refuse un
+resource sans autoplace — mais génération nulle) ; seule la logique runtime
+les instancie.
 
 #### Identité des fluides : la température n'existe pas
 
@@ -345,11 +394,20 @@ logique, §10) :
     `randputf-lac-<fluid>` (copie de la tuile eau, **recolorée**) portant
     `fluid = <fluide tiré>` — une **pompe offshore vanilla** posée dessus
     débite ce fluide, **infini** comme l'eau. Richesse = taille du lac (volume
-    illimité). Comptage `count ∈ [min, max]` (défaut 1, zéro possible via
-    config) : un fluide non tiré n'a **aucun lac** (= indispo à l'extraction
-    par lac), et si aucun lac n'est tiré la carte est sans eau. Placement
-    généré par l'autoplace vanilla (`resource-autoplace`), proche du spawn
-    quand la seed en tire un.
+     illimité). Comptage `count ∈ [min, max]` (défaut 1, zéro possible via
+     config) : un fluide non tiré n'a **aucun lac** (= indispo à l'extraction
+     par lac), et si aucun lac n'est tiré la carte est sans eau. Placement
+     **CREUSÉ au runtime** (`control.lua`, `on_chunk_generated`) : le scatter
+     `resource-autoplace` a été abandonné car ses nappes de départ se
+     chevauchaient près du spawn et un seul liquide (le dernier, d'ordre le
+     plus élevé) dominait et éclipsait les autres (vérifié headless :
+     heavy-oil 1154 tuiles vs water 150 vs steam 108, à richesse quasi égale).
+     Chaque fluide tiré reçoit donc **une nappe discrète de rayon `LAKE_RADIUS`
+     (6 tuiles)**, à une position **distincte sur un anneau de rayon
+     `LAKE_RING_RADIUS` (26 tuiles) autour du spawn** (angles équirépartis) :
+     aucune superposition → tous les liquides sont visibles et pompables, et la
+     surface totale est faible (π·6² ≈ 113 tuiles par lac, au lieu de >1000).
+     Le mapgen ne pose **aucune** tuile de lac (voir neutralisation ci-dessous).
     **Neutralisation de l'eau vanilla** : forcer `autoplace.probability_expression = 0`
     sur les prototypes de tuiles d'eau ne suffit pas — le mapgen conserve des
     tuiles (mesuré : ~3 000 water/deepwater résiduelles sur la carte). La
@@ -358,21 +416,41 @@ logique, §10) :
     "<expression négative>"` (noise-expression `randputf-no-water`), appliqué
     à chaque tuile `water_tile_type_names` sur nauvis — résultat mesuré :
     **0 tuile d'eau vanilla**, les seules nappes étant les lacs tirés.
-    **Couleur du lac** : chaque nappe conserve la *teinte* (hue) du fluide mais
-    avec saturation/luminance relevées (`lake_color` : s=0.92, l=0.5) —
-    visible au sol (`variants[].tint`) ET sur la carte (`map_color` 0-255) ;
-    un simple `base_color` serait inutile (le crude-oil est noir → lac
-    invisible sur la minimap). Fluides sans chromatisme : teinte de secours
+    **Couleur du lac** : chaque nappe utilise une palette **pastel** dérivée
+    de la `base_color` du fluide — luminosité garantie ≥ 0.55, saturation
+    ≥ 0.25, plafond 0.92 — visible au sol (`variants[].tint` + `effect_color`)
+    ET sur la carte (`map_color`). Les patches ressources utilisent des couleurs
+    vives (composantes 30..130/255) ; les lacs en pastel se distinguent
+    naturellement sans les écraser. Fluides sans chromatisme : teinte de secours
     distincte par fluide (table `lake_fallback_hue` : crude-oil → brun huile
     orangé, steam → bleu clair, hydrogen → cyan…).
-    **Bordures 1 lac sur 2** : la règle déterministe par seed
-    `(seed_value + i) % 2 == 0` (i = index du lac dans `lake_list`) décide si
-    un lac a une **berge** dessinée par les tuiles de terre voisines (sable /
-    herbe : le mod ajoute les noms des lacs bordés aux `transitions[].to_tiles`
-    de `grass-*` et `sand-*`, qui ciblent normalement l'eau vanilla) ou reste
-    **net** (aucune transition, l'eau du lac borde directement la terre dure).
-    Les berges sont donc entièrement générées par le mapgen, sans étendre de
-    proto — vérifié sur carte réelle (ex : seed 5 → lac crude-oil bordé).
+    **Bordures : tous les lacs sont bordés** : chaque lac reçoit une **berge**
+    dessinée par les tuiles de TERRE voisines. Le data-stage
+    (`data-updates.lua`) ajoute le nom de chaque tuile-lac
+    (`randputf-lac-<fluid>`) aux `transitions[].to_tiles` de toutes les tuiles
+    de terre qui ciblent déjà l'eau vanilla (les 7 noms de
+    `water_tile_type_names`, pas seulement `water` — couverture complète des
+    biomes). La **berge dépend du biome environnant** : autour du spawn c'est
+    sable/herbe (grass/sand), donc des berges douces ; ailleurs, selon le
+    biome où le lac tombe, la transition varie. Transitions patchées triées au
+    data-stage pour un résultat 100 % déterministe.
+    **Déclenché au runtime** (`control.lua`, `fill_lake`) : le remplacement de
+    la tuile-fantôme par la tuile-lac colorée se fait avec
+    `set_tiles(..., correct_tiles = true)` — le moteur recalcule alors les
+    bords autour des tuiles modifiées (même mécanisme que le landfill), ce qui
+    fait apparaître la berge autour du lac rempli. La marque des lacs bordés
+    est portée par une table Lua locale (`lake_borders`), jamais par une clé de
+    prototype.
+    **Coupe nette** : seul le fantôme (blanc, avant remplissage) « coupe » sans
+    bord — il n'est volontairement pas ciblé par les transitions et est
+    remplacé dès la génération du chunk ; les lacs finis sont toujours bordés.
+
+    **Les lacs ne peuvent pas couvrir le spawn / le site de crash** : chaque
+    nappe est posée sur l'anneau de rayon `LAKE_RING_RADIUS` (26 tuiles) autour
+    du spawn, hors du site de crash (centré sur 0,0) et de la zone de départ,
+    tout en restant **accessible à pied dès le départ**. Générateur à part :
+    `lakes.py` échantillonne **sans remise** — au plus **un lac par fluide**
+    (le mod déduplique aussi par sécurité).
     **Purge runtime des cartes legacy** (`control.lua`) : les cartes créées
     avant le fix embarquent `property_expression_names` vide et conservent les
     tuiles d'eau vanilla du mapgen. Au premier chargement, `purge_chunk_water`
@@ -382,7 +460,16 @@ logique, §10) :
     chunks/tick, curseur persisté dans `storage` (reprise après rechargement).
     Les lacs tirés par la seed sont préservés. Mesuré sur `testtest1`
     (139 546 tuiles) : purge complète en ~1 000 ticks sans impact perceptible
-    sur l'UPS.
+    sur l'UPS. La pompe côtière affiche nativement le fluide de sa tuile source
+    (2.0, `tile.fluid`) : aucun tooltip custom nécessaire.
+6. **Landfill garanti dès le prologue si lacs** : un lac est un **mur**
+   infranchissable tant que le joueur ne peut pas le franchir. Quand la seed
+   tire **au moins un lac**, la chaîne du starter appelle `ensure_obtainable`
+   sur le `landfill` dès le bootstrap (recette `randputf-landfill` unlockée
+   par `starter-transformation`, craftée avec le pool de début, §8/§13) : le
+   joueur peut toujours franchir/combler l'eau de la carte dès le départ.
+   Sans lac, inutile d'imposer le landfill — sa recette tombe alors au hasard
+   dans le balayage de couverture (§9.6).
 
 ## 8. La chaîne initiale (starter)
 
@@ -474,6 +561,27 @@ Les recettes restent simples dans leur forme :
 3. créer la recette à partir de choses prises **aléatoirement** dans ces
    ensembles compatibles.
 
+**Temps de craft randomisé (C6)** : le `energy_required` de chaque recette
+n'est pas fixé à 0,5 s. Chaque recette tire un temps de base dans la liste
+configurable `recipes.energies` (défaut `[0.5, 1.0, 2.0]`), puis le multiplie
+par `(1 + recipes.energy_per_ingredient × nb_d_ingrédients)` (défaut 0,25) :
+une recette lourde prend **proportionnellement plus de temps** qu'une recette
+simple — re-tune léger du gameplay, sans toucher à la solvabilité (une durée
+plus longue ne change jamais le pool atteignable).
+
+**Équilibre production/consommation (C2)** : le générateur suit, à chaque
+recette posée, **ce que la seed produit** et **ce qu'elle consomme** (compteurs
+cumulés par item). Une cible d'équilibre `cons/prod` est tirée une fois par
+seed uniformément dans `recipes.balance_min..balance_max` (défaut `3/16..2/3`).
+Un item dont le ratio passe **sous la cible** est « pléthore » (produit mais
+peu consommé) : on **récompense sa consommation** comme ingrédient (on écoule
+le surplus) et on **freine sa production** comme produit (`_pick_product`,
+1 / facteur) ; l'inverse pour un item rare. Le déséquilibre est plafonné au
+quota `recipes.max_overproduced_ratio` (défaut `1/3`) — on ne pousse jamais à
+consommer un flux stupide. Effet : les quantités consommées tendent vers les
+quantités produites (« on n'accumule pas ce qu'on ne se sert pas »), sans
+jamais changer le pool atteignable (donc sans casser la solvabilité §15).
+
 ### 9.3 Déblocage sur le tas
 
 Puisque toutes les ressources sont plus ou moins déblocables :
@@ -488,6 +596,18 @@ Puisque toutes les ressources sont plus ou moins déblocables :
   correspondant est généré en même temps.
 
 Le résultat : aucune impasse possible, mais aussi aucun chemin prévisible.
+
+**Claim des ateliers débloqués « sur le tas » (anti-recette-orpheline)** : un
+bâtiment de craft débloqué pendant la génération d'un élément (via
+`_pick_building` → `_unlock_building`, typiquement un assembleur de tier
+supérieur requis par une recette récursive) produit une recette
+`randputf-<bâtiment>` qui doit être **claimée par la tech de l'élément en cours
+de génération** — sinon elle reste **orpheline** (jamais unlockée : le joueur
+peut crafter le bâtiment mais jamais le débloquer). `_generate_for_element`
+compare donc `unlocked_buildings` avant/après l'élément et ajoute tout
+bâtiment nouvellement débloqué à `step_buildings`/`unlocks_buildings` de la
+tech (dédup en conservant l'ordre). Couvre **tout** déblocage d'atelier sur le
+tas, quel que soit l'élément — zéro recette orpheline mesurée sur 200 seeds.
 
 Les **déclencheurs hand-craft** des techs (prologue §13, et plus tard les
 tirages aléatoires parmi les techs) obéissent à la même règle : l'item
@@ -627,6 +747,26 @@ recette**. Une phase **3bis**, exécutée **après** la récursion pondérée et
 Résultat : ~180 techs / ~200 recettes par seed, dont des techs de contenu
 (belts, inserters, chests, modules, robots, trains, isotopes…).
 
+### 9.7 Garantie de compagnons (C3)
+
+Certains items ne sont **jouables que relativement à un autre** : un robot
+(logistic/construction) est du contenu **mort** sans son roboport, un premier
+solaire sans accumulateur provoque un blackout la nuit (§10). Sans garantie,
+le balayage de couverture (§9.6) pouvait diffuser ces paires loin l'une de
+l'autre, ou l'une jamais — du contenu inutilisable.
+
+`RecursiveConfig.companions` (clé `companions`, §19) liste des **groupes** de
+produits liés (défaut `[["roboport","logistic-robot","construction-robot"],
+["solar-panel","accumulator"]]`). La phase récursive détecte, au fil de la
+génération d'un élément (contenu **ou** bâtiment — ex. solaire), si l'item
+appartient à un groupe, via `_dispatch_companions` : chaque compagnon non
+encore unlocké reçoit immédiatement sa recette, puis des **techs isolées
+(≤ 3, `isolate=True`) sont dispatchées juste APRÈS la tech du produit** — le
+même pattern de dispatch que les munitions de véhicules (§12.1). Résultat :
+tous les membres d'un groupe restent à ±3 techs l'un de l'autre (invariant
+`test_companions_proches`), jamais diffusés en profondeur. Un item d'un groupe
+absent de la seed est ignoré ; un groupe entièrement absent n'ajoute rien.
+
 ## 10. L'électricité
 
 L'électricité est un **type à part**. Dans Factorio elle constitue un réseau
@@ -654,6 +794,38 @@ ressource. Ce qui se randomise, c'est tout ce qui l'entoure :
   chimique exigeraient l'électricité que ce générateur doit justement amorcer
   (bootstrap impossible sinon). Les générateurs suivants retombent sur des
   ateliers normaux.
+- **Ingrédients du générateur sans électricité** : en plus du handcraft, les
+  **ingrédients** du premier générateur ne doivent pas eux-mêmes être produits
+  par un **bâtiment électrique** — sans quoi il faudrait déjà l'électricité
+  qu'il amorce pour les fabriquer (même boucle). Le tirage des ingrédients
+  **bannit** donc tout item dont la production passe par un atelier électrique ;
+  ne restent que ceux obtenables sans réseau : ressource brute (patch minerais),
+  kit, environnement, ou recette dans un atelier non-électrique/à la main.
+- **Générateur à vapeur = fluide en entrée (pas l'eau)** : un steam-engine /
+  steam-turbine (générateur à vapeur) prend **un fluide** en entrée — n'importe
+  quel fluide pipable, pas spécifiquement l'eau (§8). Il est **amorçable
+  (fonctionnel)** si et seulement si la seed tire au moins **un LAC** (fluide
+  extractible sans électricité via la pompe offshore) : une ressource oil posée
+  en **patch** exigerait un pumpjack électrique → boucle fuel→électricité (§10).
+- **Aucun bâtiment figé sur steam/water (§6)**: dans l'univers randputF un
+  fluide n'a pas d'identité fixe. Le vanilla câble pourtant en dur certains
+  bâtiments sur un fluide précis via le `filter` de leurs fluid boxes
+  (steam-turbine/steam-engine → `steam` ; boiler/heat-exchanger → `water` en
+  entrée). Le mod retire **génériquement** (aucune liste codée en dur) le
+  `filter` de **toute** fluid box : la turbine/le moteur acceptent ainsi
+  **n'importe quel fluide** (l'UI ne dit plus « steam »), et le boiler/chaudière
+  traitent un **fluide d'entrée → fluide de sortie** arbitraires. La règle
+  s'applique automatiquement aux bâtiments qu'un mod ajoutera.
+- **Résolution robuste (IDEES C1)** : on ne décide pas a priori quel générateur
+  « doit » marcher. `resolve_electricity` **shuffle** les générateurs et les
+  **teste un par un** jusqu'à en trouver un fonctionnel (vapeur ⇒ un lac ;
+  burner/solaire ⇒ toujours). Si **aucun** n'est fonctionnel, on **force un
+  patch réparateur** (item OU lac fluide, ressource ≠ du type précédent) pour
+  changer le pool obtenable, puis on **re-shuffle** et on revérifie. Après
+  **20 essais** (et si aucun patch réparateur n'est disponible), on lève une
+  **erreur explicite** — jamais une seed silencieusement cassée. La carte est
+  donc **toujours réparée par ajout** ; les lacs/patches forcés sont fusionnés
+  dans la seed (§IDEES C1).
 - **Pylônes (poteaux électriques)** : la distribution du courant entre le
   générateur et les bâtiments est indispensable — sans poteau, l'électricité
   produite ne transporte rien de jouable. Dès qu'un besoin électrique apparaît,
@@ -802,6 +974,11 @@ figé.
   packs (items type tool) sont admis comme coût de recherche par le moteur ;
   chaque pack suivant se débloque en consommation du pack précédent, donc
   chaque tech a toujours un pack déjà produit vers lequel pointer.
+- **Garantie d'amorçage** : si le starter n'a pas pu seedé le premier pack
+  (pool de packs non-obtenus vide), la phase récursive amorce quand même la
+  filière avec un pack du jeu — sinon une tech sans coût planterait (`§seed`).
+  Combiné à l'exclusion des packs du pool de patchs (§6), le pool de coût
+  n'est jamais vide.
 - Les **science packs** eux-mêmes suivent les pourcentages d'obtention, comme
   les bâtiments et tout le reste (§9.1).
 - **Affichage du coût en nombre d'items** : le coût d'une tech s'affiche comme
@@ -845,7 +1022,8 @@ débloquée par une seule tech, §15).
 
 ## 15. Règles de solvabilité
 
-Cinq invariants, vérifiés par le tool externe avant validation d'une seed :
+Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifiés
+par le tool externe avant validation d'une seed (`pipeline_validator.py`) :
 
 1. **Anti-cycle** : aucun maillon ne peut dépendre de sa propre production.
    Toute entrée auxiliaire d'un bâtiment provient d'une branche déjà valide ;
@@ -878,6 +1056,15 @@ Cinq invariants, vérifiés par le tool externe avant validation d'une seed :
    fluide d'extraction — infinis ou non, §3/§13). Vérifié en fin de pipeline
    sur les recettes de la graine (`_check_packs_no_raw`), en plus de
    l'exclusion appliquée au tirage par la génération.
+6. **Cohérence tech-recettes** (warning) : chaque recette créée par le pipeline
+   apparaît dans les effects d'exactement UNE tech — pas de recette orpheline
+   (jamais débloquée) et pas de double déblocage. Les orphelins émettent un
+   warning plutôt qu'une erreur (certaines recettes créées « sur le tas » sont
+   disponibles dès le début sans unlock explicite).
+7. **Coûts obtainables** : les matériaux de recherche de chaque tech payante
+   doivent être produibles par le joueur au moment de sa place dans l'arbre.
+   Simulation de la progression : on parcourt les techs dans l'ordre, on ajoute
+   les produits débloqués au pool, et on vérifie que chaque coût est couvert.
 
 Une seed qui viole l'un de ces invariants est rejetée et régénérée par le tool,
 jamais livrée au joueur.
@@ -892,7 +1079,12 @@ jamais livrée au joueur.
 - **Imposer une valeur.** `tool generate --seed <n>` (ou la key `seed` de
   `config/settings.yaml`, désormais réservée à un défaut explicite) fige une
   seed : relancer avec la même valeur reproduit exactement le même mod
-  (déterminisme vérifié, octet-pour-octet).
+  (déterminisme vérifié, octet-pour-octet). Le déterminisme tient **entre
+  processus** : aucune itération de `set`/`frozenset` n'alimente un `rng`
+  (sinon l'ordre de hachage Python varierait selon `PYTHONHASHSEED`) —
+  régression gardée par `tests/test_determinism.py`, qui régénère la seed en
+  sous-processus sous deux hashseeds et compare le résultat (inventaire
+  détaillé dans `docs/nondeterminism.md`).
 - **Pas de borne haute (« seed max »).** La seed est injectée comme *chaîne*
   dans `random.Random(f"randputF:{seed}")` (et `randputF:lakes:{seed}`), que
   Python hache déterministiquement. Aucune limite supérieure n'est imposée par
@@ -908,8 +1100,11 @@ jamais livrée au joueur.
 - La config est **réellement consommée** par la génération : `seed`, `paths`,
   `map`, la section `recursive:` (poids des catégories, cadence des
   pylônes §9.4, **armes montées §12.1** : `armed_vehicles`, `vehicle_weapons`,
-  `vehicle_slots_min/max`, `vehicle_slots_with_replacement`,
-  `vehicle_range_base_size`, `vehicle_range_scale`) puis la section `tree:`
+   `vehicle_slots_min/max`, `vehicle_slots_with_replacement`,
+   `vehicle_range_base_size`, `vehicle_range_scale`), la section `recipes:`
+   (poids du nb d'ingrédients/résultats, `energies` + `energy_per_ingredient`
+   §C6, et équilibre cons/prod `balance_min/max`, `max_overproduced_ratio`,
+   `balance_steepness`, `balance_max_factor` §C2) puis la section `tree:`
   (`group_chances`, nombre d'objets par tech §13) — aucune valeur
   d'algorithme codée en dur dans le moteur.
 - La seed exporte en plus des structures de documentation/jouabilité :
@@ -942,19 +1137,48 @@ Chaîne complète, de l'écriture d'une seed à une partie jouable :
 ```
 randputF/
 ├── README.md            # ce document
+├── IDEES.md             # idées / corrections workshop
 ├── .gitignore
+├── pyproject.toml       # package Python (randputf, ≥3.11)
 ├── config/              # configurations YAML
+│   └── settings.yaml
+├── data/                # dump des prototypes vanilla
+│   └── vanilla_dump.json
 ├── tool/                # générateur externe Python
+│   ├── __main__.py      # CLI : parse, generate
+│   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
+│   │   ├── db.py
+│   │   ├── demo.py
+│   │   └── weighted_picker.py
 │   ├── parsers/         # extraction des prototypes vanilla
+│   │   └── vanilla.py
 │   ├── generator/       # moteur de tirage & graphe
-│   │   ├── relay_phase.py  # recettes relais + techs de prologue (≤5 unlocks, §7/§9.5)
-│   │   └── …
-│   ├── prototypes/      # classes de génération (RecetteConfig, RelayConfig…)
+│   │   ├── pipeline.py          # orchestrateur (generate_seed)
+│   │   ├── map_patches.py       # phase 1 : ressources au sol
+│   │   ├── lakes.py             # phase 1bis : lacs de fluide
+│   │   ├── starter_chain.py     # phase 2 : chaîne initiale
+│   │   ├── building_fluids.py   # phase 2bis : fluides des bâtiments fixes (§6)
+│   │   ├── recursive_phase.py   # phase 3 : récursion + balayage contenu
+│   │   ├── electricity.py       # phase 3 : résolution électricité
+│   │   ├── endgame_phase.py     # phase 4 : chaîne fusée
+│   │   ├── relay_phase.py       # relais ressources non-infinies + prologue
+│   │   ├── recipes.py           # primitives recettes (make_recipe, ensure_obtainable)
+│   │   ├── tech_tree.py         # arbre technologique linéaire
+│   │   └── wreck_loot.py        # loot du site de crash
+│   ├── prototypes/      # classes de config (RecipeConfig, RecursiveConfig…)
+│   ├── exporters/       # écriture seed.json / seed.lua / locale
 │   └── validator/       # vérification de solvabilité
-└── mod/                 # le mod Factorio 2.0
-    ├── data.lua         # data-stage : lecture seed, construction
-    ├── control.lua      # runtime : carte, déblocages, kit
-    └── seed/            # seed.json et données générées
+│       ├── pipeline_validator.py  # 7 checks sur ProgressionState
+│       └── solver.py              # validation du seed dict assemblé
+├── mod/                 # le mod Factorio 2.0
+│   ├── data.lua         # data-stage : lecture seed, construction
+│   ├── data-updates.lua # réarmement véhicules, lacs, fuel unifié
+│   ├── control.lua      # runtime : carte, déblocages, kit
+│   ├── locale/          # localisations (en, fr)
+│   └── seed/            # seed.json et données générées
+├── exporter/            # mod compagnon (dump JSON des prototypes)
+├── tests/               # tests unitaires (pytest)
+└── output/              # mod assemblé (généré)
 ```
 
 (La structure fine pourra évoluer pendant l'implémentation ; les rôles de
@@ -968,9 +1192,46 @@ haut niveau restent ceux décrits en §4.)
    - passage possible de l'arbre technologique linéaire à un arbre **branché** ;
    - génération automatique de seed (date/heure) — *fait* (seed temporelle
      par défaut, §16).
-3. **Projet futur séparé** : support de **mods tiers** — parsing dynamique du
-   contenu arbitraire (Krastorio, Py, …). Bien plus tardif, conditionné au
-   succès du moteur sur vanilla.
+3. **Utiliser le moteur du jeu (vision extracteur)** : au lieu d'encoder les
+   règles de lecture du contenu en dur dans le tool Python, faire de
+   l'exporter (= le jeu, qui CONNAÎT déjà tous ses prototypes et ceux des
+   mods chargés) la source de vérité. À l'init d'une partie, l'exporter
+   extrait **tout** (ressources + bâtiments déjà présents, vanilla et futurs
+   mods confondus) et calcule **côté moteur** comment tout fonctionne, puis
+   l'outil ne fait que **trier et valider** ces données. Conséquence directe :
+   le support des **mods tiers** (Krastorio, Py, …) passe **sans rien recoder
+   dans l'outil** — on ne parse plus le contenu à la main, le moteur le
+   décrit.
+   Cible précise de la refonte (aujourd'hui en dur dans le Python) :
+   - classification fonctionnelle des bâtiments (`research`/`transformer`/
+     `generator`/`distribution`/`extractor`/`other`) — déplacée dans
+     `_parse_entity` c'est-à-dire `exporter/control.lua`, déduite des
+     capacités prototypes (`crafting_categories`, `resource_categories`,
+     `energy_source`, `get_max_power_output`, `stack_size`…) que Factorio 2.0
+     expose déjà nativement ;
+   - stackabilité réelle, catégories de munitions, compatibilité combustible,
+     dépendances (robot↔roboport, solaire↔accumulateur) ;
+   - réduction des listes/heuristiques en dur de `tool/common/db.py`
+     (`ROCKET_CHAIN`, `POWER_POLES`, `NON_STACKABLE_ITEM_TYPES`,
+     `TOOL_LIKE_ITEMS`, `VEHICLE_GUNS`) à celles qui sont du *choix de
+     conception* du randomizer et non une *donnée moteur*.
+   Le Python garde son rôle réel : trier, générer la seed, vérifier la
+   solvabilité §15 — il ne re-découvre plus le contenu à la main.
+    **Lacs : pose runtime déterministe** (remplace l'autoplace resource, cf.
+    §7.5). Le scatter `resource-autoplace` sur des TUILES fait chevaucher les
+    nappes de départ et laisse un seul liquide (le dernier, d'ordre le plus
+    élevé) dominer — vérifié headless, un rework `autoplace tile` seul ne
+    garantissait pas non plus un équilibre. La pose a donc été migrée vers un
+    **creusage `control.lua`** (`on_chunk_generated`) : une nappe discrète de
+    rayon fixe par fluide choisi, positionnée sur un anneau équiréparti autour
+    du spawn — aucune superposition, surface maîtrisée, tous les liquides
+    pompables. Le mapgen pose **0** tuile de lac (override
+    `property_expression_names["tile:<lac>:probability"]` = `randputf-no-water`,
+    comme l'eau vanilla §7.5) ; la tuile reste créée/inscrite pour
+    `set_tiles`, la palette et la liste du menu de génération. On conserve du
+    système antérieur : la couleur/copie de tuile, la berge (tous les lacs
+    bordés, redessinée au runtime par `set_tiles(..., correct_tiles = true)`,
+    §7.5), la compatibilité pompe offshore (lien §7.5/§16).
 
 ## 20. Mise en route
 
@@ -1032,16 +1293,19 @@ les recherches gratuites déblocées.
 | Composant | État |
 |---|---|
 | `tool/parsers/vanilla.py` | Normalisation dump → `VanillaDB` (items/fluides/bâtiments classés/recettes) |
-| `tool/generator/map_patches.py` | Phase 1 implémentée (3–8 patchs, types aléatoires, richesse variable) ; briques garanties jamais en patch (lab §8, fusée + silo §14) |
-| `tool/generator/starter_chain.py` | Kit de départ (arme + munitions calées), extraction→transformation→transport, pool environnemental, extracteurs items-only, **bâtiment de recherche dans la 2e recherche gratuite** (§8) + **premier science pack craftable** (§13) |
-| `tool/generator/recursive_phase.py` | Phase récursive pondérée (déblocage sur le tas) ; produits = intermédiaires (jamais un item de bâtiment ni la chaîne fusée) ; **coût systématique en science pack**, amorcé par le premier pack craftable du starter (§13) ; **cadence garantie des pylônes** (§9.4) |
-| `tool/generator/electricity.py` | Générateur + combustible à la demande (accumulateur exclu du tirage) + **pylône/construction de distribution** ; techs starter rejouées ensuite (§10) |
+| `tool/generator/map_patches.py` | Phase 1 implémentée (3–8 patchs, types aléatoires, richesse variable) ; briques garanties jamais en patch (lab §8, fusée + silo §14) ; **science packs jamais en patch** (§13) |
+| `tool/generator/starter_chain.py` | Kit de départ (arme + munitions calées), extraction→transformation→transport, pool environnemental, extracteurs items-only, **bâtiment de recherche dans la 2e recherche gratuite** (§8) + **premier science pack craftable** (§13) + **landfill garanti si lacs** (§7) |
+| `tool/generator/recursive_phase.py` | Phase récursive pondérée (déblocage sur le tas, **claim anti-recette-orpheline** §9.3) ; produits = intermédiaires (jamais un item de bâtiment ni la chaîne fusée ; **équilibre cons/prod C2** dans `_pick_product`) ; **coût systématique en science pack**, amorcé par le premier pack craftable du starter **avec repli garanti** (§13) ; **cadence garantie des pylônes** (§9.4) ; **garantie de compagnons** (§9.7) |
+| `tool/generator/electricity.py` | Générateur + combustible à la demande (accumulateur exclu du tirage ; **C1 : shuffle des générateurs, test de fonctionnalité, réparation par patch forcé — 20 essais puis erreur** §10) + **pylône/construction de distribution** ; techs starter rejouées ensuite (§10) |
 | `tool/generator/endgame_phase.py` | Chaîne fusée intable : les 3 ingrédients de `rocket-part` **et le rocket-silo** générés, tech finale `randputf-endgame-rocket` (§14) |
+| `tool/common/demo.py` | Base vanilla synthétique pour dev/tests : inclut le building **rocket-silo** pour que la phase endgame licence `randputf-rocket-silo` (validation de complétude §15) |
 | `tool/generator/relay_phase.py` | Recettes relais tirées dans le **pool gelé du début de run** (après starter+électricité) + techs de prologue `randputf-prologue-*` (≤5 unlocks, hand-craft) (§7, §9.5, §13) |
-| `tool/generator/tech_tree.py` + `tech_graph.py` | Arbre linéaire assemblé depuis les macro-steps ; **unlock unique par recette** (premier claim gagne, §13/§15) |
-| `tool/validator/pipeline_validator.py` | Invariants §15 : anti-cycle par **point fixe de solvabilité** (routes relais = alternatives), progressivité, complétude, unlock unique |
+| `tool/generator/tech_tree.py` | Arbre linéaire assemblé depuis les macro-steps ; **unlock unique par recette** (premier claim gagne, §13/§15) |
+| `tool/validator/pipeline_validator.py` | 7 checks §15 : anti-cycle par **point fixe de solvabilité** (routes relais = alternatives), progressivité, cohérence tech-recettes, coûts obtainables, règle des tuyaux, complétude fusée, packs sans ressource brute |
+| `tool/validator/solver.py` | Validation du seed dict assemblé (format, champs requis) |
 | `mod/data.lua` | Lit la seed : entités ressources cachées, recettes, technologies ; option désactivation arbre vanilla |
-| `mod/control.lua` | Runtime : destruction ressources vanilles, placement patchs déterministe, kit départ, recherches gratuites |
+| `mod/data-updates.lua` | Réarmement véhicules (clonage armes §12.1), tuiles lacs + couleurs pastel, fuel unifié, pompe offshore extra-fluid |
+| `mod/control.lua` | Runtime : destruction ressources vanilles, flood-fill lacs, placement patchs déterministe, kit départ, recherches gratuites |
 
 La génération valide une seed complète sur la base vanilla réelle (`data/vanilla_dump.json`), seed figure d'exemple : `seed: 5` dans
 `config/settings.yaml`. Le mode demo (`parse --demo`) reste utile pour tester

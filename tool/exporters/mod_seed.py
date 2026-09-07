@@ -11,7 +11,9 @@ Structure seed :
   pools: {item_resources: [...], fluid_resources: [...],
           vehicle_weapons: [<items gun de la pool montée §7/§12.1>],
           vehicle_range_scaling: {base_size, scale}},
-  map:   {patches: [{kind, resource, richness}],
+  map:   {patches: [{kind, resource, richness,
+                     center:{x,y}, count, well_seed, cluster_radius  -- gisement §6.5 (item ET fluide)
+                    }],
           lakes: [{resource, richness}]}, -- lacs de fluide §7.5
   starter_kit: [{type, name, count}],
   free_researches: [...],
@@ -24,6 +26,9 @@ Structure seed :
   vehicle_armament: {<véhicule>: [<items gun assignés §7>]} -- pool cachée :
                  ne sert QU'à l'assignation ; le mod CLONE chaque arme pour
                  le véhicule (arme dans arme) et l'arme (jamais craftée).
+  building_fluid_assignments: {<bâtiment>: {input: <fluide>, output?: <fluide>}}
+                 -- §6/§10 : fluides assignés aux bâtiments à comportement fixe
+                 (turbines, boilers). Le mod applique les filters et tooltips.
 }
 """
 

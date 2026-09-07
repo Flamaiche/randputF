@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from tool.common.db import SLOT_FLUID, SLOT_ITEM, VanillaDB
 from tool.common.demo import build_demo_db
-from tool.generator.electricity import resolve_electricity
+from tool.generator import electricity
+from tool.generator.electricity import MAX_REPAIR_ATTEMPTS, resolve_electricity
+from tool.generator.lakes import Lake
 from tool.generator.map_patches import Patch
-from tool.generator.recipes import ProgressionState, _ensure_burner_fuel
+from tool.generator.recipes import ProgressionState, _ensure_burner_fuel, _production_is_electric
 from tool.generator.starter_chain import build_starter_chain
 
 
@@ -85,10 +89,84 @@ def test_electricite_declenche_generateur_et_pylone():
     rng = random.Random(21)
     db = build_demo_db()
     chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore"), ("fluid", "water")))
-    resolve_electricity(rng, db, chain)
-    assert "steam-engine" in chain.state.unlocked_buildings
+    resolve_electricity(rng, db, chain, lake_resources={"water"})
+    generators = {"steam-engine", "burner-generator"}
+    assert generators & {u for u in chain.state.unlocked_buildings}
+    assert chain.state.unlocked_buildings  # un pylône (ou plus) est aussi débloqué
     for recipe in chain.state.recipes:
         assert recipe["results"]
+
+
+def test_turbine_amorcable_par_un_lac_fluide(monkeypatch):
+    """C1 : la turbine/steam-engine ne prend PAS spécifiquement l'eau, mais
+    n'importe quel FLUIDE extractible sans électricité (un lac). Dès qu'un lac
+    existe (même un lac de pétrole brut), le générateur à vapeur est
+    fonctionnel et peut amorcer le réseau."""
+    rng = random.Random(21)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore"), ("fluid", "crude-oil")))
+    # Les seuls générateurs candidats sont à vapeur (pas de burner-generator).
+    steam = db.buildings["steam-engine"]
+    monkeypatch.setattr(electricity, "_candidate_generators", lambda rng, db, state: [steam])
+    resolve_electricity(rng, db, chain, lake_resources={"crude-oil"})
+    assert "steam-engine" in chain.state.unlocked_buildings
+
+
+def test_c1_reparer_par_lac_quand_aucun_generateur_fonctionnel(monkeypatch):
+    """C1 : si AUCUN générateur n'est fonctionnel (seul un générateur à vapeur
+    sans lac), la phase FORCE un patch réparateur (ici un lac fluide), puis
+    revérifie : le générateur devient amorçable et est débloqué. Le ↓
+    patch/lac ajouté est renvoyé pour être fusionné dans la seed."""
+    rng = random.Random(21)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")))
+    steam = db.buildings["steam-engine"]
+    monkeypatch.setattr(electricity, "_candidate_generators", lambda rng, db, state: [steam])
+    repairs = resolve_electricity(rng, db, chain, lake_resources=set())
+    assert "steam-engine" in chain.state.unlocked_buildings
+    assert repairs, "une réparation (lac) doit avoir été forcée"
+    kinds = {kind for kind, _ in repairs}
+    assert "lac" in kinds
+    assert any(isinstance(value, Lake) for kind, value in repairs if kind == "lac")
+
+
+def test_c1_erreur_si_aucune_reparation_possible(monkeypatch):
+    """C1 : si aucun générateur n'est fonctionnel ET qu'aucune réparation n'est
+    possible (aucun lac fluide extractible sans électricité, aucun patch
+    réparateur), la phase lève une erreur explicite — jamais une seed
+    silencieusement cassée."""
+    rng = random.Random(21)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")))
+    steam = db.buildings["steam-engine"]
+    monkeypatch.setattr(electricity, "_candidate_generators", lambda rng, db, state: [steam])
+    monkeypatch.setattr(electricity, "_force_repair_patch", lambda rng, db, used, used_res: None)
+    with pytest.raises(ValueError):
+        resolve_electricity(rng, db, chain, lake_resources=set())
+
+
+def test_c1_erreur_apres_20_echecs(monkeypatch):
+    """C1 : la réparation est bornée (IDEES C1) — au-delà de 20 essais sans
+    générateur fonctionnel, on lève une erreur au lieu de débloquer un réseau
+    muet."""
+    rng = random.Random(21)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")))
+    steam = db.buildings["steam-engine"]
+    # Aucun générateur ne devient jamais fonctionnel, quoi qu'on tente.
+    monkeypatch.setattr(electricity, "_candidate_generators", lambda rng, db, state: [steam])
+    monkeypatch.setattr(electricity, "_generator_functional", lambda *a, **k: False)
+    count = 0
+
+    def fake_repair(rng, db, used, used_res):
+        nonlocal count
+        count += 1
+        return ("item", Patch(kind="item", resource=f"repair-{count}", richness=1))
+
+    monkeypatch.setattr(electricity, "_force_repair_patch", fake_repair)
+    with pytest.raises(ValueError):
+        resolve_electricity(rng, db, chain, lake_resources=set())
+    assert count == MAX_REPAIR_ATTEMPTS
 
 
 def test_premier_generateur_craftable_a_la_main():
@@ -100,7 +178,7 @@ def test_premier_generateur_craftable_a_la_main():
     rng = random.Random(21)
     db = build_demo_db()
     chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore"), ("fluid", "water")))
-    resolve_electricity(rng, db, chain)
+    resolve_electricity(rng, db, chain, lake_resources={"water"})
     generator_recipes = [
         r for r in chain.state.recipes
         if r["results"] and r["results"][0]["name"] in ("steam-engine", "steam-turbine", "burner-generator")
@@ -111,3 +189,28 @@ def test_premier_generateur_craftable_a_la_main():
         assert not recipe.get("crafted_in"), f"{recipe['name']} exige un atelier"
         for ing in recipe["ingredients"]:
             assert ing["type"] == SLOT_ITEM, f"{recipe['name']} consomme un fluide {ing}"
+
+
+def test_premier_generateur_ingredients_non_electriques():
+    """§10 : AUCUN ingrédient du premier générateur (bootstrap) n'est produit
+    par un BÂTIMENT ÉLECTRIQUE. Un tel ingrédient ne serait craftable qu'une
+    fois l'électricité en place — or c'est ce même générateur qui l'amorce
+    (boucle bootstrap → générateur incraftable). On bannit donc de ses
+    ingrédients tout item produit par un atelier électrique (§10)."""
+    for seed in range(40):
+        rng = random.Random(seed)
+        db = build_demo_db()
+        chain = build_starter_chain(
+            rng, db, make_patches(("item", "iron-ore"), ("fluid", "water"))
+        )
+        resolve_electricity(rng, db, chain, lake_resources={"water"})
+        for recipe in chain.state.recipes:
+            if recipe["results"] and recipe["results"][0]["name"] in (
+                "steam-engine", "steam-turbine", "burner-generator",
+            ):
+                for ing in recipe["ingredients"]:
+                    if ing["type"] == SLOT_ITEM:
+                        assert not _production_is_electric(db, chain.state, ing["name"]), (
+                            f"seed {seed}: ingrédient {ing['name']} du générateur "
+                            f"{recipe['results'][0]['name']} produit par un bâtiment électrique"
+                        )

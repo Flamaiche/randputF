@@ -11,6 +11,11 @@ map:
   patches_max: 8
   richness_item: [50000, 300000]
   richness_fluid: [100000, 600000]
+  # Nombre aléatoire de blocs/puits par gisement (pose explicite au runtime,
+  # §6.5). Chaque bloc/puits est une entité-resource — minable par foreuse pour
+  # un item, pompeable par pumpjack pour un fluide — dispersée autour du centre
+  # du gisement (cluster serré au spawn).
+  wells_per_patch: [3, 8]
 
 pools:
   exclude_items: []

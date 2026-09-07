@@ -24,25 +24,23 @@ Anti-cycle §8 garanti par construction, sur DEUX axes :
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import dataclass, field
 
-from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, SLOT_FLUID, SLOT_ITEM, VanillaDB
+from tool.common.db import (
+    SLOT_FLUID,
+    SLOT_ITEM,
+    ENVIRONMENTAL_ITEMS,
+    ROCKET_CHAIN,
+    VALID_RECIPE_CATEGORIES,
+    VanillaDB,
+    has_hidden_recipe,
+    is_fixed_crafter,
+    is_fixed_fluid_crafter,
+)
 from tool.prototypes.recipes import RecipeConfig
 
 _config = RecipeConfig()
-
-# Catégories de craft réelles du jeu (data.raw["recipe-category"] de base).
-VALID_RECIPE_CATEGORIES = frozenset({
-    "crafting",
-    "basic-crafting",
-    "advanced-crafting",
-    "smelting",
-    "chemistry",
-    "crafting-with-fluid",
-    "oil-processing",
-    "rocket-building",
-    "centrifuging",
-})
 
 # Seules ces catégories acceptent des fluides en ingrédients.
 FLUID_RECIPE_CATEGORIES = frozenset({
@@ -67,6 +65,18 @@ class ProgressionState:
     recipes: list[dict] = field(default_factory=list)
     steps: list[dict] = field(default_factory=list)
     pending: set[str] = field(default_factory=set)
+    # Équilibre production/consommation (C2) : compteurs cumulés au fil de la
+    # génération, et cible tirée une fois par seed. Sert à pondérer le tirage
+    # des ingrédients (consommer le surplus) et le choix des produits (ne pas
+    # produire plus de ce qui est déjà pléthore).
+    production: Counter = field(default_factory=Counter)
+    consumption: Counter = field(default_factory=Counter)
+    balance_target: float | None = None
+    # Assignation de fluides aux bâtiments à comportement fixe (§6/§10) :
+    # {building_name: {"input": fluid, "output"?: fluid}}. Construit par
+    # electricity.resolve_electricity (turbine du premier générateur) et
+    # building_fluids.assign_building_fluids (boilers, autres turbines).
+    building_fluid_assignments: dict = field(default_factory=dict)
 
     def is_obtained(self, kind: str, name: str) -> bool:
         if kind == SLOT_ITEM:
@@ -83,6 +93,36 @@ class ProgressionState:
         return [(SLOT_ITEM, n) for n in sorted(self.obtained_items)] + [
             (SLOT_FLUID, n) for n in sorted(self.obtained_fluids)
         ]
+
+    def ensure_balance_target(self, rng: random.Random) -> None:
+        """C2 : tire une fois la cible d'équilibre cons/prod de la seed,
+        uniformément entre `balance_min` et `balance_max` (défaut 3/16..2/3)."""
+        if self.balance_target is None:
+            self.balance_target = rng.uniform(_config.balance_min, _config.balance_max)
+
+    def record_recipe(self, recipe: dict) -> None:
+        """C2 : incrémente production/consommation depuis une recette posée."""
+        for res in recipe.get("results") or []:
+            self.production[res["name"]] += res.get("amount", 1)
+        for ing in recipe.get("ingredients") or []:
+            self.consumption[ing["name"]] += ing.get("amount", 1)
+
+    def balance_factor(self, name: str) -> float:
+        """C2 : facteur de pondération équilibre pour `name`.
+
+        ratio = consommation / production. Une valeur **basse** = item
+        PRODUIT mais peu CONSOMMÉ (pléthore/unused) ; une valeur **haute** =
+        CONSOMMÉ mais peu PRODUIT (rare). La cible `balance_target` est le
+        ratio « juste ». On oriente PAR USAGE :
+        - comme INGRÉDIENT (consommer) : on récompense la pléthore
+          (ratio bas) → facteur > 1, on pénalise la rareté (ratio haut) → < 1 ;
+        - le signe inverse sert côté PRODUCTION (`_pick_product`).
+        Absent du comptage → facteur neutre 1.0."""
+        if name not in self.production and name not in self.consumption:
+            return 1.0
+        ratio = self.consumption.get(name, 0) / (self.production.get(name, 0) + 1e-9)
+        t = self.balance_target or 1.0
+        return _config.balance_weight(ratio, t)
 
 
 def ensure_obtainable(
@@ -128,6 +168,7 @@ def make_recipe(
     product_kind: str,
     product_name: str,
     forbidden: frozenset[str] = frozenset(),
+    force_building=None,
 ) -> dict:
     """Tire et enregistre une recette pour ``product_name``, puis le marque obtenu."""
     for existing in state.recipes:
@@ -142,7 +183,7 @@ def make_recipe(
         raise ValueError(f"dépendance circulaire détectée sur {key}")
     state.pending.add(key)
     try:
-        recipe = _make_recipe(rng, db, state, product_kind, product_name, forbidden | {product_name})
+        recipe = _make_recipe(rng, db, state, product_kind, product_name, forbidden | {product_name}, force_building=force_building)
     finally:
         state.pending.discard(key)
     state.recipes.append(recipe)
@@ -161,6 +202,7 @@ def _make_recipe(
     recipe_name: str | None = None,
     building_whitelist: frozenset[str] | None = None,
     handcraft: bool = False,
+    force_building=None,
 ) -> dict:
     """Tire une recette brute pour ``product_name``.
 
@@ -188,11 +230,21 @@ def _make_recipe(
     max_ingredients = min(_config.roll_ingredient_count(rng), len(eligible))
 
     if handcraft:
-        item_eligible = [e for e in eligible if e[0] == SLOT_ITEM]
+        # Bootstrap du PREMIER générateur électrique (§10) : AUCUN atelier et
+        # ingrédients 100% solides. En plus, on BANNIT tout ingrédient dont la
+        # production exige déjà un BÂTIMENT ÉLECTRIQUE : cet ingrédient ne
+        # serait craftable qu'une fois l'électricité en place — mais c'est ce
+        # générateur même qui l'amorce (anti-boucle). On ne garde donc que des
+        # ingrédients obtenables SANS électricité (patch item direct, kit,
+        # environnement, ou recette dans un atelier non-électrique à la main).
+        item_eligible = [
+            e for e in eligible if e[0] == SLOT_ITEM
+            and not _production_is_electric(db, state, e[1])
+        ]
         n_item_ing = min(max_ingredients, len(item_eligible))
         ingredients = _sample_items_weighed(rng, db, item_eligible, n_item_ing, state)
         rng.shuffle(ingredients)
-        return _bake_recipe(rng, db, product_kind, product_name, ingredients, recipe_name)
+        return _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name)
 
     needs_fluid_out = product_kind == SLOT_FLUID
     max_fluid_ing = _available_fluid_inputs(db, state, exclude_buildings, building_whitelist)
@@ -218,7 +270,7 @@ def _make_recipe(
 
     building = _pick_building(
         rng, db, state, n_item_ing, n_fluid_ing, needs_fluid_out, product_name,
-        exclude_buildings, building_whitelist,
+        exclude_buildings, building_whitelist, force_building=force_building,
     )
     if building is None and needs_fluid_out:
         raise ValueError(
@@ -237,10 +289,10 @@ def _make_recipe(
         rng.shuffle(ingredients)
         building = _pick_building(
             rng, db, state, n_item_ing, 0, False, product_name, exclude_buildings,
-            building_whitelist,
+            building_whitelist, force_building=force_building,
         )
 
-    recipe = _bake_recipe(rng, db, product_kind, product_name, ingredients, recipe_name)
+    recipe = _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name)
     if building is None:
         # Bootstrap a la main (dernier recours, cf. four de pierre vanilla) :
         # recette sans categorie ni atelier, fabricable dans l'inventaire.
@@ -250,7 +302,7 @@ def _make_recipe(
     return recipe
 
 
-def _bake_recipe(rng, db, product_kind, product_name, ingredients, recipe_name=None):
+def _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name=None):
     """Assemble le dictionnaire de recette (nom, energy, ingrédients, résultats)
     hors atelier : le choix du bâtiment (`crafted_in`/`category`) est laissé à
     l'appelant. Sans atelier la recette a aucune catégorie → « crafting » par
@@ -261,9 +313,9 @@ def _bake_recipe(rng, db, product_kind, product_name, ingredients, recipe_name=N
         # Item non-stackable (armure, arme, véhicule...) : une recette ne peut
         # en produire qu'un seul exemplaire (erreur de chargement sinon).
         result_amount = 1
-    return {
+    recipe = {
         "name": final_name,
-        "energy": _config.roll_energy(rng),
+        "energy": _config.roll_energy(rng, len(ingredients)),
         "ingredients": [
             {"type": kind, "name": name, "amount": _roll_amount(rng, db, name)}
             for kind, name in ingredients
@@ -272,6 +324,10 @@ def _bake_recipe(rng, db, product_kind, product_name, ingredients, recipe_name=N
             {"type": product_kind, "name": product_name, "amount": result_amount}
         ],
     }
+    # C2 : alimente le comptage production/consommation (les quantités réelles
+    # sont déjà rollées ci-dessus).
+    state.record_recipe(recipe)
+    return recipe
 
 
 def _has_production_item(db: VanillaDB, state: ProgressionState) -> bool:
@@ -298,12 +354,13 @@ def _sample_items_weighed(rng, db, eligible, n: int, state: ProgressionState):
     de production, ils redevenent rares (petites quantités, surtout en début)."""
     if n <= 0 or not eligible:
         return []
+    state.ensure_balance_target(rng)
     cold_start = not _has_production_item(db, state)
     pool = list(eligible)
     picked = []
     for _ in range(min(n, len(pool))):
         weights = [
-            _environmental_weight(entry[1], cold_start)
+            _environmental_weight(entry[1], cold_start) * state.balance_factor(entry[1])
             for entry in pool
         ]
         total = sum(weights)
@@ -348,8 +405,9 @@ def _item_is_stackable(db: VanillaDB, name: str) -> bool:
 def _recipe_category(building, fluid_ing: bool, fluid_out: bool) -> str:
     """Catégorie de craft réelle supportée par le bâtiment.
 
-    ``building.functional_type`` (transformer/extractor/...) n'est pas une
-    recipe-category du jeu : il faut une valeur de ``crafting_categories`` qui
+    ``building.crafting_categories`` (les tags du bâtiment, comme
+    ``is_crafter``, n'ont rien à voir avec les categories de craft du jeu) :
+    il faut une valeur de ``crafting_categories`` qui
     existe dans data.raw["recipe-category"] et accepte les fluides.
     """
     cats = [c for c in building.crafting_categories if c in VALID_RECIPE_CATEGORIES]
@@ -402,6 +460,39 @@ def _is_atelier(b) -> bool:
     return bool(b.crafting_categories and any(c in VALID_RECIPE_CATEGORIES for c in b.crafting_categories))
 
 
+def _is_fixed_recipe_transformer(b) -> bool:
+    """Un transformateur à RECETTE FIXE dont le générateur randomise la
+    recette UNIQUE — sortie fluide (boiler/heat-exchanger) OU item (équivalent
+    fourni par un mod).
+
+    @deprecated shim — délègue à ``is_fixed_crafter`` (tool.common.db),
+    détecté par capacités au chargement du dump (pas de liste de noms)."""
+    return is_fixed_crafter(b)
+
+
+def _production_is_electric(db: VanillaDB, state: ProgressionState, item_name: str) -> bool:
+    """L'item ``item_name`` est-il produit par une recette en BÂTIMENT ÉLECTRIQUE ?
+
+    Utilisé pour banir les ingrédients du bootstrap du premier générateur (§10) :
+    un item dont la production exige l'électricité ne peut être crafté qu'une
+    fois le réseau en place — si ce même item est ingrédient du générateur qui
+    amorce ce réseau, c'est une boucle (incraftable).
+
+    Une recette :
+      * `crafted_in` = bâtiment ÉLECTRIQUE → True (exige l'électricité) ;
+      * `crafted_in` = bâtiment non-électrique (burner…) → False ;
+      * sans `crafted_in` (handcraft / patch direct / kit / environnement) →
+        False (obtenu sans électricité)."""
+    for r in state.recipes:
+        res = r.get("results") or []
+        if res and res[0].get("type") == SLOT_ITEM and res[0].get("name") == item_name:
+            ci = r.get("crafted_in")
+            if ci and ci in db.buildings and db.buildings[ci].energy_type == "electric":
+                return True
+            return False
+    return False
+
+
 def _blocked_building(db, state, building_name: str) -> bool:
     item = _item_for_building(db, building_name)
     return item is not None and f"{SLOT_ITEM}:{item.name}" in state.pending
@@ -422,10 +513,19 @@ def _pick_building(
     product_name: str,
     exclude_buildings: frozenset[str],
     whitelist: frozenset[str] | None = None,
+    force_building=None,
 ):
     def fits(b) -> bool:
+        # Un bâtiment à RECETTE CACHÉE (has_hidden_recipe : boiler/heat-
+        # exchanger, nuclear-reactor, tout équivalent de mod) est SUBTRAIT du
+        # pool des ateliers : sa recette est unique et randomisée par le
+        # générateur, on ne lui choisit JAMAIS une recette générique ici.
+        # Garde explicite doublant `_is_atelier` (un fixe n'a aucune catégorie
+        # valide — le réacteur, générateur, n'en a pas plus), pour lisibilité
+        # du contrat.
         return (
-            _is_atelier(b)
+            not has_hidden_recipe(b)
+            and _is_atelier(b)
             and b.item_input_slots >= n_item_ing
             and b.fluid_inputs >= n_fluid_ing
             and (not needs_fluid_out or b.fluid_outputs >= 1)
@@ -433,6 +533,22 @@ def _pick_building(
 
     def blocked(b) -> bool:
         return _blocked_building(db, state, b.name)
+
+    if force_building is not None:
+        # Transformateur à recette fixe (§6/§10) : la recette reste hébergée
+        # par CE bâtiment (sa « recette » unique, entièrement randomisée). Il
+        # est déjà débloqué (déployé en tant qu'élément transformer). Le
+        # bâtiment « convient » si ses fluid boxes acceptent le fluide d'entrée
+        # et la sortie fluide ; la catégorie de craft réelle lui est attribuée
+        # en data-updates (donnée ici par `_recipe_category`).
+        if (
+            force_building.name not in exclude_buildings
+            and force_building.item_input_slots >= n_item_ing
+            and force_building.fluid_inputs >= n_fluid_ing
+            and (not needs_fluid_out or force_building.fluid_outputs >= 1)
+        ):
+            return force_building
+        return None
 
     if whitelist is not None:
         candidates = sorted(
@@ -544,4 +660,4 @@ def _is_extractor_item(db: VanillaDB, product_kind: str, product_name: str) -> b
     if item is None or not item.place_result:
         return False
     building = db.buildings.get(item.place_result)
-    return building is not None and building.functional_type == "extractor"
+    return building is not None and building.is_extractor

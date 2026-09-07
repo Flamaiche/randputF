@@ -83,7 +83,7 @@ def test_batiment_recherche_debloque():
     chain = build_starter_chain(random.Random(3), db, make_patches(("item", "iron-ore")))
     unlocked_research = {
         b.name for b in db.buildings.values()
-        if b.functional_type == "research" and b.name in chain.state.unlocked_buildings
+        if b.is_research and b.name in chain.state.unlocked_buildings
     }
     assert unlocked_research
 
@@ -106,7 +106,7 @@ def test_recherche_obligatoire_dans_2eme_research_gratuite():
         i.name for i in db.items.values()
         if i.place_result
         and db.buildings.get(i.place_result)
-        and db.buildings[i.place_result].functional_type == "research"
+        and db.buildings[i.place_result].is_research
     }
     lab_recipes = {f"randputf-{item}" for item in research_items}
     assert not (set(extraction["unlocks_recipes"]) & lab_recipes)
@@ -133,3 +133,37 @@ def test_patches_sans_ressource_dupliquee():
         patches = generate_patches(rng, db, {})
         resources = [p.resource for p in patches]
         assert len(resources) == len(set(resources)), f"seed {seed}: {resources}"
+
+
+def test_landfill_garanti_des_lacs():
+    """C4 : quand la seed tire au moins un lac (plus d'eau vanilla), le landfill
+    est craftable dès le bootstrap (recette randputf-landfill + unlock par la
+    tech gratuite starter-transformation), jamais laissé au hasard du balayage."""
+    rng = random.Random(11)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")), has_lakes=True)
+    # landfill obtenable : sa recette randputf-landfill existe et est unlockée
+    landfill_recipe = next(
+        (r for r in chain.recipes
+         if r["results"] and r["results"][0]["name"] == "landfill"),
+        None,
+    )
+    assert landfill_recipe is not None
+    assert landfill_recipe["name"] == "randputf-landfill"
+    # unlockée par une tech gratuite du starter
+    unlocked = {
+        r for step in chain.tech_steps for r in step.get("unlocks_recipes", [])
+    }
+    assert "randputf-landfill" in unlocked
+
+
+def test_pas_de_landfill_sans_lac():
+    """C4 : sans lac, on ne force PAS le landfill dans le starter (il reste au
+    balayage §9.6). La seed préserve son aléa."""
+    rng = random.Random(11)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")), has_lakes=False)
+    uncovered = {
+        r for step in chain.tech_steps for r in step.get("unlocks_recipes", [])
+    }
+    assert "randputf-landfill" not in uncovered
