@@ -149,7 +149,7 @@ def test_extracteurs_se_craftent_uniquement_avec_des_items():
     extractor_items = {
         i.name for i in db.items.values()
         if i.place_result and db.buildings.get(i.place_result) is not None
-        and db.buildings[i.place_result].functional_type == "extractor"
+        and db.buildings[i.place_result].is_extractor
     }
     assert extractor_items  # la démo doit en contenir
     for target in extractor_items:
@@ -163,3 +163,65 @@ def test_extracteurs_se_craftent_uniquement_avec_des_items():
         recipe = next(r for r in state.recipes if r["results"][0]["name"] == target)
         fluid_ings = [i for i in recipe["ingredients"] if i["type"] == SLOT_FLUID]
         assert not fluid_ings, f"{recipe['name']} utilise un fluide: {fluid_ings}"
+
+
+def test_energie_scale_avec_le_nombre_d_ingredients():
+    """C6 : le temps de craft (energy) croît avec la complexité de la recette.
+    Base fixe (liste 1 valeur) → n ingrédients ⇒ energy = base ×
+    (1 + energy_per_ingredient × n). Une recette lourde prend logiquement plus
+    de temps qu'une recette simple."""
+    from tool.prototypes.recipes import RecipeConfig
+
+    cfg = RecipeConfig(recipe_energies=[1.0], energy_per_ingredient=0.25)
+    rng = random.Random(1)
+    e1 = cfg.roll_energy(rng, n_ingredients=1)
+    e3 = cfg.roll_energy(rng, n_ingredients=3)
+    assert e1 == 1.25
+    assert e3 == 1.75
+    assert e3 > e1  # recette plus complexe = plus longue
+    # backward-compat : sans nb d'ingrédients, le tirage reste un choix de base
+    cfg2 = RecipeConfig(recipe_energies=[0.5, 1.0, 2.0])
+    assert cfg2.roll_energy(rng) in (0.5, 1.0, 2.0)
+
+
+def test_equilibre_production_consommation():
+    """C2 : un item PRODUIT mais jamais CONSOMMÉ (pléthore) devient un
+    ingrédient privilégié (on écoule le surplus) et un produit freiné (on ne
+    fabrique pas plus de ce qui est déjà pléthore). Le facteur d'équilibre
+    traduit ce déséquilibre : > 1 en tant qu'ingrédient."""
+    from tool.generator.recipes import ProgressionState
+
+    state = ProgressionState()
+    state.balance_target = 2.0  # cible hautes cons/prod → iron-plate très en-dessous
+    # iron-plate : produit 3x, consommé 0x → pléthore
+    state.record_recipe({
+        "name": "randputf-a",
+        "results": [{"name": "iron-plate", "amount": 3}],
+        "ingredients": [{"name": "iron-ore", "amount": 2}],
+    })
+    # copper-plate : non encore compté → neutre
+    assert state.balance_factor("copper-plate") == 1.0
+    # iron-plate : ratio = 0/(3) = 0 → borné au quota pléthore → récompensé
+    assert state.balance_factor("iron-plate") > 1.0
+    # Côté ingrédient : on écoule le surplus → sur 200 tirages, iron-plate
+    # (pléthore) gagne plus souvent que copper-plate (neutre).
+    db = build_demo_db()
+    eligible = [("item", "iron-plate"), ("item", "copper-plate")]
+    wins = 0
+    for i in range(200):
+        rng = random.Random(i)
+        picked = _sample_items_weighed(rng, db, eligible, 1, state)
+        if picked and picked[0][1] == "iron-plate":
+            wins += 1
+    assert wins > 100
+
+
+def test_equilibre_etat_neutre_sans_recettes():
+    """C2 : sans aucune recette, tous les items sont à l'équilibre (facteur
+    1.0) — aucun biais a priori du générateur."""
+    from tool.generator.recipes import ProgressionState
+
+    state = ProgressionState()
+    for name in ("iron-plate", "copper-plate", "wood"):
+        assert state.balance_factor(name) == 1.0
+

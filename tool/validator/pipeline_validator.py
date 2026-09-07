@@ -98,6 +98,7 @@ def validate_pipeline(
     technologies: list[dict],
     db: VanillaDB,
     patch_resources: set[str] | None = None,
+    lake_resources: set[str] | None = None,
 ) -> ValidationResult:
     """Valide l'ensemble du pipeline de génération.
 
@@ -108,7 +109,11 @@ def validate_pipeline(
       - state : état de progression (recettes, items/fluides obtenus)
       - technologies : liste de techs (dicts) du tech_tree.py
       - db : base vanilla (pour vérifier l'existence des items)
-      - patch_resources : ressources déjà au sol (optionnel)
+      - patch_resources : ressources déjà au sol (patchs, optionnel)
+      - lake_resources : fluides déjà posés en LAC (IDEES C2/C6) — les lacs
+        sont des ressources brutes obtenables dès le départ (pompe offshore,
+        volume infini) : ils comptent comme source externe pour la solvabilité
+        du bootstrap, au même titre qu'un patch.
 
     Retourne :
       - ValidationResult avec is_valid, issues, warnings, stats
@@ -118,12 +123,19 @@ def validate_pipeline(
     # Si pas de ressources au sol fournies, extraire du state
     if patch_resources is None:
         patch_resources = set()
+    if lake_resources is None:
+        lake_resources = set()
+
+    # Sources externes = patchs + lacs (IDEES C2) : les deux sont obtenables
+    # dès le départ sans recette. Un fluide en lac est une raw resource
+    # pompeable immédiatement ; il doit donc compter dans la solvabilité.
+    external = set(patch_resources) | set(lake_resources)
 
     # ── Invariant 1 : anti-cycle ────────────────────────────────────────
-    _check_anti_cycle(state, result, patch_resources)
+    _check_anti_cycle(state, result, external)
 
     # ── Invariant 2 : progressivité ─────────────────────────────────────
-    _check_progressivity(state, patch_resources, result)
+    _check_progressivity(state, external, result)
 
     # ── Invariant 3 : cohérence tech-recettes ───────────────────────────
     _check_tech_recipe_coherence(state, technologies, result)
@@ -132,13 +144,13 @@ def validate_pipeline(
     _check_tech_costs_obtainable(technologies, state, result)
 
     # ── Invariant 5 : règle des tuyaux (§8/§15) ────────────────────────
-    _check_pipe_rule(state, patch_resources, result)
+    _check_pipe_rule(state, external, result)
 
     # ── Invariant 6 : complétude fusée (§14) ───────────────────────────
     _check_victory_requirements(state, result)
 
     # ── Invariant 7 : packs sans ressource brute (§13) ──────────────────
-    _check_packs_no_raw(state, patch_resources, db, result)
+    _check_packs_no_raw(state, patch_resources, lake_resources, db, result)
 
     # ── Statistiques ────────────────────────────────────────────────────
     free_techs = sum(1 for t in technologies if not t.get("unit", {}).get("ingredients"))
@@ -237,8 +249,12 @@ def _check_progressivity(
     Si un ingrédient manque, c'est un bug du générateur (la recette
     a été créée avant que son ingrédient ne soit disponible).
     """
-    # Pool = ressources au sol + items/fluides déjà obtenus
+    # Pool = ressources au sol (patchs + lacs, IDEES C2) + environnement
+    # (récoltable à la main, §3/§6/§9.3) + items/fluides obtenus. Les lacs et
+    # l'environnement sont obtenables dès le départ — cohérent avec l'anti-cycle
+    # et le point fixe `_detect_unreachable_products`.
     pool = set(patch_resources)
+    pool.update(ENVIRONMENTAL_ITEMS)
     pool.update(state.obtained_items)
     pool.update(state.obtained_fluids)
 
@@ -585,22 +601,29 @@ def _check_victory_requirements(
 def _check_packs_no_raw(
     state: ProgressionState,
     patch_resources: set[str],
+    lake_resources: set[str],
     db: VanillaDB,
     result: ValidationResult,
 ) -> None:
     """Vérifie qu'aucun science pack n'est crafté avec une ressource brute.
 
     Les packs sont la monnaie de recherche (§13) : leur recette ne doit jamais
-    consommer de matière extraite directement du sol — patch posé au sol ou
-    fluide extrait (fini), item environnemental récolté à la main (bois/pierre/
-    poisson), ou fluide d'extraction "infini" (eau, pétrole brut, vapeur, §3).
+    consommer de matière extraite directement du sol — patch posé au sol,
+    fluide de LAC (pompe offshore, IDEES C2/C6 : une raw resource de plus),
+    item environnemental récolté à la main (bois/pierre/poisson), ou fluide
+    d'extraction "infini" (eau, pétrole brut, vapeur, §3).
 
     Même si une ressource devient par ailleurs craftable en fin de seed (un
     patch recouvert d'une recette randputf-*), elle reste "brute" : la recette
     du pack doit se reposer sur des intermédiaires craftés. C'est la sécurité
     de second niveau — la génération l'applique déjà via `forbidden` sur
     ensure_obtainable/make_recipe (starter, branche science, balayage)."""
-    raw = set(patch_resources) | set(ENVIRONMENTAL_ITEMS) | set(db.extraction_only_fluids)
+    raw = (
+        set(patch_resources)
+        | set(lake_resources or ())
+        | set(ENVIRONMENTAL_ITEMS)
+        | set(db.extraction_only_fluids)
+    )
     violations = []
     for recipe in state.recipes:
         is_pack = any(

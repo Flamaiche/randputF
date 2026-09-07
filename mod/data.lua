@@ -93,6 +93,14 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
     if recipe_seed.category and data.raw["recipe-category"][recipe_seed.category] then
       recipe_def.category = recipe_seed.category
     end
+    -- §6/§10 : fabricateur à recette FIXE (boiler/heat-exchanger…). La recette
+    -- du seed porte `crafted_in` = CE bâtiment précis : en 2.0 cela restreint
+    -- la recette à ce bâtiment (priorité sur la correspondance catégorie→cartes).
+    -- Sans cela la recette randputf-boiler-* serait craftable dans TOUS les
+    -- ateliers « crafting-with-fluid », pas dans le boiler lui-même.
+    if recipe_seed.crafted_in then
+      recipe_def.crafted_in = {recipe_seed.crafted_in}
+    end
     data:extend({recipe_def})
 end
 

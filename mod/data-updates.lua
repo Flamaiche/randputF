@@ -110,6 +110,30 @@ local function get_primary_icon(proto)
   return nil
 end
 
+-- Types de prototypes « objet » (item-like). Un item Factorio n'est PAS
+-- toujours stocké dans `data.raw.item` : les armures, capsules, armes, outils,
+-- modules, etc. ont leur propre table `data.raw.<type>`. Sans cette recherche,
+-- une ressource de patch non-`item` (ex. power-armor) n'obtenait AUCUNE icône
+-- → icône par défaut du template dans le menu de génération de carte (§6).
+local ITEM_LIKE_TYPES = {
+  "item", "gun", "tool", "capsule", "ammo", "armor",
+  "repair-tool", "mining-tool", "module", "item-with-entity-data",
+  "selection-tool", "blueprint", "copy-paste-tool",
+  "deconstruction-item", "upgrade-item", "rail-planner",
+}
+
+local function find_item_proto(name)
+  if not name then return nil end
+  if data.raw.item and data.raw.item[name] then return data.raw.item[name] end
+  for _, t in ipairs(ITEM_LIKE_TYPES) do
+    local table_proto = data.raw[t]
+    if table_proto and table_proto[name] then
+      return table_proto[name]
+    end
+  end
+  return nil
+end
+
 local seen = {}
 local unique_patches = {}
 for _, patch in ipairs(patches) do
@@ -126,6 +150,22 @@ log("[randputF] " .. #unique_patches .. " unique resource entities to create")
 local autoplace_controls = {}
 local resources = {}
 local seed_value = (seed.meta and seed.meta.seed) or 1
+
+-- (Bonus §16) Les seeds « 19+ chiffres » dépassent 2^53 (~9e15) : toute
+-- arithmétique mapgen sur `seed_value` (seed1, map_color, parité de berge)
+-- perdrait la précision entière du double Lua. On dérive une graine 32 bits
+-- déterministe de la VALEUR (représentation décimale exacte) : même seed →
+-- même hash sur tous les builds. Le polynôme modulo 2^31 est exact en double
+-- (hash*131 < 2^53), indépendant de la longueur de la seed.
+local function seed_hash(value)
+  local h = 0
+  local s = tostring(value)
+  for j = 1, #s do
+    h = (h * 131 + s:byte(j)) % 2147483647
+  end
+  return h
+end
+local map_seed_hash = seed_hash(seed_value)
 
 for i, patch in ipairs(unique_patches) do
   local resource_name = patch.resource
@@ -156,31 +196,62 @@ for i, patch in ipairs(unique_patches) do
       results = {{ type = "fluid", name = resource_name, amount = 1 }},
     }
     new_entity.resource_category = "basic-fluid"
+    -- Puits oil (§6.5) : les patchs FLUIDES sont posés EXPLICITEMENT par le
+    -- mod au runtime (control.lua `on_chunk_generated`), puits par puits,
+    -- autour d'un centre fourni par la seed.
+    --
+    -- Tout prototype `resource` exige une spécification d'autoplace (sinon le
+    -- moteur refuse de charger la planète : « does not have an autoplace
+    -- specification »). On en fournit donc une avec `base_density = 0` :
+    -- la probabilité de placement DU MAPGEN est exactement nulle (aucune
+    -- génération), mais l'entité reste valide et positionnable par script.
+    -- Sa richesse est fixée au runtime via `entity.amount` (l'expression de
+    -- richesse de l'autoplace, nulle ici, ne sert alors à rien).
+    new_entity.autoplace = resource_autoplace.resource_autoplace_settings{
+      name = new_entity_name,
+      patch_set_name = new_entity_name,
+      autoplace_control_name = control_name,
+      base_density = 0,
+      base_spots_per_km2 = 2,
+      has_starting_area_placement = true,
+      seed1 = map_seed_hash * 1000 + i,
+    }
   else
     new_entity.minable = {
       mining_time = 1,
       results = {{ type = "item", name = resource_name, amount = 1 }},
     }
     new_entity.resource_category = "basic-solid"
-  end
 
-  new_entity.autoplace = resource_autoplace.resource_autoplace_settings{
-    name = new_entity_name,
-    patch_set_name = new_entity_name,
-    autoplace_control_name = control_name,
-    base_density = math.max(4, patch.richness * 8 / 100000),
-    base_spots_per_km2 = 2,
-    has_starting_area_placement = true,
-    seed1 = seed_value * 1000 + i,
-    additional_richness = patch.richness,
-  }
+    new_entity.autoplace = resource_autoplace.resource_autoplace_settings{
+      name = new_entity_name,
+      patch_set_name = new_entity_name,
+      autoplace_control_name = control_name,
+      -- Les ITEMS sont, eux aussi, posés au RUNTIME en gisements (§6.5) :
+      -- contrôle total de la position (gisements serrés au spawn). Comme pour
+      -- les fluides, une spécification d'autoplace EST requise (le moteur
+      -- refuse un resource sans autoplace), mais `base_density = 0` rend la
+      -- génération mapgen nulle — seule la logique runtime instancie les
+      -- blocs, avec richesse fixée via `entity.amount`.
+      base_density = 0,
+      base_spots_per_km2 = 2,
+      has_starting_area_placement = true,
+      seed1 = map_seed_hash * 1000 + i,
+    }
+  end
   new_entity.placeable_by = nil
 
-  local icon_src = is_fluid and data.raw["fluid"][resource_name] or data.raw["item"][resource_name]
+  local icon_src = is_fluid and data.raw["fluid"][resource_name] or find_item_proto(resource_name)
   local icon_path, icon_size = get_primary_icon(icon_src)
   if icon_path then
     new_entity.icon = icon_path
     new_entity.icon_size = icon_size
+  elseif not is_fluid then
+    -- Diagnostic : un patch item sans icône résolue garde l'icône par défaut du
+    -- template (iron-ore) — visiblement trompeur. On le signale au log pour
+    -- corriger ITEM_LIKE_TYPES / find_item_proto si cela se produit.
+    log("[randputF] WARN icone introuvable pour patch item: " .. (resource_name or "?") ..
+        " (proto_type=" .. tostring(icon_src and icon_src.type) .. ")")
   end
   if not is_fluid and icon_path then
     -- Minerais solides : l'icône de l'item sur le sol (stages en 4 positions).
@@ -198,9 +269,9 @@ for i, patch in ipairs(unique_patches) do
   end
 
   new_entity.map_color = {
-    r = (math.floor((seed_value * 131 + i * 47) % 101) + 30) / 255,
-    g = (math.floor((seed_value * 197 + i * 83) % 101) + 30) / 255,
-    b = (math.floor((seed_value * 251 + i * 127) % 101) + 30) / 255,
+    r = (math.floor((map_seed_hash * 131 + i * 47) % 101) + 30) / 255,
+    g = (math.floor((map_seed_hash * 197 + i * 83) % 101) + 30) / 255,
+    b = (math.floor((map_seed_hash * 251 + i * 127) % 101) + 30) / 255,
   }
 
   table.insert(resources, new_entity)
@@ -223,86 +294,173 @@ end
 log("[randputF] resources: " .. #resources .. " created")
 
 -- ── Lacs de fluide (§7.5) : 3e type de raw ressource ─────────────────────
--- L'eau vanilla de la carte est SUPPRIMÉE (plus aucun lac généré) : seules
--- subsistent les tuiles `randputf-lac-<fluid>` tirées par la seed. Chaque
--- tuile porte le champ `fluid` = fluide tiré : une pompe offshore VANILLA
--- posée dessus débite ce fluide (volume infini, comme l'eau). Zéro lac tiré
--- = carte sans eau. Richesse = taille du lac (le volume est infini).
+-- Les lacs sont DESSINÉS par le moteur d'altitude natif de Factorio (voir la
+-- section « 1) LACS VIA LE MOTEUR D'ALTITUDE ») : l'eau native devient la
+-- tuile fantôme `randputf-lac-neutre`. Au RUNTIME (control.lua §7.5), chaque
+-- lac connexe est flood-fillé et ses tuiles fantômes remplacées par
+-- `randputf-lac-<fluid>` (une tuile par fluide choisi par la seed). Une pompe
+-- offshore VANILLA posée dessus débite ce fluide (volume infini, comme
+-- l'eau). Richesse = taille du lac (le volume est infini).
+--
+-- Ici (data stage) on définit UN prototype de tuile PAR fluide de la seed :
+-- elles ne sont JAMAIS posées par le mapgen (autoplace = 0) — elles servent
+-- uniquement de cible à `set_tiles` au runtime.
 local lake_list = (seed.map or {}).lakes or {}
 if #lake_list > 0 then
 -- ── Couleur de lac (§7.5) ─────────────────────────────────────────────────
--- Recolore chaque nappe à partir du base_color de SON fluide : on conserve la
--- TEINTE (hue) vanilla mais on relève fortement saturation/luminance pour
--- que le lac soit visible sur la carte (map_color 0-255 moteur) et au sol.
--- Un simple scale du base_color serait inutilisable : le crude-oil est NOIR
--- ({0,0,0} → tuile {30,30,30}, invisible sur la minimap). Fluides sans
--- chromatisme (s ≈ 0) : teinte de secours distincte par fluide (table
--- lake_fallback_hue / lightness) pour ne pas les confondre.
-local function rgb_to_hsl(r, g, b)
+-- On colore chaque nappe avec la VRAIE couleur de son fluide (base_color),
+-- en relevant la luminance pour qu'il reste visible (le crude-oil est noir :
+-- sans relèvement, tuile {30,30,30}, invisible sur la minimap).
+--
+-- Gamme autorisée : teintes CLAIRES uniquement — vert clair, jaune, orange,
+-- bleu, cyan, turquoise. Les bruns foncés et verts foncés sont écartés
+-- (un lac ne doit jamais paraître « sale » ou noyé dans le terrain).
+-- On filtre donc le résultat par hochet de teinte (HEX) sur la gamme
+-- claire, en le rabattant vers la teinte claire la plus proche si besoin.
+local lake_fallbacks = {
+  ["crude-oil"]     = { 0.25, 0.55, 0.70 },  -- bleu turquoise clair (pas brun)
+  ["steam"]         = { 0.55, 0.75, 0.95 },  -- bleu pâle
+  ["hydrogen"]      = { 0.30, 0.80, 0.85 },  -- cyan vif
+  ["nitric-acid"]   = { 1.00, 0.70, 0.40 },  -- orange clair
+  ["sulfuric-acid"] = { 0.95, 0.85, 0.40 },  -- jaune clair
+}
+-- Palette pastel pour la minimap : luminosité ≥ 0.60, saturation ≥ 0.35,
+-- plafond 0.90.  Les patches ressources utilisent des couleurs vives
+-- (composantes 30..130 / 255) ; les lacs en clair se distinguent
+-- naturellement sans les écraser.
+local LAKE_MIN_LUM  = 0.60
+local LAKE_MIN_SAT  = 0.35
+local LAKE_MAX_LUM  = 0.90
+
+local function clamp01(v) return math.max(0, math.min(1, v)) end
+
+-- Les teintes claires « acceptables » (vert clair → orange → bleu/cyan).
+-- Un triplet est accepté si sa teinte dominante tombe dans l'une de ces
+-- fenêtres (hautes composantes, faible composante), ou s'il est pastel clair.
+local function hue_allowed(r, g, b)
   local mx, mn = math.max(r, g, b), math.min(r, g, b)
-  local l = (mx + mn) / 2
   local d = mx - mn
-  if d < 1e-6 then
-    return 0, 0, l
+  if d < 0.15 then
+    -- Couleur quasi-grise mais CLAIRE : acceptable uniquement si lumineuse
+    return r * 0.299 + g * 0.587 + b * 0.114 >= 0.68
   end
-  local s = l > 0.5 and d / (2 - mx - mn) or d / (mx + mn)
   local h
   if mx == r then
-    h = (g - b) / d
+    h = ((g - b) / d) % 6
   elseif mx == g then
     h = (b - r) / d + 2
   else
     h = (r - g) / d + 4
   end
-  h = h / 6
-  if h < 0 then h = h + 1 end
-  return h, s, l
+  h = h * 60  -- degrés (0..360)
+  -- Fenêtres claires : jaune/orange (15..60), vert clair (~75..140),
+  -- cyan/bleu clair (165..230). On EXCLUT le rouge vif, le brun, le vert
+  -- foncé et le bleu nuit.
+  return (h >= 12 and h <= 62)
+      or (h >= 70 and h <= 150)
+      or (h >= 165 and h <= 235)
 end
 
-local function hsl_component(p, q, t)
-  if t < 0 then t = t + 1 end
-  if t > 1 then t = t - 1 end
-  if t < 1 / 6 then return p + (q - p) * 6 * t end
-  if t < 1 / 2 then return q end
-  if t < 2 / 3 then return p + (q - p) * (2 / 3 - t) * 6 end
-  return p
-end
-
--- Teintes de secours pour les fluides sans chromatisme (base_color noir/blanc
--- : crude-oil, steam, hydrogen…). Sans hue propre, on attribue à CHAQUE fluide
--- dénué de hue une teinte distincte pour que ses lacs ne soient pas confondus.
-local lake_fallback_hue = {
-  ["crude-oil"]    = 0.06,  -- brun huile orangé
-  ["steam"]        = 0.60,  -- bleu clair
-  ["hydrogen"]     = 0.50,  -- cyan
-  ["nitric-acid"]  = 0.83,  -- magenta
-  ["sulfuric-acid"]= 0.16,
-}
--- Retourne un triplet RGB POUR LA CARTE : rendu éclatant, distinct du terrain,
--- conservant la hue du fluide (ou une hue de secours si achromatique). On
--- relève fortement saturation et luminance : un simple scale du base_color est
--- inutilisable (le crude-oil noir donnerait {30,30,30}, invisible).
-local function lake_color(r, g, b, fluid)
-  local h, s, l = rgb_to_hsl(r, g, b)
-  if s < 0.2 then
-    h = lake_fallback_hue[fluid] or (l < 0.4 and 0.04 or 0.58)
+-- Iterator : ajuste un triplet pour tomber dans la gamme claire autorisée.
+-- On essaie d'abord de garder la teinte d'origine (si elle est claire), sinon
+-- on la rabat vers la teinte claire la plus proche de la gamme.
+local function force_lake_range(r, g, b)
+  -- Éclaircissement : remonte la luminosité au minimum
+  local lum = r * 0.299 + g * 0.587 + b * 0.114
+  if lum < LAKE_MIN_LUM then
+    local k = LAKE_MIN_LUM / math.max(lum, 0.001)
+    r, g, b = clamp01(r * k), clamp01(g * k), clamp01(b * k)
   end
-  local ss = 0.92
-  local ll = 0.5
-  local q = ll < 0.5 and ll * (1 + ss) or ll + ss - ll * ss
-  local p = 2 * ll - q
-  return {
-    hsl_component(p, q, h + 1 / 3),
-    hsl_component(p, q, h),
-    hsl_component(p, q, h - 1 / 3),
+  -- Si la teinte est déjà dans la gamme claire, parfait.
+  if hue_allowed(r, g, b) then return r, g, b end
+  -- Sinon on rabat vers la teinte claire la plus proche de la gamme.
+  -- On garde la dominante et on mappe sur une teinte claire voisine.
+  local mx = math.max(r, g, b)
+  local t = {
+    { 0.30, 0.80, 0.85 },  -- cyan
+    { 0.55, 0.75, 0.95 },  -- bleu pâle
+    { 0.70, 0.85, 0.40 },  -- vert clair
+    { 1.00, 0.70, 0.35 },  -- orange
+    { 0.95, 0.85, 0.40 },  -- jaune
   }
+  local best, best_d = t[1], math.huge
+  for i = 1, #t do
+    local c = t[i]
+    local d = (c[1]-r)^2 + (c[2]-g)^2 + (c[3]-b)^2
+    if d < best_d then best_d, best = d, c end
+  end
+  return best[1], best[2], best[3]
 end
 
--- 1) Neutraliser l'autoplace de toutes les tuiles d'eau vanilla. On ne met
--- PAS `autoplace = nil` : le setup de la planète "nauvis" exige une spec
--- d'autoplace sur ces tuiles (erreur "does not have an autoplace
--- specification"). On impose une probabilité constante nulle — spec valide,
--- zéro tuile générée.
+local function pastel_floor(r, g, b)
+  -- 1) Force la gamme claire (teinte + luminosité)
+  r, g, b = force_lake_range(r, g, b)
+
+  -- 2) Saturation minimale (écart minimal entre la dominante et la moyenne)
+  local mx = math.max(r, g, b)
+  local mn = math.min(r, g, b)
+  local spread = mx - mn
+  if spread < LAKE_MIN_SAT then
+    local boost = (LAKE_MIN_SAT - spread) / 2
+    if mx == r then
+      r = clamp01(r + boost); g = clamp01(g - boost * 0.4); b = clamp01(b - boost * 0.4)
+    elseif mx == g then
+      g = clamp01(g + boost); r = clamp01(r - boost * 0.4); b = clamp01(b - boost * 0.4)
+    else
+      b = clamp01(b + boost); r = clamp01(r - boost * 0.4); g = clamp01(g - boost * 0.4)
+    end
+    -- Re-vérifie la teinte après le boost (peut avoir dérivé)
+    if not hue_allowed(r, g, b) then
+      r, g, b = force_lake_range(r, g, b)
+    end
+  end
+
+  -- 3) Plafond luminosité
+  local lum = r * 0.299 + g * 0.587 + b * 0.114
+  if lum > LAKE_MAX_LUM then
+    local k = LAKE_MAX_LUM / math.max(lum, 0.001)
+    r, g, b = clamp01(r * k), clamp01(g * k), clamp01(b * k)
+  end
+
+  return r, g, b
+end
+
+local function lake_color(fluid, base)
+  local r, g, b = base[1] or 0, base[2] or 0, base[3] or 0
+
+  -- Table de secours pour les fluides sans chromatisme propre (noir/blanc)
+  -- ou dont la teinte sort de la gamme claire.
+  local spread = math.max(r, g, b) - math.min(r, g, b)
+  local lum = r * 0.299 + g * 0.587 + b * 0.114
+  if lum < 0.18 or spread < 0.10 or not hue_allowed(r, g, b) then
+    local fb = lake_fallbacks[fluid]
+    if fb then r, g, b = fb[1], fb[2], fb[3] end
+  end
+
+  local pr, pg, pb = pastel_floor(r, g, b)
+  return { pr, pg, pb }
+end
+
+-- 1) LACS VIA LE MOTEUR D'ALTITUDE NATIF DE FACTORIO, remplis au runtime.
+--
+-- C'EST LE VRAI MOTEUR DE LACS DE FACTORIO : l'eau vanilla n'est pas posée
+-- par un placement de ressources (`resource_autoplace`) mais par la carte
+-- d'ALTITUDE (`elevation`). La tuile water vanilla a :
+--     autoplace = { probability_expression = "water_base(0, 100)" }
+-- avec water_base = if(max_elevation >= elevation, influence * min(...), -inf).
+-- L'altitude crée donc des lacs partout où le relief descend sous un seuil.
+--
+-- Au lieu de SUPPRIMER l'eau (qui faisait tout disparaître) on la REDIRIGE :
+--   * on neutralise les tuiles water/deepwater vanilla (property_expression_names
+--     → -inf) ;
+--   * on crée une tuile « fantôme » randputf-lac-neutre portant un FLUIDE
+--     INEXISTANT (randputf-neutre) et le MÊME autoplace que l'eau
+--     (water_base) : toute l'eau native devient donc cette tuile fantôme —
+--     « liquide mais non assignée », détectable et remplaçable au runtime ;
+--   * au runtime (control.lua §7.5) on FLOOD-FILL chaque lac connexe et on
+--     remplace ses tuiles fantômes par randputf-lac-<fluide>, le fluide étant
+--     celui d'une voisine déjà colorée (propage le long d'un même lac, à
+--     travers les chunks) sinon le prochain de la seed (tourniquet).
 local water_tiles = water_tile_type_names or {}
 if #water_tiles == 0 then
   water_tiles = {
@@ -310,45 +468,93 @@ if #water_tiles == 0 then
     "deepwater-green", "water-mud", "water-wube",
   }
 end
-local purged = 0
+-- (A2) Ensemble des noms d'eau vanilla en lookup O(1), utilisé par le patch
+-- des transitions pour détecter les tuiles de terre qui bordent l'eau.
+local water_has = {}
 for _, tname in ipairs(water_tiles) do
-  local t = data.raw.tile[tname]
-  if t then
-    t.autoplace = { probability_expression = 0 }
-    purged = purged + 1
-  end
+  water_has[tname] = true
 end
--- VÉRITÉ DE FOND : l'eau vanilla n'est pas posée par l'autoplace du
--- prototype de tuile mais par un mécanisme de TERRAIN lié à l'altitude
--- (noise water_base). Le forçage `probability_expression = 0` sur le
--- prototype ne suffit pas : le mapgen conserve de l'eau (mesuré : 3053
--- tuiles water/deepwater après neutralisation prototype seule).
--- La solution qui élimine TOUTE l'eau (mesuré : 0 tuile restante) est
--- l'override du mapgen par surface : `map_gen_settings.property_expression_names`
--- en remplaçant `tile:<n>:probability` par une expression constante négative.
--- On définit l'expression une fois et on l'applique à chaque tuile d'eau pour
--- la planète nauvis (seule planète jouable du mod). Les lacs randputf ne
--- sont pas touchés : leur autoplace vient de resource_autoplace, qui n'est
--- pas référencée dans property_expression_names.
+
+-- (B1) Fluide fantôme : un proto `fluid` INEXISTANT dans le jeu, servant
+-- uniquement de marqueur pour les tuiles-lac non encore remplies. Une pompe
+-- offshore posée dessus ne débite rien de constructible tant que la tuile n'a
+-- pas été remplacée par randputf-lac-<fluide> au runtime.
+local PHANTOM_FLUID = "randputf-neutre"
+local PHANTOM_TILE = "randputf-lac-neutre"
+data:extend{
+  {
+    type = "fluid",
+    name = PHANTOM_FLUID,
+    subgroup = "fluid",
+    default_temperature = 25,
+    base_color = { 1, 1, 1 },
+    flow_color = { 1, 1, 1 },
+    icon = "__randputF__/graphics/ghost-fluid.png",
+    icon_size = 64,
+    order = "zzz[randputf-neutre]",
+  },
+}
+
+-- (B2) Tuile fantôme : copie de l'eau, portant le fluide fantôme, et dotée du
+-- MÊME autoplace que l'eau (water_base) pour que l'altitude continue de créer
+-- des lacs — sous la forme de LA tuile fantôme et non de l'eau vanilla.
+local tile_water_proto = data.raw.tile.water or data.raw.tile.deepwater
+if tile_water_proto then
+  local phantom = table.deepcopy(tile_water_proto)
+  phantom.name = PHANTOM_TILE
+  phantom.localised_name = { "randputf.phantom-lake-name" }
+  phantom.fluid = PHANTOM_FLUID
+  phantom.order = "a-water-zz-0"
+  phantom.autoplace = { probability_expression = "water_base(0, 100)" }
+  -- (§7.5) Eau fantôme ENTIÈREMENT BLANCHE : on désactive le shader water
+  -- (effect/effect_color) et on force map_color + tint à blanc pur, tant sur
+  -- la carte que sur la surface en jeu (marqueur neutre avant le remplissage).
+  phantom.effect = nil
+  phantom.effect_color = nil
+  phantom.effect_color_secondary = nil
+  phantom.map_color = { 255, 255, 255 }
+  if phantom.variants and phantom.variants.main then
+    for _, layer in ipairs(phantom.variants.main) do
+      layer.tint = { 1, 1, 1, 1 }
+    end
+  end
+  data:extend{phantom}
+  log("[randputF] lacs: tuile fantome " .. PHANTOM_TILE .. " creee (moteur altitude water_base)")
+end
+
+-- (B3) Neutralisation des tuiles d'eau vanilla : seules elles sont « éteintes »
+-- via property_expression_names (le seul moyen fiable, validé headless : sans
+-- override le mapgen replaçait de l'eau même prototype désactivé). Le fantôme
+-- prend automatiquement leur place (même water_base, plus haut).
 data:extend{
   { type = "noise-expression", name = "randputf-no-water", expression = "-999" },
 }
+local purged = 0
 do
   local nauvis = data.raw["planet"] and data.raw["planet"].nauvis
   if nauvis and nauvis.map_gen_settings then
     local pen = nauvis.map_gen_settings.property_expression_names or {}
     for _, tname in ipairs(water_tiles) do
-      pen["tile:" .. tname .. ":probability"] = "randputf-no-water"
+      local t = data.raw.tile[tname]
+      if t then
+        pen["tile:" .. tname .. ":probability"] = "randputf-no-water"
+        purged = purged + 1
+      end
     end
     nauvis.map_gen_settings.property_expression_names = pen
   else
     log("[randputF] lacs: WARN planete nauvis introuvable — eau vanilla non neutralisée au mapgen")
   end
 end
-log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
+log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles) -> " .. PHANTOM_TILE)
 
   local tile_template = data.raw.tile.water or data.raw.tile.deepwater
   if tile_template then
+    -- (A1) Marqueurs de berge en table Lua locale, jamais sur le prototype :
+    -- `lake_borders[tile_name]` est lu directement par le patch des transitions
+    -- plus bas (pas de clé custom portée par data.raw.tile).
+    local lake_borders = {}
+    local lake_ctl_map = {}
     local lake_ctls = {}
     local lake_tiles = {}
     for i, lake in ipairs(lake_list) do
@@ -359,51 +565,73 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
         table.insert(lake_ctls, {
           type = "autoplace-control",
           name = ctl_name,
-          localised_name = {"", {"fluid-name." .. fluid}},
+          localised_name = {"", "[fluid=" .. fluid .. "] ", {"fluid-name." .. fluid}},
           richness = true,
-          category = "terrain",
+          -- catégorie "resource" (pas "terrain") pour que les lacs (fluides
+          -- INFINIS, « non quantifiables ») apparaissent dans la liste des
+          -- ressources du menu de génération de carte, comme les patchs.
+          category = "resource",
           order = "b-no-resource-regular",
         })
         if not lake_tiles[tile_name] then
+          lake_borders[tile_name] = true
           local fc = data.raw["fluid"][fluid]
           local base = fc.base_color or {1, 0, 0}
-          -- Couleur visible sur la carte ET au sol (§7.5) : base_color relevé
-          -- en saturation/luminance (hue conservée, black/steam → défaut).
-          local color = lake_color(base[1], base[2], base[3], fluid)
+          -- Couleur visible sur la carte ET au sol (§7.5).
+          local color = lake_color(fluid, base)
           local new_tile = table.deepcopy(tile_template)
           new_tile.name = tile_name
           new_tile.fluid = fluid
           new_tile.order = "a-water-zz-" .. i
-          new_tile.map_color = {
-            math.floor(color[1] * 200 + 30),
-            math.floor(color[2] * 200 + 30),
-            math.floor(color[3] * 200 + 30),
+          -- Couleur (§7.5) : l'eau vanilla se colore EN JEU par le shader water
+          -- (`effect = "water"` + `effect_color`), PAS par le tint des sprites
+          -- ni par map_color. Mettre `effect = nil` (comme avant) supprimait le
+          -- shader → eau rendue blanche et perte du comportement « eau » (fluide
+          -- non reconnu par la pompe). On garde donc `effect` natif et on aligne
+          -- `effect_color` (surface) et `map_color` (carte) sur la MÊME couleur
+          -- de base du fluide : surface et carte ont la même teinte (mécanisme
+          -- natif le plus simple). La couleur reste liée à la tuile-par-fluide.
+          new_tile.effect_color = {
+            math.floor(color[1] * 255 + 0.5),
+            math.floor(color[2] * 255 + 0.5),
+            math.floor(color[3] * 255 + 0.5),
           }
-          if new_tile.variants and new_tile.variants.main then
-            for _, layer in ipairs(new_tile.variants.main) do
-              layer.tint = {color[1], color[2], color[3], 1}
-            end
-          end
-          -- Berges (§7.5) : 1 lac sur 2 (déterministe par seed) hérite d'une
-          -- bordure sable/herbe. Les bordures des nappes sont dessinées par les
+          new_tile.effect_color_secondary = new_tile.effect_color
+          new_tile.map_color = {
+            math.floor(color[1] * 255 + 0.5),
+            math.floor(color[2] * 255 + 0.5),
+            math.floor(color[3] * 255 + 0.5),
+          }
+          -- Berges (§7.5) : TOUS les lacs héritent d'une bordure sable/herbe.
+          -- Les bordures des nappes sont dessinées par les
           -- tuiles de TERRE voisines via `transitions[].to_tiles` : on ajoutera
           -- ce nom de lac à la liste que celles-ci ciblent (patch plus bas).
           -- Sans cela, le lac coupe net (variants.empty_transitions, copié de
           -- water : pas de transition propre).
-          new_tile.lac_border = (seed_value + i) % 2 == 0
-          resource_autoplace.initialize_patch_set(tile_name, true)
-          new_tile.autoplace = resource_autoplace.resource_autoplace_settings{
-            name = tile_name,
-            patch_set_name = tile_name,
-            autoplace_control_name = ctl_name,
-            order = "b-no-resource-regular",
-            base_density = math.max(4, lake.richness * 8 / 100000),
-            base_spots_per_km2 = 2,
-            has_starting_area_placement = true,
-            seed1 = seed_value * 1000 + 700 + i,
-            additional_richness = lake.richness,
-          }
-          new_tile.lac_ctl = ctl_name
+          local has_border = lake_borders[tile_name]
+          -- (§7.5) LES TUILES-PAR-FLUIDE NE SONT JAMAIS POSÉES PAR LE MAPGEN.
+          -- Les lacs sont créés par le moteur d'ALTITUDE natif (tuile fantôme
+          -- randputf-lac-neutre, voir plus haut) ; ce prototype par fluide ne
+          -- sert qu'à RECOMMENCER une tuile fantôme en un lac coloré via
+          -- `surface.set_tiles` au runtime (control.lua §7.5). Autoplace forcé
+          -- à 0 : le mapgen ne doit pas créer directement ces tuiles — elles
+          -- ne portent un fluide QUE le flood-fill a choisi. (A5) Une seule
+          -- tuile par fluide : le dédup ci-dessus est le seul point de
+          -- collision — les duplicata de `lake_list` n'ont aucun effet.
+          new_tile.autoplace = { probability_expression = 0 }
+          -- (A6) Vraie coupe nette des lacs non bordés : on vide leurs
+          -- transitions (et transitions_between_transitions via empty_transitions)
+          -- pour que leur bord ne « fonde » pas côté lac. La berge d'un lac bordé
+          -- est portée par les tuiles de TERRE ; la transition propre du lac vers
+          -- la terre n'est pas nécessaire ici.
+          if not has_border then
+            new_tile.transitions = nil
+            new_tile.transitions_between_transitions = nil
+            if new_tile.variants then
+              new_tile.variants.empty_transitions = true
+            end
+          end
+          lake_ctl_map[tile_name] = ctl_name
           lake_tiles[tile_name] = new_tile
         end
       end
@@ -429,17 +657,19 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
 
     -- Berges des lacs (§7.5) : les transitions sable/terre sont portées par
     -- les tuiles de TERRE (`transitions[].to_tiles`, qui cible la liste des
-    -- tuiles d'eau). On ajoute ici les lacs marqués `lac_border` à ces
+    -- tuiles d'eau). On ajoute ici les lacs marqués `lake_borders` à ces
     -- cibles : leurs abords sont alors bordés comme une nappe vanilla, tandis
-    -- que les lacs sans bordure coupent net.
+    -- que les lacs sans bordure coupent net. (A1) `lake_borders` est la table
+    -- Lua locale, pas une clé de prototype. (A2) couverture complète : on cible
+    -- les 7 noms de `water_tiles` (pas seulement water/deepwater/water-green).
+    -- (A3) `bordered` est trié pour un data-stage déterministe.
     local bordered = {}
     for _, t in pairs(data.raw.tile) do
-      if t.name and t.name:find("^randputf%-lac%-") then
-        if t.lac_border then
-          bordered[#bordered + 1] = t.name
-        end
+      if t.name and lake_borders[t.name] then
+        bordered[#bordered + 1] = t.name
       end
     end
+    table.sort(bordered)
     if #bordered > 0 then
       local patched = 0
       for _, t in pairs(data.raw.tile) do
@@ -448,7 +678,7 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
           for _, tr in ipairs(t.transitions or {}) do
             if type(tr.to_tiles) == "table" then
               for _, tn in ipairs(tr.to_tiles) do
-                if tn == "water" or tn == "deepwater" or tn == "water-green" then
+                if water_has[tn] then
                   has_water_target = true
                   break
                 end
@@ -462,7 +692,7 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
             if type(tr.to_tiles) == "table" then
               local saw_water = false
               for _, tn in ipairs(tr.to_tiles) do
-                if tn == "water" or tn == "deepwater" or tn == "water-green" then
+                if water_has[tn] then
                   saw_water = true
                   break
                 end
@@ -493,8 +723,11 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
 
     -- Les tuiles terrain ne sont générées que si la planète les liste dans ses
     -- autoplace_settings["tile"].settings : sans cette inscription elles ne
-    -- participent jamais au mapgen. On inscrit donc chaque tuile de lac (et
-    -- son contrôle) auprès de nauvis, seule planète jouable du mod.
+    -- participent jamais au mapgen. On inscrit donc LA tuile fantôme (la SEULE
+    -- qui doit se générer, via water_base — le moteur d'altitude natif) et
+    -- chaque tuile-par-fluide (avec probabilité -inf) afin qu'elles soient des
+    -- tuiles VALIDES à poser par set_tiles au runtime, sans jamais être elles
+    -- générées par le mapgen.
     local nauvis = data.raw["planet"] and data.raw["planet"].nauvis
     if nauvis and nauvis.map_gen_settings then
       local mgs = nauvis.map_gen_settings
@@ -502,15 +735,27 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles)")
         and mgs.autoplace_settings["tile"]
         and mgs.autoplace_settings["tile"].settings
       if tile_settings then
+        local pen = mgs.property_expression_names or {}
+        -- Tuile fantôme : GÉNÉRÉE par l'altitude (water_base). Elle n'a pas de
+        -- distribution resource_autoplace ; on l'inscrit telle quelle.
+        if data.raw.tile[PHANTOM_TILE] then
+          tile_settings[PHANTOM_TILE] = {frequency = 1, size = 1}
+        end
+        -- Tuiles-par-fluide : jamais générées (probabilité -inf), mais posées
+        -- au runtime. Inscription indispensable pour que set_tiles les accepte.
         for _, lk in ipairs(lake_array) do
-          tile_settings[lk.name] = {}
-          if lk.lac_ctl then
+          tile_settings[lk.name] = {frequency = 1, size = 1}
+          pen["tile:" .. lk.name .. ":probability"] = "randputf-no-water"
+          local lctl = lake_ctl_map[lk.name]
+          if lctl then
             local ctls = mgs.autoplace_controls or {}
-            ctls[lk.lac_ctl] = {}
+            ctls[lctl] = {frequency = 1, size = 1, richness = 1}
             mgs.autoplace_controls = ctls
           end
         end
-        log("[randputF] lacs: " .. #lake_array .. " tuiles inscrites au mapgen nauvis")
+        mgs.property_expression_names = pen
+        log("[randputF] lacs: fantome + " .. #lake_array
+          .. " tuiles inscrites au mapgen nauvis (phantom générée, fluides via set_tiles)")
       else
         log("[randputF] lacs: planete nauvis SANS tile autoplace settings")
       end
@@ -564,6 +809,187 @@ do
     log("[randputF] offshore-pump can mine basic-fluid lakes; tooltip synced (no electricity)")
   else
     log("[randputF] WARN offshore-pump prototype not found")
+  end
+end
+
+-- Collecteur de fluid boxes (structure Factorio 2.0, aucune forme codée en dur) :
+--   * `fluid_box` (singulier) : generator (input), boiler/heat-exchanger (input),
+--     offshore-pump, fluid energy-source ;
+--   * `output_fluid_box` : boiler/heat-exchanger (output) ;
+--   * `fluid_boxes` (tableau) : crafting machines (assemblers, chemical plant).
+-- On itère aussi `energy_source.fluid_box` (energy source fluide) et
+-- `burner.fuel_fluid_box`. Chaque box est normalisée en
+-- { production_type = ..., filter = ... }. Retourne une table (array) ou nil.
+local function collect_fluid_boxes(proto)
+  local boxes = {}
+  local function push(box)
+    if type(box) == "table" and box.production_type then
+      boxes[#boxes + 1] = box
+    end
+  end
+  -- Boiler/heat-exchanger/generator/offshore-pump : boxes dédiées.
+  if type(proto.fluid_box) == "table" then push(proto.fluid_box) end
+  if type(proto.output_fluid_box) == "table" then push(proto.output_fluid_box) end
+  -- Crafting machines (assembler, chemical plant, ...).
+  if type(proto.fluid_boxes) == "table" then
+    for _, b in pairs(proto.fluid_boxes) do push(b) end
+  end
+  -- Energy source fluide (generator à fluide / fusion) et fuel fluid box.
+  if type(proto.energy_source) == "table" then
+    if type(proto.energy_source.fluid_box) == "table" then
+      push(proto.energy_source.fluid_box)
+    end
+    if type(proto.energy_source.output_fluid_box) == "table" then
+      push(proto.energy_source.output_fluid_box)
+    end
+  end
+  if type(proto.burner) == "table" and type(proto.burner.fuel_fluid_box) == "table" then
+    push(proto.burner.fuel_fluid_box)
+  end
+  if #boxes == 0 then return nil end
+  return boxes
+end
+
+-- ── Fluides génériques : aucun bâtiment n'est figé sur steam/water (§6, §10)
+-- --------------------------------------------------------------------------
+-- Dans l'univers randputF, un fluide n'a aucune identité fixe (fires
+-- arbitrary, §6) : steam/water ne sont pas des fluides « spéciaux » réservés
+-- aux générateurs et chaudières. Pourtant, le vanilla câble en dur des
+-- bâtiments entiers sur un fluide précis via le `filter` de leurs fluid boxes
+-- (steam-turbine / steam-engine : entrée `steam` ; boiler / heat-exchanger :
+-- entrée `water`, sortie `steam`). Résultat : l'UI affiche « utilise du steam »
+-- et le bâtiment n'accepte QUE ce fluide — en contradiction avec §10
+-- (« n'importe quel fluide pipable en entrée »).
+--
+-- Solution GÉNÉRALE (aucune liste codée en dur) : on itère TOUS les
+-- prototypes d'entités et, pour chaque fluid box dotée d'un `filter` qui force
+-- un fluide précis, on retire ce filtre → la box accepte/émet n'importe quel
+-- fluide pipable. Cela couvre steam-turbine, steam-engine, boiler,
+-- heat-exchanger… ET tout bâtiment qu'un mod ajoutera plus tard : plus rien à
+-- maintenir, la règle s'applique automatiquement.
+do
+  local stripped = 0
+  local entities = 0
+  local described = 0
+  local fixed_cats = 0
+  for proto_type, protos in pairs(data.raw) do
+    for _, proto in pairs(protos) do
+      local boxes = collect_fluid_boxes(proto)
+      if boxes then
+        entities = entities + 1
+        local has_input = false
+        local has_output = false
+        for _, box in ipairs(boxes) do
+          if box.filter ~= nil then
+            box.filter = nil
+            stripped = stripped + 1
+          end
+          if box.production_type == "input" then has_input = true end
+          if box.production_type == "output" then has_output = true end
+        end
+        -- UI générique : un bâtiment qui CONSOMME un fluide n'est plus câblé
+        -- sur steam/water. On décrit la consommation en « fluide arbitraire »,
+        -- et la transformation fluide→fluide quand il y a entrée ET sortie.
+        if has_input and not proto.localised_description then
+          if has_output then
+            proto.localised_description = {"randputf.boiler-any-fluid-description"}
+          else
+            proto.localised_description = {"randputf.generator-any-fluid-description"}
+          end
+          described = described + 1
+        end
+        -- §6/§10 : transformateur à RECETTE FIXE (type vanilla "boiler" =
+        -- boiler, heat-exchanger, et tout équivalent fourni par un mod) :
+        -- le générateur lui attribue UNE recette unique « fluide → fluide »
+        -- en catégorie crafting-with-fluid. Il faut donc donner au bâtiment
+        -- cette recipe-category RÉELLE pour qu'il puisse héberger la recette,
+        -- sinon le boiler resterait un simple tiroir (impossible de crafter
+        -- quoi que ce soit dedans).
+        if proto.type == "boiler"
+          and has_input and has_output
+          and not (proto.crafting_categories and #proto.crafting_categories > 0)
+        then
+          proto.crafting_categories = {"crafting-with-fluid"}
+          fixed_cats = fixed_cats + 1
+        end
+      end
+    end
+  end
+  log("[randputF] generic fluids: " .. stripped
+    .. " fluid-box filters cleared across " .. entities .. " entities, "
+    .. described .. " tooltips made generic, "
+    .. fixed_cats .. " fixed-recipe transformers made crafters")
+end
+
+-- ── Fluides assignés par la seed (§6/§10) ─────────────────────────────────
+-- La section ``building_fluid_assignments`` de la seed mappe chaque bâtiment
+-- à comportement fixe (turbine, boiler, heat-exchanger…) à un fluide
+-- OBTENABLE (un lac, §7.5). Ici on APPLIQUE ces assignations : on remet le
+-- filter de chaque fluid box sur le fluide assigné, et on met à jour le
+-- tooltip pour afficher le VRAI fluide (plus "steam" générique).
+--
+-- Rien n'est codé en dur : la seed fournit la liste, on itère sans liste de
+-- noms. Les bâtiments sans assignation gardent le filter stripping générique
+-- (aucun filter → tout fluide pipable accepté).
+do
+  local assignments = (seed.building_fluid_assignments or {})
+  local assigned_count = 0
+  local entities_touched = 0
+  for bld_name, fluids in pairs(assignments) do
+    -- Chercher le prototype d'entité : d'abord le nom exact, puis avec le
+    -- préfixe "randputf-". Le nom nu peut être ambigu (un item ET une entité
+    -- peuvent porter le même nom) : on ne garde que le proto qui a réellement
+    -- une/des fluid box(s), c'est-à-dire le BÂTIMENT à fluide visé.
+    local proto = nil
+    local search_names = {bld_name, "randputf-" .. bld_name}
+    for _, name in ipairs(search_names) do
+      for _, protos in pairs(data.raw) do
+        if type(protos) == "table" and protos[name] then
+          local cand = protos[name]
+          if collect_fluid_boxes(cand) then
+            proto = cand
+            break
+          end
+        end
+      end
+      if proto then break end
+    end
+    local boxes = proto and collect_fluid_boxes(proto)
+    if boxes then
+      local input_fluid = fluids.input
+      local output_fluid = fluids.output
+      -- Appliquer le filter sur chaque fluid box selon son production_type
+      for _, box in ipairs(boxes) do
+        if box.production_type == "input" and input_fluid then
+          box.filter = input_fluid
+          assigned_count = assigned_count + 1
+        elseif box.production_type == "output" and output_fluid then
+          box.filter = output_fluid
+          assigned_count = assigned_count + 1
+        end
+      end
+      -- Mettre à jour le tooltip (localised_description). Les localised
+      -- strings en data-stage sont des tables : ["", "<littéral>", <arg>...]
+      -- concatène des littéraux et des arguments, et {"fluid-name.", X}
+      -- résout la traduction du nom du fluide.
+      if input_fluid and output_fluid then
+        proto.localised_description = {
+          "randputf.assigned-fluid-in-out-description",
+          {"", "[fluid=", input_fluid, "] ", {"fluid-name.", input_fluid}},
+          {"", "[fluid=", output_fluid, "] ", {"fluid-name.", output_fluid}},
+        }
+      elseif input_fluid then
+        proto.localised_description = {
+          "randputf.assigned-fluid-in-description",
+          {"", "[fluid=", input_fluid, "] ", {"fluid-name.", input_fluid}},
+        }
+      end
+      entities_touched = entities_touched + 1
+    end
+  end
+  if assigned_count > 0 then
+    log("[randputF] building fluids: " .. assigned_count .. " fluid-box filters set"
+      .. " across " .. entities_touched .. " entities from seed assignments")
   end
 end
 

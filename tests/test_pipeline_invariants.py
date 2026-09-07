@@ -89,6 +89,7 @@ def test_aucun_produit_inaccessible(seeds):
         for r in seed["recipes"]:
             state.recipes.append(r)
         external = {p["resource"] for p in seed["map"]["patches"]}
+        external |= {l["resource"] for l in seed["map"]["lakes"]}
         unreachable = _detect_unreachable_products(state, external)
         assert not unreachable, f"seed {s}: produits inaccessibles {unreachable}"
 
@@ -201,6 +202,44 @@ def test_munitions_vehicules_dispatch_apres(seeds):
                     )
 
 
+def test_companions_proches(seeds):
+    """C3 : « companion guarantee » — les groupes d'items dépendants restent
+    PROCHES dans l'arbre (jamais une paire diffusée loin l'une de l'autre).
+    - roboport ↔ robots (logistic/construction) : un robot sans roboport est
+      du contenu mort ;
+    - solar-panel ↔ accumulator : un premier solaire sans accumulateur =
+      blackout nocturne.
+    Vérifie que chaque membre d'un groupe est unlocké AU PLUS TARD 3 techs
+    après le premier membre du groupe déployé (façon dispatch §12.1)."""
+    COMPANION_GROUPS = [
+        {"roboport", "logistic-robot", "construction-robot"},
+        {"solar-panel", "accumulator"},
+    ]
+    for s, seed in seeds.items():
+        order = seed["progression_order"]
+        idx = {tid: i for i, tid in enumerate(order)}
+
+        def unlocker(item):
+            for t in seed["technologies"]:
+                for e in t.get("effects") or []:
+                    if e.get("type") == "unlock-recipe" and e["recipe"].removeprefix("randputf-") == item:
+                        return t["id"]
+            return None
+
+        for group in COMPANION_GROUPS:
+            present = [item for item in group if unlocker(item) is not None]
+            if not present:
+                continue
+            first_idx = min(idx[unlocker(item)] for item in present)
+            for item in group:
+                t = unlocker(item)
+                assert t is not None, f"seed {s}: compagnon {item} jamais unlocké"
+                assert idx[t] <= first_idx + 3, (
+                    f"seed {s}: compagnon {item}@{idx[t]} loin de son groupe "
+                    f"(début @{first_idx})"
+                )
+
+
 def test_munitions_armes_de_poing(seeds):
     """§11 : une arme de poing débloquée par une tech combat ne doit JAMAIS être
     sans munition. Règle : si AUCUNE munition de sa catégorie n'est débloquée
@@ -262,18 +301,130 @@ def test_assignation_armes_deterministe_et_distincte():
     assert slot_counts >= {1, 2, 3, 4}, f"bornes 1..4 jamais toutes exploitées: {slot_counts}"
 
 
-def test_pack_sans_ressource_brute(seeds):
-    """§13 : aucun science pack est crafté avec une ressource brute (patches au
-    sol, environnement récolté à la main, fluides d'extraction infinis ou non
-    — eau, pétrole brut, vapeur, §3)."""
+def test_aucun_science_pack_en_patch(seeds):
+    """§13 : un science pack n'est JAMAIS une ressource au sol (patch). S'il y
+    était posé, sa recette n'existerait pas au démarrage et la filière de coût
+    des techs (amorcée par le premier pack craftable du starter) serait brisée
+    — régression du crash `rng.choice(_unlocked_science_packs)` sur liste
+    vide."""
+    for s, seed in seeds.items():
+        patch_resources = {p["resource"] for p in seed["map"]["patches"]}
+        packs_in_patches = {
+            r for r in patch_resources
+            if DB.items.get(r) is not None and DB.items[r].is_science_pack
+        }
+        assert not packs_in_patches, f"seed {s}: packs en patch {packs_in_patches}"
+
+
+def test_c6_aucune_ressource_dupliquee_sur_la_carte(seeds):
+    """IDEES C6 : une même ressource brute n'apparaît qu'UNE fois sur la carte —
+    jamais à la fois en patch et en lac, ni deux fois en patch (tirages sans
+    remise garantis par `generate_patches(lake_resources=...)` + ordre
+    lacs→patchs dans `generate_seed`)."""
+    for s, seed in seeds.items():
+        patch_res = [p["resource"] for p in seed["map"]["patches"]]
+        lake_res = [l["resource"] for l in seed["map"]["lakes"]]
+        assert len(patch_res) == len(set(patch_res)), f"seed {s}: patch dupliqué {patch_res}"
+        assert len(lake_res) == len(set(lake_res)), f"seed {s}: lac dupliqué {lake_res}"
+        both = set(patch_res) & set(lake_res)
+        assert not both, f"seed {s}: fluide à la fois patch et lac {both}"
+
+
+def test_oil_puits_posse_explicite_chaque_patch(seeds):
+    """§6.5 : CHAQUE patch (item ET fluide) doit porter son gisement posé au
+    runtime — centre déterministe, un nombre aléatoire de blocs/puits (3..8),
+    un rayon de dispersion > 0 et une graine locale > 0."""
+    for s, seed in seeds.items():
+        for patch in seed["map"]["patches"]:
+            assert "center" in patch and "x" in patch["center"] and "y" in patch["center"], \
+                f"seed {s}: patch {patch['resource']} sans centre"
+            assert 3 <= patch["count"] <= 8, \
+                f"seed {s}: {patch['resource']} nb blocs {patch['count']} hors 3..8"
+            assert patch["cluster_radius"] > 0, f"seed {s}: rayon invalide"
+            assert patch["well_seed"] > 0, f"seed {s}: well_seed nul"
+
+
+def test_gisements_serres_au_spawn(seeds):
+    """§6.5 (cluster serré) : tous les gisements restent dans un rayon ~25..200
+    tuiles du spawn — accessibles à pied très tôt, sans jamais exiger un long
+    voyage au départ. (Le rayon de dispersion, 9-16, borne les blocs autour du
+    centre.)"""
+    import math
+
+    MAX_CENTER_DIST = 200
+    for s, seed in seeds.items():
+        for patch in seed["map"]["patches"]:
+            c = patch["center"]
+            d = math.hypot(c["x"], c["y"])
+            assert d <= MAX_CENTER_DIST, \
+                f"seed {s}: gisement {patch['resource']} à {d:.0f} tuiles (> {MAX_CENTER_DIST})"
+
+
+def test_oil_puits_deterministe_entre_generations():
+    """§6.5 : la pose des gisements est déterministe — refaire la seed (même
+    graine) donne exactement les mêmes gisements (centre, nb de blocs, rayon,
+    graine). Dépend d'un flux RNG dédié : les autres phases sont inchangées."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 5
+    a = generate_seed(db)
+    db.seed_value = 5
+    b = generate_seed(db)
+    fa = {p["resource"]: {k: p[k] for k in ("center", "count", "well_seed", "cluster_radius")}
+          for p in a["map"]["patches"]}
+    fb = {p["resource"]: {k: p[k] for k in ("center", "count", "well_seed", "cluster_radius")}
+          for p in b["map"]["patches"]}
+    assert fa == fb
+
+
+def test_c2_lac_est_obtenable_sans_recette():
+    """IDEES C2 : un lac est une ressource brute obtenable DÈS LE DÉPART (pompe
+    offshore, volume infini) — il compte comme source externe de la solvabilité,
+    au même titre qu'un patch. Vérifie en isolation que
+    `_detect_unreachable_products` ne signale PAS une recette consommant un
+    fluide déjà posé en lac."""
+    state = ProgressionState()
+    # Recette qui consomme un fluide disponible SEULEMENT en lac (jamais crafté).
+    state.recipes.append({
+        "name": "randputf-lac-consumer",
+        "ingredients": [{"name": "crude-oil"}],
+        "results": [{"name": "randputf-lac-product"}],
+    })
+    # Sans fournir le lac comme source externe, le produit serait inaccessible.
+    unreachable = _detect_unreachable_products(state, external={"crude-oil"})
+    assert "randputf-lac-product" not in unreachable, unreachable
+
+
+def test_c2_validate_pipeline_valide_avec_lacs(seeds):
+    """IDEES C2 : `validate_pipeline` reçoit désormais les lacs comme sources
+    externes (au même titre que les patchs). Sur des seeds réelles, aucun
+    cycle/problème de progressivité n'est dû à un fluide de lac : le validateur
+    le traite comme obtenable (pompe offshore)."""
+    from tool.validator.pipeline_validator import validate_pipeline as _vp
+
+    for s, seed in seeds.items():
+        state = ProgressionState()
+        for r in seed["recipes"]:
+            state.recipes.append(r)
+        patch_res = {p["resource"] for p in seed["map"]["patches"]}
+        lake_res = {la["resource"] for la in seed["map"]["lakes"]}
+        # L'anti-cycle et la progressivité se basent sur patchs + lacs : aucune
+        # recette réelle ne doit être déclarée en boucle/manquante à cause d'un
+        # lac (sinon le starter ne pourrait pas dépendre d'un fluide de lac).
+        vr = _vp(state, seed["technologies"], DB, patch_res, lake_res)
+        assert not vr.issues, f"seed {s}: issues {vr.issues}"
+
+
+def test_aucun_pack_crafte_avec_ressource_brute(seeds):
+    """§13 : aucun science pack n'est crafté avec une ressource brute (patches
+    au sol, environnement récolté à la main, fluides d'extraction infinis ou
+    non — eau, pétrole brut, vapeur, §3)."""
     for s, seed in seeds.items():
         raw = set(seed["pools"]["raw_resources"])
         checked = 0
         for r in seed["recipes"]:
             if r["results"][0]["type"] != "item":
                 continue
-            item_name = r["results"][0]["name"]
-            item = DB.items.get(item_name)
+            item = DB.items.get(r["results"][0]["name"])
             if item is None or not item.is_science_pack:
                 continue
             checked += 1
@@ -406,7 +557,10 @@ def test_premier_generateur_de_la_seed_craftable_a_la_main(seeds):
     (assembling-machine-2, usine chimique...) exigerait l'électricité que ce
     générateur doit amorcer — boucle bootstrap §10. Les générateurs suivants
     retombent sur des ateliers normaux."""
-    generators = {b.name for b in DB.buildings_of_type("generator")}
+    # Les vrais producteurs de COURANT (tag ``produces_electricity``) : le tag
+    # ``is_generator`` inclurait aussi les producteurs de chaleur (réacteur,
+    # heat-exchanger) qui ne démarrent jamais le réseau §10.
+    generators = {b.name for b in DB.buildings.values() if b.produces_electricity}
     for s, seed in seeds.items():
         first: str | None = None
         first_recipe: dict | None = None
@@ -453,3 +607,27 @@ def test_detecteur_de_cycle_repere_un_cycle_reel():
     b["ingredients"].append({"type": "item", "name": "iron-plate", "amount": 1})
     cycles = _detect_recipe_cycles(state)
     assert cycles, "un cycle A<->B doit être détecté"
+
+
+def test_aucune_recette_sur_machine_a_recette_fixe(seeds):
+    """SUJETRATION (§10 + IDEES C7) : les bâtiments à RECETTE CACHÉE taggés
+    ``has_hidden_recipe`` (boiler/heat-exchanger/nuclear-reactor en vanilla) ne
+    reçoivent JAMAIS une recette quelconque en tant qu'atelier — seule la
+    recette randomisée assignée (crafted_in) les concerne ; les non-fluides
+    (boiler/hx sont fluides ; le reacteur, générateur) n'en ont AUCUNE. Les
+    autres générateurs/extracteurs/lab (non taggés : pas une recette, mécanique
+    moteur) sont déjà exclus par ``_is_atelier`` (aucune catégorie valide)."""
+    from tool.common.db import has_hidden_recipe, is_fixed_fluid_crafter
+
+    for s, seed in seeds.items():
+        for r in seed["recipes"]:
+            ci = r.get("crafted_in")
+            if not ci:
+                continue
+            building = DB.buildings.get(ci)
+            assert building is not None, f"seed {s}: crafted_in inconnu {ci}"
+            if has_hidden_recipe(building) and not is_fixed_fluid_crafter(building):
+                raise AssertionError(
+                    f"seed {s}: recette {r['name']} craftée dans {ci}, "
+                    "une machine à recette fixe non-fluide (jamais un atelier)"
+                )

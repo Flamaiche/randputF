@@ -83,6 +83,15 @@ class RecursiveConfig(PrototypeConfig):
     vehicle_slots_with_replacement: bool = True
     vehicle_range_base_size: float = 2.0
     vehicle_range_scale: float = 0.4
+    # C3 : « companion guarantee » — paires/graphes d'items dépendants qui ne
+    # doivent JAMAIS être diffusés loin l'un de l'autre (un robot sans roboport
+    # = contenu mort). Chaque sous-liste est un groupe de compagnons mutuels :
+    # dès qu'un membre est déployé (balayage §9.6 / générateur), les autres
+    # membres sans recette sont créés juste après (dispatch ≤ 3 techs).
+    companions: list[list[str]] = field(default_factory=lambda: [
+        ["roboport", "logistic-robot", "construction-robot"],
+        ["solar-panel", "accumulator"],
+    ])
 
     @classmethod
     def from_config(cls, config: dict) -> RecursiveConfig:
@@ -126,6 +135,16 @@ class RecursiveConfig(PrototypeConfig):
             vehicle_slots_with_replacement=bool(rec_cfg.get("vehicle_slots_with_replacement", True)),
             vehicle_range_base_size=float(rec_cfg.get("vehicle_range_base_size", 2.0)),
             vehicle_range_scale=float(rec_cfg.get("vehicle_range_scale", 0.4)),
+            companions=[
+                [str(m) for m in group]
+                for group in rec_cfg.get(
+                    "companions",
+                    [
+                        ["roboport", "logistic-robot", "construction-robot"],
+                        ["solar-panel", "accumulator"],
+                    ],
+                )
+            ],
         )
 
     def roll_tech_count(self, rng: random.Random) -> int:
@@ -148,3 +167,10 @@ class RecursiveConfig(PrototypeConfig):
         """Nombre d'emplacements d'armes d'un véhicule (§7) :
         bornes min/max de config."""
         return rng.randint(self.vehicle_slots_min, self.vehicle_slots_max)
+
+    def companion_group_for(self, item_name: str) -> list[str] | None:
+        """Groupe compagnon (C3) contenant ``item_name``, ou None."""
+        for group in self.companions:
+            if item_name in group:
+                return list(group)
+        return None
