@@ -21,6 +21,7 @@ import random
 from dataclasses import dataclass, field
 
 from tool.common.db import SLOT_FLUID, SLOT_ITEM, ENVIRONMENTAL_ITEMS, ItemDef, VanillaDB
+from tool.generator.early_oracle import build_early_sources
 from tool.generator.map_patches import Patch
 from tool.generator.recipes import (
     ProgressionState,
@@ -51,9 +52,14 @@ class StarterChain:
     first_science_pack: str = ""
     fabricator: str = ""
     extractors: list[str] = field(default_factory=list)
+    # GEL DES PROMESSES (§10ter) : produits des recettes des techs gratuites,
+    # snapshot pris au moment du gel (pipeline.py, après l'électricité). Les
+    # primitives dédupées garantissent qu'aucun produit promis n'est re-baké
+    # par la phase récursive.
+    promises: set[str] = field(default_factory=set)
 
 
-def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch], *, has_lakes: bool = False) -> StarterChain:
+def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch], *, has_lakes: bool = False, lake_resources: frozenset[str] = frozenset()) -> StarterChain:
     chain = StarterChain()
     chain.kit = _roll_starter_kit(rng, db)
 
@@ -68,8 +74,26 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     for patch in patches:
         state.mark_obtained(patch.kind, patch.resource)
 
+    # Bootstrap inline (§10ter, redesign) : ON ACTIVE LE WATERSHED PRÉ-ÉLEC
+    # DÈS ICI. Toutes les recettes créées par le starter (et ensuite par la
+    # phase électricité, avant le gel pipeline.py:95 -> `state.early` reste
+    # actif) tirent leurs ingrédients UNIQUEMENT dans ce watershed et sans
+    # atelier électrique. Plus de passe de rattrapage post-hoc : chaque produit
+    # promis par les techs gratuites est jouable pré-élec par construction.
+    # Le gel des promesses (pipeline.py) désactivera l'oracle avant le récursif.
+    patch_items = {p.resource for p in patches if p.kind == SLOT_ITEM}
+    early_items, early_fluids = build_early_sources(db, patch_items, set(lake_resources))
+    state.early.activate(early_items, early_fluids)
+
     for resource_kind, resource_name in _unique_resources(patches):
         _ensure_extraction(rng, db, state, chain, resource_kind, resource_name)
+
+    # Les LACS (§7.5) sont des TUILES fluides : leur extracteur est une pompe
+    # sans électricité (offshore-pump) qui pompe la tuile — distincte de
+    # l'extracteur des PATCHS fluides (§7.5, entités basic-fluid → pumpjack). Sans
+    # patch fluide, on évite la seed « lacs muets » (aucun extracteur au kit).
+    for lake_resource in sorted(lake_resources):
+        _ensure_extraction(rng, db, state, chain, SLOT_FLUID, lake_resource, is_lake=True)
 
     _ensure_transformer(rng, db, state, chain)
     _ensure_transports(rng, db, state)
@@ -89,6 +113,16 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     # QUABLES dans la seed : même si le kit fournit un stock initial, le joueur
     # doit pouvoir en recrafter (§7). Échec = kit quand même fourni.
     _ensure_kit_craftable(rng, db, state, chain.kit)
+
+    # Conteneur de stockage (§7) : GARANTIR une recette de chest dans la seed,
+    # craftable avec des matériaux FINIS (produits), jamais environnementaux ou
+    # infinis. Flux RNG INDÉPENDANT (comme les lacs/ease-up) : seul le tirage
+    # du chest est déterministe sur `seed_value`, le flux partagé du starter
+    # (et donc la carte : `resolve_electricity` re-tire les patches réparateurs
+    # avec ce même rng) reste INTACT.
+    _ensure_chest_craftable(
+        random.Random(f"randputf:chest:{db.seed_value}"), db, state
+    )
 
     # Spawn cohérent avec la seed : on remplace l'inventaire de départ vanilla
     # par le fabricateur + l'extracteur URPLS de la seed. Si l'un d'eux est à
@@ -174,8 +208,12 @@ def _ensure_extraction(
     chain: StarterChain,
     resource_kind: str,
     resource_name: str,
+    *,
+    is_lake: bool = False,
 ) -> None:
-    candidates = _extractors_for_resource(db, resource_kind, resource_name)
+    candidates = _extractors_for_resource(
+        db, resource_kind, resource_name, is_lake=is_lake
+    )
     if not candidates:
         raise ValueError(
             f"aucun extracteur pour {resource_kind} {resource_name}"
@@ -183,7 +221,19 @@ def _ensure_extraction(
     extractor = rng.choice(candidates)
     item = _item_for_building(db, extractor.name)
     if item is not None:
-        ensure_obtainable(rng, db, state, SLOT_ITEM, item.name, exclude_buildings=_EXCLUDED_BUILDINGS)
+        # force=True (§7) : l'extracteur doit TOUJOURS avoir sa recette de
+        # craft dans la tech d'extraction (starter-extraction, tech 0) — même
+        # quand son item est lui-même posé au sol en patch (§6). Sans ça, une
+        # perceuse-patch n'aurait aucune recette starter (ensure_obtainable
+        # s'arrête car déjà obtenu) et son craft n'arriverait qu'en profondeur
+        # de seed : « quand on a besoin d'une ressource, son extracteur n'est
+        # pas encore débloqué ». La recette forcée est craftée dans un atelier
+        # starter (jamais un bâtiment profond), donc disponible au même palier
+        # que le premier besoin.
+        ensure_obtainable(
+            rng, db, state, SLOT_ITEM, item.name,
+            exclude_buildings=_EXCLUDED_BUILDINGS, force=True,
+        )
         state.unlocked_buildings.add(extractor.name)
     if extractor.name not in chain.extractors:
         chain.extractors.append(extractor.name)
@@ -196,30 +246,33 @@ def _ensure_extraction(
     )
 
 
-def _extractors_for_resource(db: VanillaDB, kind: str, name: str):
+def _extractors_for_resource(db: VanillaDB, kind: str, name: str, *, is_lake: bool = False):
     if kind == SLOT_FLUID:
         fluid_extractors = [
             b for b in db.buildings_with_tag("is_extractor") if b.fluid_outputs > 0
         ]
-        if name == "water":
+        if is_lake:
+            # Un LAC est une TUILE fluide (copie de la tuile eau, §7.5) : la
+            # pompe offshore extrait directement le fluide de la tuile, SANS
+            # électricité. Le pumpjack (électrique) n'y a aucun rôle.
             water_pumps = [b for b in fluid_extractors if b.pumped_fluid == "water"]
-            return water_pumps or [b for b in db.extractors_for_medium("water")]
-        # Les « lacs » (étendues fluides non-eau : pétrole brut, gaz, acide…)
-        # sont extractibles SANS électricité, comme l'eau : on préfère une
-        # pompe à énergie void (offshore-pump — §10). Le pumpjack électrique
-        # n'est qu'un repli si aucune pompe sans électricité n'existe : sinon
-        # un lac exigerait l'électricité pour l'extraire, boucle dure §10.
-        no_electric = [
-            b for b in fluid_extractors if b.energy_type in ("void", "burner")
+            return water_pumps or [b for b in fluid_extractors if b.energy_type in ("void", "burner")]
+        # Un PATCH fluide est une ENTITÉ resource (basic-fluid) posée sur la
+        # TERRE (§6.5, §7.5) : les pompes offshore ne minent que les tuiles
+        # d'eau et ne s'appliquent pas aux entités — seul un mining-drill qui
+        # déclare la catégorie (pumpjack, électrique) le miniage. Le pumpjack
+        # est donc l'extracteur des patchs fluides, les lacs gardant une pompe
+        # sans électricité.
+        no_electric_drills = [
+            b for b in fluid_extractors
+            if "basic-fluid" in b.resource_categories
+            and b.energy_type in ("void", "burner")
         ]
-        if no_electric:
-            return no_electric
-        # Repli : gisement en resource-category (basic-fluid/basic-gas) pompé
-        # par un extracteur qui déclare ces categories (pumpjack, ...).
+        if no_electric_drills:
+            return no_electric_drills
         return [
             b for b in fluid_extractors
-            if b.resource_categories
-            and any("fluid" in c or "gas" in c for c in b.resource_categories)
+            if "basic-fluid" in b.resource_categories
         ]
     return [b for b in db.extractors_for_medium("ground") if b.fluid_outputs == 0]
 
@@ -333,18 +386,33 @@ def _ensure_transports(rng: random.Random, db: VanillaDB, state: ProgressionStat
             _ensure_transport_item(rng, db, state, role)
 
 
+# Rôle de transport → TAG de bâtiment §2 (docs/tags.md §2). Les items de
+# transport sont sélectionnés PAR LE TAG de LEUR bâtiment posé (place_result),
+# jamais par un motif de nom en dur : un belt de mod au nom exotique est
+# automatiquement capté (type transport-belt → is_belt).
+TRANSPORT_ROLE_TAGS = {
+    "belt": "is_belt",
+    "splitter": "is_splitter",
+    "underground": "is_underground_belt",
+    "pipe": "is_pipe",
+    "pipe_to_ground": "is_pipe_to_ground",
+    "inserter": "is_inserter",
+}
+
+
 def _ensure_transport_item(
     rng: random.Random,
     db: VanillaDB,
     state: ProgressionState,
     role: str,
 ) -> None:
-    patterns = _config.transport_patterns[role]
+    tag = TRANSPORT_ROLE_TAGS[role]
     candidates = sorted(
         (
             i
             for i in db.items.values()
-            if any(pattern in i.name for pattern in patterns) and not i.is_tool
+            if i.place_result
+            and getattr(db.buildings.get(i.place_result), tag, False)
         ),
         key=lambda i: i.name,
     )
@@ -370,6 +438,39 @@ def _ensure_landfill(rng: random.Random, db: VanillaDB, state: ProgressionState)
     ensure_obtainable(
         rng, db, state, SLOT_ITEM, "landfill", exclude_buildings=_EXCLUDED_BUILDINGS
     )
+
+
+def _ensure_chest_craftable(
+    rng: random.Random,
+    db: VanillaDB,
+    state: ProgressionState,
+) -> None:
+    """Garantit une recette de CHEST (stockage d'items) dans la seed.
+
+    Tiré ALÉATOIREMENT parmi les containers d'items (is_chest, jamais
+    logistic-container). Recette à matière FINIE uniquement (``finite_materials``
+    dans recipes.py) : les ingrédients sont des items PRODUITS — pas de
+    wood/stone/raw-fish (récolte main illimitée) ni de fluide (lacs infinis).
+    Échec (aucun container ou aucun pool fini) = fonction silencieuse : une
+    seed sans chest n'est pas bloquante."""
+    candidates: list[str] = []
+    for item in db.items.values():
+        if not item.place_result:
+            continue
+        building = db.buildings.get(item.place_result)
+        if building is not None and building.is_chest:
+            candidates.append(item.name)
+    if not candidates:
+        return
+    chest_name = rng.choice(sorted(candidates))
+    try:
+        ensure_obtainable(
+            rng, db, state, SLOT_ITEM, chest_name,
+            exclude_buildings=_EXCLUDED_BUILDINGS,
+            finite_materials=True,
+        )
+    except ValueError:
+        pass
 
 
 def _roll_starter_kit(rng: random.Random, db: VanillaDB) -> list[dict]:
@@ -451,6 +552,12 @@ def _extend_spawn_kit(
         seen_extractors.add(name)
         item = _item_for_building(db, name)
         if item is not None:
+            # Un seul exemplaire par type d'extracteur (§7) : le kit ne fait
+            # qu'AMORCER la chaîne (briser l'œuf/poule : poser le premier
+            # extracteur pour extraire de quoi en refabriquer). Le reste se
+            # craft — la recette de l'extracteur est unlockée par la tech
+            # d'extraction (starter-extraction, tech 0), AVANT toute recette
+            # qui consomme la ressource extraite.
             to_add.append({"type": SLOT_ITEM, "name": item.name, "count": 1})
 
     if to_add and _needs_fuel(db, chain):

@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from tool.common.db import BuildingDef, FluidDef, ItemDef, RecipeRef, VanillaDB
+from tool.common.db import (
+    ENVIRONMENTAL_ITEMS,
+    BuildingDef,
+    FluidDef,
+    ItemDef,
+    RecipeRef,
+    VanillaDB,
+)
 
 
 def build_demo_db() -> VanillaDB:
@@ -17,7 +24,14 @@ def build_demo_db() -> VanillaDB:
         "raw-fish": ("raw-resource", None),
     }
     for name, (subgroup, fuel) in raw_items.items():
-        db.items[name] = ItemDef(name=name, subgroup=subgroup, fuel_value=fuel)
+        # wood/stone/raw-fish sont récoltés à la main : mêmes tags
+        # ``is_environmental`` que le parser réel (vanilla.py).
+        db.items[name] = ItemDef(
+            name=name,
+            subgroup=subgroup,
+            fuel_value=fuel,
+            is_environmental=(name in ENVIRONMENTAL_ITEMS),
+        )
 
     intermediate = [
         "iron-plate",
@@ -27,20 +41,28 @@ def build_demo_db() -> VanillaDB:
         "iron-gear-wheel",
         "copper-cable",
         "electronic-circuit",
-        "pipe",
-        "pipe-to-ground",
-        "transport-belt",
-        "splitter",
-        "underground-belt",
-        "burner-inserter",
     ]
     for name in intermediate:
         db.items[name] = ItemDef(name=name, subgroup="intermediate")
+
+    for name, place in [
+        ("pipe", "pipe"),
+        ("pipe-to-ground", "pipe-to-ground"),
+        ("transport-belt", "transport-belt"),
+        ("splitter", "splitter"),
+        ("underground-belt", "underground-belt"),
+        ("burner-inserter", "inserter"),
+    ]:
+        # Fidèle au vanilla : chaque item de transport pose SON bâtiment
+        # (place_result) — la sélection starter_chain §2 passe par le TAG du
+        # bâtiment (is_belt, is_pipe…), pas par un motif de nom.
+        db.items[name] = ItemDef(name=name, subgroup="intermediate", place_result=place)
 
     for name, place, fuel in [
         ("burner-mining-drill", "burner-mining-drill", None),
         ("electric-mining-drill", "electric-mining-drill", None),
         ("offshore-pump", "offshore-pump", None),
+        ("pumpjack", "pumpjack", None),
         ("stone-furnace", "stone-furnace", None),
         ("assembling-machine-1", "assembling-machine-1", None),
         ("assembling-machine-2", "assembling-machine-2", None),
@@ -49,7 +71,8 @@ def build_demo_db() -> VanillaDB:
         ("burner-generator", "burner-generator", None),
         ("pipe-item", "pipe", None),
         ("belt-item", "transport-belt", None),
-        ("inserter-item", "burner-inserter", None),
+        ("inserter-item", "inserter", None),
+        ("wooden-chest", "wooden-chest", None),
         ("lab", "lab", None),
         ("rocket-silo", "rocket-silo", None),
     ]:
@@ -61,7 +84,11 @@ def build_demo_db() -> VanillaDB:
     for ammo in ["firearm-magazine"]:
         db.items[ammo] = ItemDef(name=ammo, subgroup="combat", is_ammo=True, ammo_category="bullet")
     for pack in ["automation-science-pack"]:
-        db.items[pack] = ItemDef(name=pack, subgroup="science", is_science_pack=True)
+        # Un science pack EST un objet de type ``tool`` (raffinage is_tool →
+        # is_science_pack, cf. vanilla §9) et sa filière reste gérée par le
+        # flux recherche (strategic_phase §13), pas par le craft des items.
+        db.items[pack] = ItemDef(name=pack, subgroup="science", is_tool=True,
+                                 is_science_pack=True)
 
     db.items["landfill"] = ItemDef(name="landfill", subgroup="terrain", stack_size=100)
 
@@ -89,7 +116,8 @@ def build_demo_db() -> VanillaDB:
              resource_categories=("basic-solid",), item_input_slots=1)
     building("electric-mining-drill", "extractor", medium="ground", energy_type="electric",
              resource_categories=("basic-solid",))
-    building("offshore-pump", "extractor", medium="water", energy_type="void", pumped_fluid="water")
+    building("offshore-pump", "extractor", medium="water", energy_type="void",
+             pumped_fluid="water", fluid_outputs=1)
     building("pumpjack", "extractor", etype="pumpjack", medium="ground", energy_type="electric",
              resource_categories=("basic-fluid",), fluid_outputs=1)
     building("stone-furnace", "transformer", crafting_categories=("smelting",),
@@ -112,6 +140,25 @@ def build_demo_db() -> VanillaDB:
     # recette randputf-rocket-silo et la validation de complétude échouerait.
     building("rocket-silo", "rocket_silo", etype="rocket-silo", energy_type="electric",
              crafting_categories=("rocket-building",))
+
+    for name, etype, tag in [
+        ("transport-belt", "transport-belt", "is_belt"),
+        ("splitter", "splitter", "is_splitter"),
+        ("underground-belt", "underground-belt", "is_underground_belt"),
+        ("pipe", "pipe", "is_pipe"),
+        ("pipe-to-ground", "pipe-to-ground", "is_pipe_to_ground"),
+        ("inserter", "inserter", "is_inserter"),
+    ]:
+        db.buildings[name] = BuildingDef(
+            name=name, entity_type=etype, is_other=True, **{tag: True}
+        )
+
+    # Conteneur d'items (chest) : fidèle au vanilla (entity_type `container`,
+    # tag is_chest, rôle fonctionnel is_other) — le kit de départ peut rouler
+    # un objet de stockage.
+    db.buildings["wooden-chest"] = BuildingDef(
+        name="wooden-chest", entity_type="container", is_chest=True, is_other=True
+    )
 
     def recipe(name, ingredients, products, category=""):
         db.recipes[name] = RecipeRef(

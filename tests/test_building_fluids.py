@@ -250,6 +250,41 @@ def _make_item_fixed_transformer(db) -> "BuildingDef":
     return crafter
 
 
+def test_reacteur_est_routé_vers_recette_item():
+    """SUJETRATION IDEES C7 étendue : le réacteur nucléaire (recette cachée
+    item → item via ses résidus de combustion ``fuel_residues``) est désormais
+    un ``is_fixed_crafter`` : il reçoit une recette UNIQUE randomisée dont la
+    SORTIE est son résidu (depleted-uranium-fuel-cell), crafted_in = le
+    réacteur. Il n'est plus « dévoilé sans rôle » : il est routé comme un
+    fabricateur à recette fixe item → item."""
+    import json
+    from pathlib import Path
+
+    from tool.common.db import is_fixed_crafter
+    from tool.generator.recursive_phase import _make_fixed_recipe_for_crafter
+    from tool.parsers.vanilla import load_db_from_dump
+
+    db = load_db_from_dump(json.loads(
+        (Path(__file__).parent.parent / "data/vanilla_dump.json").read_text()
+    ))
+    reactor = db.buildings["nuclear-reactor"]
+    assert is_fixed_crafter(reactor)
+    # La recette héberge le résidu de combustion comme SORTIE item.
+    state = ProgressionState()
+    state.obtained_items = {"iron-plate", "copper-plate", "steel-plate"}
+    rng = random.Random(7)
+    recipe = _make_fixed_recipe_for_crafter(rng, db, state, reactor)
+    assert recipe["results"][0]["type"] == "item"
+    assert recipe["results"][0]["name"] == "depleted-uranium-fuel-cell"
+    assert recipe["crafted_in"] == "nuclear-reactor"
+    assert recipe["name"] == "randputf-nuclear-reactor-depleted-uranium-fuel-cell"
+    # Ingrédients 100% items déjà obtenus, jamais l'output (anti-boucle).
+    assert all(ing["type"] == "item" and ing["name"] in state.obtained_items
+               and ing["name"] != "depleted-uranium-fuel-cell"
+               for ing in recipe["ingredients"])
+    assert recipe in state.recipes
+
+
 def test_is_fixed_crafter_couvre_item_et_fluide():
     """``is_fixed_crafter`` couvre les fabricateurs à recette fixe à sortie
     FLUIDE (boiler/heat-exchanger) ET à sortie ITEM (mod), alors que

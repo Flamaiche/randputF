@@ -188,7 +188,12 @@ for i, patch in ipairs(unique_patches) do
   local source = is_fluid and fluid_template or solid_template
   local new_entity = table.deepcopy(source)
   new_entity.name = new_entity_name
-  new_entity.localised_name = {"", (resource_name:gsub("-", " "))}
+  -- Descriptif de l'entité (clic sur le gisement / tooltip) : on préfixe le
+  -- NOM avec l'image de la ressource (texte enrichi `[item=...]`/`[fluid=...]`),
+  -- comme le récap chat — le nom seul ne suffit pas pour les pétroles.
+  local icon_tag = is_fluid and ("[fluid=" .. resource_name .. "] ")
+    or ("[item=" .. resource_name .. "] ")
+  new_entity.localised_name = {"", icon_tag, (resource_name:gsub("-", " "))}
 
   if is_fluid then
     new_entity.minable = {
@@ -789,24 +794,26 @@ do
   log("[randputF] unified fuel categories: " .. #cats .. " categories, " .. patched .. " burners patched")
 end
 
--- ── Lacs : les étendues fluides se pompent SANS électricité (§10) ────────
--- Les patchs fluides (lacs : pétrole brut, gaz, acide…) sont des entités
--- resource_category = "basic-fluid". En vanilla seul le pumpjack (électrique)
--- les mine — or extraire un lac ne doit pas exiger l'électricité qui ne sera
--- produite qu'APRÈS (boucle dure §10). On donne à la pompe côtière
--- (offshore-pump, énergie void, déjà sans électricité) la capacité de miner
--- ces gisements : chaque lac devient extractible dès le bootstrap.
+-- ── Lacs : nappes TUILES fluides, pompées SANS électricité (§10) ─────────
+-- Une nappe (lac) est une COPY de la tuile eau dont le fluide est remplacé
+-- (§7.5) : la pompe offshore (energy_source void) y pompe le fluide de la
+-- tuile DIRECTEMENT — pas de resource entity, donc PAS d'électricité au
+-- bootstrap. Les PATCHS fluides, eux, sont des entités resource basic-fluid
+-- (randputf-oil-*) posées sur la TERRE : seuls des mining-drills qui déclarent
+-- la catégorie (pumpjack, ÉLECTRIQUE) les minient. On garde donc ici le
+-- renommage/tooltip de la pompe (elle sert sur toutes les nappes, fluide
+-- dépendant de la tuile dessous) SANS lui donner resource_categories : un
+-- offshore-pump ne mine pas les entités basic-fluid.
 do
   local offshore = data.raw["offshore-pump"] and data.raw["offshore-pump"]["offshore-pump"]
   if offshore then
-    offshore.resource_categories = { "basic-fluid" }
     -- Le tooltip vanilla ({"entity-name.offshore-pump"} / description) laisse
     -- croire qu'on ne pompe que de l'eau. Sur cette carte Toute eau est
     -- remplacée par des nappes fluides (§7.5) : renommer la pompe et décrire
     -- sa production générique (le fluide dépend de la nappe posée dessous).
     offshore.localised_name = { "randputf.offshore-pump-name" }
     offshore.localised_description = { "randputf.offshore-pump-description" }
-    log("[randputF] offshore-pump can mine basic-fluid lakes; tooltip synced (no electricity)")
+    log("[randputF] offshore-pump named for fluid lakes (tiles, no electricity); oil patches need pumpjack")
   else
     log("[randputF] WARN offshore-pump prototype not found")
   end
@@ -850,6 +857,59 @@ local function collect_fluid_boxes(proto)
   return boxes
 end
 
+-- Parse une Energy (factorio) en kJ : "0.2kJ", "2J", "1MJ", "5.582MW". Retourne
+-- un nombre (kJ) ou nil si le format est inattendu.
+local function parse_energy_kj(value)
+  if type(value) == "number" then
+    return value / 1000 -- les valeurs numériques sont des Joules
+  end
+  if type(value) ~= "string" then return nil end
+  local n, unit = value:match("^(%d+%.?%d*)%s*([a-zA-Z]*)")
+  if not n then return nil end
+  local mult = { ["J"] = 0.001, ["kJ"] = 1, ["MJ"] = 1000, ["GJ"] = 1000000 }
+  return tonumber(n) * (mult[unit] or 1)
+end
+
+-- (§10) Puissance max d'un générateur à mode TEMPÉRATURE, avant son filtre
+-- (formule 2.0, cf. docs GeneratorPrototype) :
+--   max = (min(fluid.max_temperature, generator.maximum_temperature)
+--          − fluid.default_temperature)
+--         × fluid_usage_per_tick × fluid.heat_capacity × effectivity
+-- (× 60 pour passer de kJ/tick à kW/s). On la fige dans `max_power_output`
+-- AVANT de retirer le filtre (section générique) : le générateur conserve sa
+-- capacité nominale en mode combustion (burns_fluid), quel que soit le fluide
+-- brûlé. Aucun nom codé en dur : toutes les valeurs viennent des prototypes.
+-- Un générateur dont le filtre serait retiré mais dont la puissance ne peut pas
+-- être calculée (fluide inconnu, paramètres manquants) reçoit un cap neutre
+-- (1MW) : l'EXIGENCE 2.0 « filtre OU max_power_output » est toujours satisfaite.
+local function compute_temp_power_cap(proto, boxes)
+  local max_temp = proto.maximum_temperature
+  local usage = proto.fluid_usage_per_tick
+  local effectivity = proto.effectivity or 1
+  for _, box in ipairs(boxes) do
+    if (box.production_type == "input" or box.production_type == "input-output")
+      and box.filter then
+      local fluid = data.raw.fluid[box.filter]
+      if fluid then
+        local temp_cap = fluid.max_temperature
+        if max_temp and max_temp > 0 and (not temp_cap or max_temp < temp_cap) then
+          temp_cap = max_temp
+        end
+        local default_temp = fluid.default_temperature or 0
+        local heat = parse_energy_kj(fluid.heat_capacity)
+        if temp_cap and usage and heat then
+          local kw = (temp_cap - default_temp) * usage * heat * effectivity * 60
+          if kw > 0 then
+            return string.format("%.6fkW", kw)
+          end
+        end
+      end
+      return "1000kW"
+    end
+  end
+  return nil
+end
+
 -- ── Fluides génériques : aucun bâtiment n'est figé sur steam/water (§6, §10)
 -- --------------------------------------------------------------------------
 -- Dans l'univers randputF, un fluide n'a aucune identité fixe (fires
@@ -872,11 +932,25 @@ do
   local entities = 0
   local described = 0
   local fixed_cats = 0
+  local powered = 0
   for proto_type, protos in pairs(data.raw) do
     for _, proto in pairs(protos) do
       local boxes = collect_fluid_boxes(proto)
       if boxes then
         entities = entities + 1
+        if proto.type == "generator" and proto.max_power_output == nil then
+          -- §10 : un générateur SANS max_power_output dérive sa puissance de la
+          -- température du fluide FILTRÉ (mode température). On retire son
+          -- filtre un peu plus bas : sans cette étape, le proto serait INVALIDE
+          -- (setup : « fluid_box must exist and have a filter if
+          -- 'max_power_output' is not defined »). On fige donc la puissance
+          -- nominale AVANT de retirer le filtre.
+          local cap = compute_temp_power_cap(proto, boxes)
+          if cap then
+            proto.max_power_output = cap
+            powered = powered + 1
+          end
+        end
         local has_input = false
         local has_output = false
         for _, box in ipairs(boxes) do
@@ -918,15 +992,45 @@ do
   log("[randputF] generic fluids: " .. stripped
     .. " fluid-box filters cleared across " .. entities .. " entities, "
     .. described .. " tooltips made generic, "
-    .. fixed_cats .. " fixed-recipe transformers made crafters")
+    .. fixed_cats .. " fixed-recipe transformers made crafters, "
+    .. powered .. " generator powers fixed pre-strip")
+end
+
+-- ── Génération « fluide combustible » (§6/§10) ────────────────────────────
+-- Un générateur vanilla (steam-engine, steam-turbine) produit de l'électricité
+-- à partir de la TEMPÉRATURE du fluide d'entrée : un fluide froid pris à la
+-- pompe (pétrole brut, huile lourde… à ~25°C) sort donc à ~0 W — le tooltip
+-- affiche « puissance max 0 » alors que §10 veut « n'importe quel fluide
+-- pipable » en entrée. On bascule donc les générateurs en mode COMBUSTIBLE
+-- (`burns_fluid`, API 2.0) : la puissance dépend du `fuel_value` du fluide,
+-- plus de sa température. Corollaire : dans randputF TOUT fluide est un
+-- combustible arbitraire (§6, fires arbitrary), donc on leur donne à tous un
+-- `fuel_value` générique (aucune liste de noms). ``destroy_non_fuel_fluid``
+-- reste à sa valeur par défaut (false) : un fluide de mod sans fuel_value
+-- n'est pas brûlé à vide.
+do
+  local burners = 0
+  for _, proto in pairs(data.raw.generator or {}) do
+    proto.burns_fluid = true
+    burners = burners + 1
+  end
+  local fv = 0
+  for _, proto in pairs(data.raw.fluid or {}) do
+    proto.fuel_value = "200kJ"
+    fv = fv + 1
+  end
+  log("[randputF] generator burns_fluid: " .. burners .. " generators, "
+    .. fv .. " fluids fueled (200kJ/unit)")
 end
 
 -- ── Fluides assignés par la seed (§6/§10) ─────────────────────────────────
 -- La section ``building_fluid_assignments`` de la seed mappe chaque bâtiment
 -- à comportement fixe (turbine, boiler, heat-exchanger…) à un fluide
 -- OBTENABLE (un lac, §7.5). Ici on APPLIQUE ces assignations : on remet le
--- filter de chaque fluid box sur le fluide assigné, et on met à jour le
--- tooltip pour afficher le VRAI fluide (plus "steam" générique).
+-- filter de chaque fluid box sur le fluide assigné (sauf les GÉNÉRATEURS,
+-- qui brûlent n'importe quel fluide et restent sans filtre, cf. bloc
+-- burns_fluid), et on met à jour le tooltip pour afficher le VRAI fluide
+-- (plus "steam" générique).
 --
 -- Rien n'est codé en dur : la seed fournit la liste, on itère sans liste de
 -- noms. Les bâtiments sans assignation gardent le filter stripping générique
@@ -958,9 +1062,16 @@ do
     if boxes then
       local input_fluid = fluids.input
       local output_fluid = fluids.output
+      -- §6/§10 : les GÉNÉRATEURS (burns_fluid, cf. plus haut) brûlent N'IMPORTE
+      -- quel fluide : leur filter d'entrée est inutile et même néfaste (un
+      -- lac voisin d'un autre fluide ne pourrait plus les alimenter — c'est
+      -- exactement « pas d'entrée » pour un fluide pourtant pompé). On ne
+      -- réapplique le filter qu'aux transformateurs à RECETTE FIXE (boiler /
+      -- heat-exchanger) ; le tooltip « Fluide assigné » reste informatif.
+      local applies_filter = proto.type ~= "generator"
       -- Appliquer le filter sur chaque fluid box selon son production_type
       for _, box in ipairs(boxes) do
-        if box.production_type == "input" and input_fluid then
+        if box.production_type == "input" and input_fluid and applies_filter then
           box.filter = input_fluid
           assigned_count = assigned_count + 1
         elseif box.production_type == "output" and output_fluid then

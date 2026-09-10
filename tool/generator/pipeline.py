@@ -9,9 +9,10 @@ from __future__ import annotations
 import copy
 import logging
 
-from tool.common.db import VanillaDB
+from tool.common.db import SLOT_ITEM, VanillaDB
 from tool.generator import (
     building_fluids,
+    easeup_phase,
     electricity,
     endgame_phase,
     lakes,
@@ -37,6 +38,7 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     recursive_phase.set_config(cfg)
     relay_phase.set_config(cfg)
     tech_tree.set_config(cfg)
+    easeup_phase.set_config(cfg)
 
     rng = map_patches.make_rng(db.seed_value)
 
@@ -57,8 +59,13 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
 
     # Phase 2 : Chaîne initiale (starter). ``has_lakes`` : si la seed tire au
     # moins un lac, le landfill est rendu craftable dès le bootstrap (C4).
+    # ``lake_resources`` : les fluides des lacs sont extraits par la pompe du
+    # starter — le kit doit contenir une pompe par fluide distinct à extraire
+    # en plus des fluides des patchs (§7/§7.5).
+    initial_lake_resources = frozenset(la.resource for la in lake_list)
     starter = starter_chain.build_starter_chain(
-        rng, db, patches, has_lakes=bool(lake_list)
+        rng, db, patches, has_lakes=bool(lake_list),
+        lake_resources=initial_lake_resources,
     )
 
     # Phase 3 : Électricité (déclenchement à la demande, combustible assigné).
@@ -70,6 +77,7 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     # fluide ou item) et le MÈLE au pool de la seed (§10, C1).
     lake_resources = {la.resource for la in lake_list}
     used_resources = {p.resource for p in patches} | lake_resources
+    patch_items_before = {p.resource for p in patches if p.kind == SLOT_ITEM}
     repairs = electricity.resolve_electricity(
         rng, db, starter, lake_resources, used_resources
     )
@@ -79,11 +87,34 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         elif kind == "item":
             patches.append(value)
 
+    # Bootstrap inline (§10ter) : les patches/lacs RÉPARATEURS ajoutés par
+    # l'électricité sont obtenables sans électricité (foreuse non-élec /
+    # pompe offshore) → ils rejoignent le watershed de l'oracle, TOUJOURS
+    # actif jusqu'au gel ci-dessous.
+    starter.state.early.add_sources(
+        items={p.resource for p in patches if p.kind == SLOT_ITEM} - patch_items_before,
+        fluids={la.resource for la in lake_list} - lake_resources,
+    )
+
     # Rejoue les macro-techs du starter : les recettes créées par l'électricité
     # (générateur, combustible) doivent être unlockées par une tech, jamais
     # rester orphelines (sinon un relais pourrait en dépendre sans pouvoir la
     # fabriquer).
     starter.tech_steps = starter_chain.build_tech_steps(starter.state, db)
+
+    # Bootstrap inline (§10ter, redesign) : GEL DES PROMESSES + EXTINCTION DE
+    # L'ORACLE. `starter.promises` = snapshot des produits des recettes des techs
+    # gratuites (tout item produit par une recette du starter/électricité au
+    # moment du gel). Dès maintenant, la phase récursive re-tire SANS contrainte
+    # early (recettes profondes/électriques bienvenues) ; le dédup des
+    # primitives (`ensure_obtainable`/`make_recipe`) garantit qu'aucun produit
+    # promis n'est re-baké ensuite.
+    starter.promises = {
+        recipe["results"][0]["name"]
+        for recipe in starter.state.recipes
+        if recipe.get("results") and recipe["results"][0]["type"] == SLOT_ITEM
+    }
+    starter.state.early.deactivate()
 
     # Phase 2bis : Assignation de fluides aux bâtiments à comportement fixe
     # (§6/§10). Détecte automatiquement les steam-generators (turbine, steam-
@@ -162,12 +193,42 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         rng,
     )
 
+    # Phase 4ter-bis : recettes alternatives « ease-up » pour les crafts trop
+    # lourds (graphe trop profond ou boucle — ex. un pylône exigeant un science
+    # pack tardif). Détection sur le graphe FINAL ; recette alternative tirée
+    # du pool gelé ``base`` (comme les relais §9.3) ; déblocage par des techs
+    # de type prologue (hand-craft) insérées juste après les techs du
+    # bootstrap/relais. Flux RNG INDÉPENDANT (make_rng) : les phases
+    # précédentes ne sont pas perturbées — une seed régénérée est strictement
+    # la précédente PLUS les ease-up (additif, sauvegarde préservée).
+    #
+    # ⚠️ Déclencheurs hand-craft : les techs ease-up réutilisent LE MÊME pool
+    # que les prologue relais, mais les triggers déjà pris par `welcome_steps`
+    # leur sont INTERDITS (deux techs avec le même craft-item se déclencheraient
+    # ensemble). On passe la liste des triggers consommés.
+    easeup_rng = easeup_phase.make_rng(db.seed_value)
+    used_triggers = [
+        s.get("craft_trigger") for s in welcome_steps if s.get("craft_trigger")
+    ]
+    _eased, ease_steps = easeup_phase.build_ease_up_recipes(
+        easeup_rng,
+        db,
+        starter.state,
+        base,
+        trigger_candidates
+        or ([starter.first_science_pack] if starter.first_science_pack else None),
+        used_triggers,
+        steps_rng=easeup_rng,
+    )
+
     # Phase 5 : Arbre technologique (macro-steps uniquement)
     # Ordre demandé : d'abord les techs gratuites du starter (les premières
     # recettes, craftables avec tout le pool de début), PUIS les techs de
-    # prologue (recettes alternatives + premier pack science).
-    all_tech_steps = starter.tech_steps + welcome_steps + recursive_phase.steps() + endgame_steps
-    technologies = tech_tree.build_linear_tech_tree(all_tech_steps, rng)
+    # prologue (recettes alternatives + premier pack science et ease-up).
+    all_tech_steps = (
+        starter.tech_steps + welcome_steps + ease_steps + recursive_phase.steps() + endgame_steps
+    )
+    technologies = tech_tree.build_linear_tech_tree(all_tech_steps, rng, db)
 
     # Seules les techs du starter sont gratuites (auto-complétées au runtime) :
     # elles débloquent les recettes du bootstrap. Les techs de prologue

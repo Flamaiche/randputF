@@ -115,6 +115,13 @@ régression : `test_c6_aucune_ressource_dupliquee_sur_la_carte`.
   rester déterministe quel que soit l'ordre des chunks.
   Le premier gisement est toujours proche du spawn (~25 tuiles) mais les
   gisements restent resserrés — fini les grandes étendues alignées du vanilla.
+- **Lecture des tags sur TOUS les bâtiments** : passage systématique sur
+  chaque bâtiment/entité de la base pour lire ses tags (`is_*` §1–§8,
+  `is_fixed_crafter`, `has_hidden_recipe`…) et vérifier qu'ils sont
+  correctement pris en compte par la randomisation. Implémenté par
+  `tool/audit/tags.py` (CLI `randputf audit`, invariants d'orthogonalité/
+  cohérence sur le dump réel + la démo) et croisé par le check consommation
+  par tag (`tag_verify.py`, hors repo). Référence : `docs/tags.md`.
 
 ---
 
@@ -165,6 +172,20 @@ Le tag `has_hidden_recipe` est la base de ce programme : toute machine taggée
 assignée (`is_fixed_crafter`) — jamais laissée tomber au sol « sans recette »
 (le boiler sans recette était le cas de cette classe, résolu en C7).
 
+**C9. [✔ fait — Graphe de production visuel à la génération]** : quand une
+seed est générée, produire un **graphe des items** : un nœud par item, une
+**arête par dépendance de craft** (item → ingrédient), chaque arête
+**étiquetée par la quantité** nécessaire au craft (`amount` de l'ingrédient).
+Sortie : un graphe **interactif autonome** `output/randputF_0.1.0/seed.graph.html`
+généré pendant `--out` (à côté de `seed/seed.json`, **jamais** dans `mod/`
+installé — pas de pollution du mod en jeu), rendu par Graphviz (`dot -Tsvg`)
+depuis un `.dot` intermédiaire effacé, icônes embarquées en data-URI. Les
+ressources brutes (patches, lacs, environnement) sont en ellipse grise, les
+science packs en boîte orangée ; plusieurs recettes pour la même paire
+produit→ingrédient regroupent leurs quantités. But : visualiser la
+profondeur/ramification des chaînes (linéarité du départ, boucles), vérifier
+la faisabilité d'une seed en dev.
+
 ---
 
 ## D. À développer (prochaine étape)
@@ -197,13 +218,23 @@ assignée (`is_fixed_crafter`) — jamais laissée tomber au sol « sans recette
   débloqué dans l'arbre de récursion. Cela verrouille/déverrouille des
   branches entières de tech selon les bâtiments obtenus, renforçant le
   côté « arbre de progression aléatoire ».
-- **Lecture des tags sur tous les bâtiments** : faire un passage sur **tous
-  les bâtiments** de la seed pour **lire leurs tags** (comme les tags
-  `is_fixed_recipe_crafter` / `is_fixed_fluid_crafter` du lab et des
-  transformateurs fixes) et s'assurer que chacun est correctement pris en
-  compte par la logique de randomisation — pour ne manquer aucun bâtiment
-  taggé ou masqué dans les listes de noms, et router/tagger chaque machine
-  systématiquement (base du programme C8).
+- **Extraction au starter trop riche — déblocage PROGRESSIF des extracteurs**
+  **(constat en jeu, à développer)** : dès le spawn, le joueur accède à la fois
+  à `burner-mining-drill` ET `electric-mining-drill`, plus pumpjack et
+  offshore-pump : trop de bâtiments d'extraction d'un coup, la progression se
+  « voit » en une seule tech. Désiré : débloquer l'extraction **au fur et à
+  mesure** :
+  - un seul extracteur (le plus primitif) au starter ; les foreuses plus
+    évoluées se débloquent PAR la récursion, jamais en vrac au départ ;
+  - la **« permission de miner »** façon vanilla : une ressource n'est minable
+    que si son extracteur compatible est débloqué **et que la recherche
+    nécessaire a été faite** (ex. l'uranium n'est pas minable sans recherche) ;
+  - le déblocage d'un minerai peut être **conditionné à l'obtention d'un
+    fluide/extracteur qui permet de le miner** (gating ressource→permission)
+    — l'extraction devient une progression, pas un acquis du spawn.
+  À connecter avec C1 (randomisation non-infinies) et la garantie « extracteur
+  avant besoin » (§7) : la garantie suffit pour la solvabilité, il faut EN PLUS
+  échelonner le starter pour ne pas tout donner d'emblée.
 
 ---
 

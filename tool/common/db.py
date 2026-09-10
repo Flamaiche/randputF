@@ -117,18 +117,21 @@ def is_fixed_fluid_crafter(b: "BuildingDef") -> bool:
 
 def is_fixed_crafter(b: "BuildingDef") -> bool:
     """Un bâtiment à recette FIXE qui peut HÉBERGER une recette de craft :
-    atelier ``is_crafter`` taggé produisant une sortie (fluide OU item). Sur
-    CE sous-ensemble le générateur crée sa recette randomisée (« fluide →
-    fluide » comme boiler/heat-exchanger, item → item / item → fluide pour un
-    équivalent fourni par un mod). Les générateurs/extracteurs/lab (chaleur,
-    électricité, ressource, recherche = pas des produits de recette) restent
-    exclus : leur comportement figé n'est pas une recette de craft."""
+    atelier ``is_crafter`` taggé produisant une sortie (fluide OU item), OU
+    un combusteur à résidu (``fuel_residues`` non vide) — le réacteur nucléaire
+    produit depleted-uranium-fuel-cell en résidu : c'est sa sortie item
+    recevable. Sur CE sous-ensemble le générateur crée sa recette randomisée
+    (« fluide → fluid » comme boiler/heat-exchanger, « item → item » pour le
+    réacteur ou un équivalent de mod). Les générateurs/extracteurs/lab (chaleur,
+    électricité, ressource, recherche = pas de sortie recette) restent exclus."""
     return (
         has_hidden_recipe(b)
-        and getattr(b, "is_crafter", False)
         and (
-            getattr(b, "fluid_outputs", 0) > 0
-            or getattr(b, "item_output_slots", 0) > 0
+            (getattr(b, "is_crafter", False) and (
+                getattr(b, "fluid_outputs", 0) > 0
+                or getattr(b, "item_output_slots", 0) > 0
+            ))
+            or bool(getattr(b, "fuel_residues", ()))
         )
     )
 
@@ -139,34 +142,10 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 # d'import entre generators.
 ROCKET_CHAIN = frozenset({"processing-unit", "low-density-structure", "rocket-fuel"})
 
-# Les VRAIS pylônes (poteaux électriques) — le lecteur de débit « beacon »
-# est un bâtiment de distribution mais PAS un pylône : il ne transporte pas
-# le courant (§9.1/§10). La cadence garantie et le starter ne doivent
-# débloquer que ceux-ci ; le beacon reste randomisé comme un simple bâtiment.
-POWER_POLES = frozenset(
-    {"small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"}
-)
-
-# Items « contrôle » non fabricables / non empilables : blueprint, planners,
-# copy-paste, selection-tool, remotes (spidertron, artillery, discharge). Ils
-# ne sont PAS du contenu de craft : jamais de recette randputf-*, jamais de
-# patch au sol (une recette en produirait un nombre > 1 → erreur Factorio
-# « item-product is not stackable »). Les science packs partagent curieusement
-# le flag is_tool dans le dump ; ils restent traités séparément (filière §13).
-TOOL_LIKE_ITEMS = frozenset(
-    {
-        "blueprint",
-        "blueprint-book",
-        "deconstruction-planner",
-        "upgrade-planner",
-        "copy-paste-tool",
-        "selection-tool",
-        "rail-planner",
-        "spidertron-remote",
-        "discharge-defense-remote",
-        "artillery-targeting-remote",
-    }
-)
+# Les VRAIS pylônes (poteaux électriques) sont désormais taggés
+# ``BuildingDef.is_power_pole`` (vanilla.py) — le beacon est une distribution
+# mais PAS un pylône (il ne transporte pas le courant, §9.1/§10). La cadence
+# garantie et le starter ne débloquent que ceux-ci.
 
 # Armes MONTÉES sur des entités (chars, véhicules, artillerie, spidertron) :
 # dans le dump vanilla leur type est « gun », donc is_gun=True, mais elles ne
@@ -246,6 +225,11 @@ class ItemDef:
     # il fait foi ; sinon on déduit la stackabilité du type (voir
     # is_stackable).
     stack_size: int = 0
+    # --- Tags §9 : items (docs/tags.md §12) ---
+    is_environmental: bool = False    # récolté à la main (wood/stone/raw-fish)
+    is_virtual_item: bool = False     # blueprint/planner/remote (non fabricable)
+    is_module: bool = False           # module d'assemblage
+    is_capsule_throwable: bool = False  # capsule lançable (grenades, remotes)
 
     @property
     def is_handheld_gun(self) -> bool:
@@ -338,6 +322,79 @@ class BuildingDef:
     # tech s'appuie sur ce tag pour soustraire ces bâtiments du pool des
     # ateliers et assigner une recette fixe aux transformateurs (IDEES C7).
     has_hidden_recipe: bool = False
+    # --- Tags §1 : raffinement des rôles (docs/tags.md §1.1) ---
+    is_power_pole: bool = False       # poteau électrique (type electric-pole + supply_area)
+    is_beacon: bool = False           # module de transmission d'effet (type beacon)
+    is_accumulator: bool = False      # stockeur d'énergie (type accumulator)
+    is_energy_storage: bool = False   # stockage d'énergie (buffer_capacity > 0, pas de prod)
+    is_offgrid: bool = False          # producteur hors réseau (solaire, burner-generator)
+    consumes_electricity: bool = False  # consomme du courant (energy_source.type == 'electric')
+    is_water_extractor: bool = False  # extracteur d'eau (medium == 'water')
+    is_fluid_extractor: bool = False  # extracteur de fluide brut (medium == 'fluid')
+    is_ground_extractor: bool = False # extracteur de minerai solide (medium == 'ground')
+    # --- Tags §2 : logistique & transports (docs/tags.md §2) ---
+    is_belt: bool = False             # transport-belt
+    is_underground_belt: bool = False # belt sous-terrain
+    is_splitter: bool = False         # séparateur de flux
+    is_inserter: bool = False         # bras articulé
+    is_pipe: bool = False             # tube de fluide
+    is_pipe_to_ground: bool = False   # tube sous-terrain
+    is_fluid_transport: bool = False  # union pipe + pipe-to-ground
+    is_chest: bool = False            # stockage d'items (container)
+    is_logistics_chest: bool = False  # poitrine logistique (logistic-container)
+    is_storage: bool = False          # union chest + logistics-chest
+    is_roboport: bool = False         # dock des robots
+    is_robot: bool = False            # robot logistique ou de construction
+    # --- Tags §3 : train & véhicules (docs/tags.md §3) ---
+    is_rail: bool = False             # voie (droite/courbe/surélevée)
+    is_rail_support: bool = False     # rampes/piliers (rail-support, dummies)
+    is_rail_signal: bool = False      # signal/chain
+    is_train_stop: bool = False       # gare
+    is_locomotive: bool = False       # loco
+    is_wagon: bool = False            # wagon cargo/fluide/artillerie
+    is_vehicle: bool = False          # tous véhicules
+    is_spider_vehicle: bool = False   # spider (spidertron)
+    # --- Tags §4 : production spécialisée (docs/tags.md §4) ---
+    is_furnace: bool = False          # four (smelting)
+    is_assembler: bool = False        # machine d'assemblage
+    is_chemical_plant: bool = False   # usine chimique
+    is_refinery: bool = False         # raffinerie (oil-processing)
+    is_centrifuge: bool = False       # centrifugeuse
+    is_rocket_parts_crafter: bool = False  # silo à fusée
+    # --- Tags §5 : énergie & chaleur (docs/tags.md §5) ---
+    is_boiler: bool = False           # chaudière (type boiler, énergie burner)
+    is_heat_exchanger: bool = False   # échangeur (type boiler, énergie heat)
+    is_solar: bool = False            # panneau solaire
+    is_reactor: bool = False          # réacteur nucléaire
+    is_heat_transport: bool = False   # pipe de chaleur
+    # --- Tags §5bis : modèle « chaleur » (docs/tags.md §5) ---
+    # ``is_heat_source`` PRODUIT la chaleur (réacteur vanilla : energy burner +
+    # has_heat_output). ``is_heat_sink`` la DEMANDE (échangeur : energy_source
+    # type 'heat'). ``produces_heat`` est restreint à la SOURCE (moins pur que
+    # l'ancien has_heat_output qui ratissait aussi la heat-pipe et l'échangeur).
+    is_heat_source: bool = False      # producteur de chaleur (ex. nuclear-reactor)
+    is_heat_sink: bool = False        # consommateur de chaleur (ex. heat-exchanger)
+    is_burner_generator: bool = False # générateur brûleur
+    # --- Tags §6 : extraction (docs/tags.md §6) ---
+    is_mining_drill: bool = False     # foreuse de minerai
+    is_pumpjack: bool = False         # pompe à pétrole
+    is_offshore_pump: bool = False    # pompe d'eau
+    is_well_pump: bool = False        # pompe de fluide brut
+    # --- Tags §7 : combat & défense (docs/tags.md §10) ---
+    is_turret: bool = False           # union des 4 familles de tourelles
+    is_gun_turret: bool = False       # tourelle balistique (ammo-turret)
+    is_laser_turret: bool = False     # tourelle laser (electric-turret — consomme le réseau)
+    is_flame_turret: bool = False     # tourelle à flamme (fluid-turret)
+    is_artillery: bool = False        # artillerie longue portée (artillery-turret)
+    is_defensive_wall: bool = False   # muraille / porte
+    is_landmine: bool = False         # mine
+    is_combat_robot: bool = False     # robot de combat (destroyer/defender/distractor)
+    # --- Tags §8 : signal-réseau & électronique (docs/tags.md §11) ---
+    is_circuit_combinator: bool = False  # combinator de calcul (arithmetic/decider/selector)
+    is_constant_combinator: bool = False # émetteur constant
+    is_circuit_io: bool = False          # tout entité réseau circuits (combinators + speaker/display/switch)
+    is_rgb_lamp: bool = False            # lampe / éclairage
+    is_radar: bool = False               # radar / cartographie
 
 
 @dataclass

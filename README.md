@@ -25,6 +25,7 @@ mécanismes du système, leur justification et les règles qu'ils doivent respec
 8. [La chaîne initiale (starter)](#8-la-chaîne-initiale-starter)
 9. [La phase récursive](#9-la-phase-récursive)
 10. [L'électricité](#10-lélectricité)
+10bis. [La chaleur](#10bis-la-chaleur)
 11. [Combat et armement](#11-combat-et-armement)
 12. [Transports avancés](#12-transports-avancés)
 13. [L'arbre technologique](#13-larbre-technologique)
@@ -263,12 +264,22 @@ Au spawn, la carte est entièrement re-décidée :
 - **Patchs item et fluides** : tous posés au sol par le mod **au runtime**
   (pose explicite des gisements, §6.5), le mapgen n'en dessine plus aucun.
   La seed fournit pour chaque patch un **centre** (serré au spawn), un **rayon
-  de dispersion** et un **nombre aléatoire de blocs/puits** (`wells_per_patch`,
-  défaut 3..8) ; le mod **pose chaque bloc/puits au runtime** — entité-resource
+  de dispersion** et un **nombre de blocs/puits adapté au kind** : les **fluides**
+  gardent quelques puits éparpillés (`wells_per_patch`, défaut 3..8 - un
+  pumpjack se branche sur n'importe quelle tuile du champ), les **items**
+  forment des **champs ORGANIQUES produits avec l'algo du mapgen vanilla** :
+  une tuile est posée ssi un champ de **bruit lisse seuillé** y dépasse un
+  seuil (l'équivalent de `ore iff noise(tile) >= 0` de resource_autoplace) —
+  contours sinueux, dents, trous internes, jamais de cercles parfaits. La
+  taille est celle d'une vraie veine (`item_patch_radius`, défaut `9..17`,
+  soit des champs d'environ 200 à 700 tuiles utiles), dense comme une couche
+  de fer/cuivre de Factorio.
+  Le mod **pose chaque bloc/puits au runtime** — entité-resource
   `randputf-minerai-<item>` (minée par une foreuse) ou `randputf-oil-<fluide>`
   (pompée par un pumpjack) — dispersé aléatoirement autour du centre, jamais
-  alignés, fidèle à l'esprit vanilla. Richesse par bloc/puits = celle de la
-  seed (blocs/puits profonds) ;
+  alignés. **Richesse fluide** = rendement par puits (puits profonds) ;
+  **richesse item** = part de richesse totale du champ répartie **par tuile**
+  (`richness / count`), comme un minerai vanilla qui se tarit par morceaux ;
 - les ressources **non automatisables** (arbres, poissons, etc.) sont
   **exclues** du calcul des ressources brutes : elles ne constituent jamais un
   patch. Elles demeurent **récoltables à la main dès le départ** (pool
@@ -309,9 +320,12 @@ Pour chaque patch, la seed embarque :
   pour casser l'aspect « rangée » du vanilla) — **cluster serré au spawn** :
   les 3..8 gisements restent tous dans un rayon accessible à pied très tôt
   (~25..193 tuiles au pire cas de 8 patchs, ~25..145 pour les 3..6 usuels) ;
-- `count` — le **nombre aléatoire de blocs/puits** (config `wells_per_patch`,
-  défaut `[3, 8]`) ;
-- `cluster_radius` — le **rayon de dispersion** des blocs/puits autour du centre ;
+- `count` — le **nombre de blocs/puits**, adapté au kind du patch :
+  **fluides** = puits éparpillés (config `wells_per_patch`, défaut `[3, 8]`) ;
+  **items** = aire du disque du champ (dérivé, `ceil(π·r²)`) ;
+- `cluster_radius` — le **rayon de dispersion** autour du centre : large pour
+  les puits fluides (défaut `9..16`), taille de champ « type vanilla » pour les
+  items (défaut `9..17`, ~250 à ~900 tuiles — la taille d'une vraie veine) ;
 - `well_seed` — la **graine locale** pour dériver chaque position de bloc/puits.
 
 Au runtime (`on_chunk_generated`), quand un chunk contenant le gisement est
@@ -321,10 +335,18 @@ avec sa **richesse appliquée via `entity.amount`**.
 La position de chaque bloc/puits est dérivée de façon **reproductible et
 indépendante de l'ordre de génération des chunks** : un PRNG frais par
 bloc/puits (`well_seed + index`), donc l'ordre chunk-par-chunk n'a aucune
-influence. Les blocs/puits sont éparpillés aléatoirement (angle + rayon
-fractionnaire) autour du centre — **jamais alignés**. Un bloc/puits qui
-tomberait sur un lac ou un obstacle est simplement ignoré (position non
-posable), les autres restent.
+influence. Les puits **fluides** restent éparpillés à l'extérieur du centre
+(fraction `0.25..1` — un pumpjack se branche sur n'importe quelle tuile) ;
+les **items** utilisent l'algo du mapgen vanilla : un **bruit lisse seuillé**
+déterministe (value-noise interpolé, graine = `well_seed`) décide tuile par
+tuile — le bord ondule (`NOISE_WOBBLE`), la densité se délite du cœur vers
+les bords comme une vraie couche d'ore. Déterministe indépendamment de
+l'ordre des chunks (bruit dérivé des coordonnées + `well_seed` uniquement).
+Un bloc/puits qui tomberait sur un lac ou un obstacle est simplement ignoré
+(position non posable), les autres restent. Pour un **item**, la richesse de
+la seed est le **total du champ** : chaque tuile reçoit `richness / count`
+(per-tile), un **fluide** garde un **rendement par puits** (`richness`
+intégral à chaque puits).
 
 En `data-updates`, ces entités ont `autoplace` avec `base_density = 0` : le
 mapgen ne les instancie jamais (spécification requise — le moteur refuse un
@@ -353,7 +375,21 @@ logique, §10) :
 
 1. **Kit de départ randomisé** : le joueur ne commence pas forcément avec le
    même équipement. Son arme de départ est tirée au hasard, et **les munitions
-   se calent sur l'arme** pour qu'il puisse effectivement l'utiliser.
+   se calent sur l'arme** pour qu'il puisse effectivement l'utiliser. Le kit
+   fournit aussi le fabricateur, l'extracteur URPLS de la seed et un
+   combustible si besoin — à raison d'**UNE amorce par type d'extracteur**
+   (une foreuse par type de sol ; et côté fluides : **une pumpjack** pour les
+   patchs, **une pompe offshore** pour les lacs — §7.5, deux milieux
+   distincts). Ce n'est PAS la dotation qui rend la suite faisable : c'est
+   l'**unlock**.
+   **Toute ressource du run (patchs ou lacs, §7.5) a la recette de son
+   extracteur unlockée par `starter-extraction` (tech 0, gratuite) — la
+   « tech d'avant » — STRICTEMENT AVANT toute tech dont une recette consomme
+   cette ressource** (starter-transformation @1 puis toutes les techs
+   profondes). Quand on a besoin d'une ressource, son extracteur est déjà
+   craftable : on en refabrique autant qu'il faut (le poisson se pêche dans
+   les lacs, §7.5). L'amorce du kit ne fait que briser l'œuf/poule du premier
+   exemplaire.
 2. **Techs gratuites du starter** : les premières recettes (la chaîne
    initiale, §8) sont débloquées par les techs du starter
    (`randputf-starter-*`), **gratuites** — coût nul, auto-complétées au
@@ -379,10 +415,13 @@ logique, §10) :
    rare) : `seed.wreck.counts = [c0, c1, c2, c3]` calculés par la formule
    générique `c3 = t`, `c2 = t + a`, `c1 = 100 − 5t − 2a`, `c0 = c1 + b`
    (exiger `6t + 3a < 100` et `b ≥ 1`), garantissant la somme des valeurs
-   `0·c0 + 1·c1 + 2·c2 + 3·c3 = 100`. Défauts `(t,a,b) = (12, 9, 53)` →
-   P(0) ≈ 57,7 %. Chaque conteneur n'est traité qu'une fois (loot préservé
-   aux rechargements), le tirage est déterministe par seed (générateur
-   indépendant `game.create_random_generator`). Le pool de loot se limite
+   `0·c0 + 1·c1 + 2·c2 + 3·c3 = 100`. Défauts `(t,a,b) = (15, 1, 1)` →
+   P(0) ≈ 30,8 % : le crash est riche (un vaisseau à 5 slots ≈ 6 matériaux en
+   moyenne) et **un conteneur n'est jamais entièrement vide** (force-fill au
+   runtime si le tirage a tout mis à 0). Chaque conteneur n'est traité qu'une
+   fois (loot préservé aux rechargements), le tirage est déterministe par seed
+   (générateur indépendant `game.create_random_generator`). Le pool de loot se
+   limite
    aux **ressources non-infinies** (bois, pierre, poisson) : ce sont les
    seules qu'on ne peut pas miner/automatiser, et on évite tout item crafté
    (plaques, fours…) dont la recette n'est pas garantie débloquée par
@@ -394,7 +433,12 @@ logique, §10) :
     `randputf-lac-<fluid>` (copie de la tuile eau, **recolorée**) portant
     `fluid = <fluide tiré>` — une **pompe offshore vanilla** posée dessus
     débite ce fluide, **infini** comme l'eau. Richesse = taille du lac (volume
-     illimité). Comptage `count ∈ [min, max]` (défaut 1, zéro possible via
+     illimité). **Contraste patchs/lacs (§7)** : un *patch* fluide est une
+     **entité** resource `basic-fluid` posée sur la terre → il se mine avec la
+     **pumpjack** (électrique, §10) ; un *lac* est une **tuile** → il se pompe
+     avec la **pompe offshore** (énergie void, sans électricité). Les deux
+     extracteurs ont leur recette au starter et un amorce au kit quand les deux
+     milieux sont présents. Comptage `count ∈ [min, max]` (défaut 1, zéro possible via
      config) : un fluide non tiré n'a **aucun lac** (= indispo à l'extraction
      par lac), et si aucun lac n'est tiré la carte est sans eau. Placement
      **CREUSÉ au runtime** (`control.lua`, `on_chunk_generated`) : le scatter
@@ -478,8 +522,10 @@ première boucle de production :
 
 1. **Extraction** : un ou plusieurs bâtiments extracteurs sont choisis en
    fonction des ressources immédiatement à collecter — le milieu de chaque
-   patch (sol / océan / fluide gazeux…) désigne la famille d'extracteurs
-   possibles (perceuses pour le sol, pompes offshore pour l'eau, etc.).
+   patch désigne la famille d'extracteurs possibles : foreuses pour le sol, et
+   côté fluides le **support physique** de la ressource : un **patch** est une
+   entité `basic-fluid` → **pumpjack** (électrique) ; un **lac** est une tuile →
+   **pompe offshore** (énergie void).
 2. **Transformation** : un bâtiment de fabrication est choisi pour créer ou
    transformer une ressource en une autre. Tout peut y passer : selon ses
    directives, il acceptera items, fluides ou les deux. Un assembleur tier 1
@@ -659,8 +705,12 @@ Configurable dans `RecursiveConfig` (`dist_marks`, `dist_guaranteed`) via
 
 Les ressources non automatisables (arbres → `wood`, rochers → `stone`, poissons
 → `raw-fish`) sont obtenues dès le départ, mais s'épuisent : elles ne peuvent
-pas être la colonne vertébrale d'un run. La phase relais, qui tourne **après
-toutes les phases productrices de recettes**, garantit leur remplacement :
+pas être la colonne vertébrale d'un run. Comme le bootstrap se joue précisément
+sur ces ressources rares, **les recettes du démarrage (craftables à la main,
+§10) DOUBLENT la quantité de leurs ingrédients environnementaux** — la bascule
+vers les recettes « propres » du relais devient aussi un objectif économique.
+La phase relais, qui tourne **après toutes les phases productrices de
+recettes**, garantit leur remplacement :
 
 1. **Scan** : on détecte chaque recette générée dont un ingrédient est un item
    environnemental, et dont le produit n'est pas lui-même environnemental.
@@ -726,8 +776,8 @@ recette**. Une phase **3bis**, exécutée **après** la récursion pondérée et
 - **Exclusions** : chaîne fusée (`processing-unit`, `low-density-structure`,
   `rocket-fuel`, `rocket-silo` — sinon doublon d'unlock avec `randputf-endgame-*`),
   armes montées (rattachées à LEUR véhicule en §12 — jamais randomisées comme
-  armes de poing), items de contrôle non empilables (`TOOL_LIKE_ITEMS` :
-  blueprint, planner, *remotes*, rail-planner…) — jamais de recette ni de
+  armes de poing), items de contrôle (`is_virtual_item` : blueprint, planner,
+  *remotes*, items `rail-planner` sans place_result…) — jamais de recette ni de
   patch.
 - **Empilabilité** : Factorio refuse qu'une recette produise **ou** consomme
   plus de 1 exemplaire d'un item non-empilable (armure, arme à feu, véhicule,
@@ -793,7 +843,9 @@ ressource. Ce qui se randomise, c'est tout ce qui l'entoure :
   solides, aucune catégorie ni atelier. Un assembling-machine-2 ou une usine
   chimique exigeraient l'électricité que ce générateur doit justement amorcer
   (bootstrap impossible sinon). Les générateurs suivants retombent sur des
-  ateliers normaux.
+  ateliers normaux. Ces recettes de bootstrap **doublent le coût de leurs
+  ingrédients non infinis** (bois/pierre/poisson, §9.5) — le début de run se
+  joue à la main sur des ressources rares.
 - **Ingrédients du générateur sans électricité** : en plus du handcraft, les
   **ingrédients** du premier générateur ne doivent pas eux-mêmes être produits
   par un **bâtiment électrique** — sans quoi il faudrait déjà l'électricité
@@ -801,9 +853,14 @@ ressource. Ce qui se randomise, c'est tout ce qui l'entoure :
   **bannit** donc tout item dont la production passe par un atelier électrique ;
   ne restent que ceux obtenables sans réseau : ressource brute (patch minerais),
   kit, environnement, ou recette dans un atelier non-électrique/à la main.
-- **Générateur à vapeur = fluide en entrée (pas l'eau)** : un steam-engine /
-  steam-turbine (générateur à vapeur) prend **un fluide** en entrée — n'importe
-  quel fluide pipable, pas spécifiquement l'eau (§8). Il est **amorçable
+- **Générateur à vapeur = fluide combustible en entrée (pas l'eau)** : un
+  steam-engine / steam-turbine (générateur à vapeur) prend **un fluide** en
+  entrée — n'importe quel fluide pipable, pas spécifiquement l'eau (§8). En
+  vanilla un générateur produit de l'électricité à partir de la **température**
+  du fluide : un fluide froid sorti d'une nappe afficherait « ~0 W ». Le mod
+  bascule donc les générateurs en mode **combustible** (`burns_fluid`) et donne
+  à **tous** les fluides un `fuel_value` générique (200 kJ/unité, §6 fires
+  arbitrary) : tout fluide est brûlé comme carburant. Il est **amorçable
   (fonctionnel)** si et seulement si la seed tire au moins **un LAC** (fluide
   extractible sans électricité via la pompe offshore) : une ressource oil posée
   en **patch** exigerait un pumpjack électrique → boucle fuel→électricité (§10).
@@ -830,7 +887,9 @@ ressource. Ce qui se randomise, c'est tout ce qui l'entoure :
   générateur et les bâtiments est indispensable — sans poteau, l'électricité
   produite ne transporte rien de jouable. Dès qu'un besoin électrique apparaît,
   un **bâtiment de distribution** (poteau) est aussi débloqué avec sa recette,
-  dans la même phase (réintégrée aux techs du starter).
+  dans la même phase (réintégrée aux techs du starter). Le pôle d'amorçage est
+  **craftable à la main** comme le générateur : son atelier exigerait
+  l'électricité que le poteau est censé transporter (même anti-boucle §10).
 - **Combustible du générateur** :
   - si le bâtiment a besoin d'un combustible item, on lui **assigne** un item
     comme combustible ;
@@ -842,6 +901,110 @@ ressource. Ce qui se randomise, c'est tout ce qui l'entoure :
 Exemple d'enchaînement cohérent : turbine tirée → son fluide d'entrée est
 décidé à sa création → ce fluide provient soit d'un patch existant, soit d'un
 transformateur (type chaudière) alimenté par un combustible assigné ou créé.
+
+## 10bis. La chaleur
+
+La chaleur est un milieu transportable **à la manière d'un fluide**, mais qui
+ne circule qu'entre les bâtiments capables de l'échanger. Rien n'est codé en
+dur : la détection se fait **par capacités** (tags `is_heat_source`,
+`is_heat_sink`, `is_heat_transport`), comme les autres familles de bâtiments
+(docs/tags.md §5bis). En vanilla :
+
+- **SOURCE** (`is_heat_source`) : *nuclear-reactor* — energy burner +
+  `has_heat_output`. C'est lui qui **produit** la chaleur.
+- **TRANSPORT** (`is_heat_transport`) : *heat-pipe* — la fait circuler entre
+  la source et les consommateurs.
+- **CONSOMMATEUR / SINK** (`is_heat_sink`) : *heat-exchanger* — energy_source
+  `'heat'`. Il **demande** la chaleur pour convertir son fluide d'entrée en
+  son fluide de sortie (sa recette fluide→fluide, §6/§10). En jeu, il ne
+  fonctionne **QUE raccordé** à une source via des conduites (réseau de chaleur
+  réel, `energy_source 'heat'` vanilla).
+
+**Garantie de la triade — « à la volée » (§9)** : comme la garantie
+« extracteur avant besoin » du starter (§7), un consommateur de chaleur ne doit
+**jamais** être débloqué avant sa source + son transport — sinon l'échangeur
+réclamerait du heat réseau sans aucun moyen d'en produire ni de le transporter
+(suite infaisable). `recursive_phase._ensure_heat_prereq` pose la garantie au
+premier instant où un sink reçoit sa recette de craft : il débloque, dans des
+techs **isolées strictement antérieures**, la SOURCE et le TRANSPORT manquants
+(une source déjà débloquée plus tôt n'est pas rejouée). Le pool **sans
+consommateur** rend le modèle parfaitement **inerte** : aucune contrainte, aucun
+unlock ajouté.
+
+Le réacteur (source) est alimenté en **combustible générique** (fuel categories
+unifiées, §8) : aucune chaîne uranium dédiée, la suite reste faisable.
+
+## 10ter. Vérificateur en profondeur (bootstrap sûr)
+
+Les techs **gratuites** du starter promettent des crafts disponibles dès le
+spawn (extracteurs, transports, lab, premier générateur électrique…). Mais les
+phases profondes (§9 récursif, §9.6 balayage de couverture, transformateurs
+fixes) **regénèrent** les recettes de certains de ces produits : la chaîne de
+production d'un craft starter peut alors finir par exiger l'**électricité**
+qu'un début de partie ne peut pas encore fournir. Cas réel relevé par le
+joueur (seed 13) : la turbine (premier générateur) exigeait `landfill`, qui
+exige `pipe`, craftée dans un **assembling-machine-2 électrique** (et plus
+profondément un fluide de patch pompé par pumpjack électrique) → pour avoir
+l'électricité il fallait … déjà l'électricité.
+
+Une phase de clôture (`bootstrap_guard`, AFTER toutes les phases productrices
+de recettes, AVANT l'arbre technologique) construit le **graphe de production
+complet**, repère **TOUS les cycles** (composantes fortement connexes produit →
+ingrédients produits, self-loops compris) et **CALSE** un cycle ssi :
+
+- **il est inaccessible sans électricité** : tu n'y entres jamais — aucun
+  membre du cycle n'est dans le **watershed « obtenable avant le réseau »**
+  (récolte à la main, patchs **items** minables par foreuse non-électrique,
+  lacs pompés par pompe offshore void, crafts main / ateliers burner/void/heat).
+  C'est le cas quand la sortie fuit vers **un item que l'on n'a pas** ou **une
+  électricité que l'on ne peut pas avoir** (turbine → landfill → pipe →
+  atelier électrique) : un craft starter dont le graphe exige de l'électricité
+  pour produire … l'électricité est un cycle où l'on ne peut pas entrer, il
+  faut le casser ;
+- **son rendement net ≤ 0** : rendement = Σ quantités **produites** des
+  membres du cycle − Σ quantités **consommées** des mêmes membres par les
+  recettes du cycle. Un cycle qui s'auto-consomme autant qu'il ne produit ne
+  peut jamais exporter le moindre surplus → négatif, à casser.
+
+Les cycles **accessibles** (au moins un membre dans le watershed) **et** de
+rendement **strictement positif** sont **bénins** (§8) : le joueur peut y
+entrer et en tirer du net, on n'y touche pas.
+
+**Correction = remplacement d'abord, ajout sinon** : toute recette d'une tech
+**gratuite** produisant un membre d'un cycle cassé reçoit un **craft de
+secours** :
+
+- **craft à la main** (aucun atelier), ingrédients **uniquement dans le pool
+  atteignable sans électricité** ; jamais le produit lui-même ni (pour un cycle
+  **négatif**) un membre de sa boucle (anti-cycle propagé aux secours, avec
+  repli sur le produit seul si le pool s'écrase) ;
+- **même sémantique que le premier générateur (§10)** : coût **doublé** pour
+  les ressources non infinies (`x2_environmental`) ; **science packs (§13)** :
+  jamais de ressource brute (patches/environnement) dans leur recette ;
+- **remplacement** (défaut, `replace_first`): on tente d'abord de **RÉÉCRIRE la
+  recette primaire `randputf-<produit>` SUR PLACE** — même nom, même position,
+  quantité produite conservée, zéro recette ajoutée — à condition que le rejeu
+  du validateur (§15, pool vide rejoué dans l'ordre liste) reste valide :
+  chaque ingrédient doit être déjà « mentionné » (produit ou ingrédient d'une
+  recette antérieure, ou patch/lac/environnement) avant la position de la
+  recette ;
+- **ajout** (repli) : si le remplacement casserait le rejeu, une recette
+  alternative `randputf-bootsafe-<produit>` est APPENDÉE en fin de liste
+  (validateur garanti : le pool d'alors contient tout), débloquée par **UNE
+  tech gratuite** `randputf-starter-bootsafe` JOINTE aux techs du starter
+  (façon prologue relais §9.3, créée seulement si au moins une recette a été
+  ajoutée) — la recette primaire profonde (`randputf-<produit>`) reste alors
+  inchangée ;
+- **point fixe** : un tour ré-inclut les produits secourus au watershed et
+  referme les gaps en aval (généralement 1 à 2 tours) ; chaque produit n'est
+  secouru **qu'une fois** ;
+- les recettes **alternatives** (ease-up §9.3, relais) du même produit restent
+  inchangées ; les **générateurs de courant** sont secourus en premier
+  (débloquer le réseau avant le reste).
+
+Flux RNG **indépendant** (`make_rng`) : une seed se régénère à l'identique
+hormis les recettes de secours ajoutées. Config : section `bootstrap_guard`
+(`enabled`, `prefix`, `ingredient_min/max`, `max_iterations`, `replace_first`).
 
 ## 11. Combat et armement
 
@@ -1138,6 +1301,7 @@ Chaîne complète, de l'écriture d'une seed à une partie jouable :
 randputF/
 ├── README.md            # ce document
 ├── IDEES.md             # idées / corrections workshop
+├── docs/                # références : tags.md (tags), nondeterminism.md
 ├── .gitignore
 ├── pyproject.toml       # package Python (randputf, ≥3.11)
 ├── config/              # configurations YAML
@@ -1145,11 +1309,13 @@ randputF/
 ├── data/                # dump des prototypes vanilla
 │   └── vanilla_dump.json
 ├── tool/                # générateur externe Python
-│   ├── __main__.py      # CLI : parse, generate
+│   ├── __main__.py      # CLI : parse, audit, generate
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
 │   │   ├── db.py
 │   │   ├── demo.py
 │   │   └── weighted_picker.py
+│   ├── audit/           # audit des tags bâtiments/items (invariants C8)
+│   │   └── tags.py
 │   ├── parsers/         # extraction des prototypes vanilla
 │   │   └── vanilla.py
 │   ├── generator/       # moteur de tirage & graphe
@@ -1211,10 +1377,11 @@ haut niveau restent ceux décrits en §4.)
      expose déjà nativement ;
    - stackabilité réelle, catégories de munitions, compatibilité combustible,
      dépendances (robot↔roboport, solaire↔accumulateur) ;
-   - réduction des listes/heuristiques en dur de `tool/common/db.py`
-     (`ROCKET_CHAIN`, `POWER_POLES`, `NON_STACKABLE_ITEM_TYPES`,
-     `TOOL_LIKE_ITEMS`, `VEHICLE_GUNS`) à celles qui sont du *choix de
-     conception* du randomizer et non une *donnée moteur*.
+- réduction des listes/heuristiques en dur de `tool/common/db.py`
+      (`ROCKET_CHAIN`, `NON_STACKABLE_ITEM_TYPES`, `VEHICLE_GUNS`;
+      `POWER_POLES` et `TOOL_LIKE_ITEMS` supprimés, migrés vers
+      `is_power_pole` / `is_virtual_item`) à celles qui sont du *choix de
+      conception* du randomizer et non une *donnée moteur*.
    Le Python garde son rôle réel : trier, générer la seed, vérifier la
    solvabilité §15 — il ne re-découvre plus le contenu à la main.
     **Lacs : pose runtime déterministe** (remplace l'autoplace resource, cf.
