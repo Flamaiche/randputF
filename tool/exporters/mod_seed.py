@@ -48,12 +48,14 @@ def write_seed_files(seed: dict, out_dir: Path) -> None:
     (out_dir / "seed.lua").write_text(
         LUA_HEADER + "return " + _to_lua(seed) + "\n", encoding="utf-8"
     )
-    locale_dir = out_dir.parent / "locale" / "en"
-    if locale_dir.exists():
-        locale_dir.mkdir(parents=True, exist_ok=True)
-        (locale_dir / "seed.cfg").write_text(
-            _locale_cfg(seed), encoding="utf-8"
-        )
+    locale_en = out_dir.parent / "locale" / "en"
+    locale_fr = out_dir.parent / "locale" / "fr"
+    for locale_dir in (locale_en, locale_fr):
+        if locale_dir.exists():
+            locale_dir.mkdir(parents=True, exist_ok=True)
+            (locale_dir / "seed.cfg").write_text(
+                _locale_cfg(seed), encoding="utf-8"
+            )
 
 
 def _locale_cfg(seed: dict) -> str:

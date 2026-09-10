@@ -25,6 +25,30 @@ def test_kit_contient_arme_et_munitions():
     assert "firearm-magazine" in names
 
 
+def test_chest_craftable_materiaux_finis():
+    """§7 : la seed GARANTIT une recette de chest (stockage d'items), tirée
+    aléatoirement, craftable avec des matériaux FINIS — aucun ingrédient
+    environnemental (wood/stone/raw-fish) ni fluide (infini)."""
+    rng = random.Random(9)
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")))
+    chest_recipes = []
+    for r in chain.recipes:
+        res = (r.get("results") or [{}])[0]
+        if res.get("type") != SLOT_ITEM or not res.get("name"):
+            continue
+        item = db.items.get(res["name"])
+        if not item or not item.place_result:
+            continue
+        building = db.buildings.get(item.place_result)
+        if building is not None and building.is_chest:
+            chest_recipes.append(r)
+    assert len(chest_recipes) == 1
+    for ing in chest_recipes[0]["ingredients"]:
+        assert ing["type"] == SLOT_ITEM
+        assert not db.items.get(ing["name"], None) or not db.items[ing["name"]].is_environmental
+
+
 def test_chaine_item_complete_et_valide():
     rng = random.Random(21)
     db = build_demo_db()
@@ -39,7 +63,9 @@ def test_chaine_item_complete_et_valide():
 
     targets = {r["results"][0]["name"] for r in chain.recipes}
     # extracteurs : un pour le sol + un pompage eau + un fluide profond
-    assert any("mining-drill" in t or t == "offshore-pump" for t in targets)
+    assert any(
+        "mining-drill" in t or t in ("offshore-pump", "pumpjack") for t in targets
+    )
     # transformation
     assert any("furnace" in t or "assembling" in t or "boiler" in t for t in targets)
     # transports item ET fluide
@@ -49,12 +75,93 @@ def test_chaine_item_complete_et_valide():
     assert any("pipe" in t for t in targets)
 
 
-def test_extracteur_eau_pour_patch_water():
+def test_extracteur_pumpjack_pour_patch_fluide():
+    """§7.5 : un PATCH fluide est une ENTITÉ resource basic-fluid posée sur la
+    terre — elle n'est minée que par un pumpjack (mining-drill électrique), pas
+    par une pompe offshore (réservée aux tuiles d'eau / lacs)."""
     rng = random.Random(4)
     db = build_demo_db()
     chain = build_starter_chain(rng, db, make_patches(("fluid", "water")))
     extract_steps = [s for s in chain.steps if s["type"] == "extract"]
-    assert extract_steps[0]["extractor"] == "offshore-pump"
+    assert extract_steps[0]["extractor"] == "pumpjack"
+
+
+def test_extracteur_pompe_offshore_pour_lac():
+    """§7.5 : un LAC est une TUILE fluide (copie de la tuile eau) : la pompe
+    offshore (énergie void) extrait son fluide sans électricité."""
+    rng = random.Random(4)
+    db = build_demo_db()
+    chain = build_starter_chain(
+        rng, db, make_patches(("item", "iron-ore")),
+        lake_resources=frozenset({"crude-oil"}),
+    )
+    extract_steps = [s for s in chain.steps if s["type"] == "extract"]
+    lake_step = next(
+        s for s in extract_steps if s["resource"]["name"] == "crude-oil"
+    )
+    assert lake_step["extractor"] == "offshore-pump"
+
+
+def test_kit_un_seul_extracteur_par_type():
+    """§7 : le kit n'apporte qu'UNE amorce par type d'extracteur — 1 pumpjack
+    pour les patchs fluides (entités basic-fluid) et 1 pompe offshore pour les
+    lacs (tuiles). La SUITE se craft : la recette de l'extracteur est unlockée
+    par starter-extraction (tech 0), avant tout besoin. 2 patchs fluides + 2
+    lacs → 1 pumpjack + 1 offshore-pump."""
+    rng = random.Random(44)
+    db = build_demo_db()
+    patches = make_patches(("fluid", "water"), ("fluid", "lubricant"))
+    chain = build_starter_chain(
+        rng, db, patches, lake_resources=frozenset({"crude-oil", "steam-demo"})
+    )
+    pump = next(e for e in chain.kit if e["name"] == "offshore-pump")
+    assert pump["count"] == 1
+    pumpjack = next(e for e in chain.kit if e["name"] == "pumpjack")
+    assert pumpjack["count"] == 1
+    # idem sans lac : seul le pumpjack des patchs reste, toujours unique
+    chain2 = build_starter_chain(rng, db, patches)
+    pumpjack2 = next(e for e in chain2.kit if e["name"] == "pumpjack")
+    assert pumpjack2["count"] == 1
+    assert not any(e["name"] == "offshore-pump" for e in chain2.kit)
+
+
+def test_recette_extracteur_debloquee_meme_si_item_en_patch():
+    """§7 « la tech d'avant » : la recette de craft d'un extracteur existe dans
+    le starter (tech starter-extraction) MÊME quand son item est déjà obtenu
+    comme patch au sol (§6) — sinon l'extracteur-patch n'aurait aucune recette
+    et ne serait craftable qu'en profondeur de seed. Cas : patch dont la
+    ressource EST un extracteur (electric-mining-drill posé au sol)."""
+    rng = random.Random(31)
+    db = build_demo_db()
+    patches = make_patches(("item", "electric-mining-drill"), ("fluid", "water"))
+    chain = build_starter_chain(rng, db, patches)
+    extraction = next(
+        s for s in chain.tech_steps if s["id"] == "randputf-starter-extraction"
+    )
+    ateliers_unlocked = {
+        (b.name) for b in db.buildings.values()
+        if b.name in chain.state.unlocked_buildings
+    }
+    for step in chain.steps:
+        if step["type"] != "extract":
+            continue
+        extractor = step["extractor"]
+        item = next(
+            (i for i in db.items.values() if i.place_result == extractor), None
+        )
+        assert item is not None
+        recipe = next(
+            (r for r in chain.recipes
+             if r["results"] and r["results"][0]["name"] == item.name),
+            None,
+        )
+        assert recipe is not None, (
+            f"{item.name}: aucune recette starter malgré l'item en patch"
+        )
+        assert recipe["name"] in extraction["unlocks_recipes"], (
+            f"{item.name}: la recette {recipe['name']} n'est pas unlockée par "
+            "starter-extraction"
+        )
 
 
 def test_state_partage_avec_phases_suivantes():

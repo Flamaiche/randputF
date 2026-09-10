@@ -9,13 +9,19 @@ paths:
 map:
   patches_min: 3
   patches_max: 8
-  richness_item: [50000, 300000]
+  richness_item: [400000, 1500000]
   richness_fluid: [100000, 600000]
   # Nombre aléatoire de blocs/puits par gisement (pose explicite au runtime,
   # §6.5). Chaque bloc/puits est une entité-resource — minable par foreuse pour
   # un item, pompeable par pumpjack pour un fluide — dispersée autour du centre
   # du gisement (cluster serré au spawn).
+  # FLUIDES : puits éparpillés (pumpjack n'importe où dans le champ).
   wells_per_patch: [3, 8]
+  # ITEMS : champ plein « comme le mapgen vanilla » — un disque bruité dense
+  # (rayon = taille du champ, ~ champ d'ore classique de Factorio). La richesse
+  # TOTALE du champ (richness_item) est répartie par tuile ; count est dérivé
+  # (aire du disque), pas configurable.
+  item_patch_radius: [9, 17]
 
 pools:
   exclude_items: []
@@ -62,9 +68,12 @@ wreck:
   # matériau aléatoire. Loi pondérée STRICTEMENT décroissante via la formule
   # c3=t, c2=t+a, c1=100-5t-2a, c0=c1+b (contraintes 6t+3a<100, b>=1) → somme
   # des valeurs 0*c0+1*c1+2*c2+3*c3 = 100, 0 le plus fréquent, 3 le plus rare.
-  t: 12
-  a: 9
-  b: 53
+  # Défaut t=15,a=1,b=1 → [24,23,16,15], P(0)≈31% : le crash est riche (un
+  # vaisseau à 5 slots ≈ 6 items en moyenne) et ne sort jamais entièrement vide
+  # (garantie runtime).
+  t: 15
+  a: 1
+  b: 1
   loot:
     # Ressources NON-infinies uniquement (bois, pierre, poisson) : les seules
     # que le joueur ne pourra jamais miner/automatiser — le crash sert de
@@ -90,3 +99,14 @@ tree:
   # en chaîne d'extensions — 75 % de chance d'un 2e, 65 % d'un 3e, 35 % d'un
   # 4e, 15 % d'un 5e. Le premier tirage raté stoppe le groupe (max 5).
   group_chances: [0.75, 0.65, 0.35, 0.15]
+
+easeup:
+  # Recettes alternatives « ease-up » pour les crafts trop lourds : quand un
+  # produit a un graphe de production profond (≥ depth_threshold sauts) ou
+  # contient une boucle, la seed génère une recette alternative tirée du pool
+  # GELÉ de début de run, débloquée par une tech de type prologue (hand-craft).
+  # max_recipes = nb max de recettes ease-up par seed ; unlocks_per_tech = nb
+  # max d'unlocks par tech de déblocage (plafond §13).
+  max_recipes: 8
+  depth_threshold: 5
+  unlocks_per_tech: 5

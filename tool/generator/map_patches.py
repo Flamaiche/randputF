@@ -13,7 +13,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, TOOL_LIKE_ITEMS, VanillaDB
+from tool.common.db import ROCKET_CHAIN, VanillaDB
 
 
 @dataclass
@@ -147,6 +147,15 @@ WELLS_MAX = 8
 # Rayon (tuiles) dans lequel les blocs/puits d'un gisement sont dispersés.
 CLUSTER_MIN = 9
 CLUSTER_MAX = 16
+# Gisements ITEM = champ plein « comme le mapgen vanilla » : un disque bruité
+# dense, calqué sur les vraies veines d'ore de Factorio (fer/cuivre/charbon).
+# Le runtime pose TOUTES les tuiles du disque (rayon ci-dessous ≈ champ de
+# taille classique), et ``count`` (= aire du disque) sert au runtime à répartir
+# la richesse TOTALE du champ par tuile. Les puits FLUIDES, eux, restent
+# éparpillés : un pumpjack se branche sur une tuile quelconque, la densité n'y
+# apporte rien.
+ITEM_RADIUS_MIN = 9
+ITEM_RADIUS_MAX = 17
 # Distance (tuiles) du premier gisement au spawn ; chaque gisement suivant est
 # posé un peu plus loin. Choisi pour un « cluster serré au spawn » : les 3..8
 # gisements (items + fluides) restent dans un rayon accessible à pied très tôt
@@ -169,8 +178,9 @@ def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) 
     Pour chaque patch, dans l'ordre de la liste (le patch n°0 est donc le plus
     proche du spawn, puis anneaux croissants) :
       * centre déterministe à des angles éparpillés (pas alignés) ;
-      * nombre aléatoire de blocs/puits (config ``wells_per_patch``, défaut
-        3..8) ;
+      * fluide : nombre aléatoire de puits éparpillés (config
+        ``wells_per_patch``, défaut 3..8) ; item : champ plein — rayon
+        aléatoire (config ``item_patch_radius``), count = aire du disque ;
       * ``well_seed`` : graine locale pour dériver les positions au runtime de
         façon reproductible, indépendamment de l'ordre de génération des chunks
         (1 PRNG par bloc = seed + index).
@@ -183,11 +193,23 @@ def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) 
     wells_lo, wells_hi = int(wells_lo), int(wells_hi)
     cl_min = int(CLUSTER_MIN)
     cl_max = int(CLUSTER_MAX)
+    ir_min, ir_max = map_cfg.get("item_patch_radius", [ITEM_RADIUS_MIN, ITEM_RADIUS_MAX])
+    ir_min, ir_max = int(ir_min), int(ir_max)
 
     wrng = random.Random(f"randputF:wells:{seed_value}")
     for k, p in enumerate(patches):
-        count = wrng.randint(wells_lo, max(wells_lo, wells_hi))
-        radius = wrng.randint(cl_min, cl_max)
+        if p.kind == "fluid":
+            # Puits éparpillés : quelques entités à dispersion large (§6.5), un
+            # pumpjack se branche sur n'importe quelle tuile du champ.
+            count = wrng.randint(wells_lo, max(wells_lo, wells_hi))
+            radius = wrng.randint(cl_min, cl_max)
+        else:
+            # Champ ITEM plein type vanilla : rayon = taille du champ (disque
+            # plein au runtime), count = aire du disque. La richesse TOTALE du
+            # champ (richness_item) est répartie par tuile (richness/count) au
+            # runtime, comme une vraie couche d'ore.
+            radius = wrng.randint(ir_min, ir_max)
+            count = math.ceil(math.pi * radius * radius)
         well_seed = wrng.randint(1, 2**31 - 1)
         # Centre : anneau croissant + angle éparpillé (déterministe).
         dist = FIRST_CENTER_DIST + k * RING_STEP
@@ -226,10 +248,10 @@ def _excludable_items(db: VanillaDB):
         if i.subgroup not in excluded_types
         and not i.is_gun
         and not i.is_science_pack
-        and i.name not in ENVIRONMENTAL_ITEMS
+        and not i.is_environmental
         and i.name not in research
         and i.name not in hero
-        and i.name not in TOOL_LIKE_ITEMS
+        and not i.is_virtual_item
     ]
 
 
