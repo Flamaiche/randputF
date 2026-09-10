@@ -42,6 +42,19 @@ local function find_item_proto(name)
   return nil
 end
 
+-- Entité correspondant à une chaîne de `crafted_in` : un bâtiment se trouve
+-- dans `data.raw.<type>`. On parcourt toutes les tables d'entités (celui-ci est
+-- O(types) à l'init, négligeable vs le chargement des prototypes).
+local function find_entity_proto(name)
+  if not name then return nil end
+  for _, table_proto in pairs(data.raw) do
+    if type(table_proto) == "table" and table_proto[name] then
+      return table_proto[name]
+    end
+  end
+  return nil
+end
+
 for _, recipe_seed in ipairs(seed.recipes or {}) do
   local ingredients = {}
   for _, ingredient in ipairs(recipe_seed.ingredients or {}) do
@@ -100,6 +113,24 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
     -- ateliers « crafting-with-fluid », pas dans le boiler lui-même.
     if recipe_seed.crafted_in then
       recipe_def.crafted_in = {recipe_seed.crafted_in}
+      -- Un bâtiment à recette FIXE peut ne posséder AUCUNE crafting_category
+      -- en vanilla (ex. nuclear-reactor, reactor : il produit de la chaleur,
+      -- pas des crafts). Pour héberger sa recette randputf-*, il DOIT recevoir
+      -- la catégorie de la recette (le générateur la choisit valide) — sinon la
+      -- recette serait déclarée mais incraftable (aucun atelier compatible).
+      local crafter = find_entity_proto(recipe_seed.crafted_in)
+      if crafter then
+        local cats = crafter.crafting_categories or {}
+        local needed = recipe_def.category or "crafting"
+        local has_cat = false
+        for _, c in ipairs(cats) do
+          if c == needed then has_cat = true break end
+        end
+        if not has_cat then
+          crafter.crafting_categories = cats
+          table.insert(crafter.crafting_categories, needed)
+        end
+      end
     end
     data:extend({recipe_def})
 end

@@ -8,7 +8,7 @@ Configuration lue par le générateur starter_chain :
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from tool.prototypes.base import PrototypeConfig
 
@@ -20,15 +20,6 @@ class StarterConfig(PrototypeConfig):
     ammo_count: int = 50
     # Transports
     inserter_chance: float = 0.5
-    # Patterns de recherche d'items de transport par rôle
-    transport_patterns: dict[str, list[str]] = field(default_factory=lambda: {
-        "belt": ["transport-belt"],
-        "splitter": ["splitter"],
-        "underground": ["underground-belt"],
-        "pipe": ["pipe"],
-        "pipe_to_ground": ["pipe-to-ground"],
-        "inserter": ["inserter"],
-    })
 
     @classmethod
     def from_config(cls, config: dict) -> StarterConfig:

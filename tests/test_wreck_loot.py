@@ -19,7 +19,7 @@ DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_
 def test_formule_generique_comptes_valides():
     # (t, a, b) -> [c0, c1, c2, c3]
     cases = [
-        (12, 9, 53, [75, 22, 21, 12]),   # défauts : 0 = 75
+        (15, 1, 1, [24, 23, 16, 15]),    # défauts : 0 = 24 (P(0) ≈ 31 %)
         (10, 13, 46, [70, 24, 23, 10]),  # 0 = 70
         (14, 4, 39, [61, 22, 18, 14]),
     ]

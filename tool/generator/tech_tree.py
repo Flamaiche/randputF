@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import random
 
-from tool.common.db import POWER_POLES
+from tool.common.db import VanillaDB
 
 # Durée de recherche par unité (secondes). Avec `amount = 1` par pack, la jauge
 # de recherche compte exactement le nombre de cycles (packs) à fournir (§13).
@@ -46,18 +46,20 @@ def _count_objects(step: dict) -> int:
     return len(step.get("unlocks_recipes", [])) + len(step.get("unlocks_buildings", []))
 
 
-def _step_unlocks_pole(step: dict) -> bool:
+def _step_unlocks_pole(step: dict, db: VanillaDB) -> bool:
     """Un step débloque un VRAI pylône (poteau électrique) ?
 
     Deux étapes débloquant chacune un pylône ne doivent JAMAIS être fusionnées
     dans la même tech : la cadence garantie des pôles (§9.4) exige des
     positions d'arbre DISTINCTES (vérifiée en test)."""
     for building in step.get("unlocks_buildings", []):
-        if building in POWER_POLES:
+        b = db.buildings.get(building)
+        if b and b.is_power_pole:
             return True
     for recipe in step.get("unlocks_recipes", []):
         name = recipe[len("randputf-"):] if recipe.startswith("randputf-") else recipe
-        if name in POWER_POLES:
+        b = db.buildings.get(name)
+        if b and b.is_power_pole:
             return True
     return False
 
@@ -134,6 +136,7 @@ def _collect_packs(steps: list[dict], limit: int = _MAX_COST_PACKS) -> list[str]
 def build_linear_tech_tree(
     steps: list[dict],
     rng: random.Random,
+    db: VanillaDB,
 ) -> list[dict]:
     """Assemble un arbre technologique linéaire à partir des macro-steps.
 
@@ -188,7 +191,7 @@ def build_linear_tech_tree(
         objs = _count_objects(step)
         is_science = _is_science_step(step)
         is_isolated = step.get("isolate") or False
-        step_has_pole = _step_unlocks_pole(step)
+        step_has_pole = _step_unlocks_pole(step, db)
 
         if not cur_paid:
             # Nouveau groupe : on tire sa taille (nb d'objets) en chaîne.

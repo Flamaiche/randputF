@@ -225,3 +225,21 @@ def test_equilibre_etat_neutre_sans_recettes():
     for name in ("iron-plate", "copper-plate", "wood"):
         assert state.balance_factor(name) == 1.0
 
+
+def test_bootstrap_double_cout_ressources_non_infinies(monkeypatch):
+    """§9.5/§10 : `_bootstrap_amount` DOUBLA la quantité des ingrédients non
+    infinis (wood/stone/raw-fish, `is_environmental`) des recettes de bootstrap
+    (craftables à la main). Les ingrédients déjà produits (iron-plate) restent
+    à quantité normale, y compris dans une recette de bootstrap."""
+    from tool.generator import recipes as recipes_mod
+    from tool.generator.recipes import _bootstrap_amount
+
+    db, _ = make_state()
+    rng = random.Random(0)
+    monkeypatch.setattr(recipes_mod, "_roll_amount", lambda _rng, _db, _name: 3)
+    for name in ("wood", "stone", "raw-fish"):
+        assert _bootstrap_amount(rng, db, name, True) == 6, name
+        assert _bootstrap_amount(rng, db, name, False) == 3, name
+    assert _bootstrap_amount(rng, db, "iron-plate", True) == 3
+    assert _bootstrap_amount(rng, db, "iron-plate", False) == 3
+

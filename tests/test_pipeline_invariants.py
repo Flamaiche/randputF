@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tool.common.db import SLOT_ITEM
 from tool.generator.pipeline import generate_seed
 from tool.generator.recipes import ProgressionState, make_recipe
 from tool.parsers.vanilla import load_db_from_dump
@@ -21,6 +22,12 @@ import random
 DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_dump.json").read_text()))
 
 SEEDS = (0, 5, 36, 43, 57)
+
+
+def item_of(db, entity_name: str) -> str | None:
+    return next(
+        (i.name for i in db.items.values() if i.place_result == entity_name), None
+    )
 
 
 @pytest.fixture(scope="module")
@@ -56,6 +63,28 @@ def test_pas_de_recette_orpheline(seeds):
             if r["name"].startswith("randputf-") and r["name"] not in unlocked
         ]
         assert not orphans, f"seed {s}: orphelines {orphans}"
+
+
+def test_contenu_reseau_differe_apres_contenu_passif(seeds):
+    """§7/§8 : dans le balayage de couverture, les items dépendant du réseau
+    (tourelle laser, radar, combinator, lampe) sont DEFERRÉS après le contenu
+    « passif » (tourelle balistique, mur). Pour chaque seed, la 1re tech
+    content-laser-turret arrive après la 1re tech content-gun-turret."""
+    def _first_content_index(techs, fragment):
+        for i, t in enumerate(techs):
+            if "content-" + fragment in t.get("id", ""):
+                return i
+        return None
+
+    for s, seed in seeds.items():
+        techs = seed["technologies"]
+        laser = _first_content_index(techs, "laser-turret")
+        gun = _first_content_index(techs, "gun-turret")
+        if laser is not None and gun is not None:
+            assert laser > gun, (
+                f"seed {s}: laser-turret (idx {laser}) doit venir APRÈS gun-turret "
+                f"(idx {gun}) — tier tardif §7/§8"
+            )
 
 
 def test_research_obligatoire_2eme_recherche_gratuite(seeds):
@@ -332,15 +361,27 @@ def test_c6_aucune_ressource_dupliquee_sur_la_carte(seeds):
 
 def test_oil_puits_posse_explicite_chaque_patch(seeds):
     """§6.5 : CHAQUE patch (item ET fluide) doit porter son gisement posé au
-    runtime — centre déterministe, un nombre aléatoire de blocs/puits (3..8),
-    un rayon de dispersion > 0 et une graine locale > 0."""
+    runtime — centre déterministe, un nombre de blocs/puits et un rayon adaptés
+    au KIND (fluides : 3..8 puits éparpillés rayon 9..16 ; items : champ plein
+    « type mapgen vanilla » — disque de rayon 9..17, count = aire du disque),
+    une graine locale > 0."""
+    import math
+
     for s, seed in seeds.items():
         for patch in seed["map"]["patches"]:
             assert "center" in patch and "x" in patch["center"] and "y" in patch["center"], \
                 f"seed {s}: patch {patch['resource']} sans centre"
-            assert 3 <= patch["count"] <= 8, \
-                f"seed {s}: {patch['resource']} nb blocs {patch['count']} hors 3..8"
-            assert patch["cluster_radius"] > 0, f"seed {s}: rayon invalide"
+            if patch["kind"] == "fluid":
+                assert 3 <= patch["count"] <= 8, \
+                    f"seed {s}: {patch['resource']} nb puits {patch['count']} hors 3..8"
+                assert 9 <= patch["cluster_radius"] <= 16, \
+                    f"seed {s}: {patch['resource']} rayon puits invalide"
+            else:
+                assert 9 <= patch["cluster_radius"] <= 17, \
+                    f"seed {s}: {patch['resource']} rayon item invalide"
+                expect = math.ceil(math.pi * patch["cluster_radius"] ** 2)
+                assert abs(patch["count"] - expect) <= 1, \
+                    f"seed {s}: {patch['resource']} count {patch['count']} != aire disque {expect}"
             assert patch["well_seed"] > 0, f"seed {s}: well_seed nul"
 
 
@@ -458,6 +499,7 @@ def test_toute_tech_recursive_paie_un_science_pack(seeds):
                 ok = (
                     t["id"].startswith("randputf-starter")
                     or t["id"].startswith("randputf-prologue")
+                    or t["id"].startswith("randputf-ease-")
                     or t["id"].startswith("randputf-science-")
                     or t["id"] == "randputf-endgame-rocket"
                 )
@@ -524,7 +566,10 @@ def test_craft_trigger_prologue_craftable_des_le_starter(seeds):
             trigger = t.get("craft_trigger")
             if not trigger:
                 continue
-            assert t["id"].startswith("randputf-prologue"), f"seed {s}: {trigger} hors prologue"
+            assert (
+                t["id"].startswith("randputf-prologue")
+                or t["id"].startswith("randputf-ease-")
+            ), f"seed {s}: {trigger} hors prologue/ease-up"
             assert trigger in craftable, (
                 f"seed {s}: {t['id']} trigger={trigger} non craftable au starter "
                 f"(disponibles: {sorted(craftable)})"
@@ -592,6 +637,131 @@ def test_premier_generateur_de_la_seed_craftable_a_la_main(seeds):
             )
 
 
+def test_pylone_du_bootstrap_craftable_a_la_main(seeds):
+    """§10 : le pylône d'amorçage (débloqué avec le générateur) est CRAFTABLE À
+    LA MAIN comme lui — son atelier exigerait l'électricité que le poteau est
+    censé transporter (boucle bootstrap sinon). Sa recette est réintégrée aux
+    techs GRATUITES du starter → disponible dès le spawn."""
+    for s, seed in seeds.items():
+        hand_recipes = [
+            r for r in seed["recipes"]
+            if r["results"] and r["results"][0]["name"] in POLES
+            and not r.get("category") and not r.get("crafted_in")
+        ]
+        assert hand_recipes, f"seed {s}: aucun pylône craftable à la main"
+        names = {r["name"] for r in hand_recipes}
+        unlockers = [
+            t["id"] for t in seed["technologies"]
+            for e in t.get("effects") or []
+            if e.get("type") == "unlock-recipe" and e["recipe"] in names
+        ]
+        assert any(u.startswith("randputf-starter") for u in unlockers), (
+            f"seed {s}: pylône à la main non dispo au starter "
+            f"(recettes {sorted(names)}, unlockers {sorted(unlockers)})"
+        )
+
+
+def test_extracteur_unlocke_avant_tout_consommateur(seeds):
+    """§7 « la tech d'avant » : pour chaque ressource brute (patchs + lacs), la
+    recette de son extracteur est unlockée par starter-extraction (tech 0),
+    STRICTEMENT AVANT (ordre de tech) toute recette qui consomme la ressource.
+    Seule exception : les recettes des extracteurs eux-mêmes (auto-consomation
+    œuf/poule, brisée par l'amorce du kit §7 — recette unlockée au starter) et
+    les recettes relais propres (§9.3, qui retire des recettes de bootstrap).
+    Concrètement ici : tout consommateur « non-extracteur » d'une ressource
+    brute arrive APRÈS l'extraction (index de tech strictement supérieur)."""
+    import tool.generator.starter_chain as sc
+
+    captured = {}
+    _orig = sc.build_starter_chain
+
+    def _wrap(rng, db, patches, **kw):
+        chain = _orig(rng, db, patches, **kw)
+        captured[id(chain)] = [
+            (s["resource"]["type"], s["resource"]["name"], s["extractor"])
+            for s in chain.steps if s.get("type") == "extract"
+        ]
+        return chain
+
+    sc.build_starter_chain = _wrap
+    try:
+        for s in seeds:
+            db = copy.deepcopy(DB)
+            db.seed_value = s
+            captured.clear()
+            seed = generate_seed(db)
+            extracts = list(captured.values())[-1]
+            techs = seed["technologies"]
+            idx = {t["id"]: i for i, t in enumerate(techs)}
+            unlock = {}
+            for t in techs:
+                for e in t.get("effects") or []:
+                    if e.get("type") == "unlock-recipe":
+                        unlock.setdefault(e["recipe"], idx[t["id"]])
+            # Recettes des extracteurs (auto-conso exclue de « consommateur »)
+            extractor_item_recipes = {
+                r["name"]
+                for _, _, ext in extracts
+                for r in seed["recipes"]
+                if any(
+                    res.get("type") == SLOT_ITEM and item_of(DB, ext) == res["name"]
+                    for res in r.get("results") or []
+                )
+            }
+            for kind, resource, ext in extracts:
+                item = item_of(DB, ext)
+                prod = [
+                    r["name"] for r in seed["recipes"]
+                    if any(res.get("type") == SLOT_ITEM and res.get("name") == item
+                           for res in r.get("results") or [])
+                ]
+                assert prod, (
+                    f"seed {s}: {item} (extracteur de {resource}) sans recette "
+                    "dans la seed"
+                )
+                ext_unlock = min(unlock.get(r) for r in prod)
+                assert ext_unlock == 0, (
+                    f"seed {s}: {resource}/{item} recette@{ext_unlock} "
+                    "(unlock hors starter-extraction)"
+                )
+                consumers = [
+                    r["name"] for r in seed["recipes"]
+                    if any(i.get("name") == resource for i in r.get("ingredients") or [])
+                    and r["name"] not in extractor_item_recipes
+                ]
+                consumers_unlock = sorted(
+                    unlock.get(rc) for rc in consumers if unlock.get(rc) is not None
+                )
+                if consumers_unlock:
+                    assert consumers_unlock[0] > ext_unlock, (
+                        f"seed {s}: {resource} consommé à la tech "
+                        f"{consumers_unlock[0]} (= tech d'extraction)"
+                    )
+    finally:
+        sc.build_starter_chain = _orig
+
+
+def test_bootstrap_double_cout_ingredients_non_infinis(seeds):
+    """§9.5/§10 : les recettes craftables à la main (bootstrap, ni atelier ni
+    catégorie) DOUBLENT la quantité de leurs ingrédients non infinis
+    (wood/stone/raw-fish, tag ``is_environmental``) — le début de run se joue
+    sur ces ressources rares, et les relais (§9.3) fournissent ensuite les
+    recettes « propres ». Les ingrédients déjà produits ne sont pas doublés."""
+    for s, seed in seeds.items():
+        for r in seed["recipes"]:
+            if r.get("category") or r.get("crafted_in"):
+                continue
+            for ing in r["ingredients"]:
+                if ing["type"] != "item":
+                    continue
+                item = DB.items.get(ing["name"])
+                if item is not None and item.is_environmental:
+                    assert ing["amount"] % 2 == 0, (
+                        f"seed {s}: bootstrap {r['name']} consomme "
+                        f"{ing['amount']} de {ing['name']} (non doublé)"
+                    )
+
+
 def test_detecteur_de_cycle_repere_un_cycle_reel():
     db = DB
     state = ProgressionState()
@@ -613,11 +783,12 @@ def test_aucune_recette_sur_machine_a_recette_fixe(seeds):
     """SUJETRATION (§10 + IDEES C7) : les bâtiments à RECETTE CACHÉE taggés
     ``has_hidden_recipe`` (boiler/heat-exchanger/nuclear-reactor en vanilla) ne
     reçoivent JAMAIS une recette quelconque en tant qu'atelier — seule la
-    recette randomisée assignée (crafted_in) les concerne ; les non-fluides
-    (boiler/hx sont fluides ; le reacteur, générateur) n'en ont AUCUNE. Les
+    recette randomisée assignée (crafted_in) les concerne. Tout bâtiment à
+    recette cachée qui apparaît en ``crafted_in`` doit être un ``is_fixed_crafter``
+    (boiler/hx = fluide→fluide, réacteur = item→item via ses résidus). Les
     autres générateurs/extracteurs/lab (non taggés : pas une recette, mécanique
     moteur) sont déjà exclus par ``_is_atelier`` (aucune catégorie valide)."""
-    from tool.common.db import has_hidden_recipe, is_fixed_fluid_crafter
+    from tool.common.db import has_hidden_recipe, is_fixed_crafter
 
     for s, seed in seeds.items():
         for r in seed["recipes"]:
@@ -626,8 +797,8 @@ def test_aucune_recette_sur_machine_a_recette_fixe(seeds):
                 continue
             building = DB.buildings.get(ci)
             assert building is not None, f"seed {s}: crafted_in inconnu {ci}"
-            if has_hidden_recipe(building) and not is_fixed_fluid_crafter(building):
+            if has_hidden_recipe(building) and not is_fixed_crafter(building):
                 raise AssertionError(
                     f"seed {s}: recette {r['name']} craftée dans {ci}, "
-                    "une machine à recette fixe non-fluide (jamais un atelier)"
+                    "une machine à recette fixe hors `is_fixed_crafter` (jamais un atelier)"
                 )

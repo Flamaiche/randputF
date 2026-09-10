@@ -36,11 +36,14 @@ DEFAULT_LOOT = [
     "raw-fish",
 ]
 
-# Paramètres par défaut de la formule : c0 = 75 (le plus massif), c1 = 22,
-# c2 = 21, c3 = 12 — P(0) ≈ 57,7 %.
-DEFAULT_T = 12
-DEFAULT_A = 9
-DEFAULT_B = 53
+# Paramètres par défaut de la formule : c0 = 24, c1 = 23, c2 = 16, c3 = 15 —
+# P(0) ≈ 30,8 % : les slots sont rarement vides (le crash doit sentir le loot,
+# ne JAMAIS importer un vaisseau vide) et un conteneur n'est jamais entièrement
+# vide (garantie runtime dans control.lua). Le vaisseau (5 slots) donne en
+# moyenne ~6,4 items.
+DEFAULT_T = 15
+DEFAULT_A = 1
+DEFAULT_B = 1
 
 
 def counts_from_formula(t: int, a: int, b: int) -> list[int]:

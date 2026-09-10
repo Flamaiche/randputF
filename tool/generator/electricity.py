@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import random
 
-from tool.common.db import POWER_POLES, VanillaDB
+from tool.common.db import VanillaDB
 from tool.generator.recipes import ProgressionState
 
 # Générateur préféré pour amorcer le réseau : la turbine (§10). Avec les
@@ -238,7 +238,7 @@ def _pick_pole(rng: random.Random, db: VanillaDB, state: ProgressionState):
     poles = [
         b
         for b in db.buildings_with_tag("is_distribution")
-        if b.name in POWER_POLES and b.name not in state.unlocked_buildings
+        if b.is_power_pole and b.name not in state.unlocked_buildings
     ]
     if not poles:
         return None
@@ -253,13 +253,16 @@ def _unlock_pole(
     """Débloque un pylône électrique (distribution) et sa recette.
 
     Sans poteau, l'électricité issue du générateur ne peut pas être
-    transportée jusqu'aux bâtiments qui en ont besoin (§10)."""
+    transportée jusqu'aux bâtiments qui en ont besoin (§10). Le pôle est
+    CRAFTABLE À LA MAIN comme le générateur (`handcraft=True`) : son atelier
+    exigerait l'électricité que le pôle est censé transporter — boucle
+    bootstrap sinon."""
     pole = _pick_pole(rng, db, state)
     if pole is None:
         return
     from tool.generator.recipes import _unlock_building
 
-    _unlock_building(rng, db, state, pole, "electricity")
+    _unlock_building(rng, db, state, pole, "electricity", handcraft=True)
 
 
 def _needs_electricity(db: VanillaDB, unlocked_buildings: set[str]) -> bool:

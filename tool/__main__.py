@@ -15,9 +15,12 @@ except ImportError:
 from tool.common.db import VanillaDB
 from tool.common.demo import build_demo_db
 from tool.exporters.mod_seed import write_seed_files
+from tool.exporters.seed_graph import write_seed_graph_html
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump, summarize_db
 from tool.validator.solver import validate_seed
+
+from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
 MOD_SOURCE = Path(__file__).resolve().parent.parent / "mod"
@@ -123,6 +126,19 @@ def cmd_parse(args: argparse.Namespace) -> None:
     print(summarize_db(db))
 
 
+def cmd_audit(args: argparse.Namespace) -> None:
+    db = _load_db(args.demo, Path(args.dump))
+    report = audit_building_tags(db)
+    item_report = audit_item_tags(db)
+    report.violations += item_report.item_violations
+    report.item_violations = item_report.item_violations
+    report.item_tag_counts = item_report.item_tag_counts
+    report.uncraftable_violations = item_report.uncraftable_violations
+    report.items_checked = item_report.items_checked
+    print(summarize_tags(db, report))
+    sys.exit(0 if report.ok else 1)
+
+
 def cmd_generate(args: argparse.Namespace) -> None:
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
@@ -165,7 +181,10 @@ def cmd_generate(args: argparse.Namespace) -> None:
     else:
         out_dir = Path(args.out) if args.out else OUTPUT_DIR
         zip_path = _build_mod(seed, out_dir)
+        html_path = zip_path / "seed.graph.html"
+        write_seed_graph_html(seed, html_path)
         print(f"Seed {db.seed_value} valide, mod assemblé dans {zip_path}")
+        print(f"Graphe interactif (cliquable) exporté dans {html_path}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -176,6 +195,11 @@ def main(argv: list[str] | None = None) -> None:
     p_parse.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
     p_parse.add_argument("--dump", default="data/vanilla_dump.json")
     p_parse.set_defaults(func=cmd_parse)
+
+    p_audit = sub.add_parser("audit", help="Audite les tags de bâtiments (invariants C8)")
+    p_audit.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_audit.add_argument("--dump", default="data/vanilla_dump.json")
+    p_audit.set_defaults(func=cmd_audit)
 
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")

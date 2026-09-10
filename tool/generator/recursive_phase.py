@@ -16,16 +16,14 @@ from __future__ import annotations
 import random
 
 from tool.common.db import (
-    ENVIRONMENTAL_ITEMS,
-    POWER_POLES,
     ROCKET_CHAIN,
     SLOT_FLUID,
     SLOT_ITEM,
-    TOOL_LIKE_ITEMS,
     VanillaDB,
     VEHICLE_GUNS,
     is_fixed_fluid_crafter,
 )
+from tool.generator.heat import find_heat_roles
 from tool.generator.map_patches import Patch
 from tool.generator.recipes import (
     ProgressionState,
@@ -44,6 +42,11 @@ _config = RecursiveConfig()
 
 _tech_steps: list[dict] = []
 _unlocked_science_packs: list[str] = []
+
+# Modèle « chaleur » (§10bis) : garde à une seule émission des prérequis heat.
+# Posé à True dès que la triade source+transport est débloquée (ou rien à
+# faire : aucun sink dans le pool). Reseté dans ``expand_recursive``.
+_heat_prereq_emitted: bool = False
 
 # Ressources « brutes » de la seed courante (patches + environnement + fluides
 # d'extraction eau/pétrole brut/vapeur, §3/§13). Recalculées au début de
@@ -120,8 +123,9 @@ def expand_recursive(
     starter: StarterChain,
     lake_resources: frozenset[str] = frozenset(),
 ) -> None:
-    global _tech_steps, _unlocked_science_packs, _raw_resources
+    global _tech_steps, _unlocked_science_packs, _raw_resources, _heat_prereq_emitted
     _tech_steps = []
+    _heat_prereq_emitted = False
     _unlocked_science_packs = []
     _raw_resources = db.raw_resources({p.resource for p in patches}) | frozenset(lake_resources)
     state = starter.state
@@ -210,10 +214,10 @@ def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
         i
         for i in db.beltable_items()
         if not _has_product_recipe(state, i.name)
-        and i.name not in ENVIRONMENTAL_ITEMS
+        and not i.is_environmental
         and i.name not in _ROCKET_CHAIN_SWEEP_EXCLUDED
         and i.name not in excluded_guns
-        and i.name not in TOOL_LIKE_ITEMS
+        and not i.is_virtual_item
     ]
 
 
@@ -228,6 +232,26 @@ def _has_product_recipe(state: ProgressionState, name: str) -> bool:
     )
 
 
+def _is_network_dependent_item(db: VanillaDB, item) -> bool:
+    """Item dont le bâtiment posé (place_result) dépend du RÉSEAU (électrique
+    ou circuits) : tourelle laser (consumes_electricity, tags §7), radar,
+    combinators et lampe (tags §8). Ces usages sont placés dans un TIER TARDIF
+    du balayage §9.6 — jamais avant que le réseau ne soit acquis : une tourelle
+    balistique (ammo, sans courant) peut arriver tôt, une laser (courant) doit
+    attendre la fin du balayage."""
+    if not item.place_result:
+        return False
+    building = db.buildings.get(item.place_result)
+    if building is None:
+        return False
+    return (
+        building.is_laser_turret
+        or building.is_radar
+        or building.is_circuit_io
+        or building.is_rgb_lamp
+    )
+
+
 def _expand_content_coverage(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
     """Assure une recette randputf-* + une tech à CHAQUE item restant.
 
@@ -236,12 +260,21 @@ def _expand_content_coverage(rng: random.Random, db: VanillaDB, state: Progressi
     <item> » qui unlocke SA recette ; les ingrédients proviennent du pool
     obtenable courant (jamais d'ingrédient pas encore fabricable). Les techs
     arrivent APRÈS la récursion pondérée : les 7 science packs sont donc déjà
-    unlockés et tout coût de pack est payable (§13)."""
+    unlockés et tout coût de pack est payable (§13).
+
+    Tier tardif (§7/§8) : les items dépendant du réseau (tourelle laser, radar,
+    combinator, lampe) sont DEFERRÉS APRÈS tout le contenu « passif » — le
+    balayage garde sa randomisation interne mais garantit qu'un usage à
+    courant/network n'est jamais débloqué avant le reste."""
     global _vehicle_armament
     _vehicle_armament = _assign_vehicle_weapons(rng)
     items = _coverage_items(db, state)
     rng.shuffle(items)
-    for item in items:
+    deferred = []
+    main = []
+    for i in items:
+        (deferred if _is_network_dependent_item(db, i) else main).append(i)
+    for item in main + deferred:
         if _has_product_recipe(state, item.name):
             continue
         try:
@@ -423,6 +456,71 @@ def _ensure_handheld_ammo(
     return unlocked
 
 
+def _ensure_heat_prereq(
+    rng: random.Random,
+    db: VanillaDB,
+    state: ProgressionState,
+) -> None:
+    """Modèle « chaleur » (§10bis) : garantit la TRIADE avant le consommateur.
+
+    Un heat SINK (ex. heat-exchanger) ne fonctionne qu'avec une SOURCE (ex.
+    nuclear-reactor) reliée par un TRANSPORT (ex. heat-pipe). Au premier
+    instant où un sink va recevoir sa recette de craft, on DÉPLOIE d'abord —
+    dans l'ordre SOURCE puis TRANSPORT — des steps de tech qui débloquent leur
+    item/bâtiment : leurs unlock sont ainsi STRICTEMENT ANTÉRIEURS à ceux du
+    consommateur (miroir de la garantie « extracteur avant besoin » du starter,
+    §7). Le modèle est inerte sans sink dans le pool : aucune insertion.
+
+    Une seule émission par seed (``_heat_prereq_emitted``) : le premier sink
+    qui apparaît déclenche la garantie ; les suivants héritent de l'ordre.
+    """
+    global _heat_prereq_emitted
+    if _heat_prereq_emitted:
+        return
+    _heat_prereq_emitted = True
+    roles = find_heat_roles(db)
+    if not roles["sinks"]:
+        return
+    if not roles["sources"] or not roles["transports"]:
+        return
+    # Déployer SÉPARÉMENT ce qui manque : une source déjà débloquée avant le
+    # sink est déjà antérieure (son step est déjà dans l'arbre) ; on ne force
+    # que l'élément absent (ex. le heat-pipe) pour que LA TRIADE soit en place
+    # strictement avant le consommateur.
+    missing_sources = [n for n in roles["sources"] if n not in state.unlocked_buildings]
+    missing_transports = [n for n in roles["transports"] if n not in state.unlocked_buildings]
+    needed = []
+    if missing_sources:
+        needed.append(rng.choice(missing_sources))
+    if missing_transports:
+        needed.append(rng.choice(missing_transports))
+    for name in needed:
+        building = db.buildings[name]
+        # Catégorie de déploiement naturelle du bâtiment (comme la récursion) ;
+        # un bâtiment sans rôle fonctionnel (heat-pipe) part en balayage-contenu
+        # et déploie alors son ITEM (la branche content attend un ItemDef).
+        if building.is_generator:
+            cat, element = "generator", building
+        elif building.is_crafter:
+            cat, element = "transformer", building
+        elif building.is_extractor:
+            cat, element = "extractor", building
+        elif building.is_distribution:
+            cat, element = "distribution", building
+        else:
+            cat, element = "content", db.items.get(name)
+            if element is None:
+                continue
+        try:
+            _generate_for_element(rng, db, state, cat, element, isolate=True)
+        except ValueError:
+            # Panel intenable (pool vide, boucle) : on laisse le consommateur
+            # tel quel — robustesse identique au kit (§8), le validateur
+            # signalerait l'ordre si la chaîne était bifide.
+            continue
+        state.unlocked_buildings.add(name)
+
+
 def _ensure_pole_cadence(
     rng: random.Random,
     db: VanillaDB,
@@ -432,7 +530,7 @@ def _ensure_pole_cadence(
     """Force la présence de PYLÔNES RÉELS (poteaux électriques) à une cadence
     garantie.
 
-    Seuls les vrais poteaux comptent (``POWER_POLES`` : small/medium/big +
+    Seuls les vrais poteaux comptent (``is_power_pole`` : small/medium/big +
     substation) — le beacon est une distribution mais pas un pylône et reste
     randomisé. Chaque jalon ``dist_marks`` exige un nombre croissant de
     poteaux déployés. Dès la TOUTE première itération récursive (step 0), si
@@ -450,7 +548,7 @@ def _ensure_pole_cadence(
     if needed <= 0:
         return False
     n_poles = sum(
-        1 for name in POWER_POLES if _has_product_recipe(state, name)
+        1 for b in db.buildings_with_tag("is_power_pole") if _has_product_recipe(state, b.name)
     )
     if n_poles >= needed:
         return False
@@ -469,7 +567,7 @@ def _pick_real_pole(
     candidates = [
         b
         for b in db.buildings_with_tag("is_distribution")
-        if b.name in POWER_POLES and b.name not in state.unlocked_buildings
+        if b.is_power_pole and b.name not in state.unlocked_buildings
     ]
     return rng.choice(candidates) if candidates else None
 
@@ -610,8 +708,20 @@ def _generate_for_element(
     state: ProgressionState,
     category: str,
     element,
+    isolate: bool = False,
 ) -> None:
     from tool.generator.recipes import _unlock_building, _item_for_building
+
+    # Modèle « chaleur » (§10bis) : le bâtiment en cours de déploiement est un
+    # CONSOMMATEUR de heat → on débloque d'abord sa SOURCE + son TRANSPORT, à
+    # des techs STRICTEMENT ANTÉRIEURES. Placé AVANT le snapshot
+    # ``buildings_before`` pour que source/transport ne soient pas ré-claimés
+    # dans la tech du consommateur lui-même.
+    if (
+        category in ("transformer", "extractor", "generator", "distribution")
+        and getattr(element, "is_heat_sink", False)
+    ):
+        _ensure_heat_prereq(rng, db, state)
 
     step_id = _tech_id(category, element.name)
     step_recipes = []
@@ -635,6 +745,11 @@ def _generate_for_element(
         "cost": [],
         "count": _config.roll_tech_count(rng),
     }
+    if isolate:
+        # Tech DÉDIÉE (jamais fusionnée avec la suivante) : utilisée par les
+        # prérequis de la chaîne heat (§10bis) pour garantir que source et
+        # transport restent STRICTEMENT antérieurs au consommateur.
+        step["isolate"] = True
 
     if category in ("transformer", "extractor", "generator", "distribution"):
         building = element
@@ -760,6 +875,12 @@ def _generate_for_element(
             if not pending:
                 break
             crafter = pending.pop()
+            # Modèle « chaleur » (§10bis) : ce fabricateur à recette fixe est
+            # un heat SINK → sa SOURCE + son TRANSPORT doivent être débloqués
+            # AVANT cette tech (les steps de prérequis sont insérés ici, avant
+            # l'append du step courant en fin d'élément).
+            if getattr(crafter, "is_heat_sink", False):
+                _ensure_heat_prereq(rng, db, state)
             try:
                 recipe = _make_fixed_recipe_for_crafter(
                     rng, db, state, crafter, output_fluid=fluid_x
@@ -872,9 +993,12 @@ def _make_fixed_recipe_for_crafter(
         )
     if getattr(building, "item_output_slots", 0) > 0:
         return _make_fixed_item_recipe(rng, db, state, building, output_item)
+    residues = getattr(building, "fuel_residues", ()) or ()
+    if residues:
+        return _make_fixed_residue_recipe(rng, db, state, building)
     raise ValueError(
-        f"{building.name} taggé is_fixed_crafter mais sans sortie fluide "
-        "ni sortie item (recevrait une recette impossible)"
+        f"{building.name} taggé is_fixed_crafter mais sans sortie fluide, "
+        "ni sortie item, ni résidu de combustion (recevrait une recette impossible)"
     )
 
 
@@ -958,7 +1082,7 @@ def _make_fixed_item_recipe(
         candidates = sorted(
             n for n in state.obtained_items
             if n not in already_produced
-            and n not in ENVIRONMENTAL_ITEMS
+            and not (db.items.get(n) is not None and db.items[n].is_environmental)
             and n not in _ROCKET_CHAIN_ITEM_NAMES
             and not n.startswith("randputf-")
             and not _is_building_item(db, n)
@@ -1010,6 +1134,57 @@ def _make_fixed_item_recipe(
     return recipe
 
 
+def _make_fixed_residue_recipe(
+    rng: random.Random,
+    db: VanillaDB,
+    state: ProgressionState,
+    building,
+) -> dict:
+    """Branche « item → item (résidu) » de ``_make_fixed_recipe_for_crafter``
+    pour un combusteur à résidu (``fuel_residues`` non vide) : le réacteur
+    nucléaire. L'output = LE résidu de combustion (burnt_result : l'item que
+    le bâtiment produit en brûlant son combustible — depleted-uranium-fuel-cell
+    pour le réacteur). Les inputs = items déjà obtenus SANS ce fabricateur,
+    dont le pseudo-combustible (entrée d'un combusteur = un item quelconque,
+    §6) ; on garantit au moins un ingrédient item pour que la machine ait une
+    matière à brûler. Anti-boucle : jamais l'output lui-même, jamais un item
+    dont la production exigerait ce bâtiment."""
+    residues = list(getattr(building, "fuel_residues", ()) or ())
+    if not residues:
+        raise ValueError(f"{building.name} sans résidu de combustion (recette résidu impossible)")
+    output_item = rng.choice(residues)
+
+    if output_item in state.obtained_items:
+        # Déjà obtenu autrement : on choisit un autre résidu, sinon on force
+        # quand même (le réacteur reste LE producteur) mais cette branche ne
+        # doit normalement pas se déclencher.
+        others = [r for r in residues if r not in state.obtained_items]
+        if others:
+            output_item = rng.choice(others)
+
+    item_pool = [
+        (SLOT_ITEM, n) for n in sorted(state.obtained_items) if n != output_item
+    ]
+    if not item_pool:
+        raise ValueError(
+            f"aucun ingrédient item disponible pour {building.name} (résidu {output_item})"
+        )
+    max_ingredients = min(max(getattr(building, "item_input_slots", 1), 1), len(item_pool))
+    n_item = rng.randint(1, max_ingredients)
+    ingredients = _sample_items_weighed(rng, db, item_pool, n_item, state)
+    rng.shuffle(ingredients)
+
+    recipe = _bake_recipe(
+        rng, db, state, SLOT_ITEM, output_item, ingredients,
+        recipe_name=f"randputf-{building.name}-{output_item}",
+    )
+    recipe["category"] = _recipe_category(building, False, False)
+    recipe["crafted_in"] = building.name
+    state.recipes.append(recipe)
+    state.mark_obtained(SLOT_ITEM, output_item)
+    return recipe
+
+
 def _is_recipe_output_item_plausible(db: VanillaDB, state: ProgressionState, name: str) -> bool:
     """Un output imposé pour un fabricateur fixe doit être un item réellement
     obtenable COMME produit de recette (pas un racket/env/posable)."""
@@ -1028,7 +1203,7 @@ def _pick_product(
         candidates = sorted(
             (n for n in state.obtained_items
              if not n.startswith("randputf-")
-             and n not in ENVIRONMENTAL_ITEMS
+             and not (db.items.get(n) is not None and db.items[n].is_environmental)
              and n not in already
              and not _is_building_item(db, n)
              and n not in _ROCKET_CHAIN_ITEM_NAMES),
