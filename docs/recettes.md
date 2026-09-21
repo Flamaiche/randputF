@@ -236,3 +236,19 @@ même pattern de dispatch que les munitions de véhicules (§12.1). Résultat :
 tous les membres d'un groupe restent à ±3 techs l'un de l'autre (invariant
 `test_companions_proches`), jamais diffusés en profondeur. Un item d'un groupe
 absent de la seed est ignoré ; un groupe entièrement absent n'ajoute rien.
+
+### 9.8 Quantités de craft aléatoires (C1)
+
+Optionnel (section `craft_quantity:` de la config, `enabled: false` par
+défaut — chantier C1) : après l'assemblage de la seed, une **passe post-pipeline
+à flux RNG dédié** (`randputF:craft_quantity:`) applique un **facteur
+multiplicatif aléatoire** aux quantités d'entrée/sortie de chaque recette.
+
+- `mode: symmetric` → un facteur par recette (toutes les lignes) ;
+  `mode: asymmetric` → un facteur indépendant par ligne (plus chaotique) ;
+- bornes par défaut `factor_min: 0.5` / `factor_max: 3.0`, minimum absolu
+  `amount_min: 1` unité par ingrédient et par résultat ;
+- **noms, étapes, ordre et structure inchangés** — et la solvabilité (§15) ne
+  lit que la structure (pas les montants), donc cette passe ne peut pas casser
+  les garanties : elle ne change que l'économie (plus/moins cher), pas
+  l'atteignabilité.

@@ -230,7 +230,7 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
             log.warning("[randputF] warning: %s", w)
 
     # Assemblage de la seed
-    return {
+    seed = {
         "meta": {
             "seed": db.seed_value,
             "generator_version": "0.1.0",
@@ -274,3 +274,11 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
             **starter.state.building_fluid_assignments,
         },
     }
+
+    # Phase 6bis : C1 — quantités de craft (post-assemblage, §IDEES C1). Passe
+    # RNG dédié sur les montants (la solvabilité ne lit que la structure) ;
+    # inerte si `craft_quantity.enabled` est faux.
+    from tool.generator.craft_quantity import apply_craft_quantity
+
+    apply_craft_quantity(seed, cfg)
+    return seed

@@ -122,3 +122,16 @@ easeup:
   max_recipes: 8
   depth_threshold: 5
   unlocks_per_tech: 5
+
+craft_quantity:
+  # C1 — randomisation des quantités de craft (§IDEES) : un facteur
+  # multiplicatif aléatoire (flux RNG dédié `randputF:craft_quantity:`) est
+  # appliqué aux montants d'entrée/sortie de chaque recette, après assemblage
+  # de la seed (la solvabilité §15 ne lit que la structure). mode "symmetric"
+  # = un facteur par recette, "asymmetric" = un facteur par ligne. amount_min
+  # garantit minimum 1 unité. Inerte (désactivé) par défaut.
+  enabled: false
+  mode: symmetric
+  factor_min: 0.5
+  factor_max: 3.0
+  amount_min: 1
