@@ -1,4 +1,4 @@
-"""Tests de la phase électricité (README §10) et de l'assignation de
+"""Tests de la phase électricité (docs/energie.md §10) et de l'assignation de
 combustible aux bâtiments burner (§8, §9.3)."""
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def test_electricite_declenche_generateur_et_pylone():
 
 
 def test_turbine_amorcable_par_un_lac_fluide(monkeypatch):
-    """C1 : la turbine/steam-engine ne prend PAS spécifiquement l'eau, mais
+    """La turbine/steam-engine ne prend PAS spécifiquement l'eau, mais
     n'importe quel FLUIDE extractible sans électricité (un lac). Dès qu'un lac
     existe (même un lac de pétrole brut), le générateur à vapeur est
     fonctionnel et peut amorcer le réseau."""
@@ -113,7 +113,7 @@ def test_turbine_amorcable_par_un_lac_fluide(monkeypatch):
 
 
 def test_c1_reparer_par_lac_quand_aucun_generateur_fonctionnel(monkeypatch):
-    """C1 : si AUCUN générateur n'est fonctionnel (seul un générateur à vapeur
+    """Si AUCUN générateur n'est fonctionnel (seul un générateur à vapeur
     sans lac), la phase FORCE un patch réparateur (ici un lac fluide), puis
     revérifie : le générateur devient amorçable et est débloqué. Le ↓
     patch/lac ajouté est renvoyé pour être fusionné dans la seed."""
@@ -131,7 +131,7 @@ def test_c1_reparer_par_lac_quand_aucun_generateur_fonctionnel(monkeypatch):
 
 
 def test_c1_erreur_si_aucune_reparation_possible(monkeypatch):
-    """C1 : si aucun générateur n'est fonctionnel ET qu'aucune réparation n'est
+    """Si aucun générateur n'est fonctionnel ET qu'aucune réparation n'est
     possible (aucun lac fluide extractible sans électricité, aucun patch
     réparateur), la phase lève une erreur explicite — jamais une seed
     silencieusement cassée."""
@@ -146,7 +146,7 @@ def test_c1_erreur_si_aucune_reparation_possible(monkeypatch):
 
 
 def test_c1_erreur_apres_20_echecs(monkeypatch):
-    """C1 : la réparation est bornée (IDEES C1) — au-delà de 20 essais sans
+    """La réparation est bornée — au-delà de 20 essais sans
     générateur fonctionnel, on lève une erreur au lieu de débloquer un réseau
     muet."""
     rng = random.Random(21)

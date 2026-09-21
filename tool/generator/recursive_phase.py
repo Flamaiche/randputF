@@ -1,14 +1,7 @@
-"""Phase 3 : récursion pondérée (README §9).
+"""Phase 3 : récursion pondérée (§9). Pool de ressources s'élargit à chaque itération.
 
-Après le starter, la génération devient récursive. Le pool de ressources
-obtenables s'élargit à chaque itération, permettant des recettes de plus en
-plus complexes.
-
-Architecture :
-- expand_recursive() remplit un module-level _tech_steps (macro-steps pour
-  le tech tree) et génère les recettes via les primitives partagées.
-- state.recipes contient toutes les recettes (starter + récursif).
-- _tech_steps contient les macro-steps tech tree (unlock-recipe, coût, etc.).
+- expand_recursive() remplit _tech_steps (macro-steps pour le tech tree).
+- state.recipes = toutes les recettes (starter + récursif).
 """
 
 from __future__ import annotations
@@ -43,50 +36,43 @@ _config = RecursiveConfig()
 _tech_steps: list[dict] = []
 _unlocked_science_packs: list[str] = []
 
-# Modèle « chaleur » (§10bis) : garde à une seule émission des prérequis heat.
-# Posé à True dès que la triade source+transport est débloquée (ou rien à
-# faire : aucun sink dans le pool). Reseté dans ``expand_recursive``.
+# C7 soft-pity (fabricateurs à recette fixe, boiler/heat-exchanger) : un
+# « event fluide » (tech introduisant ≥ 1 fluide non couvert) a 50 % de chance
+# de placer UN fabricateur fixe ; s'il échoue, le prochain event est garanti
+# (pity = 1). Réarmé dans ``expand_recursive``.
+_fluid_pity: int = 0
+
+# Steps ayant introduit un fluide (pour le flush final des fabricateurs restés
+# non placés). Réarmé dans ``expand_recursive``.
+_fluid_steps: list[tuple[dict, list[str]]] = []
+
+# Chaleur (§10bis) : les prérequis heat ne sont émis qu'une fois par seed.
+# Réarmé dans ``expand_recursive``.
 _heat_prereq_emitted: bool = False
 
-# Ressources « brutes » de la seed courante (patches + environnement + fluides
-# d'extraction eau/pétrole brut/vapeur, §3/§13). Recalculées au début de
-# `expand_recursive` à partir des patches ; un science pack ne se craft JAMAIS
-# avec l'une d'elles (interdites à la fois dans les ingrédients de sa recette
-# et dans celles du balayage de couverture).
+# Ressources brutes de la seed (patches + environnement + fluides d'extraction,
+# §3/§13). Un science pack ne se craft jamais avec l'une d'elles.
 _raw_resources: frozenset[str] = frozenset()
 
-# Assignation véhicule → armes montées distinctes (§7). Remplie au début du
-# balayage de couverture (``_expand_content_coverage``) avec le flot RNG de
-# la récursion ; exportée dans les données seed (``vehicle_armament``). La
-# pool ne sert QU'à cette assignation : aucune recette/unlock n'est généré
-# pour les armes montées (l'item source reste clean, §12.1 les clone).
+# Assignation véhicule → armes montées distinctes (§7), remplie au début du
+# balayage de couverture ; exportée dans ``vehicle_armament``. La pool ne sert
+# qu'à cette assignation (les armes montées n'ont ni recette ni unlock).
 _vehicle_armament: dict[str, list[str]] = {}
 
-# La chaîne fusée (§14) a sa propre tech de fin d'arbre qui unlocke ses 3
-# ingrédients : ils ne sont jamais des « produits » de la récursion (sinon
-# doublon d'unlock entre une tech profonde et randputf-endgame-rocket).
+# Chaîne fusée (§14) : unlockée par sa propre tech de fin d'arbre, jamais par
+# la récursion (sinon doublon d'unlock avec randputf-endgame-rocket).
 _ROCKET_CHAIN_ITEM_NAMES = frozenset(ROCKET_CHAIN)
 
-# Balayage de couverture complète : items jamais pris en charge par la
-# récursion des catégories fonctionnelles (belts, inserters, chests,
-# combinators, trains, modules...) doivent TOUS recevoir une recette
-# randputf-* unlockée par une tech (« randomisation complète », §9.6).
-# Sont exclus du balayage :
-# - la chaîne fusée (le rocket-silo et ses 3 ingrédients appartiennent à la
-#   phase endgame §14, sinon doublon d'unlock avec randputf-endgame-rocket) ;
-# - les armes MONTÉES (VEHICLE_GUNS) : contenu mort sans leur véhicule (le
-#   joueur ne peut pas les utiliser), elles attendent la randomisation des
-#   véhicules (§7) ;
-# - les items environnementaux (déjà obtenables via le bootstrap) et les
-#   outils (blueprint, planners...) qui ne sont pas du contenu fabricable.
+# Balayage de couverture complète (§9.6) : items hors catégories fonctionnelles
+# (belts, inserters, chests, combinators...) → recette randputf-* + tech.
+# Exclus : chaîne fusée (endgame §14), armes montées (mortes sans véhicule,
+# randomisées en §7), environnementaux et outils.
 _ROCKET_CHAIN_SWEEP_EXCLUDED = _ROCKET_CHAIN_ITEM_NAMES | {"rocket-silo"}
 
 def _roman_value(n: int) -> str:
-    """Romanisation arbitraire (1..3999) pour le suffixe numérique d'un ID de
-    tech. Factorio lit un nom finissant par `xxx-<nombre>` comme un palier
-    d'une chaîne d'upgrade et exige des paliers contigus (ex. uranium-235 puis
-    uranium-238 → niveaux 235,238 non contigus → erreur de chargement). Mettre
-    la valeur en chiffres romains désactive ce parsing (§9.6)."""
+    """Romanisation d'un suffixe numérique d'ID de tech : Factorio exige des
+    paliers contigus pour les noms en `xxx-N` (erreur de chargement sinon,
+    §9.6)."""
     values = [
         (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"),
         (100, "c"), (90, "xc"), (50, "l"), (40, "xl"),
@@ -123,38 +109,32 @@ def expand_recursive(
     starter: StarterChain,
     lake_resources: frozenset[str] = frozenset(),
 ) -> None:
-    global _tech_steps, _unlocked_science_packs, _raw_resources, _heat_prereq_emitted
+    global _tech_steps, _unlocked_science_packs, _raw_resources
+    global _heat_prereq_emitted, _fluid_pity, _fluid_steps
     _tech_steps = []
     _heat_prereq_emitted = False
+    _fluid_pity = 0
+    _fluid_steps = []
     _unlocked_science_packs = []
     _raw_resources = db.raw_resources({p.resource for p in patches}) | frozenset(lake_resources)
     state = starter.state
-    # C2/C5 : les LACS sont des fluides brut obtenables DÈS LE DÉPART (pompe
-    # offshore, volume infini), comme les patchs. Il faut donc les marquer dans
-    # ``state.obtained_fluids`` : sinon les fabricateurs à recette fixe
-    # (boiler/heat-exchanger — ``_make_fixed_fluid_recipe``) choisiraient leur
-    # input/output dans TOUS les fluides pipables y compris les inobtenables,
-    # et le validateur signalerait « utilise X avant obtention » (progressivité)
-    # + recettes en boucle. Les patchs fluides le sont déjà via
-    # ``_ensure_extraction`` ; les lacs ne l'étaient pas (quirk pré-existant).
+    # Les LACS sont des fluides obtenables dès le départ (pompe offshore,
+    # volume infini), comme les patchs : à marquer dans ``obtained_fluids``,
+    # sinon les fabricateurs à recette fixe choisiraient des inputs inobtenables.
     for fluid in lake_resources:
         state.mark_obtained(SLOT_FLUID, fluid)
     buildings_unlocked = len(state.unlocked_buildings)
     iterations_since_new = 0
     max_iterations = _config.max_iterations
 
-    # §13 : le PREMIER science pack est rendu craftable par le STARTER (façon
-    # red-science vanilla, recette gratuite unlockée par starter-transformation).
-    # Sans lui, les techs de buildings/armes n'auraient aucun coût à payer
-    # (elles exigent toutes un pack). Les packs suivants se débloquent en
-    # chaîne (chacun coûte le pack précédent), donc toute tech récursive a
-    # toujours un pack déjà unlocké vers lequel pointer.
+    # §13 : le premier science pack est rendu craftable par le starter (recette
+    # gratuite unlockée par starter-transformation) ; sans lui aucune tech n'a
+    # de coût. Les suivants se débloquent en chaîne (chacun coûte le précédent).
     _seed_first_science(rng, db, state, starter)
 
     for _ in range(max_iterations):
-        # Cadence garantie des pylônes (§9.4) : 3 pôles verrouillés à des
-        # positions espacées (early / +~20 / +~20). Les pôles AU-DELÀ de ces
-        # jalons restent randomisés comme de simples items/bâtiments.
+        # Cadence des pylônes (§9.4) : 3 pôles à des jalons espacés (~20 steps) ;
+        # au-delà ils sont randomisés comme de simples items/bâtiments.
         if _ensure_pole_cadence(rng, db, state, len(_tech_steps)):
             iterations_since_new = 0
             continue
@@ -185,30 +165,24 @@ def expand_recursive(
         if new_buildings > 0 or new_recipes > 0:
             buildings_unlocked = len(state.unlocked_buildings)
 
-    # Phase 3bis : BALAYAGE de couverture complète (README §9.6, « randomisation
-    # complète »). La récursion pondérée ci-dessus ne touche que les 4
-    # catégories fonctionnelles + combat + science. Le reste du contenu
-    # craftable (belts, inserters, chests, combinators, robots, trains,
-    # modules, intermédiaires...) n'aurait sinon JAMAIS de recette : la boucle
-    # s'arrête dès que ces catégories sont épuisées (~35 techs seulement).
-    # Ce balayage garantit à CHAQUE item un craft randputf-* + une tech de
-    # filière (packs déjà TOUS unlockés par la récursion précédente, donc les
-    # coûts restent payable-production §13).
+    # Balayage de couverture complète (§9.6, « randomisation complète ») : la
+    # récursion pondérée ne touche que 4 catégories + combat + science ; ce
+    # balayage garantit à chaque item restant un craft randputf-* + une tech
+    # de filière (packs déjà tous unlockés, coûts payables §13).
     _expand_content_coverage(rng, db, state)
+
+    # Flush final (C7) : fabricateurs fixes jamais placés par le soft-pity →
+    # collés aléatoirement sur une tech à fluide, avec leur recette fixe.
+    _flush_leftover_fluid_crafters(rng, db, state)
 
 
 def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
-    """Items craftables RESTANTS après la récursion (balayage complet §9.6).
+    """Items craftables restant après la récursion (balayage complet §9.6).
 
-    Un item est « couvert » dès qu'une recette produit son nom — même s'il est
-    déjà obtenable (patch au sol, §6 : un belt posé au sol ne retire pas le
-    belt du pool craftable). Sont exclus du balayage : la chaîne fusée (phase
-    endgame, sinon doublon d'unlock avec randputf-endgame-rocket), les armes
-    MONTÉES-UNIQUEMENT (VEHICLE_GUNS : contenu mort sans véhicule, jamaise
-    crafté — la seed les clone à la volée pour les monter, §12.1 ; les armes
-    de poing de la pool restent, elles, de vrais items craftables),
-    les ressources environnementales (récoltables à la main, jamais craftées)
-    et les outils (non fabricables)."""
+    Un item est « couvert » dès qu'une recette produit son nom (même déjà
+    obtenable en patch). Exclus : chaîne fusée (endgame), armes montées
+    (VEHICLE_GUNS, jamais craftées — la seed les clone à la volée, §12.1),
+    ressources environnementales et outils."""
     excluded_guns = VEHICLE_GUNS
     return [
         i
@@ -222,9 +196,7 @@ def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
 
 
 def _has_product_recipe(state: ProgressionState, name: str) -> bool:
-    """Une recette produit déjà ``name`` ? (vérifie par produit, pas par état
-    obtenu : un item posé au sol n'a pas de recette du seul fait d'être
-    obtainable.)"""
+    """Une recette produit déjà ``name`` ? (via le produit, pas l'état obtenu.)"""
     return any(
         (r.get("results") or []) and r["results"][0]["type"] == SLOT_ITEM
         and r["results"][0]["name"] == name
@@ -233,12 +205,9 @@ def _has_product_recipe(state: ProgressionState, name: str) -> bool:
 
 
 def _is_network_dependent_item(db: VanillaDB, item) -> bool:
-    """Item dont le bâtiment posé (place_result) dépend du RÉSEAU (électrique
-    ou circuits) : tourelle laser (consumes_electricity, tags §7), radar,
-    combinators et lampe (tags §8). Ces usages sont placés dans un TIER TARDIF
-    du balayage §9.6 — jamais avant que le réseau ne soit acquis : une tourelle
-    balistique (ammo, sans courant) peut arriver tôt, une laser (courant) doit
-    attendre la fin du balayage."""
+    """Item dont le bâtiment posé dépend du RÉSEAU (current ou circuits) :
+    tourelle laser, radar, combinators, lampe. Placé en tier tardif du
+    balayage §9.6 — jamais avant l'acquisition du réseau."""
     if not item.place_result:
         return False
     building = db.buildings.get(item.place_result)
@@ -253,19 +222,14 @@ def _is_network_dependent_item(db: VanillaDB, item) -> bool:
 
 
 def _expand_content_coverage(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
-    """Assure une recette randputf-* + une tech à CHAQUE item restant.
+    """Assure une recette randputf-* + une tech à chaque item restant.
 
-    Ordre des items mélangé par la graine (chaque seed explore le contenu
-    dans un ordre différent). Chaque item devient une tech « randputf-content-
-    <item> » qui unlocke SA recette ; les ingrédients proviennent du pool
-    obtenable courant (jamais d'ingrédient pas encore fabricable). Les techs
-    arrivent APRÈS la récursion pondérée : les 7 science packs sont donc déjà
-    unlockés et tout coût de pack est payable (§13).
-
-    Tier tardif (§7/§8) : les items dépendant du réseau (tourelle laser, radar,
-    combinator, lampe) sont DEFERRÉS APRÈS tout le contenu « passif » — le
-    balayage garde sa randomisation interne mais garantit qu'un usage à
-    courant/network n'est jamais débloqué avant le reste."""
+    Items mélangés par la graine ; chaque item devient une tech
+    « randputf-content-<item> » aux ingrédients du pool obtenable courant
+    (jamais d'ingrédient non fabricable). Les techs arrivent après la
+    récursion : les packs sont déjà tous unlockés (§13). Les items dépendant
+    du réseau (laser, radar, combinator, lampe) sont différés après le contenu
+    passif (§7/§8)."""
     global _vehicle_armament
     _vehicle_armament = _assign_vehicle_weapons(rng)
     items = _coverage_items(db, state)
@@ -284,15 +248,12 @@ def _expand_content_coverage(rng: random.Random, db: VanillaDB, state: Progressi
 
 
 def _assign_vehicle_weapons(rng: random.Random) -> dict[str, list[str]]:
-    """Échantillonne les armes montées par véhicule armé (§7/§12.1).
+    """Armes montées par véhicule armé (§7/§12.1).
 
-    Chaque véhicule de ``armed_vehicles`` (config) reçoit ``roll_vehicle_slot_count``
-    emplacements, tirés dans la pool ``vehicle_weapons`` (items gun, y compris
-    non montés de base : ex. fusil à pompe). Avec remise : les ``n`` tirages se
-    font dans la pool complète ; sans remise : dans un sous-échantillon sans
-    doublon. Les doublons d'un véhicule sont ensuite éliminés. La pool ne sert
-    QU'à l'assignation : aucune recette/unlock n'est généré pour ces armes.
-    Consomme le flot RNG de la récursion : déterministe par graine."""
+    Chaque ``armed_vehicles`` reçoit ``roll_vehicle_slot_count`` emplacements
+    tirés dans ``vehicle_weapons`` (avec ou sans remise selon config). La pool
+    ne sert qu'à l'assignation : aucune recette/unlock n'est généré pour ces
+    armes. Consomme le flot RNG de la récursion (déterministe par graine)."""
     pool = _config.vehicle_weapon_names
     out: dict[str, list[str]] = {}
     for vehicle in _config.armed_vehicles:
@@ -326,18 +287,13 @@ def vehicle_armament() -> dict[str, list[str]]:
 
 
 def _dispatch_vehicle_ammo(rng: random.Random, db: VanillaDB, state: ProgressionState, vehicle: str) -> list[dict]:
-    """§12.1 : munitions des armes montées, dispatchées dans les 3 techs APRÈS
-    celle du véhicule.
+    """§12.1 : munitions des armes montées, créées sur le tas et dispatchées
+    (≤ 3 steps isolés) juste après la tech du véhicule.
 
-    Quand la tech du véhicule est créée, on vérifie si chaque munition de ses
-    armes (par ``ammo_category``) a déjà une recette. Pour celles qui n'en ont
-    pas encore (elles auraient été réparties au hasard, potentiellement DEEP
-    après le véhicule), on crée leur recette IMMÉDIATEMENT et on revoit des
-    steps DISPATCH isolés (≤ 3 = « les 3 tech suivantes ») qui seront placés
-    JUSTE APRÈS la tech du véhicule : le joueur reçoit son véhicule avec ses
-    munitions au labo dans la foulée. Les munitions déjà présentes (recette
-    unlockée plus tôt / avec le véhicule) ne sont pas rejouées.
-    Retourne les steps dispatch (à étendre APRÈS le step du véhicule)."""
+    Pour chaque munition d'une arme du véhicule sans recette encore, on crée
+    la recette immédiatement et on retourne des steps DISPATCH isolés placés
+    après la tech du véhicule : le joueur reçoit véhicule + munitions à la
+    suite. Les munitions déjà unlockées ne sont pas rejouées."""
     needed: list[str] = []
     seen: set[str] = set()
     for gun in _vehicle_armament.get(vehicle, []):
@@ -378,21 +334,13 @@ def _dispatch_vehicle_ammo(rng: random.Random, db: VanillaDB, state: Progression
 
 
 def _dispatch_companions(rng: random.Random, db: VanillaDB, state: ProgressionState, item_name: str) -> list[dict]:
-    """C3 : « companion guarantee » — dispatch des items dépendants.
+    """C3 : « companion guarantee » — recettes créées sur le tas + dispatch.
 
-    Un item compagnon est une ressource sans laquelle le produit déployé est du
-    contenu mort (façon `_dispatch_vehicle_ammo` §12.1) :
-    - un robot (logistic/construction) sans roboport ne vole pas ;
-    - un roboport sans robot ne sert à rien ;
-    - un premier solaire sans accumulateur = blackout nocturne (§10).
-
-    Quand ``item_name`` (déployé par une tech) appartient à un groupe compagnon
-    (config), on crée IMMÉDIATEMENT la recette de chaque membre du groupe qui
-    n'en a pas encore, et on retourne des steps DISPATCH isolés (≤ 3) qui
-    suivent la tech du produit : le joueur reçoit le compagnon au labo dans la
-    foulée. Les membres déjà craftables ne sont pas rejoués.
-
-    Retourne les steps dispatch (à étendre APRÈS le step du produit)."""
+    Un compagnon est une ressource sans laquelle le produit déployé est du
+    contenu mort (robot↔roboport, solaire→accumulateur, §10). On crée la
+    recette de chaque membre du groupe sans recette et on retourne des steps
+    DISPATCH isolés (≤ 3) suivant la tech du produit. Membres déjà craftables
+    non rejoués."""
     group = _config.companion_group_for(item_name)
     if not group:
         return []
@@ -428,15 +376,9 @@ def _ensure_handheld_ammo(
     rng: random.Random, db: VanillaDB, state: ProgressionState, gun
 ) -> list[str]:
     """Garantit une munition à une arme de poing débloquée par une tech combat
-    (§11).
-
-    Règle : si AUCUNE munition de la catégorie de l'arme n'a encore de recette,
-    on génère les munitions manquantes (déblocage sur le tas §9.3) et on les
-    ajoute à la MÊME tech que l'arme — sinon une arme débloquée seule serait
-    inutilisable (flamethrower sans flamethrower-ammo, etc.). Si au moins une
-    munition de la catégorie est déjà débloquée, on ne force rien (l'arme a
-    déjà de quoi tirer).
-    Retourne les recettes randputf-<munition> à unlocked la même tech."""
+    (§11) : si la catégorie de l'arme n'a aucune munition craftée, on génère
+    UNE seule munition aléatoire parmi celles restantes dans la MÊME tech
+    (sinon arme inutilisable) ; sinon rien."""
     category = gun.ammo_category if gun is not None else ""
     if not category:
         return []
@@ -449,11 +391,9 @@ def _ensure_handheld_ammo(
     missing = [a for a in ammos if not _has_product_recipe(state, a)]
     if not missing:
         return []
-    unlocked: list[str] = []
-    for ammo in missing:
-        make_recipe(rng, db, state, SLOT_ITEM, ammo)
-        unlocked.append(f"randputf-{ammo}")
-    return unlocked
+    pick = rng.choice(missing)
+    make_recipe(rng, db, state, SLOT_ITEM, pick)
+    return [f"randputf-{pick}"]
 
 
 def _ensure_heat_prereq(
@@ -461,19 +401,13 @@ def _ensure_heat_prereq(
     db: VanillaDB,
     state: ProgressionState,
 ) -> None:
-    """Modèle « chaleur » (§10bis) : garantit la TRIADE avant le consommateur.
+    """Modèle « chaleur » (§10bis) : garantit SOURCE + TRANSPORT avant le sink.
 
-    Un heat SINK (ex. heat-exchanger) ne fonctionne qu'avec une SOURCE (ex.
-    nuclear-reactor) reliée par un TRANSPORT (ex. heat-pipe). Au premier
-    instant où un sink va recevoir sa recette de craft, on DÉPLOIE d'abord —
-    dans l'ordre SOURCE puis TRANSPORT — des steps de tech qui débloquent leur
-    item/bâtiment : leurs unlock sont ainsi STRICTEMENT ANTÉRIEURS à ceux du
-    consommateur (miroir de la garantie « extracteur avant besoin » du starter,
-    §7). Le modèle est inerte sans sink dans le pool : aucune insertion.
-
-    Une seule émission par seed (``_heat_prereq_emitted``) : le premier sink
-    qui apparaît déclenche la garantie ; les suivants héritent de l'ordre.
-    """
+    Un heat sink (heat-exchanger) ne fonctionne qu'avec une source
+    (nuclear-reactor) reliée par un transport (heat-pipe). Au premier sink qui
+    reçoit sa recette, on déploie les éléments manquants (source puis
+    transport) dans des steps antérieurs au consommateur. Une seule émission
+    par seed (``_heat_prereq_emitted``)."""
     global _heat_prereq_emitted
     if _heat_prereq_emitted:
         return
@@ -483,10 +417,8 @@ def _ensure_heat_prereq(
         return
     if not roles["sources"] or not roles["transports"]:
         return
-    # Déployer SÉPARÉMENT ce qui manque : une source déjà débloquée avant le
-    # sink est déjà antérieure (son step est déjà dans l'arbre) ; on ne force
-    # que l'élément absent (ex. le heat-pipe) pour que LA TRIADE soit en place
-    # strictement avant le consommateur.
+    # Déploie seulement ce qui manque : un élément déjà débloqué est déjà
+    # antérieur au sink ; on force l'absent pour que la triade soit en place.
     missing_sources = [n for n in roles["sources"] if n not in state.unlocked_buildings]
     missing_transports = [n for n in roles["transports"] if n not in state.unlocked_buildings]
     needed = []
@@ -496,9 +428,8 @@ def _ensure_heat_prereq(
         needed.append(rng.choice(missing_transports))
     for name in needed:
         building = db.buildings[name]
-        # Catégorie de déploiement naturelle du bâtiment (comme la récursion) ;
-        # un bâtiment sans rôle fonctionnel (heat-pipe) part en balayage-contenu
-        # et déploie alors son ITEM (la branche content attend un ItemDef).
+        # Catégorie de déploiement du bâtiment (comme la récursion) ; un
+        # bâtiment sans rôle fonctionnel (heat-pipe) part en content (item).
         if building.is_generator:
             cat, element = "generator", building
         elif building.is_crafter:
@@ -515,8 +446,7 @@ def _ensure_heat_prereq(
             _generate_for_element(rng, db, state, cat, element, isolate=True)
         except ValueError:
             # Panel intenable (pool vide, boucle) : on laisse le consommateur
-            # tel quel — robustesse identique au kit (§8), le validateur
-            # signalerait l'ordre si la chaîne était bifide.
+            # tel quel — le validateur signalerait l'ordre si la chaîne bifidait.
             continue
         state.unlocked_buildings.add(name)
 
@@ -527,20 +457,13 @@ def _ensure_pole_cadence(
     state: ProgressionState,
     steps_so_far: int,
 ) -> bool:
-    """Force la présence de PYLÔNES RÉELS (poteaux électriques) à une cadence
-    garantie.
+    """Force des pylônes réels (small/medium/big + substation, jamais le
+    beacon) à une cadence garantie : chaque jalon ``dist_marks`` exige
+    ``dist_guaranteed`` pôles au plus ; à la première itération on force un
+    pôle si aucun n'est débloqué. Chaque pôle forcé est d'un type différent
+    (``_pick_real_pole``).
 
-    Seuls les vrais poteaux comptent (``is_power_pole`` : small/medium/big +
-    substation) — le beacon est une distribution mais pas un pylône et reste
-    randomisé. Chaque jalon ``dist_marks`` exige un nombre croissant de
-    poteaux déployés. Dès la TOUTE première itération récursive (step 0), si
-    aucun vrai poteau n'est encore débloqué (cas électricité absente du
-    bootstrap), on force le premier immédiatement — jamais de run sans pylône
-    jouable pendant les 10 premières techs. Chaque poteau forcé tire un type
-    DIFFÉRENT (jamais déjà déployé, via ``_pick_real_pole``).
-
-    Retourne True si un poteau a été forcé (l'itération ne pioche alors pas de
-    catégorie normale)."""
+    Retourne True si un poteau a été forcé (pas de tirage normal ce tour)."""
     needed = sum(1 for m in _config.dist_marks if steps_so_far >= m)
     needed = min(needed, _config.dist_guaranteed)
     if steps_so_far == 0:
@@ -562,8 +485,8 @@ def _ensure_pole_cadence(
 def _pick_real_pole(
     rng: random.Random, db: VanillaDB, state: ProgressionState
 ):
-    """Choisit un pylône RÉEL (poteau électrique) non encore débloqué — jamais
-    le beacon (distribution sans transport de courant, §9.1/§10)."""
+    """Choix d'un pylône réel (poteau électrique) non débloqué, jamais le
+    beacon (distribution sans transport de courant, §9.1/§10)."""
     candidates = [
         b
         for b in db.buildings_with_tag("is_distribution")
@@ -578,19 +501,13 @@ def _seed_first_science(
     state: ProgressionState,
     starter: StarterChain,
 ) -> None:
-    """Amore la filière de coût : enregistre le premier science pack (choisi et
-    rendu craftable par le starter) comme source de coût des techs récursives.
-
-    La recette de ce pack est déjà unlockée GRATUITEMENT par la tech
-    starter-transformation ; ici on ne fait qu'initialiser la chaîne des
-    packs disponibles pour les coûts (§13)."""
+    """Amore la filière de coût : enregistre le premier science pack (choisi
+    et rendu craftable par le starter) comme source de coût des techs (§13)."""
     name = starter.first_science_pack
     if not name:
-        # Le starter n'a pas pu seedé de pack (ex. pool déjà vidé de ses packs
-        # non-obtenus). On amorce quand même la filière avec un pack du jeu :
-        # toute tech récursive exige un coût (§13), et `rng.choice` sur une
-        # liste vide planterait. Le pack choisi aura de toute façon une recette
-        # (balayage de couverture §9.6).
+        # Aucun pack seedé par le starter : on en prend un du jeu pour amorcer
+        # la filière (toute tech récursive exige un coût, §13 ; `rng.choice`
+        # sur liste vide planterait). Il aura une recette au balayage §9.6.
         packs = sorted(
             (i.name for i in db.items.values()
              if i.is_science_pack and i.name not in _unlocked_science_packs),
@@ -624,10 +541,9 @@ def _get_available_categories(db: VanillaDB, state: ProgressionState) -> list[st
     return available
 
 
-# Les catégories de la phase récursive (§9) sont choisies par TAGS : un
-# bâtiment multi-tags (ex. heat-exchanger is_crafter + is_generator) est
-# éligible dans CHAQUE catégorie qu'il porte. Son deployment (dans une seule
-# catégorie) le retire des autres via ``state.unlocked_buildings``.
+# Catégories de la phase récursive (§9) choisies par TAGS : un bâtiment
+# multi-tags est éligible dans chaque catégorie qu'il porte ; son deployment
+# le retire des autres via ``state.unlocked_buildings``.
 _CATEGORY_TAGS = {
     "transformer": "is_crafter",
     "extractor": "is_extractor",
@@ -642,8 +558,7 @@ def _has_undeployed_buildings(
     tag = _CATEGORY_TAGS[category]
     for b in db.buildings_with_tag(tag):
         if b.name not in _config.excluded_buildings and b.name not in state.unlocked_buildings:
-            # Un bâtiment SANS ITEM (character...) ne peut être « déployé » :
-            # aucun produit à unlock — un step de tech vide serait un bug.
+            # Un bâtiment sans item (character...) n'a aucun produit à unlock.
             if _item_for_building(db, b.name) is not None:
                 return True
     return False
@@ -713,10 +628,8 @@ def _generate_for_element(
     from tool.generator.recipes import _unlock_building, _item_for_building
 
     # Modèle « chaleur » (§10bis) : le bâtiment en cours de déploiement est un
-    # CONSOMMATEUR de heat → on débloque d'abord sa SOURCE + son TRANSPORT, à
-    # des techs STRICTEMENT ANTÉRIEURES. Placé AVANT le snapshot
-    # ``buildings_before`` pour que source/transport ne soient pas ré-claimés
-    # dans la tech du consommateur lui-même.
+    # sink → on débloque d'abord source + transport, avant le snapshot
+    # ``buildings_before`` pour qu'ils ne soient pas ré-claimés par cette tech.
     if (
         category in ("transformer", "extractor", "generator", "distribution")
         and getattr(element, "is_heat_sink", False)
@@ -728,14 +641,10 @@ def _generate_for_element(
     step_buildings = []
     pending_dispatch: list[dict] = []
     # Fluides obtenus AVANT cet élément : pour détecter un fluide introduit par
-    # ce step et lui associer un fabricateur à recette fixe (IDEES C7) au même
-    # niveau de recherche que ce liquide.
+    # ce step et lui associer un fabricateur à recette fixe (C7) au même niveau.
     fluids_before = set(state.obtained_fluids)
-    # Ateliers débloqués AVANT cet élément : ceux qui le seront « sur le tas »
-    # pendant sa génération (déblocage d'un atelier de craft via _pick_building
-    # → _unlock_building, §9.3) produisent une recette randputf-<bâtiment> qui
-    # doit être claimée par CETTE tech — sinon recette orpheline (jamais
-    # unlockée). On les ajoute à `unlocks_buildings` en fin de traitement.
+    # Ateliers débloqués « sur le tas » pendant cet élément : leur recette
+    # randputf-<bâtiment> doit être claimée par cette tech (sinon orpheline).
     buildings_before = set(state.unlocked_buildings)
     step = {
         "id": step_id,
@@ -746,9 +655,8 @@ def _generate_for_element(
         "count": _config.roll_tech_count(rng),
     }
     if isolate:
-        # Tech DÉDIÉE (jamais fusionnée avec la suivante) : utilisée par les
-        # prérequis de la chaîne heat (§10bis) pour garantir que source et
-        # transport restent STRICTEMENT antérieurs au consommateur.
+        # Tech dédiée (jamais fusionnée) : utilisée par les prérequis de la
+        # chaîne heat (§10bis).
         step["isolate"] = True
 
     if category in ("transformer", "extractor", "generator", "distribution"):
@@ -756,14 +664,11 @@ def _generate_for_element(
         item = _item_for_building(db, building.name)
         handcraft = False
         if category == "generator":
-            # Premier générateur électrique de la seed = craftable à la main
-            # (§10) : s'il arrive APRÈS le starter qui n'a rien demandé en
-            # électricité, il est LE générateur d'amorçage du réseau — jamais
-            # un atelier électrique (assembling-machine-2...) requis pour le
-            # fabriquer, sinon boucle bootstrap. Les suivants repassent en
-            # normal (les assembleurs existent déjà à ce stade). Seuls les
-            # producteurs de COURANT comptent (tag ``produces_electricity``) :
-            # le réacteur (chaleur seule) ne démarre jamais le réseau.
+            # Premier générateur électrique = craftable à la main (§10) : s'il
+            # arrive après un starter sans électricité, il amorce le réseau
+            # (jamais un atelier électrique requis pour le fabriquer, sinon
+            # boucle). Seuls les producteurs de courant comptent (chaleur
+            # seule, ex. réacteur, ne démarre pas le réseau).
             handcraft = not any(
                 b.name in state.unlocked_buildings
                 for b in db.buildings.values()
@@ -780,11 +685,8 @@ def _generate_for_element(
         state.unlocked_buildings.add(building.name)
 
         # §6/§10 : un transformateur à RECETTE FIXE (boiler/heat-exchanger, ou
-        # tout équivalent de mod à sortie fluide OU item — ``is_fixed_crafter``)
-        # héberge UNE recette unique entièrement randomisée (« fluide → fluide »
-        # ou « item → item/fluide »), pas un atelier général multi-recettes. On
-        # force EXACTEMENT une recette, portée par CE bâtiment
-        # (voir _make_recipe_for_building).
+        # équivalent à sortie fluide OU item) héberge UNE recette unique
+        # randomisée (« fluide → fluide » ou « item → item/fluide »).
         fixed = _is_fixed_recipe_transformer(building)
         num_recipes = 1 if fixed else _config.roll_recipes_count(rng)
         for _ in range(num_recipes):
@@ -798,48 +700,34 @@ def _generate_for_element(
         item = element
         ensure_obtainable(rng, db, state, SLOT_ITEM, item.name)
         step_recipes.append(f"randputf-{item.name}")
-        # Munitions (§11) : si AUCUNE munition de la catégorie de l'arme n'est
-        # encore débloquée, on génère les manquantes avec l'arme, dans la MÊME
-        # tech — sinon l'arme débloquée serait inutilisable. Si une munition est
-        # déjà obtenable (avant ou à la même tech), on n'ajoute rien.
+        # Munitions (§11) : si aucune munition de la catégorie n'est craftée,
+        # on génère les manquantes dans la même tech (sinon arme inutilisable).
         step_recipes.extend(_ensure_handheld_ammo(rng, db, state, item))
 
     elif category == "science":
         item = element
-        # §13 : la recette d'un science pack est tirée SANS ressource brute
-        # (patches, environnement, fluides d'extraction — infinis ou non) : le
-        # pack se craft à partir d'intermédiaires, jamais de matière brute du sol.
+        # §13 : recette d'un pack tirée SANS ressource brute (patches,
+        # environnement, fluides d'extraction) : packs craftés d'intermédiaires.
         ensure_obtainable(rng, db, state, SLOT_ITEM, item.name, forbidden=_raw_resources)
         step_recipes.append(f"randputf-{item.name}")
-        # Un nouveau science pack se débloque en consommation du pack
-        # précédent (le premier, gratuit, vient de _seed_first_science) :
-        # la filière est toujours payable production → consommation (§13).
+        # Chaque nouveau pack coûte le pack précédent (filière payable
+        # production → consommation, §13).
         pack = rng.choice(_unlocked_science_packs)
         step["cost"] = [{"type": "item", "name": pack, "amount": _config.roll_science_cost(rng)}]
         _unlocked_science_packs.append(item.name)
 
     elif category == "content":
-        # Balayage de couverture complète (§9.6) : item restant quelconque
-        # (belt, inserter, chest, module, intermédiaire...). Sa recette
-        # randputf-<item> est unlockée par cette tech ; le coût en pack suit
-        # la règle commune ci-dessous (toujours un pack déjà unlocké).
-        # `make_recipe` (et non ensure_obtainable) : un item déjà obtainable
-        # comme patch au sol (§6) n'a PAS de recette — il doit quand même
-        # devenir craftable pour que « tout » ait une recette (§10).
         item = element
-        # Véhicule armé (§12.1) : on vérifie les munitions des armes montées ;
-        # le dispatch (≤ 3 steps isolés) est étendu APRÈS la tech du véhicule
-        # (« les 3 tech suivantes »), voir l'append en fin de fonction.
-        # C3 : same pour les compagnons (robot↔roboport, solaire→accumulateur).
+        # Véhicule armé (§12.1) : munitions des armes montées + compagnons
+        # (robot↔roboport, solaire→accumulateur) dispatchées après cette tech.
         pending_dispatch = (
             _dispatch_vehicle_ammo(rng, db, state, item.name)
             if item.name in _vehicle_armament
             else []
         )
         pending_dispatch.extend(_dispatch_companions(rng, db, state, item.name))
-        # Garde §13 : si un science pack (ex. posé au sol en patch) atteint le
-        # balayage SANS recette (jamais pické par la branche science, déjà
-        # obtainable), sa recette de secours est tirée sans ressource brute.
+        # Garde §13 : un pack posé au sol (patch) atteint le balayage sans
+        # recette → recette de secours tirée sans ressource brute.
         recipe = make_recipe(
             rng, db, state, SLOT_ITEM, item.name,
             forbidden=_raw_resources if item.is_science_pack else frozenset(),
@@ -847,56 +735,66 @@ def _generate_for_element(
         step_recipes.append(recipe["name"])
 
     # TOUTE tech récursive (buildings, armes, packs) paie un coût en science
-    # pack. Grâce à _seed_first_science, _unlocked_science_packs est
-    # toujours non vide ici : jamais de tech récursive gratuite (§13).
+    # pack (§13) : grâce à _seed_first_science, le pool n'est jamais vide ici.
     if not step["cost"]:
         pack = rng.choice(_unlocked_science_packs)
         step["cost"] = [{"type": "item", "name": pack, "amount": _config.roll_science_cost(rng)}]
 
-    # §6/§10 + IDEES C7 : PAIRING « fluide introduit → fabricateur à recette
-    # fixe ». Si ce step a introduit un NOUVEAU fluide X (nouveau lac/patch
-    # fluide pris au pool, ou fluide produit par la recette de cet élément),
-    # on force l'utilité des fabricateurs à recette fixe (boiler/heat-exchanger,
-    # taggés ``is_fixed_fluid_crafter``) non encore déployés : on leur attribue
-    # une recette qui PRODUIT X (output = X, input = tout fluide ≠ X) et on les
-    # débloque au MÊME niveau de recherche que ce liquide. Source unique de
-    # vérité : la recette (jamais un tirage arbitraire hors du solvables).
-    new_fluids = sorted(state.obtained_fluids - fluids_before)
+    # Pairing « fluide introduit → fabricateur à recette fixe » (C7) : si ce
+    # step a introduit un NOUVEAU fluide, on DÉBLOQUE AU PLUS un fabricateur
+    # fixe (boiler/heat-exchanger) dont la recette PRODUIT X.
+    # Soft-pity : premier event fluide = 50 % de placer un fabricateur ; s'il
+    # échoue, le prochain event est GARANTI (pity 100 %). Un event ne place
+    # AUCUN doublon : un fluide introduit au MÊME niveau par un fabricateur
+    # fixe (ex. heat-exchanger → petroleum-gas) n'est pas éligible (assignation
+    # = source de vérité) — un producteur fixe par fluide.
+    fixed_outputs = {
+        a["output"]
+        for a in state.building_fluid_assignments.values()
+        if a.get("output") is not None
+    }
+    new_fluids = sorted(
+        f for f in state.obtained_fluids - fluids_before if f not in fixed_outputs
+    )
     if new_fluids:
-        # Pairing « fluide » : SEULS les fabricateurs à recette fluide
-        # (boiler/heat-exchanger) peuvent produire le fluide X ; un
+        # Seuls les fabricateurs à recette fluide peuvent produire X ; un
         # transformateur à sortie ITEM (``is_fixed_crafter``) en est exclu.
         pending = [
             b for b in db.buildings.values()
             if is_fixed_fluid_crafter(b) and b.name not in state.unlocked_buildings
         ]
-        rng.shuffle(pending)
-        for fluid_x in new_fluids:
-            if not pending:
-                break
-            crafter = pending.pop()
-            # Modèle « chaleur » (§10bis) : ce fabricateur à recette fixe est
-            # un heat SINK → sa SOURCE + son TRANSPORT doivent être débloqués
-            # AVANT cette tech (les steps de prérequis sont insérés ici, avant
-            # l'append du step courant en fin d'élément).
-            if getattr(crafter, "is_heat_sink", False):
-                _ensure_heat_prereq(rng, db, state)
-            try:
-                recipe = _make_fixed_recipe_for_crafter(
-                    rng, db, state, crafter, output_fluid=fluid_x
-                )
-            except ValueError:
-                continue
-            step_recipes.append(recipe["name"])
-            step_buildings.append(crafter.name)
-            state.unlocked_buildings.add(crafter.name)
-            # Assignation input/output déjà enregistrée par
-            # _make_fixed_recipe_for_crafter (recette = source unique).
+        if pending:
+            chance = 1.0 if _fluid_pity else 0.5
+            if rng.random() < chance:
+                rng.shuffle(pending)
+                crafter = pending.pop()
+                fluid_x = rng.choice(new_fluids)
+                # Chaleur (§10bis) : ce fabricateur fixe est un heat SINK →
+                # source et transport débloqués avant cette tech.
+                if getattr(crafter, "is_heat_sink", False):
+                    _ensure_heat_prereq(rng, db, state)
+                try:
+                    recipe = _make_fixed_recipe_for_crafter(
+                        rng, db, state, crafter, output_fluid=fluid_x
+                    )
+                except ValueError:
+                    # Panel intenable (pool vide, boucle) : event raté → garantie
+                    # au prochain event.
+                    _fluid_pity = 1
+                else:
+                    step_recipes.append(recipe["name"])
+                    step_buildings.append(crafter.name)
+                    state.unlocked_buildings.add(crafter.name)
+                    _fluid_pity = 0
+            else:
+                # Tirage perdu : le prochain event est garanti.
+                _fluid_pity = 1
+        # Mémorise la tech pour le flush final (fabricateurs restés non placés).
+        _fluid_steps.append((step, new_fluids))
 
     # Claim des ateliers débloqués « sur le tas » pendant cet élément : sans
-    # cela, leur recette randputf-<bâtiment> resterait orpheline (voir
-    # buildings_before). Dédup en conservant l'ordre (le bâtiment de l'élément
-    # d'abord, puis les on-the-fly).
+    # quoi leur recette resterait orpheline (voir buildings_before). Dédup en
+    # conservant l'ordre (bâtiment de l'élément d'abord, puis on-the-fly).
     for name in state.unlocked_buildings - buildings_before:
         if name not in step_buildings:
             step_buildings.append(name)
@@ -904,9 +802,55 @@ def _generate_for_element(
     step["unlocks_recipes"] = step_recipes
     step["unlocks_buildings"] = step_buildings
     _tech_steps.append(step)
-    # Véhicule armé (§12.1) : les steps DISPATCH des munitions (≤ 3 isolés)
-    # suivent IMMÉDIATEMENT la tech du véhicule (« les 3 tech suivantes »).
+    # Véhicule armé (§12.1) : steps DISPATCH des munitions (≤ 3 isolés) juste
+    # après la tech du véhicule.
     _tech_steps.extend(pending_dispatch)
+
+
+def _flush_leftover_fluid_crafters(
+    rng: random.Random,
+    db: VanillaDB,
+    state: ProgressionState,
+) -> None:
+    """C7 (flush final) : fabricateurs à recette fixe restés non placés par le
+    soft-pity → placés aléatoirement dans une tech ayant introduit un fluide,
+    avec une recette fixe. Output = fluide déjà obtenu, de préférence SANS
+    producteur fixe (« un producteur par fluide »)."""
+    leftover = [
+        b for b in db.buildings.values()
+        if is_fixed_fluid_crafter(b) and b.name not in state.unlocked_buildings
+    ]
+    if not leftover or not _fluid_steps:
+        return
+    produced = {
+        a["output"]
+        for a in state.building_fluid_assignments.values()
+        if a.get("output") is not None
+    }
+    for crafter in leftover:
+        # Chaleur (§10bis) : un fabricateur fixe heat SINK (heat-exchanger) a
+        # besoin de source + transport avant sa tech.
+        if getattr(crafter, "is_heat_sink", False):
+            _ensure_heat_prereq(rng, db, state)
+        candidates = sorted(f for f in state.obtained_fluids if f not in produced)
+        if not candidates:
+            candidates = sorted(state.obtained_fluids)
+        rng.shuffle(candidates)
+        for fluid_x in candidates:
+            try:
+                recipe = _make_fixed_recipe_for_crafter(
+                    rng, db, state, crafter, output_fluid=fluid_x
+                )
+            except ValueError:
+                continue
+            step, _ = rng.choice(_fluid_steps)
+            step.setdefault("unlocks_recipes", []).append(recipe["name"])
+            step.setdefault("unlocks_buildings", []).append(crafter.name)
+            state.unlocked_buildings.add(crafter.name)
+            produced.add(fluid_x)
+            break
+        # Aucun fluide tenable (pool trop petit) → fabricateur absent de la
+        # seed : acceptable, il servirait de doublon de toute façon.
 
 
 def _make_recipe_for_building(
@@ -919,22 +863,10 @@ def _make_recipe_for_building(
     needs_fluid_out = building.fluid_outputs > 0
     product_kind = SLOT_FLUID if needs_fluid_out else SLOT_ITEM
 
-    # §6/§10 + IDEES C7 : FABRICATEUR À RECETTE FIXE (boiler/heat-exchanger,
-    # et tout équivalent de mod à sortie fluide OU item — ``is_fixed_crafter``,
-    # shim). Sa « recette » UNIQUE est entièrement randomisée par
-    # ``_make_fixed_recipe_for_crafter`` : sortie fluide (output = un fluide
-    # pipable ≠ input, input amorçable) ou sortie item (output = item obtenable
-    # non encore produit, inputs déjà obtenus). La recette réelle gouverne — la
-    # branche fluide enregistre l'assignation input/output dans
-    # `state.building_fluid_assignments` (source unique).
-    # Les générateurs/extracteurs/lab (soleil/combustible → électricité, champ
-    # → ressource, packs → recherche) ne sont PAS taggés ``has_hidden_recipe``
-    # (sortie non-item/fluide = mécanique moteur, pas une recette) →
-    # comportement figé (jamais de fake crafted_in). Le nuclear-reactor, lui,
-    # EST taggé (entrée item pseudo-combustible → sortie item résidu, §recette
-    # cachée item→item) MAIS reste un générateur → il n'est pas un atelier et
-    # ne reçoit aucune recette randomisée ici : seuls les transformateurs à
-    # recette cachée (`is_fixed_crafter`) en reçoivent une.
+    # §6/§10 : fabricateur à RECETTE FIXE (boiler/heat-exchanger, ou équivalent
+    # à sortie fluide OU item). Sa « recette » UNIQUE est randomisée par
+    # ``_make_fixed_recipe_for_crafter`` ; la recette réelle gouverne
+    # (assignation input/output enregistrée dans `building_fluid_assignments`).
     if _is_fixed_recipe_transformer(building):
         try:
             return _make_fixed_recipe_for_crafter(rng, db, state, building)
@@ -961,29 +893,26 @@ def _make_fixed_recipe_for_crafter(
     output_fluid: str | None = None,
     output_item: str | None = None,
 ) -> dict:
-    """Recette UNIQUE randomisée d'un fabricateur à recette FIXE (détection par
-    capacités, ``is_fixed_crafter``) : la « recette propre » du bâtiment est
-    remplacée par une recette de craft solvable, portée par CE bâtiment.
+    """Recette UNIQUE d'un fabricateur à recette fixe (``is_fixed_crafter``) :
+    la recette propre du bâtiment est remplacée par une recette solvable, portée
+    par CE bâtiment.
 
-    Deux branches selon la sortie physique :
-    - **Sortie fluide** (boiler/heat-exchanger) : recette « fluide → fluide ».
-      Output = un fluide pipable PU (pas seulement les obtenus : c'est le rôle
-      du fabricateur de le produire — on force son utilité à la sortie). S'il
-      est imposé (pairing IDEES C7 : le fabricateur produit le fluide X tout
-      juste débloqué), ``output_fluid`` le force. Input = un fluide déjà obtenu
-      (lac/obtenu autrement) ≠ output, pour que le fabricateur soit amorçable
-      (jamais en cycle §10).
-    - **Sortie item** (transformateur item d'un mod) : recette « item(/fluide)
-      → item ». Output = un item obtenable non encore produit par une autre
-      recette (être LE producteur), inputs = items (et éventuellement un fluide
-      si ``fluid_inputs > 0``) déjà obtenus SANS ce fabricateur (anti-boucle).
-      ``output_item`` force l'output lorsqu'il est imposé par l'appelant.
+    Deux branches selon la sortie :
+    - **fluide** (boiler/heat-exchanger) : « fluide → fluide ». Output = fluide
+      pipable PU (forcer l'utilité du fabricateur au déploiement), imposable via
+      ``output_fluid`` (pairing C7). Input = fluide déjà obtenu ≠ output
+      (amorçage, jamais en cycle §10).
+    - **item** (transformateur d'un mod) : « item(/fluide) → item ». Output =
+      item obtenable non encore produit (être LE producteur), imposable via
+      ``output_item`` ; inputs = items déjà obtenus SANS ce fabricateur
+      (anti-boucle).
+    - **résidu** : réacteur nucléaire (``fuel_residues``) — output = résidu de
+      combustion, inputs = items obtenus (anti-boucle : jamais l'output ni un
+      item produit par ce bâtiment).
 
     Enregistre l'assignation {@input, @output} dans
-    ``state.building_fluid_assignments`` POUR LA BRANCHE FLUIDE (le mod
-    n'applique les filters qu'aux fluid boxes) : la seed et le mod s'appuient
-    sur CETTE recette, pas sur un tirage indépendant.
-    """
+    ``state.building_fluid_assignments`` (branche fluide) : le mod applique les
+    filters sur CETTE recette, pas sur un tirage indépendant."""
     if getattr(building, "fluid_outputs", 0) > 0:
         return _make_fixed_fluid_recipe(rng, db, state, building, output_fluid)
     if output_fluid is not None:
@@ -1009,11 +938,10 @@ def _make_fixed_fluid_recipe(
     building,
     output_fluid: str | None = None,
 ) -> dict:
-    """Branche « fluide → fluide » de ``_make_fixed_recipe_for_crafter``
-    (boiler/heat-exchanger). Voir la doc de l'appelant."""
+    """Branche « fluide → fluide » (boiler/heat-exchanger). Voir l'appelant."""
     all_names = [f.name for f in db.pipable_fluids()]
-    # Input : fluide déjà obtainable SANS ce fabricateur (anti-boucle §10) —
-    # un lac/fluide obtenu. En dernier recours, tout fluide pipable.
+    # Input : fluide déjà obtenu SANS ce fabricateur (anti-boucle §10), en
+    # dernier recours tout fluide pipable.
     input_pool = sorted(set(state.obtained_fluids) & set(all_names)) or all_names
     if output_fluid is not None:
         input_pool = [f for f in input_pool if f != output_fluid]
@@ -1023,9 +951,8 @@ def _make_fixed_fluid_recipe(
         raise ValueError(f"aucun input ≠ {output_fluid} pour {building.name} (1 seul fluide pipable)")
     input_fluid = rng.choice(input_pool)
 
-    # Output : tout fluide pipable ≠ input, de préférence NON déjà produit par
-    # une autre recette (forcer l'utilité du fabricateur = être LE producteur
-    # d'un fluide que personne ne produit encore).
+    # Output : tout fluide pipable ≠ input, de préférence non déjà produit par une
+    # autre recette (le fabricateur = LE producteur du fluide).
     already_produced = {
         r["results"][0]["name"]
         for r in state.recipes
@@ -1038,10 +965,8 @@ def _make_fixed_fluid_recipe(
         output_fluid = rng.choice(output_candidates)
 
     # Recette « fluide → fluide » pilotée directement (jamais d'ingrédient item :
-    # un boiler/heat-exchanger n'a pas de slot item pour la recette, seulement
-    # du combustible — §6/§10). Le fabricateur PORTE la recette (`crafted_in`).
-    # Nom unique par fabricateur : deux fabricateurs peuvent produire le MÊME
-    # fluide (pas de doublon de prototype recette dans le mod).
+    # pas de slot item pour la recette, seulement du combustible — §6/§10). Nom
+    # unique par fabricateur (pas de doublon de prototype dans le mod).
     recipe = _bake_recipe(
         rng, db, state, SLOT_FLUID, output_fluid,
         [(SLOT_FLUID, input_fluid)],
@@ -1052,8 +977,8 @@ def _make_fixed_fluid_recipe(
     state.recipes.append(recipe)
     state.mark_obtained(SLOT_FLUID, output_fluid)
 
-    # Assignation input/output DÉRIVÉE de la recette (source unique de vérité) :
-    # le filter du mod + le tooltip réflètent EXACTEMENT la recette jouable.
+    # Assignation input/output dérivée de la recette (source unique de vérité) :
+    # le filter du mod + le tooltip reflètent exactement la recette jouable.
     state.building_fluid_assignments[building.name] = {
         "input": input_fluid,
         "output": output_fluid,
@@ -1068,12 +993,11 @@ def _make_fixed_item_recipe(
     building,
     output_item: str | None = None,
 ) -> dict:
-    """Branche « (item/fluide) → item » de ``_make_fixed_recipe_for_crafter``
-    (transformateur item d'un mod, ``is_fixed_crafter`` à sortie item).
-    Voir la doc de l'appelant."""
+    """Branche « (item/fluide) → item » (transformateur item du mod). Voir
+    l'appelant."""
     if output_item is None:
-        # Output : item obtenable non encore produit par une autre recette
-        # (forcer l'utilité = être LE producteur) ; item de bâtiment/rocket-exclu.
+        # Output : item obtenable non encore produit (être LE producteur) ;
+        # hors items de bâtiment et chaîne fusée.
         already_produced = {
             r["results"][0]["name"]
             for r in state.recipes
@@ -1097,8 +1021,8 @@ def _make_fixed_item_recipe(
             f"item imposé {output_item} non obtenable pour {building.name}"
         )
 
-    # Inputs : items (et éventuellement un fluide) DÉJÀ obtenus SANS ce
-    # fabricateur — amorçage, jamais de cycle SOLVABLE (§10). Limités par les
+    # Inputs : items (et éventuellement un fluide) déjà obtenus SANS ce
+    # fabricateur — amorçage, jamais de cycle solvable (§10). Limités par les
     # vrais slots du bâtiment (item_input_slots / fluid_inputs).
     item_pool = [
         (SLOT_ITEM, n) for n in sorted(state.obtained_items) if n != output_item
@@ -1115,9 +1039,8 @@ def _make_fixed_item_recipe(
     ingredients = _sample_items_weighed(rng, db, item_pool, n_item, state)
     fluid_ing = False
     if getattr(building, "fluid_inputs", 0) > 0 and state.obtained_fluids:
-        # Un transformateur item qui accepte aussi un fluide (ex. four d'un mod
-        # refroidi à l'eau) : on ajoute un ingrédient fluide obtenable quand
-        # la recette supporte des fluides.
+        # Un transformateur item qui accepte aussi un fluide : on ajoute un
+        # ingrédient fluide obtenable quand la recette supporte des fluides.
         fluid_pool = [f for f in sorted(state.obtained_fluids)]
         ingredients.append((SLOT_FLUID, rng.choice(fluid_pool)))
         fluid_ing = True
@@ -1140,24 +1063,20 @@ def _make_fixed_residue_recipe(
     state: ProgressionState,
     building,
 ) -> dict:
-    """Branche « item → item (résidu) » de ``_make_fixed_recipe_for_crafter``
-    pour un combusteur à résidu (``fuel_residues`` non vide) : le réacteur
-    nucléaire. L'output = LE résidu de combustion (burnt_result : l'item que
-    le bâtiment produit en brûlant son combustible — depleted-uranium-fuel-cell
-    pour le réacteur). Les inputs = items déjà obtenus SANS ce fabricateur,
-    dont le pseudo-combustible (entrée d'un combusteur = un item quelconque,
-    §6) ; on garantit au moins un ingrédient item pour que la machine ait une
-    matière à brûler. Anti-boucle : jamais l'output lui-même, jamais un item
-    dont la production exigerait ce bâtiment."""
+    """Branche « item → item (résidu) » pour un combusteur à résidu
+    (``fuel_residues``, ex. nuclear-reactor) : output = résidu de combustion
+    (burnt_result). Inputs = items déjà obtenus SANS ce fabricateur, dont le
+    pseudo-combustible (entrée d'un combusteur = un item quelconque, §6) ;
+    au moins un ingrédient item. Anti-boucle : jamais l'output ni un item
+    produit par ce bâtiment."""
     residues = list(getattr(building, "fuel_residues", ()) or ())
     if not residues:
         raise ValueError(f"{building.name} sans résidu de combustion (recette résidu impossible)")
     output_item = rng.choice(residues)
 
     if output_item in state.obtained_items:
-        # Déjà obtenu autrement : on choisit un autre résidu, sinon on force
-        # quand même (le réacteur reste LE producteur) mais cette branche ne
-        # doit normalement pas se déclencher.
+        # Déjà obtenu : on choisit un autre résidu si possible (le réacteur
+        # reste le producteur sinon).
         others = [r for r in residues if r not in state.obtained_items]
         if others:
             output_item = rng.choice(others)
@@ -1186,8 +1105,7 @@ def _make_fixed_residue_recipe(
 
 
 def _is_recipe_output_item_plausible(db: VanillaDB, state: ProgressionState, name: str) -> bool:
-    """Un output imposé pour un fabricateur fixe doit être un item réellement
-    obtenable COMME produit de recette (pas un racket/env/posable)."""
+    """Output imposé plausible : item réel du pool, obtenable comme produit."""
     return name in db.items and name in state.obtained_items
 
 
@@ -1212,18 +1130,15 @@ def _pick_product(
         candidates = sorted(n for n in state.obtained_fluids if n not in already)
     if not candidates:
         return None
-    # C2 (équilibre production/consommation) : côté PRODUCTION on préfère les
-    # produits rares (sous-produits) et on freine ce qui est déjà pléthore
-    # (produit mais peu consommé). Poids = 1 / facteur d'ingrédient.
+    # C2 : côté production on préfère les produits rares (poids = 1 / facteur).
     state.ensure_balance_target(rng)
     weights = [1.0 / max(state.balance_factor(n), 1e-6) for n in candidates]
     return rng.choices(candidates, weights=weights, k=1)[0]
 
 
 def _is_building_item(db: VanillaDB, name: str) -> bool:
-    """Un item posable est produit par SON OWN recette de déploiement
-    (randputf-<bâtiment>), jamais comme produit générique d'un autre bâtiment :
-    chaque recette de bâtiment reste ainsi unlockée par sa propre tech
+    """Un item posable est produit par sa propre recette de déploiement
+    (randputf-<bâtiment>), jamais comme produit générique d'un autre bâtiment
     (pas de doublon d'unlock, §13)."""
     item = db.items.get(name)
     return item is not None and item.place_result is not None

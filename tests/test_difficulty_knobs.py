@@ -1,4 +1,4 @@
-"""Tests du prototype C3 : knobs de difficulté par seed.
+"""Tests du prototype : knobs de difficulté par seed.
 
 Vérifie :
 - déterminisme (même seed → même profil) ;

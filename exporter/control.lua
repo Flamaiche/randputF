@@ -15,9 +15,7 @@ local function fuel_value_of(proto)
 end
 
 local function stack_size_of(proto)
-  -- Empilabilité réelle (armures/armes/véhicules = 1) : c'est la source de
-  -- vérité une fois le dump régénéré ; sinon l'outil Python se rabat sur le
-  -- type (NON_STACKABLE_ITEM_TYPES dans tool/common/db.py).
+  -- Empilabilité réelle (source de vérité pour l'outil Python).
   local ok, size = pcall(function()
     return proto.stack_size
   end)
@@ -47,11 +45,7 @@ local function dump_all_items()
       fuel_value = fuel_value_of(proto),
       stack_size = stack_size_of(proto),
     }
-    -- Combustible : categorie de fuel (faite pour etre brûlée dans quels
-    -- brûleurs) et RESIDU de combustion (item produit quand on le brûle) :
-    -- ex. uranium-fuel-cell (categorie "nuclear") -> depleted-uranium-fuel-cell.
-    -- C'est le RESIDU du combustible qui est la SORTIE recevable (item) d'un
-    -- générateur à combustible (réacteur) : pas la chaleur ni l'électricité.
+    -- Combustible : catégorie fuel + résidu de combustion (sortie du générateur).
     pcall(function()
       if proto.fuel_category then
         entry.fuel_category = proto.fuel_category
@@ -66,16 +60,13 @@ local function dump_all_items()
         end
       end
     end)
-    -- Categorie de munitions : cote munition ET cote arme, pour caler
-    -- le kit de depart (arme + munitions compatibles).
-    -- Munition : objet LuaAmmoCategoryPrototype avec .name.
+    -- Catégorie munition : pour caler kit de départ (arme + munitions compatibles).
     pcall(function()
       if proto.ammo_category then
         entry.ammo_category = proto.ammo_category.name
       end
     end)
-    -- Arme : AttackParameters runtime expose ammo_categories (ARRAY DE
-    -- STRINGS, pluriel) - pas un objet, pas "ammo_category".
+    -- AttackParameters.ammo_categories : array de strings (2.0).
     pcall(function()
       local params = proto.attack_parameters
       if params and params.ammo_categories then
@@ -157,8 +148,7 @@ local function fluidbox_info(proto)
   for index, box in ipairs(boxes) do
     local production = nil
     local filter_name = nil
-    -- 2.0 : production_type ("input", "output", "input-output") ;
-    -- flow_direction etait l'ancien nom 1.x.
+    -- production_type (2.0) ; flow_direction (ancien nom 1.x).
     pcall(function()
       production = box.production_type or box.flow_direction
     end)
@@ -249,9 +239,7 @@ local function energy_source_info(proto)
   return info
 end
 
--- Aucune liste de types en dur : chaque entite est decrite par ses
--- CAPACITES intrinseques (craft, extraction, fluide, energie, science,
--- victoire). Le classement fonctionnel se fait cote outil Python.
+-- Chaque entité décrite par ses capacités (classement outil Python).
 local function probe(proto, prop)
   local ok, value = pcall(function()
     return proto[prop]
@@ -319,9 +307,7 @@ local function dump_entities()
       entry.energy_usage = eusage
     end
 
-    -- Energie produite : generateurs (max_power_output > 0) et reacteurs.
-    -- get_max_power_output = generateurs a fluide ; get_max_energy_production
-    -- couvre aussi les panneaux solaires.
+    -- Energie produite : generateurs (max_power_output) + panneaux solaires (get_max_energy_production).
     local pwr = probe(proto, "max_power_output")
     if pwr == nil then
       local ok, value = pcall(function()
@@ -342,8 +328,7 @@ local function dump_entities()
       entry.has_heat_output = true
     end
 
-    -- Distribution electrique : les poteaux ont une zone de desserte.
-    -- supply_area_distance est une METHODE en 2.0, pas une propriete.
+    -- Poteaux : supply_area_distance (méthode 2.0).
     local ok_supply, supply = pcall(function()
       return proto.get_supply_area_distance()
     end)
@@ -351,8 +336,7 @@ local function dump_entities()
       entry.supply_area_distance = supply
     end
 
-    -- Extraction TOTALE : on garde toute entite, meme sans capacite
-    -- reconnue (l'outil la rangera en "other"). Rien ne doit se perdre.
+    -- Toute entité conservée (l'outil Python classe les "other").
 
     -- Chaudiere : temperature cible sans categorie de craft.
     local target_temp = probe(proto, "target_temperature")

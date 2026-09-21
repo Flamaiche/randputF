@@ -17,12 +17,7 @@ data:extend({
 
 local pools = seed.pools or {}
 
--- Types de prototypes « objet » (item-like). Un item Factorio n'est PAS
--- toujours stocké dans `data.raw.item` : les armes (gun), capsules, munitions,
--- armures, science-packs (tool), modules, etc. ont leur propre table
--- `data.raw.<type>`. Sans cette recherche, une recette produisant l'un d'eux
--- perdait son sous-groupe d'inventaire (le « randputf » de secours y était
--- collé) et son icône.
+-- Types item-like : armes, capsules, modules etc. ont leur propre table data.raw.
 local ITEM_LIKE_TYPES = {
   "item", "gun", "tool", "capsule", "ammo", "armor",
   "repair-tool", "mining-tool", "module", "item-with-entity-data",
@@ -42,9 +37,7 @@ local function find_item_proto(name)
   return nil
 end
 
--- Entité correspondant à une chaîne de `crafted_in` : un bâtiment se trouve
--- dans `data.raw.<type>`. On parcourt toutes les tables d'entités (celui-ci est
--- O(types) à l'init, négligeable vs le chargement des prototypes).
+-- Recherche d'entité par nom dans toutes les tables data.raw.
 local function find_entity_proto(name)
   if not name then return nil end
   for _, table_proto in pairs(data.raw) do
@@ -78,10 +71,7 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
   local subgroup = "randputf"
   local order = ""
   if main_product and main_product.type == "item" then
-    -- Sous-groupe d'inventaire hérité du proto produit (item OU item-like :
-    -- gun/tool/capsule/ammo/armor/module...). Même logique que les techs
-    -- (find_item_proto) : sans cela la recette d'un science-pack, d'un gun ou
-    -- d'une munition atterrissait dans le sous-groupe « randputf » de secours.
+    -- Sous-groupe d'inventaire hérité du proto produit (item-like inclus).
     local item_proto = find_item_proto(main_product.name)
     if item_proto then
       subgroup = item_proto.subgroup or subgroup
@@ -106,18 +96,10 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
     if recipe_seed.category and data.raw["recipe-category"][recipe_seed.category] then
       recipe_def.category = recipe_seed.category
     end
-    -- §6/§10 : fabricateur à recette FIXE (boiler/heat-exchanger…). La recette
-    -- du seed porte `crafted_in` = CE bâtiment précis : en 2.0 cela restreint
-    -- la recette à ce bâtiment (priorité sur la correspondance catégorie→cartes).
-    -- Sans cela la recette randputf-boiler-* serait craftable dans TOUS les
-    -- ateliers « crafting-with-fluid », pas dans le boiler lui-même.
+    -- crafted_in : restreint la recette au bâtiment précis (2.0).
     if recipe_seed.crafted_in then
       recipe_def.crafted_in = {recipe_seed.crafted_in}
-      -- Un bâtiment à recette FIXE peut ne posséder AUCUNE crafting_category
-      -- en vanilla (ex. nuclear-reactor, reactor : il produit de la chaleur,
-      -- pas des crafts). Pour héberger sa recette randputf-*, il DOIT recevoir
-      -- la catégorie de la recette (le générateur la choisit valide) — sinon la
-      -- recette serait déclarée mais incraftable (aucun atelier compatible).
+      -- Bâtiment sans crafting_category → ajout de la catégorie nécessaire.
       local crafter = find_entity_proto(recipe_seed.crafted_in)
       if crafter then
         local cats = crafter.crafting_categories or {}
@@ -137,10 +119,7 @@ end
 
 local tech_template = data.raw.technology["automation"]
 
--- Icônes des recettes/items DÉBLOQUÉS par une tech : chaque nœud affiche
--- l'image de ce qu'il débloque (unités, bâtiments, armes, packs) au lieu de
--- l'icône par défaut du template (assembling machine). Grille 2x2, max 4
--- icônes, comme les techs multi-icônes vanilla (§13).
+-- Icônes tech : grille 2x2 max 4 icônes des items débloqués.
 local ICON_OUTPUT_SIZE = 64 -- taille d'affichage par icône sur le canvas 128
 local icon_layouts = {
   {1, {{0, 0}}},
@@ -216,10 +195,7 @@ for _, tech_seed in ipairs(seed.technologies or {}) do
     time = tech_seed.unit.time or 30,
     ingredients = unit_ingredients,
   }
-  -- Déblocage par HAND-CRAFT (prologue relais) : la tech s'active dès que le
-  -- joueur fabrique à la main l'item déclencheur, façon vanilla
-  -- (automation/logistics). Pas de packs à fournir en laboratoire : la `unit`
-  -- reste vide et le `research_trigger` fait le travail.
+  -- research_trigger : déblocage par craft manuel de l'item déclencheur.
   if tech_seed.craft_trigger then
     proto.unit = {
       count = 1,

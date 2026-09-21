@@ -1,10 +1,10 @@
-"""Tests du prototype C1 : randomisation des ressources non-infinies.
+"""Tests du prototype : randomisation des ressources non-infinies.
 
 Vérifie :
 - déterminisme (même seed → même résultat) ;
 - identités préservées (kind + resource inchangés) ;
 - invariants de bornes (richness ≥ 1, count ≥ 1, radius ≥ 3) ;
-- aucun doublon de ressource (C6) ;
+- aucun doublon de ressource ;
 - solvabilité : les ressources obligatoires du bootstrap restent présentes ;
 - mode désactivé : aucune modification.
 """
@@ -108,7 +108,7 @@ def test_borne_radius(seed: int) -> None:
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_aucun_doublon(seed: int) -> None:
-    """Invariant C6 : chaque ressource au plus une fois."""
+    """Invariant : chaque ressource au plus une fois."""
     rng = random.Random(seed)
     cfg = NonfiniteConfig(enabled=True)
     out = randomise_patches(rng, BASE_PATCHES, cfg)

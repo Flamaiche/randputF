@@ -1,4 +1,4 @@
-"""Export du graphe de production (IDEES C9) : invariants du DOT produit.
+"""Export du graphe de production : invariants du DOT produit.
 
 - un nœud par item/fluide, arête produit → ingrédient étiquetée par quantité ;
 - ressources brutes (patches/lacs/environnement) en nœuds « source » ;

@@ -1,13 +1,12 @@
-"""Audit des TAGS de bâtiments (IDEES C8 — programme de vérification).
+"""Audit des TAGS de bâtiments (programme de vérification).
 
-Sur une base vanilla (ou une base de mod), vérifie qu'aucun bâtiment n'est
-« mort » : chaque tag producteur doit être routé (consommé par une décision du
-générateur), chaque machine à recette cachée doit être un fabricateur à recette
-fixe, et les invariants d'orthogonalité des tags doivent tenir.
+Vérifie qu'aucun bâtiment n'est « mort » : chaque tag producteur doit être
+routé (consommé par une décision du générateur), chaque machine à recette
+cachée doit être un fabricateur à recette fixe, et les invariants
+d'orthogonalité des tags doivent tenir.
 
-``audit_building_tags(db)`` renvoie un ``AuditReport`` : violations + comptage
-par tag + liste des bâtiments sans rôle fonctionnel. Le CLI `randputf audit`
-exit 1 si des violations sont trouvées.
+``audit_building_tags(db)`` renvoie un ``AuditReport``. Le CLI `randputf
+audit` exit 1 si des violations sont trouvées.
 """
 
 from __future__ import annotations
@@ -24,9 +23,8 @@ from tool.common.db import (
 ROLE_TAGS = ("is_research", "is_crafter", "is_generator", "is_distribution",
              "is_extractor", "is_other")
 
-# Tags §§1-8 avec leur invariant d'orthogonalité/cohérence (aucune liste de
-# noms) : chaque prédicat, s'il est faux sur un bâtiment tagué, est une
-# violation d'audit.
+# Chaque invariant (tags §§1-8) : s'il est faux sur un bâtiment tagué, le
+# prédicat produit une violation d'audit.
 INVARIANTS = (
     # pylône ⇒ distribution (is_distribution = supply_area, surensemble).
     ("is_power_pole", lambda b: b.is_distribution,
@@ -63,9 +61,8 @@ INVARIANTS = (
      "panneau solaire sans produces_electricity"),
     ("is_reactor", lambda b: b.produces_heat and is_fixed_crafter(b),
      "réacteur sans produces_heat ou non routé (recette fixe item)"),
-    # pumpjack est un mining-drill de type : l'invariant est donc seulement
-    # que toute foreuse est un extracteur, et que le pumpjack est un extracteur
-    # de fluide (medium == 'fluid').
+    # pumpjack est un mining-drill de type : toute foreuse doit être extracteur,
+    # et le pumpjack un extracteur de fluide.
     ("is_mining_drill", lambda b: b.is_extractor,
      "foreuse (mining-drill) non taguée extracteur"),
     ("is_pumpjack", lambda b: b.is_extractor and b.is_fluid_extractor,
@@ -92,12 +89,9 @@ INVARIANTS = (
     ("is_combat_robot", lambda b: not b.is_robot and b.is_other,
      "robot de combat confondu avec is_robot (§2 logistique)"),
     # --- §8 : signal-réseau & électronique ---
-    # NB dump : `energy_source` est ABSENT pour constant-combinator,
-    # power-switch et display-panel (gap d'export, §8 à régénérer). La
-    # consommation réseau ne peut donc pas être vérifiée pour ces trois-là ;
-    # l'invariant porte sur la cohérence du TYPAGE (union, rôle non productif)
-    # là où l'énergie n'est pas exportée, et sur la consommation RÉELLE dès
-    # que l'énergie est présente (combinators, lamp, radar).
+    # `energy_source` absent du dump pour constant-combinator, power-switch et
+    # display-panel (gap d'export) : la consommation réseau n'est vérifiable
+    # que là où l'énergie est exportée ; sinon l'invariant porte sur le typage.
     ("is_circuit_combinator", lambda b: b.is_circuit_io and b.is_other
      and b.consumes_electricity,
      "combinator hors is_circuit_io / sans consommation réseau"),
@@ -130,9 +124,8 @@ class AuditReport:
 
 
 def audit_building_tags(db: VanillaDB) -> AuditReport:
-    """Audite tous les bâtiments de ``db``. Remplit un ``AuditReport`` avec les
-    violations d'invariants, les machines à recette cachée non routées et le
-    comptage par tag."""
+    """Audite tous les bâtiments de ``db`` : violations d'invariants, machines
+    à recette cachée non routées, comptage par tag."""
     report = AuditReport()
 
     for bname, b in db.buildings.items():
@@ -191,11 +184,10 @@ ITEM_INVARIANTS = (
 
 
 def audit_item_tags(db: VanillaDB) -> AuditReport:
-    """Audite les tags §9 des items : orthogonalité + CRAFTABILITÉ. Un item tag
+    """Audite les tags §9 des items : orthogonalité + craftabilité. Un item
     environnemental (récolté à la main) ou virtuel (blueprint/planner) NE DOIT
-    PAS avoir de recette vanilla le produisant — sinon le générateur créerait un
-    fake cycle (recette → item « du monde »). C'est la vérification directe que
-    l'implémentation §9 est consommée cohérente."""
+    PAS avoir de recette vanilla le produisant — sinon le générateur créerait
+    un fake cycle (recette → item « du monde »)."""
     report = AuditReport()
 
     # Recettes produisant chaque item (type+name), une seule fois par item.

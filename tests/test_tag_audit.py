@@ -1,4 +1,4 @@
-"""Tests de l'audit des tags (IDEES C8 — programme de vérification) : sur la
+"""Tests de l'audit des tags (programme de vérification) : sur la
 base vanilla réelle, aucun bâtiment (tags §1-8) ni item (tags §9) ne viole les
 invariants d'orthogonalité/cohérence, et aucune recette cachée n'est orpheline.
 """

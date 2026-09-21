@@ -1,20 +1,10 @@
-"""Prototype « déblocage progressif des extracteurs » (IDEES §D).
+"""Prototype « déblocage progressif des extracteurs ».
 
-Constat : au spawn, le joueur accède d'un coup à `burner-mining-drill`,
-`electric-mining-drill`, `pumpjack` et `offshore-pump` — trop d'extraction
-d'un coup, la progression ne se lit pas.
-
-Ce prototype échelonne l'extraction :
-1. un SEUL extracteur (le plus primitif compatible avec la phase) au
-   starter ;
-2. les foreuses plus évoluées se débloquent PAR la récursion (jamais en
-   vrac au départ) ;
-3. la « permission de miner » façon vanilla : une ressource n'est minable
-   que si (a) son extracteur compatible est débloqué ET (b) la recherche
-   nécessaire est faite (uranium → recherche requis).
-
-**Constante on/off** (``enabled``) : quand ``false``, tous les extracteurs
-sont au starter (comportement actuel).
+Échelonne l'extraction au lieu d'exposer d'un coup tous les extracteurs :
+1. un seul extracteur (le plus primitif compatible avec la phase) au starter ;
+2. les foreuses plus évoluées se débloquent PAR la récursion ;
+3. permission de miner façon vanilla : minable si son extracteur est débloqué
+   et la recherche nécessaire faite (uranium → recherche requis).
 """
 
 from __future__ import annotations
@@ -64,11 +54,9 @@ def compute_extractor_assignments(
 ) -> dict[str, str]:
     """Assigne (extracteur → ressources) selon le mode progressif.
 
-    Retourne un dict ``{resource: extracteur_name}``.
-    Les extracteurs sont consommés dans l'ordre des paliers ; le starter
-    ne prend qu'UN extracteur (``starter_max_extractors``) qui couvre les
-    premiers patchs.  Quand ``enabled=False``, tout est couvert par le
-    premier extracteur (comportement actuel, pas de progression).
+    Retourne ``{resource: extracteur_name}``. Extracteurs consommés dans
+    l'ordre des paliers ; le starter couvre les premiers patchs.
+    ``enabled=False`` → tout couvert par le premier extracteur.
     """
     if not config.enabled:
         # comportement vanilla : tout est couvert par le premier extracteur
@@ -106,11 +94,8 @@ def gather_unlocks(
     extractors: dict[str, ExtractorTier],
     config: ProgressiveExtractorsConfig,
 ) -> dict[int, list[str]]:
-    """Regroupe les extracteurs par tech d'unlock (palier).
-
-    Retourne ``{tier: [extracteur_names]}`` — uniquement les extracteurs
-    utilisés dans les assignments.
-    """
+    """Regroupe les extracteurs par palier : ``{tier: [extracteur_names]}``
+    (uniquement ceux utilisés dans les assignments)."""
     tiers: dict[int, list[str]] = {}
     for res, ex in assignments.items():
         tier = extractors[ex].tier

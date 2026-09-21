@@ -56,7 +56,7 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
     if not dump_path.exists():
         print(
             f"Vanilla dump introuvable: {dump_path}\n"
-            "Genere-le avec le mod compagnon 'exporter' (voir README section Mise en route),\n"
+            "Genere-le avec le mod compagnon 'exporter' (voir README section Systeme de dev),\n"
             "ou lance la pipeline en mode demo: randputf generate --demo"
         )
         sys.exit(1)
@@ -146,15 +146,12 @@ def cmd_generate(args: argparse.Namespace) -> None:
     if args.seed is not None:
         db.seed_value = args.seed
     else:
-        # Aucun --seed fourni : seed tirée de l'instant présent
-        # (millisecondes écoulées depuis l'époque, soit aaaa-mm-jj hh:mm:ss + ms),
-        # pour une partie unique à chaque génération.
+        # Seed tirée du temps courant (ms) : partie unique à chaque génération.
         db.seed_value = int(time.time() * 1000)
 
     seed = generate_seed(db, config=cfg)
 
-    # Une seed issue du temps (ou fournie) peut tomber sur un cas non
-    # solvable : la régénérer avec une graine dérivée. Petite boucle bornée.
+    # Une seed peut être non solvable : régénérer avec une graine dérivée.
     attempts = 0
     while validate_seed(seed):
         attempts += 1
