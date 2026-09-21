@@ -128,6 +128,12 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     # du spawn.
     map_patches.assign_patch_gisements(patches, db.seed_value, cfg)
 
+    # Phase 1ter-bis : randomisation des ressources non-finies (A1, §˙). Après
+    # les gisements, les patchs sont définitifs : richesse totale et rayon sont
+    # multipliés par des facteurs aléatoires dédiés (inouï ; `count` des ITEM
+    # réévalué pour garder le miroir runtime, section nonfinite: de la config).
+    map_patches.apply_nonfinite_randomisation(patches, db.seed_value, cfg)
+
     # INSTANTANÉ GELÉ du pool de début de run : après starter + électricité,
     # avant le récursif. Source exclusive des recettes relais (§9.3).
     base = copy.deepcopy(starter.state)

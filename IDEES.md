@@ -36,6 +36,15 @@ finis), sans casser la solvabilité du bootstrap. **Pilotage par une constante
 on/off (`true/false`)** pour activer ou désactiver la randomisation (défaut : à
 définir).
 
+*FAIT — voie (a) branchée (branche `annexe`) : section `nonfinite:` dans
+`config/settings.yaml`, `enabled: false` par défaut ; facteurs multiplicatifs
+ALÉATOIRES (flux RNG dédié `randputF:nonfinite:`) par gisement sur la richesse
+totale et le rayon. Invariant runtime préservé : le `count` d'un ITEM est
+réévalué via `item_field_tiles(radius, well_seed)` — le champ posé par le mod
+reste exactement le disque bruité, seul ratio richesse/tuile varie. Score :
+`map_patches.apply_nonfinite_randomisation`, tests
+`tests/test_nonfinite_pipeline.py`.*
+
 **(b) Les laisser telles quelles**, en remplaçant juste le charbon — les 3
 ressources non-infinies principales (poisson `raw-fish`, bois `wood`, roche
 `stone`) restent inchangées, et le charbon **n'apparaît plus en patch** : il est

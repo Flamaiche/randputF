@@ -23,6 +23,18 @@ map:
   # (aire du disque), pas configurable.
   item_patch_radius: [9, 17]
 
+nonfinite:
+  # Randomisation des ressources NON-finies (chantier A1, §IDEES) : facteurs
+  # multiplicatifs ALÉATOIRES, tirés par gisement avec un flux RNG dédié, sur la
+  # richesse totale et le rayon. `count` des ITEM est réévalué (item_field_tiles)
+  # pour rester miroir exact du mod — seule la richesse/la taille varient, pas le
+  # nombre de tuiles effectives d'un champ posé. Inerte (désactivé) par défaut.
+  enabled: false
+  richness_factor_min: 0.4
+  richness_factor_max: 2.5
+  radius_factor_min: 0.6
+  radius_factor_max: 1.8
+
 pools:
   exclude_items: []
   exclude_fluids: []
