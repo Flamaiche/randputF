@@ -121,7 +121,7 @@ randputF/
 │   │   ├── easeup.py           # EaseupConfig (§9.3)
 │   │   ├── craft_quantity.py   # expérimental — testé, non branché à la pipeline
 │   │   ├── difficulty_knobs.py # expérimental — testé, non branché
-│   │   ├── nonfinite_randomisation.py # expérimental — testé, non branché
+│   │   ├── nonfinite_randomisation.py # A1 — BRANCHÉ (map_patches.apply_nonfinite_randomisation)
 │   │   ├── rare_resources.py   # expérimental — testé, non branché
 │   │   └── progressive_extractors.py # expérimental — testé, non branché
 │   ├── exporters/       # écriture seed.json / seed.lua / locale / graphe

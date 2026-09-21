@@ -291,3 +291,50 @@ def _excludable_items(db: VanillaDB):
 def item_patch_resources(db: VanillaDB) -> list[str]:
     """Pool des ressources ITEM pouvant être posées en patch (réparation C1)."""
     return [i.name for i in _excludable_items(db)]
+
+
+# ── Randomisation des ressources non-finies (A1) ──
+# Chantier A1 : les gisements finis (patches items/fluides) gardent leur richesse
+# et leur taille telles que tirées par `generate_patches`/`assign_patch_gisements`.
+# Cette phase (optionnelle, `nonfinite.enabled`) applique en plus des facteurs
+# multiplicatifs ALÉATOIRES par gisement sur la richesse totale et le rayon —
+# sans jamais casser le miroir runtime : pour un ITEM, `count` est RÉÉVALUÉ via
+# `item_field_tiles(radius, well_seed)` (le mod pose exactement ces tuiles).
+# L'identité (kind + resource) reste tirée par `generate_patches` (C6).
+#
+# Flux RNG DÉDIÉ (`randputF:nonfinite:`) : la randomisation n'ajoute rien aux
+# autres phases (une seed régénérée = la précédente + les facteurs A1).
+
+
+def apply_nonfinite_randomisation(
+    patches: list[Patch], seed_value: int, config: dict
+) -> None:
+    """Applique les facteurs A1 (richesse + rayon) aux gisements, en place.
+
+    Inerte si la section ``nonfinite`` de la config est absente ou
+    ``enabled: false``. Bornes de sécurité : richesse ≥ 1, rayon ≥ 3 ;
+    ``count`` des ITEM réévalué (le mod pose ``item_field_tiles``), celui des
+    fluides (puits) inchangé (déjà éparpillés).
+    """
+    nonfinite = config.get("nonfinite") or {}
+    if not nonfinite.get("enabled", False):
+        return
+    from tool.prototypes.nonfinite_randomisation import NonfiniteConfig
+
+    ncfg = NonfiniteConfig.from_config(config)
+    nrng = random.Random(f"randputF:nonfinite:{seed_value}")
+
+    for p in patches:
+        rf = nrng.uniform(ncfg.richness_factor_min, ncfg.richness_factor_max)
+        rrf = nrng.uniform(ncfg.radius_factor_min, ncfg.radius_factor_max)
+        p.richness = max(1, int(p.richness * rf))
+        p.cluster_radius = max(3, int(p.cluster_radius * rrf))
+        if p.kind == "item" and p.well_seed:
+            # Miroir runtime : le champ posé = item_field_tiles(radius, well_seed)
+            # → count réévalué, richesse/count tombe sur les tuiles réellement posées.
+            p.count = len(item_field_tiles(p.cluster_radius, p.well_seed))
+        elif p.kind == "fluid":
+            # Puits éparpillés : la taille du champ (center/count/well_seed) est
+            # fixée par le runtime ; le facteur count module le nb de puits.
+            cf = nrng.uniform(ncfg.count_factor_min, ncfg.count_factor_max)
+            p.count = max(1, int(p.count * cf))
