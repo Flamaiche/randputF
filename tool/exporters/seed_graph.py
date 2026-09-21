@@ -1,4 +1,4 @@
-"""Export du graphe de production d'une seed — IDEES C9.
+"""Export du graphe de production d'une seed.
 
 Une seule sortie accompagne ``seed/seed.json`` lors de l'export ``--out``
 (jamais dans ``mod/`` installé) :
@@ -190,157 +190,125 @@ _SCIENCE_ORDER = [
 _SCIENCE_RANK = {n: i for i, n in enumerate(_SCIENCE_ORDER, start=1)}
 
 
-def _find_all_quoted(body: str, key: str) -> list[str]:
-    """Toutes les occurrences `key"…"` (ex. toutes les `recipe = "…"` d'un
-    bloc de technologie)."""
-    out: list[str] = []
-    idx = 0
-    needle = key + '"'
-    while True:
-        i = body.find(needle, idx)
-        if i < 0:
-            return out
-        start = i + len(needle)
-        j = body.find('"', start)
-        if j < 0:
-            return out
-        out.append(body[start:j])
-        idx = j + 1
-
-
-_TECH_CACHE: dict[str, dict] | None = None
-
-
-def _load_technologies() -> dict[str, dict]:
-    """Technologies vanilla installées : {nom → {"packs": [science packs],
-    "recipes": [recettes débloquées], "pre": [prérequis], "time": N}}."""
-    global _TECH_CACHE
-    if _TECH_CACHE is not None:
-        return _TECH_CACHE
-    techs: dict[str, dict] = {}
-    icons_dir = _icons_dir()
-    if icons_dir is not None:
-        proto_dir = icons_dir.parent.parent / "prototypes"
-        if proto_dir.is_dir():
-            for lua in sorted(proto_dir.rglob("*.lua")):
-                text = lua.read_text(encoding="utf-8", errors="replace")
-                for start, end in _prototype_blocks(text):
-                    body = text[start:end]
-                    if not _find_line(body, 'type = "technology"'):
-                        continue
-                    name = _find_quoted(body, "name = ")
-                    if name is None:
-                        continue
-                    packs = set(re.findall(r'"([a-z0-9_\-]+-science-pack)"', body))
-                    recipes = set(_find_all_quoted(body, "recipe = "))
-                    pre: list[str] = []
-                    pm = re.search(r"prerequisites\s*=\s*\{([^}]*)\}", body)
-                    if pm:
-                        pre = re.findall(r'"([^"]+)"', pm.group(1))
-                    tm = 0
-                    tmm = re.search(r"\btime\s*=\s*(\d+)", body)
-                    if tmm:
-                        tm = int(tmm.group(1))
-                    techs[name] = {
-                        "packs": sorted(packs),
-                        "recipes": sorted(recipes),
-                        "pre": sorted(pre),
-                        "time": tm,
-                    }
-    _TECH_CACHE = techs
-    return techs
-
-
-def _item_tech_info(seed: dict) -> dict[str, dict]:
-    """Sciences ET tech(s) de déblocage de chaque item de la seed.
-
-    La tech est celle du graphe de technologies qui débloque la recette
-    (arête `unlock-recipe`). Chaque tech reçoit un **numéro d'apparition**
-    (ordre topologique de l'arbre : une tech apparaît après ses prérequis,
-    départagée par packs puis temps de recherche puis nom).
-
-    Renvoie {item → {"rank": n° d'apparition (0 = aucune tech),
-    "techs": [{"num": n, "name": "…"}] par numéro croissant,
-    "tech": affichage "3 · logistics", "primaryTech": nom de la première,
-    "science": packs requis, "scienceRank": science la plus haute}}."""
-    techs = _load_technologies()
-    # recette vanilla = nom de l'item produit ; la seed préfixe ses recettes
-    # (randputf-…) mais PAS les noms d'items → on table sur l'item.
-    tech_by_item: dict[str, set[str]] = {}
-    for tname, t in techs.items():
-        for r in t["recipes"]:
-            tech_by_item.setdefault(r, set()).add(tname)
-    # techs pertinentes : celles qui débloquent un item produit par la seed
-    seed_items: dict[str, set[str]] = {}
-    for recipe in seed.get("recipes") or []:
-        for prod in recipe.get("results") or []:
-            seed_items.setdefault(prod["name"], set()).update(
-                tech_by_item.get(prod["name"], set())
-            )
-    relevant = set().union(*seed_items.values()) if seed_items else set()
-
-    def trank(t: str) -> int:
-        return max((_SCIENCE_RANK.get(p, 0) for p in techs[t].get("packs", [])), default=0)
-
-    def pre_of(t: str) -> list[str]:
-        return [p for p in techs[t].get("pre", []) if p in relevant]
-
-    # numérotation : niveaux successifs de l'arbre
+def _tech_order(seed: dict) -> tuple[dict, dict[str, int], set[str], dict[str, list[str]]]:
+    """Ordre de progression commun : {tech → n° d'apparition 1..N} (positions
+    manquantes comblées par parcours topologique), techs starter ``free`` et
+    mapping recette → produits pour attribuer les déblocages. """
+    tmap = {t.get("id"): t for t in (seed.get("technologies") or []) if t.get("id")}
+    prog = list(seed.get("progression_order") or [])
     order: dict[str, int] = {}
-    remaining = set(relevant)
-    n = 0
-    while remaining:
-        frontier = [t for t in remaining if all(p in order for p in pre_of(t))]
-        if not frontier:  # sécurité (cycles / prérequis hors périmètre)
-            frontier = [sorted(remaining)[0]]
-        frontier.sort(key=lambda t: (trank(t), techs[t].get("time", 0), t))
-        for t in frontier:
-            n += 1
-            order[t] = n
-            remaining.discard(t)
+    for i, tid in enumerate(prog):
+        if tid in tmap:
+            order[tid] = i + 1
+    missing = set(tmap) - set(order)
+    if missing:
+        n = len(order)
+        while missing:
+            frontier = [t for t in missing if all(p in order for p in (tmap[t].get("prerequisites") or []))]
+            if not frontier:  # sécurité (cycles / prérequis hors périmètre)
+                frontier = sorted(missing)
+            frontier.sort(key=lambda t: tmap[t].get("localised_name") or t)
+            for t in frontier:
+                n += 1
+                order[t] = n
+                missing.discard(t)
+    free = set(seed.get("free_researches") or [])
+    rec_by_recipe: dict[str, list[str]] = {}
+    for recipe in seed.get("recipes") or []:
+        rec_by_recipe[recipe.get("name", "")] = [
+            res.get("name", "") for res in recipe.get("results") or []
+        ]
+    return tmap, order, free, rec_by_recipe
 
+
+def _recipe_tech_info(seed: dict) -> dict[str, dict]:
+    """Même attribution que _item_tech_info mais RAMENÉE AUX RECETTES : une
+    recette est déblocable par les techs du seed qui la débloquent (une recette
+    multi-produit compterait pour chaque produit — ici toutes mono-produit).
+    Renvoie {recette → {"num": rang (0 = starter), "name": tech principale,
+    "tech": affichage "3 · nom + 5 · nom"}}."""
+    tmap, order, free, _ = _tech_order(seed)
+
+    def local(tid: str) -> str:
+        return tmap[tid].get("localised_name") or tid
+
+    unlocks: dict[str, list[tuple[int, str]]] = {}
+    for tid, num in order.items():
+        for eff in tmap[tid].get("effects") or []:
+            if eff.get("type") != "unlock-recipe":
+                continue
+            unlocks.setdefault(eff.get("recipe", ""), []).append((num, tid))
     out: dict[str, dict] = {}
-    for item, tnames in seed_items.items():
-        ordered = sorted(tnames, key=lambda t: order[t])
-        tech_list = [{"num": order[t], "name": t} for t in ordered]
-        display = " + ".join(f"{o['num']} · {o['name']}" for o in tech_list)
-        packs: set[str] = set()
-        for t in tnames:
-            packs.update(techs[t].get("packs", []))
-        non_start = sorted(
-            (p for p in packs if p != "start"),
-            key=lambda p: _SCIENCE_RANK.get(p, 99),
-        )
-        out[item] = {
-            "rank": order[ordered[0]] if ordered else 0,
-            "techs": tech_list,
-            "tech": display,
-            "primaryTech": tech_list[0]["name"] if tech_list else "",
-            "science": " + ".join(p.replace("-science-pack", "") for p in non_start) or "aucune",
-            "scienceRank": max((_SCIENCE_RANK.get(p, 0) for p in packs), default=0),
+    for rname, lst in unlocks.items():
+        items = sorted(lst)
+        reals = [(num, tid) for (num, tid) in items if tid not in free]
+        num = min((n for n, _ in reals), default=0)
+        out[rname] = {
+            "num": num,
+            "name": local(items[0][1]) if items else "",
+            "tech": " + ".join(f"{n} · {local(tid)}" for n, tid in items),
         }
     return out
 
 
-_RESOURCE_CACHE: frozenset[str] | None = None
+def _item_tech_info(seed: dict) -> dict[str, dict]:
+    """Sciences ET tech(s) de déblocage de chaque item — ce que la SEED a
+    assigné (pas le vanilla) : techs = ``seed['technologies']``, ordre =
+    ``seed['progression_order']`` (numéro d'apparition 1..N).
 
+    Les techs starter (``free_researches``) débloquent des recettes gratuites
+    au démarrage : leurs items forment le groupe Starter (rank = 0). Un item
+    peut être débloqué par PLUSIEURS techs : on les fusionne (l'item tombe
+    dans le groupe de la tech la plus précoce) mais on GARDE toutes les techs
+    dans le badge/la fiche ("num · nom + num · nom").
 
-def _load_resources() -> frozenset[str]:
-    """Ressources brutes extraites sur la carte : finies (mines) et infinies
-    (pompes/puits), d'après les prototypes `entity/resources.lua` du jeu."""
-    global _RESOURCE_CACHE
-    if _RESOURCE_CACHE is not None:
-        return _RESOURCE_CACHE
-    names = {"water", "wood"}
-    icons_dir = _icons_dir()
-    if icons_dir is not None:
-        res_file = icons_dir.parent.parent / "prototypes" / "entity" / "resources.lua"
-        if res_file.is_file():
-            text = res_file.read_text(encoding="utf-8", errors="replace")
-            for m in re.finditer(r'name\s*=\s*"([a-z0-9_\-]+)"', text):
-                names.add(m.group(1))
-    _RESOURCE_CACHE = frozenset(names)
-    return _RESOURCE_CACHE
+    Renvoie {item → {"rank": 0 si starter/aucune, sinon n° d'apparition de la
+    première tech non-starter, "techs": [{"num": n, "name": …}] par numéro
+    croissant, "tech": affichage "3 · nom + 5 · nom", "primaryTech": première,
+    "science": packs requis, "scienceRank": science la plus haute}}."""
+    tmap, order, free, rec_by_recipe = _tech_order(seed)
+    tech_by_item: dict[str, set[tuple[int, str]]] = {}
+    for tid, num in order.items():
+        t = tmap[tid]
+        for eff in t.get("effects") or []:
+            if eff.get("type") != "unlock-recipe":
+                continue
+            for prod in rec_by_recipe.get(eff.get("recipe"), []):
+                tech_by_item.setdefault(prod, set()).add((num, tid))
+
+    def local(tid: str) -> str:
+        return tmap[tid].get("localised_name") or tid
+
+    def packs_of(tid: str) -> set[str]:
+        return {
+            ing.get("name")
+            for ing in (tmap[tid].get("unit") or {}).get("ingredients") or []
+            if str(ing.get("name", "")).endswith("-science-pack")
+        }
+
+    out: dict[str, dict] = {}
+    for item, items in tech_by_item.items():
+        items = sorted(items)
+        reals = [(num, tid) for (num, tid) in items if tid not in free]
+        rank = min(num for num, _ in reals) if reals else 0
+        tech_list = [{"num": num, "name": local(tid)} for num, tid in items]
+        display = " + ".join(f"{o['num']} · {o['name']}" for o in tech_list)
+        all_packs: set[str] = set()
+        for _, tid in items:
+            all_packs |= packs_of(tid)
+        non_start = sorted(
+            (p for p in all_packs if p != "start"),
+            key=lambda p: _SCIENCE_RANK.get(p, 99),
+        )
+        out[item] = {
+            "rank": rank,
+            "techs": tech_list,
+            "tech": display,
+            "primaryTech": tech_list[0]["name"] if tech_list else "",
+            "science": " + ".join(p.replace("-science-pack", "") for p in non_start) or "aucune",
+            "scienceRank": max((_SCIENCE_RANK.get(p, 0) for p in all_packs), default=0),
+        }
+    return out
 
 
 def _find_quoted(body: str, key: str) -> str | None:
@@ -425,8 +393,7 @@ def build_seed_graph_dot(
     ``crop_mip``) sont écrites dans ce dossier et référencées par le DOT —
     graphviz calcule alors des nœuds carrés centrés (l'original 120×64 en
     mipmap donnait des boîtes 1,875:1, l'item écrasé en haut-gauche)."""
-    raw_sources: set[str] = set(ENVIRONMENTAL_ITEMS)
-    raw_sources |= set((seed.get("pools") or {}).get("raw_resources") or ())
+    raw_sources = _seed_raw_sources(seed)
 
     recipes = seed.get("recipes") or []
     edges: dict[tuple[str, str], set[int]] = {}
@@ -509,14 +476,23 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
         finally:
             dot_path.unlink(missing_ok=True)
         svg = _embed_icons(svg)
-    info = _node_info(seed)
+    info, recips = _node_info(seed)
     title = f"randputF seed {seed.get('meta', {}).get('seed', '?')}"
     path.write_text(
         _HTML_TEMPLATE.replace("__TITLE__", title)
         .replace("__SVG__", svg)
-        .replace("__INFO__", json.dumps(info)),
+        .replace("__INFO__", json.dumps(info))
+        .replace("__RECIPS__", json.dumps(recips)),
         encoding="utf-8",
     )
+
+
+def _seed_raw_sources(seed: dict) -> set[str]:
+    """Ressources brutes assignées par la SEED (docs/model.md §3, §5 — ce que le mod
+    extrait sur la carte) : le pool ``raw_resources`` du seed (= patches posés
+    au sol + environnementaux + fluides d'extraction, généré par
+    ``db.raw_resources``) complété par les environnementaux vanilla."""
+    return set(ENVIRONMENTAL_ITEMS) | set((seed.get("pools") or {}).get("raw_resources") or ())
 
 
 def _dot_for(seed: dict, image_dir: Path | None = None) -> Path:
@@ -548,9 +524,11 @@ def _embed_icons(svg: str) -> str:
     return _ICON_HREF_RE.sub(_uri, svg)
 
 
-def _node_info(seed: dict) -> dict[str, dict]:
+def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     """Fiche de chaque nœud pour l'interface : voisins (ingrédients / produits
-    qui l'utilisent), tech(s) de déblocage et icône embarquée en data-URI."""
+    qui l'utilisent), tech(s) de déblocage et icône embarquée en data-URI.
+    Renvoie aussi RECIPS : une entrée par RECETTE (produit, ingrédients, tech,
+    rang, brut, icône) pour le panneau « une ligne par recette »."""
     info: dict[str, dict] = {}
     for recipe in seed.get("recipes") or []:
         products = [res["name"] for res in (recipe.get("results") or [])]
@@ -560,7 +538,35 @@ def _node_info(seed: dict) -> dict[str, dict]:
                 info.setdefault(p, {}).setdefault("ingredients", []).append(ing)
                 info.setdefault(ing, {}).setdefault("used_by", []).append(p)
     tinfo = _item_tech_info(seed)
-    resources = _load_resources()
+    retech = _recipe_tech_info(seed)
+    resources = _seed_raw_sources(seed)
+    icons: dict[str, str | None] = {}
+
+    def icon_uri(name: str) -> str | None:
+        if name not in icons:
+            icon = _icon_path(name)
+            if icon is None:
+                icons[name] = None
+            else:
+                try:
+                    icons[name] = "data:image/png;base64," + base64.b64encode(crop_mip(icon.read_bytes())).decode()
+                except OSError:
+                    icons[name] = None
+        return icons[name]
+
+    # recettes DISTINCTES produisant chaque item (dégoupillonné), pour le
+    # sélecteur « autre recette » de la fiche (items multi-recettes)
+    prod_recipes: dict[str, list[dict]] = {}
+    for recipe in seed.get("recipes") or []:
+        ing = sorted(
+            (i["name"], int(i.get("amount", 1)))
+            for i in (recipe.get("ingredients") or [])
+        )
+        for res in recipe.get("results") or []:
+            p = res["name"]
+            lst = prod_recipes.setdefault(p, [])
+            if all(existing["items"] != ing for existing in lst):
+                lst.append({"id": recipe.get("name", ""), "items": ing})
     for name, rec in info.items():
         t = tinfo.get(name)
         rec["raw"] = name in resources
@@ -570,13 +576,33 @@ def _node_info(seed: dict) -> dict[str, dict]:
         rec["primaryTech"] = t["primaryTech"] if t else ""
         rec["science"] = t["science"] if t else ""
         rec["scienceRank"] = t["scienceRank"] if t else 0
-        icon = _icon_path(name)
-        if icon is not None:
-            try:
-                rec["icon"] = "data:image/png;base64," + base64.b64encode(crop_mip(icon.read_bytes())).decode()
-            except OSError:
-                pass
-    return info
+        multirecipes = prod_recipes.get(name) or []
+        if len(multirecipes) > 1:
+            rec["recipes"] = multirecipes
+        if icon_uri(name):
+            rec["icon"] = icon_uri(name)
+    recips: dict[str, dict] = {}
+    for recipe in seed.get("recipes") or []:
+        rid = recipe.get("name", "")
+        res = recipe.get("results") or []
+        if not res:
+            continue
+        p = res[0]["name"]
+        ings = [
+            [i.get("name", ""), int(i.get("amount", 1))]
+            for i in (recipe.get("ingredients") or [])
+        ]
+        t = retech.get(rid) or {}
+        recips[rid] = {
+            "p": p,
+            "i": ings,
+            "num": t.get("num", 0),
+            "name": t.get("name", ""),
+            "tech": t.get("tech", ""),
+            "raw": p in resources,
+            "icon": icon_uri(p),
+        }
+    return info, recips
 
 
 _HTML_TEMPLATE = """<!doctype html>
@@ -618,9 +644,12 @@ _HTML_TEMPLATE = """<!doctype html>
   ::-webkit-scrollbar { width:10px; }
   ::-webkit-scrollbar-thumb { background:#333; border-radius:5px; }
   /* ---- panneau latéral ---- */
-  #sidebar { position:absolute; left:0; top:0; bottom:0; width:290px; z-index:7;
+  #sidebar { position:absolute; left:0; top:0; bottom:0; width:var(--sidebarw,450px); z-index:7;
     display:flex; flex-direction:column; background:var(--panel);
     border-right:1px solid var(--line); }
+  #sidegrip { position:absolute; left:var(--sidebarw,450px); top:0; bottom:0; width:6px;
+    z-index:8; cursor:col-resize; touch-action:none; }
+  #sidegrip:hover, #sidegrip.active { background:rgba(111,111,230,.35); }
   #sidebar header { padding:10px 14px; border-bottom:1px solid var(--line); }
   #sidebar h1 { margin:0; font-size:14px; }
   #sidebar #subtitle { color:var(--muted); font-size:11px; margin-top:2px; }
@@ -638,15 +667,17 @@ _HTML_TEMPLATE = """<!doctype html>
   .grp { margin:10px 2px 4px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
   .grp:first-child { margin-top:2px; }
   .row { display:flex; align-items:center; gap:8px; padding:3px 8px; border-radius:7px;
-    cursor:pointer; font-size:12px; border-left:4px solid transparent; white-space:nowrap; }
+    cursor:pointer; font-size:12px; border-left:4px solid transparent; }
   .row:hover { background:rgba(255,255,255,.07); }
   .row.dim { opacity:.25; }
   .row img { width:30px; height:30px; flex:none; image-rendering:pixelated;
     object-fit:contain; object-position:center; }
-  .row span { overflow:hidden; text-overflow:ellipsis; }
+  .row .col { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .row .nn { white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
+  .row .sub { font-size:10px; color:var(--muted); white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
   .row .sc { margin-left:auto; flex:none; font-size:10px; color:var(--muted); font-weight:700; }
   /* ---- viewer ---- */
-  #viewer { position:absolute; inset:0 0 0 290px; }
+  #viewer { position:absolute; top:0; right:0; bottom:0; left:var(--sidebarw,450px); }
   #biggraph, #minigraph { position:absolute; inset:0; }
   #biggraph svg { background: var(--bg); transform-origin:0 0; }
   /* ---- mode jour/nuit sur le SVG graphviz (style en dur) ---- */
@@ -702,6 +733,12 @@ _HTML_TEMPLATE = """<!doctype html>
   #panel .sep { margin-top:10px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
     color:var(--muted); border-top:1px solid var(--line); padding-top:8px; }
   #panel .sci { color:#9ccc65; font-size:12px; margin-bottom:6px; font-weight:700; }
+  #panel .rcp { display:flex; align-items:center; gap:6px; margin:2px 0 10px; padding:5px 9px;
+    font-size:12px; color:var(--txt); background:rgba(255,255,255,.05); border:1px dashed var(--line);
+    border-radius:6px; cursor:pointer; }
+  #panel .rcp:hover { background:rgba(255,255,255,.12); }
+  #panel .rcp .arr { color:var(--accent,#fe7b21); font-weight:800; }
+  #panel .rcp .cnt { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
   #close { float:right; cursor:pointer; color:var(--muted); font-size:15px; line-height:1; }
   #close:hover { color:var(--txt); }
   #depthkey { bottom:12px; right:10px; padding:10px 12px; font-size:11px; color:var(--muted); display:none; }
@@ -723,6 +760,7 @@ _HTML_TEMPLATE = """<!doctype html>
   </div>
   <div id="list"></div>
 </aside>
+<div id="sidegrip"></div>
 <div id="viewer">
   <div id="biggraph">__SVG__</div>
   <div id="minigraph"></div>
@@ -737,6 +775,7 @@ _HTML_TEMPLATE = """<!doctype html>
 <script>
 const MAX_NODES = 1500;
 const INFO = __INFO__;
+const RECIPS = __RECIPS__;
 const PALETTE = ['#ffd54f','#ff7043','#f06292','#ab47bc','#5c6bc0','#29b6f6','#26a69a','#9ccc65'];
 const viewer = document.getElementById('viewer');
 const svg = viewer.querySelector('svg');
@@ -751,7 +790,7 @@ const subcheck = document.getElementById('subcheck');
 const subonly = document.getElementById('subonly');
 const biggraph = document.getElementById('biggraph');
 const minigraph = document.getElementById('minigraph');
-let sortMode = 'science', lastSel = null, subOnly = false;
+let sortMode = 'science', lastSel = null, selBig = null, subOnly = false, ficheRecipeIndex = 0;
 let rowEls = {}, lastNodes = [], lastEdges = [], lastRows = [], lastSub = [], lastDepth = null;
 /* ---- garde anti-performance ---- */
 const count = Object.keys(INFO).length;
@@ -772,7 +811,47 @@ function boot() {
     k = Math.max(0.05, Math.min(3, innerWidth / box.width));
     tx = (innerWidth - box.width*k)/2; ty = 24; apply();
   }
-  addEventListener('resize', fit); fit();
+  /* quand la fenêtre change de taille, seul le mini-graphe se ré-ajuste.
+     Le grand graphe est VERROUILLÉ sur son zoom + sa position courants : un
+     redimensionnement ne doit pas le déplacer (rebranche la vue d'ensemble
+     uniquement par double-clic). */
+  function refitActive() {
+    if (minigraph.style.display === 'block') miniFit();
+  }
+  addEventListener('resize', refitActive);
+  /* ---- redimensionnement du panneau latéral (poignée) ---- */
+  const sidegrip = document.getElementById('sidegrip');
+  const rootStyle = () => (document.documentElement || document.body).style;
+  const setSidebarW = w => {
+    const v = w + 'px';
+    const st = rootStyle();
+    if (st.setProperty) st.setProperty('--sidebarw', v); else st['--sidebarw'] = v;
+  };
+  const clampW = w => {
+    if (!isFinite(w)) w = 450;
+    return Math.max(180, Math.min(w, Math.max(180, innerWidth - 280)));
+  };
+  let savedW = null;
+  try { savedW = localStorage.getItem('randputf-sidebarw'); } catch (e) {}
+  if (savedW) setSidebarW(clampW(parseFloat(savedW)));
+  let sideDrag = false, curW = 450;
+  sidegrip.addEventListener('pointerdown', e => {
+    sideDrag = true; curW = clampW(e.clientX);
+    sidegrip.classList.add('active');
+    if (sidegrip.setPointerCapture) sidegrip.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  addEventListener('pointermove', e => {
+    if (!sideDrag) return;
+    curW = clampW(e.clientX); setSidebarW(curW);
+  });
+  addEventListener('pointerup', () => {
+    if (!sideDrag) return;
+    sideDrag = false; sidegrip.classList.remove('active');
+    if (minigraph.style.display === 'block') miniFit();
+    try { localStorage.setItem('randputf-sidebarw', String(Math.round(curW))); } catch (e) {}
+  });
+  fit();
   viewer.addEventListener('dblclick', () => { if (!subOnly) fit(); });
   viewer.addEventListener('wheel', e => {
     e.preventDefault();
@@ -823,17 +902,36 @@ function boot() {
       const rl = +r.left || 0, rt = +r.top || 0, rw = +r.width || 0, rh = +r.height || 0;
       const right = rl + rw, bottom = rt + rh;
       if (right <= vr.left || rl >= vr.left + vw || bottom <= vr.top || rt >= vr.top + vh) continue;
-      leftIn = Math.max(leftIn, Math.min(vw, Math.max(0, right - vr.left)));
-      rightIn = Math.max(rightIn, Math.min(vw, Math.max(0, vr.left + vw - rl)));
-      topIn = Math.max(topIn, Math.min(vh, Math.max(0, bottom - vr.top)));
-      botIn = Math.max(botIn, Math.min(vh, Math.max(0, vr.top + vh - rt)));
+      // chaque panneau flottant masque la zone visible sur le bord du viewer
+      // auquel il est le plus proche (fiche/sous-graphe à droite, profondeur en
+      // bas, thème à gauche). Un petit bouton au milieu ne doit pas faire
+      // disparaître tout un bord : on ne retient que sa place sur CET bord.
+      const dl = rl - vr.left, dr = vr.left + vw - right, dt = rt - vr.top, db = vr.top + vh - bottom;
+      const minD = Math.min(dl, dr, dt, db);
+      if (minD === dl) leftIn = Math.max(leftIn, Math.min(vw, Math.max(0, right - vr.left)));
+      else if (minD === dr) rightIn = Math.max(rightIn, Math.min(vw, Math.max(0, vr.left + vw - rl)));
+      else if (minD === dt) topIn = Math.max(topIn, Math.min(vh, Math.max(0, bottom - vr.top)));
+      else botIn = Math.max(botIn, Math.min(vh, Math.max(0, vr.top + vh - rt)));
     }
-    cw = vw - rightIn;
-    ch = vh - botIn;
-    miniK = Math.max(0.05, Math.min(1, Math.min((cw - 24) / w, (ch - 24) / h)));
-    miniTX = leftIn + (cw - w * miniK) / 2;
-    miniTY = topIn + (ch - h * miniK) / 2;
+    const availW = Math.max(20, vw - leftIn - rightIn);
+    const availH = Math.max(20, vh - topIn - botIn);
+    miniK = Math.max(0.05, Math.min(1, Math.min((availW - 24) / w, (availH - 24) / h)));
+    miniTX = leftIn + (availW - w * miniK) / 2;
+    miniTY = topIn + (availH - h * miniK) / 2;
     miniSvgApply();
+  }
+  /* ---- téléportation (pan) du grand graphe sur l'élément sélectionné,
+         SANS changer le zoom : la vue glisse pour centrer le nœud ---- */
+  function tpTo(name) {
+    const g = nodeEls[name];
+    if (!g || subOnly) return;
+    const r = g.getBoundingClientRect();
+    const vv = viewer.getBoundingClientRect();
+    if (!r || r.width <= 0 || r.height <= 0 || !vv || vv.width <= 1) return;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    tx += (vv.left + vv.width / 2) - cx;
+    ty += (vv.top + vv.height / 2) - cy;
+    apply();
   }
   minigraph.addEventListener('wheel', e => {
     e.preventDefault(); e.stopPropagation();
@@ -878,6 +976,15 @@ function boot() {
     edgeEls.push({ from: parts[0].trim(), to: parts[1].trim(), el: g, path: g.querySelector('path') });
   });
   function colorOf(depth) { return PALETTE[(depth - 1) % PALETTE.length]; }
+  /* cascade en miroir dans le panneau (une ligne par RECETTE) : la ligne est
+     grisée si son PRODUIT n'est pas dans la cascade, sinon colorée par niveau. */
+  function applyRowDim(name, depth) {
+    for (const rid of Object.keys(rowEls)) {
+      const r = rowEls[rid]; const prod = (RECIPS[rid] || {}).p || rid;
+      if (depth[prod] === undefined) { r.classList.add('dim'); lastRows.push(r); }
+      else { r.classList.remove('dim'); r.style.borderLeftColor = prod === name ? focusCol() : colorOf(depth[prod]); lastRows.push(r); }
+    }
+  }
   /* ---- surlignage en cascade ---- */
   function clearHigh() {
     lastNodes.forEach(o => { o.el.classList.remove('dim','hl-focus'); PALETTE.forEach((_,i)=>o.el.classList.remove('hl-c'+i)); });
@@ -894,7 +1001,14 @@ function boot() {
     const q = [name];
     while (q.length) {
       const cur = q.shift();
-      for (const x of (INFO[cur]||{}).ingredients || []) {
+      // ressource BRUTE = terminal de détection : ses ingrédients ne sont pas
+      // explorés (elle peut avoir un craft, ce n'est pas une vraie source).
+      if ((INFO[cur] || {}).raw) continue;
+      // l'élément sélectionné (avec plusieurs recettes) développe la cascade
+      // selon la recette COURANTE du sélecteur ; les autres utilisent tout.
+      const ings = (cur === name) ? ingredientsOf(name)
+        : (INFO[cur] || {}).ingredients || [];
+      for (const x of ings) {
         if (depth[x] !== undefined) continue;
         depth[x] = depth[cur] + 1; q.push(x);
       }
@@ -936,12 +1050,7 @@ function boot() {
     }
     picked.sort((a,b) => depth[a.to] - depth[b.to]).forEach(e => graphEl.appendChild(e.el));
     hlNodes.sort((a,b) => a.depth - b.depth).forEach(o => graphEl.appendChild(o.el));
-    /* couleurs de la cascade en miroir dans le panneau */
-    for (const n of Object.keys(rowEls)) {
-      const r = rowEls[n];
-      if (depth[n] === undefined) { r.classList.add('dim'); lastRows.push(r); }
-      else { r.classList.remove('dim'); r.style.borderLeftColor = n === name ? focusCol() : colorOf(depth[n]); lastRows.push(r); }
-    }
+    applyRowDim(name, depth);
     buildDepthKey(maxD);
   }
   function buildDepthKey(maxD) {
@@ -957,6 +1066,10 @@ function boot() {
     depthkey.style.display = 'block';
   }
   function buildFiche(name) {
+    ficheRecipeIndex = 0;
+    renderFiche(name);
+  }
+  function renderFiche(name) {
     fiche.innerHTML = '';
     const img = nodeEls[name] && nodeEls[name].querySelector('image');
     if (img) {
@@ -966,26 +1079,56 @@ function boot() {
     }
     const h = document.createElement('h3'); h.textContent = name; fiche.appendChild(h);
     const info = INFO[name] || {};
-    if (info.rank > 0 && info.tech) {
+    if (info.tech) {
       const d = document.createElement('div'); d.className = 'sci';
       d.textContent = 'Débloqué par : ' + info.tech;
       fiche.appendChild(d);
     }
-    const mk = (label, list) => {
+    const mk = (label, list, noCount) => {
       if (!list || !list.length) return;
-      const sep = document.createElement('div'); sep.className = 'sep'; sep.textContent = label + ' (' + list.length + ')';
+      const sep = document.createElement('div'); sep.className = 'sep'; sep.textContent = label + (noCount ? '' : ' (' + list.length + ')');
       fiche.appendChild(sep);
       const u = document.createElement('ul');
-      for (const x of [...new Set(list)]) {
+      const names = [];
+      for (const e of list) {
+        const n = typeof e === 'string' ? e : e.name;
+        if (names.includes(n)) continue;
+        names.push(n);
+      }
+      for (const n of names) {
+        const e = list.find(x => (typeof x === 'string' ? x : x.name) === n);
         const li = document.createElement('li');
-        li.textContent = x;
-        li.addEventListener('click', () => { select(x); });
+        li.textContent = (typeof e === 'string' || !e.amount || e.amount <= 1) ? n : n + ' × ' + e.amount;
+        li.addEventListener('click', () => { selectPanel(n); });
         u.appendChild(li);
       }
       fiche.appendChild(u);
     };
-    mk('Ingrédients', info.ingredients);
-    mk('Utilisé par', info.used_by);
+    const recipes = info.recipes && info.recipes.length > 1 ? info.recipes : null;
+    if (recipes) {
+      const ri = ficheRecipeIndex % recipes.length;
+      const rc = recipes[ri];
+      const sw = document.createElement('div'); sw.className = 'rcp';
+      const arr = document.createElement('b'); arr.className = 'arr'; arr.textContent = '\u25B8';
+      sw.appendChild(arr);
+      sw.appendChild(document.createTextNode(' autre recette'));
+      const cnt = document.createElement('b'); cnt.className = 'cnt';
+      cnt.textContent = (ri + 1) + '/' + recipes.length;
+      sw.appendChild(cnt);
+      sw.title = 'Recette suivante (' + rc.id + ')';
+      sw.addEventListener('click', () => {
+        ficheRecipeIndex = (ficheRecipeIndex + 1) % recipes.length;
+        renderFiche(name);
+        if (subOnly) buildMini(name); else highlight(name);
+      });
+      fiche.appendChild(sw);
+      mk('Ingrédients — recette ' + (ri + 1) + '/' + recipes.length,
+         rc.items.map(([n, a]) => ({ name: n, amount: a })), true);
+      mk('Utilisé par', info.used_by);
+    } else {
+      mk('Ingrédients', info.ingredients);
+      mk('Utilisé par', info.used_by);
+    }
   }
   function select(name, src) {
     buildFiche(name);
@@ -996,21 +1139,37 @@ function boot() {
       subcheck.checked = true; subOnly = true;
       buildMini(name);
     } else {
-      // sélection sur le grand graphe (ligne, nœud, fiche) : on y reste
+      // sélection (ligne, nœud, fiche) : on reste sur le grand graphe
       subcheck.checked = false; subOnly = false;
       removeMini();
       highlight(name);
     }
     lastSel = name;
   }
+  // clic sur un item du PANNEAU (liste, fiche) : si on est dans le sous-graphe,
+  // on y reste (on navigue dedans) ; sinon on téléporte sur l'item dans le grand.
+  function selectPanel(name) {
+    if (subOnly) select(name, 'mini');
+    else { select(name); tpTo(name); }
+  }
+  // clic sur une RECETTE du panneau : on sélectionne le produit en forçant le
+  // sélecteur de recette de la fiche sur CETTE recette (les items produits par
+  // plusieurs recettes affichent alors la bonne variante dans le graphe).
+  function selectRecipe(rid) {
+    const r = RECIPS[rid]; if (!r) return;
+    const info = INFO[r.p] || {};
+    if (info.recipes) {
+      for (let k = 0; k < info.recipes.length; k++) {
+        if (info.recipes[k].id === rid) { ficheRecipeIndex = k; break; }
+      }
+    }
+    selectPanel(r.p);
+  }
   function removeMini() {
-    // vrai changement mini → grand graphe : on remet le zoom par défaut
-    const fromMini = minigraph.style.display === 'block';
     minigraph.style.display = 'none';
     minigraph.innerHTML = '';
     biggraph.style.display = '';
     miniReset();
-    if (fromMini) fit();
   }
   function showSubOption() {
     subonly.style.display = '';
@@ -1021,13 +1180,31 @@ function boot() {
   function escXml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  // Ingrédients de l'élément selon la recette sélectionnée dans la fiche :
+  // pour un élément multi-recettes, la cascade affiche la recette COURANTE.
+  function ingredientsOf(name) {
+    const i = INFO[name] || {};
+    const rs = i.recipes;
+    if (rs && rs.length > 1) {
+      const r = rs[ficheRecipeIndex % rs.length];
+      return (r.items || []).map(x => x[0]);
+    }
+    return i.ingredients || [];
+  }
   function buildMini(name) {
     clearHigh();
     const depth = {}; depth[name] = 0;
     const q = [name];
     while (q.length) {
       const cur = q.shift();
-      for (const x of (INFO[cur] || {}).ingredients || []) {
+      // ressource BRUTE = terminal de détection (détection identique au grand
+      // graphe) : ne jamais explorer ses ingrédients, même s'il a un craft.
+      if ((INFO[cur] || {}).raw) continue;
+      // l'élément sélectionné (avec plusieurs recettes) développe la cascade
+      // selon la recette COURANTE du sélecteur ; les autres utilisent tout.
+      const ings = (cur === name) ? ingredientsOf(name)
+        : (INFO[cur] || {}).ingredients || [];
+      for (const x of ings) {
         if (depth[x] !== undefined) continue;
         depth[x] = depth[cur] + 1; q.push(x);
       }
@@ -1083,11 +1260,7 @@ function boot() {
     // le sous-graphe s'affiche EN ENTIER lors d'un changement de nœud ou
     // d'une première ouverture ; sinon l'utilisateur garde son zoom/déplacement.
     if (name !== lastSel || wasHidden) miniFit(); else miniSvgApply();
-    for (const n of Object.keys(rowEls)) {
-      const r = rowEls[n];
-      if (depth[n] === undefined) { r.classList.add('dim'); lastRows.push(r); }
-      else { r.classList.remove('dim'); r.style.borderLeftColor = n === name ? focusCol() : colorOf(depth[n]); lastRows.push(r); }
-    }
+    applyRowDim(name, depth);
     buildDepthKey(maxLevel(depth));
     minigraph.querySelectorAll('.mininode').forEach(g => {
       g.addEventListener('click', () => {
@@ -1114,11 +1287,18 @@ function boot() {
   });
   subcheck.addEventListener('change', () => {
     if (subcheck.checked) {
-      if (lastSel) select(lastSel, 'mini');
+      // petit graphe ouvert sur l'item du grand graphe : on enregistre l'ancre
+      if (lastSel) { selBig = lastSel; select(lastSel, 'mini'); }
     } else {
+      // retour petit → grand : téléport SANS changer le zoom si on a navigué
+      // dans le petit vers un item différent de celui du grand (sinon : rien)
       subOnly = false;
       removeMini();
-      if (lastSel) highlight(lastSel);
+      if (lastSel) {
+        highlight(lastSel);
+        if (selBig !== null && selBig !== lastSel) tpTo(lastSel);
+        selBig = lastSel;
+      }
     }
   });
   /* ---- mode jour / nuit : noir et blanc s'inversent, le reste ne bouge pas ---- */
@@ -1149,35 +1329,43 @@ function boot() {
   function renderList() {
     list.innerHTML = ''; rowEls = {};
     const q = search.value.trim().toLowerCase();
-    let entries = Object.entries(INFO).filter(([n]) => !q || n.toLowerCase().includes(q));
-    const gkey = rec => (rec.raw ? -1 : (rec.rank > 0 ? rec.rank + 1 : 0));
+    let entries = Object.entries(RECIPS);
+    if (q) entries = entries.filter(([rid, r]) => (r.p + ' ' + rid).toLowerCase().includes(q));
+    const gkey = r => (r.raw ? -1 : (r.num > 0 ? r.num + 1 : 0));
     if (sortMode === 'science') {
-      entries.sort((a,b) => gkey(a[1]) - gkey(b[1]) || a[0].localeCompare(b[0]));
+      entries.sort((a,b) => gkey(a[1]) - gkey(b[1]) || a[1].p.localeCompare(b[1].p) || a[0].localeCompare(b[0]));
     } else {
-      entries.sort((a,b) => a[0].localeCompare(b[0]));
+      entries.sort((a,b) => a[1].p.localeCompare(b[1].p) || a[0].localeCompare(b[0]));
     }
     let grp = null;
-    for (const [n, rec] of entries) {
+    for (const [rid, r] of entries) {
       if (sortMode === 'science') {
-        const g0 = gkey(rec);
+        const g0 = gkey(r);
         if (g0 !== grp) {
           grp = g0;
           const hd = document.createElement('div'); hd.className = 'grp';
           hd.textContent = g0 < 0 ? 'Ressources brutes (finies + infinies)'
-            : (g0 === 0 ? 'Starter' : (g0 - 1) + ' · ' + (rec.primaryTech || rec.tech));
+            : (g0 === 0 ? 'Starter' : (g0 - 1) + ' · ' + (r.name || r.tech));
           list.appendChild(hd);
         }
       }
       const row = document.createElement('div'); row.className = 'row';
-      if (rec.icon) {
-        const im = document.createElement('img'); im.src = rec.icon; row.appendChild(im);
+      if (r.icon) {
+        const im = document.createElement('img'); im.src = r.icon; row.appendChild(im);
       }
-      const sp = document.createElement('span'); sp.textContent = n; row.appendChild(sp);
-      if (rec.tech && sortMode === 'science' && !rec.raw) {
-        const b = document.createElement('b'); b.className = 'sc'; b.textContent = rec.tech; row.appendChild(b);
+      const col = document.createElement('div'); col.className = 'col';
+      const sp = document.createElement('span'); sp.className = 'nn'; sp.textContent = r.p; col.appendChild(sp);
+      if (r.i && r.i.length) {
+        const su = document.createElement('span'); su.className = 'sub';
+        su.textContent = r.i.map(x => (x[1] > 1 ? x[0] + ' ×' + x[1] : x[0])).join(' · ');
+        col.appendChild(su);
       }
-      row.addEventListener('click', () => select(n));
-      rowEls[n] = row; list.appendChild(row);
+      row.appendChild(col);
+      if (r.tech && sortMode === 'science') {
+        const b = document.createElement('b'); b.className = 'sc'; b.textContent = r.tech; row.appendChild(b);
+      }
+      row.addEventListener('click', () => selectRecipe(rid));
+      rowEls[rid] = row; list.appendChild(row);
     }
     if (!entries.length) {
       const e = document.createElement('div'); e.className = 'grp'; e.textContent = 'aucun résultat';

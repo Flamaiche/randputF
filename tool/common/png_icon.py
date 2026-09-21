@@ -1,13 +1,11 @@
 """Recadrage des icônes Factorio.
 
-Les fichiers ``graphics/icons/*.png`` de Factorio sont des feuilles de
-mipmaps : l'icône pleine taille (``icon_size``, en haut à gauche) suivie
-des versions réduites de moitié en largeur chacune (32, 16, 8…), alignées
-en haut à gauche sans espace de séparation. Exemple 120x64 = 64x64 @ (0,0),
-32x32 @ (64,0), 16x16 @ (96,0), 8x8 @ (112,0). Le jeu infère le nombre de
-mipmaps automatiquement et n'affiche que la copie correspondant à la taille
-demandée. On reproduit ici ce découpage : ne garder que le premier carré
-``icon_size`` (= la hauteur de la feuille), sans les copies réduites.
+Les ``graphics/icons/*.png`` sont des feuilles de mipmaps : l'icône pleine
+taille (``icon_size``, en haut à gauche) suivie des versions réduites de
+moitié en largeur (32, 16, 8…), alignées en haut à gauche. Le jeu infère le
+nombre de mipmaps et n'affiche que la copie de la taille demandée. On
+reproduit ce découpage : ne garder que le premier carré ``icon_size`` (= la
+hauteur de la feuille), sans les copies réduites.
 
 Décodage/encodage PNG en pur Python, sans bibliothèque tierce.
 """

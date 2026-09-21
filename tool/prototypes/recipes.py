@@ -1,6 +1,5 @@
-"""Configuration : recettes (§7 et §8).
+"""Configuration : recettes.
 
-Configuration lue par le générateur recipes.py :
 - nombre d'ingrédients par recette
 - montants des résultats
 - temps de craft (énergie)
@@ -29,31 +28,27 @@ class RecipeConfig(PrototypeConfig):
         (2, 3),
     ])
     recipe_energies: list[float] = field(default_factory=lambda: [0.5, 1.0, 2.0])
-    # Énergie par palier de complexité (nb d'ingrédients) : une recette lourde
-    # prend proportionnellement plus de temps qu'une recette simple (§ C6).
+    # Énergie par palier de complexité (nb d'ingrédients).
     # Multiplie le tirage de base par (1 + energy_per_ingredient × n_ingredients).
     energy_per_ingredient: float = 0.25
-    # Équilibre production/consommation (C2) : cible cons/prod tirée une fois
-    # par seed uniformément entre `balance_min` et `balance_max` (défaut
-    # 3/16 ≈ 0.19 et 2/3 ≈ 0.67). Un item beaucoup produit mais peu consommé
-    # (ratio << cible) est « pléthore » : on encourage sa consommation et on
-    # freine sa production ; l'inverse pour un item rare.
+    # Équilibre production/consommation : cible cons/prod tirée uniformément
+    # entre balance_min et balance_max. Un item beaucoup produit mais peu consommé
+    # est « pléthore » : on encourage sa consommation et on freine sa production ;
+    # l'inverse pour un item rare.
     balance_min: float = 3.0 / 16.0
     balance_max: float = 2.0 / 3.0
-    # Pente du facteur de correction et plancher/plafond du multiplicateur.
+    # Pente du facteur de correction et bornes du multiplicateur.
     balance_steepness: float = 1.0
     balance_max_factor: float = 4.0
-    # Quota plafond « pléthore » : un item produit mais quasi inutilisé voit sa
-    # production ramenée À CE quota au plus (défaut 1/3), avec un jitter ±1/2.
+    # Quota plafond « pléthore » : production ramenée à ce quota max (défaut 1/3).
     max_overproduced_ratio: float = 1.0 / 3.0
     balance_iterations: int = 2
     ingredient_amount_min: int = 1
     ingredient_amount_max: int = 4
     recipe_prefix: str = "randputf-"
-    # Ressources environnementales (arbres/rochers/poissons) : utilisables des
-    # le depart mais rares. Poids faible quand des patchs items existent,
-    # poids fort quand la seed n'a AUCUN patch item (urgence : fabriquer les
-    # extracteurs), et quantites plafonnees.
+    # Ressources environnementales (arbres/rochers/poissons) : poids faible
+    # quand des patchs existent, poids fort quand la seed n'a aucun patch item
+    # (urgence : fabriquer les extracteurs), quantités plafonnées.
     environmental_weight_rich: float = 0.02
     environmental_weight_starved: float = 2.0
     environmental_amount_max: int = 2
@@ -109,15 +104,9 @@ class RecipeConfig(PrototypeConfig):
         return round(base * (1 + self.energy_per_ingredient * n_ingredients), 3)
 
     def balance_weight(self, ratio: float, target: float) -> float:
-        """C2 : facteur de pondération équilibre pour un ratio cons/prod.
-
-        Orientation PAR CONSOMMATION : on récompense la pléthore (ratio bas →
-        produit mais peu consommé) et on pénalise la rareté (ratio haut →
-        très consommé, peu produit) pour rapprocher chaque ratio de `target`.
-        `ratio` est borné au plancher `max_overproduced_ratio` (le quota
-        « pléthore ») : au-delà de ce déséquilibre, le facteur plafonne — on
-        ne pousse JAMAIS à consommer un flux stupide. Un ratio à 0 (jamais
-        consommé face à une production) renvoie le facteur max."""
+        """Facteur de pondération équilibre pour un ratio cons/prod.
+        Reward pléthore (ratio bas), penalty rareté (ratio haut).
+        Ratio borné au plancher max_overproduced_ratio."""
         eff = max(ratio, self.max_overproduced_ratio)
         if eff <= 0:
             return self.balance_max_factor

@@ -1,38 +1,30 @@
 """Phase « ease-up » : recettes alternatives pour les crafts trop lourds.
 
-Un « craft négatif » (voir IDEES / demande feature) : un produit dont le
-graphe de production est TROP PROFOND (beaucoup de sauts de recettes avant
-d'arriver aux ressources de base) ou contient une BOUCLE. Le cas concret
-relevé par le joueur : le premier pylône (``small-electric-pole``) exigeait
-``utility-science-pack`` en ingrédient — pour le fabriquer il fallait
-remonter tout le graphe jusqu'à un science pack tardif.
+Un « craft négatif » : un produit dont le graphe de production est TROP
+PROFOND (beaucoup de sauts de recettes avant les ressources de base) ou
+contient une BOUCLE. Cas concret relevé par le joueur : le premier pylône
+exigeait ``utility-science-pack`` en ingrédient.
 
-Cette phase tourne APRÈS toutes les phases productrices de recettes (starter,
-électricité, récursif, endgame, relais) :
+Tourne APRÈS toutes les phases productrices de recettes (starter, électricité,
+récursif, endgame, relais) :
 
 1. Détection : profondeur (= 1 + profondeur max de ses ingrédients, le plus
-   petit chemin parmi les recettes du produit) et boucles, sur le graphe de
-   production FINAL. Un produit est « lourd » si sa profondeur ≥
-   ``depth_threshold`` ou s'il est sur une boucle.
-2. Classement par impact : on ease d'abord les items les plus CONSOMMÉS en
-   ingrédient (les plus bloquants), puis les plus profonds, les boucles
-   d'abord.
-3. Pour chaque produit retenu, une RECETTE ALTERNATIVE ``randputf-ease-<item>``
+   petit chemin parmi ses recettes) et boucles, sur le graphe FINAL. Un
+   produit est « lourd » si profondeur ≥ ``depth_threshold`` ou boucle.
+2. Classement par impact : d'abord les plus consommés (bloquants), puis les
+   plus profonds, les boucles d'abord.
+3. Pour chaque produit retenu, une recette ALTERNATIVE ``randputf-ease-<item>``
    tirée du POOL GELÉ DE DÉBUT DE RUN (même ``base`` que les relais §9.3) :
-   ingrédients uniquement dans ce pool, bâtiment de craft limité aux bâtiments
-   déjà obtenables — un ease-up ne dépend jamais d'un item débloqué seulement
-   en profondeur de seed.
-4. Déblocage : les recettes ease-up sont dispatchées en techs de type PROLOGUE
-   (hand-craft d'un item du bootstrap, ≤ 5 unlocks chacune, §13) et insérées
-   juste après les techs du bootstrap/relais dans l'arbre.
+   un ease-up ne dépend jamais d'un item débloqué en profondeur de seed.
+4. Déblocage : techs de type PROLOGUE (hand-craft d'un item du bootstrap,
+   ≤ 5 unlocks, §13) insérées juste après le bootstrap/relais.
 
 Anti-cycle §8 : une recette ease-up n'utilise jamais son propre produit ni un
-produit déjà ease-up (les produits ease-up sont ajoutés aux ingrédients
-interdits des suivants) — le graphe reste acyclique.
+produit déjà ease-up — le graphe reste acyclique.
 
-Flux RNG INDÉPENDANT (``make_rng``) : ajouter cette phase ne change RIEN au
-tirage des phases précédentes — une seed existante se régénère à l'identique
-plus les recettes/techs ease-up (additif pur, sans casser la sauvegarde).
+Flux RNG INDÉPENDANT (``make_rng``) : la phase n'altère pas les tirages des
+phases précédentes — une seed existante se régénère à l'identique plus les
+recettes/techs ease-up (additif pur).
 """
 
 from __future__ import annotations
@@ -51,8 +43,7 @@ _config = EaseupConfig()
 _BASE_LABELS = "abcdefghijklmnopqrstuvwxyz"
 
 # Items de la chaîne de LANÇage (§14) : jamais ease-up. Un raccourci vers le
-# produit lancé (``rocket``/``satellite``) ou le silo trivialiserait la
-# victoire — l'endgame reste l'aboutissement réservé à la fin de partie.
+# produit lancé ou le silo trivialiserait la victoire.
 _ENDGAME_EXCLUDED = frozenset({"rocket", "satellite", "rocket-silo", "rocket-part"})
 
 
@@ -62,8 +53,8 @@ def set_config(config: dict) -> None:
 
 
 def make_rng(seed_value: int) -> random.Random:
-    # Flux indépendant des autres phases (comme les lacs §7.5) : ajouter la
-    # phase ease-up ne change pas le tirage du reste de la seed.
+    # Flux indépendant des autres phases (comme les lacs) : la phase ease-up
+    # ne change pas le tirage du reste de la seed.
     return random.Random(f"randputF:easeup:{seed_value}")
 
 
@@ -78,10 +69,10 @@ def build_ease_up_recipes(
 ) -> tuple[list[dict], list[dict]]:
     """Détecte les crafts lourds et ajoute leurs recettes alternatives.
 
-    ``state`` = état complet (recettes FINALES à scanner) ; ``base`` =
+    ``state`` : état complet (recettes FINALES à scanner) ; ``base`` :
     instantané GELÉ du pool de début de run (ingrédients + bâtiments des
-    recettes ease-up). Retourne ``(eased, steps)`` où chaque ``eased`` =
-    ``{product_kind, product, recipe_name}`` et ``steps`` = macro-steps de
+    recettes ease-up). Retourne ``(eased, steps)`` : ``eased`` = produits
+    ``{product_kind, product, recipe_name}``, ``steps`` = macro-steps de
     déblocage (techs prologue hand-craft).
     """
     if base is None:
@@ -116,10 +107,10 @@ def dispatch_ease_steps(
 ) -> list[dict]:
     """Regroupe les recettes ease-up en techs de type prologue (≤ 5 unlocks).
 
-    Chaque tech ease-up se débloque par HAND-CRAFT d'un item du bootstrap
-    (façon relais §9.3) : ``trigger_candidates`` fournis, un item par tech,
-    tous distincts entre elles ET distincts des triggers déjà pris
-    (``used_triggers``). Avec un ``rng``, mélange des recettes et tirage.
+    Chaque tech se débloque par HAND-CRAFT d'un item du bootstrap (façon relais
+    §9.3) : ``trigger_candidates`` fournis, un item par tech, tous distincts
+    entre elles ET distincts des triggers déjà pris (``used_triggers``). Avec
+    un ``rng`` : mélange des recettes et tirage.
     """
     names = [e["recipe_name"] for e in eased]
     if not names:
@@ -198,9 +189,9 @@ def _compute_depths(state: ProgressionState) -> dict[tuple[str, str], int]:
     """Profondeur (nombre de sauts de recettes) de chaque produit.
 
     depth(P) = min sur les recettes qui produisent P de
-    (1 + max depth de ses ingrédients) ; un ingrédient sans recette
-    (ressource brute, environnemental, fluide de patch/lac) a depth 0.
-    Relaxation de type Bellman-Ford bornée → convergente et hors boucles.
+    (1 + max depth de ses ingrédients) ; un ingrédient sans recette (ressource
+    brute, environnemental, fluide) a depth 0. Relaxation de type
+    Bellman-Ford bornée → convergente et hors boucles.
     """
     depth: dict[tuple[str, str], int] = {}
     produced: set[tuple[str, str]] = set()
@@ -224,8 +215,7 @@ def _compute_depths(state: ProgressionState) -> dict[tuple[str, str], int]:
             return 1
         return 1 + max(depth.get((i["type"], i["name"]), 0) for i in ings)
 
-    # Bornes suffisantes : la profondeur ne peut pas dépasser le nombre de
-    # recettes (chaque saut consomme au moins une recette distincte).
+    # Borne suffisante : la profondeur ne peut pas dépasser le nb de recettes.
     for _ in range(len(state.recipes) + 1):
         changed = False
         for ridx, _recipe in enumerate(state.recipes):
@@ -247,10 +237,10 @@ def _is_circular(
 ) -> bool:
     """Un produit est sur une boucle s'il se ré-atteint via ses ingrédients.
 
-    BFS borné (jamais de stack overflow sur le graphe final) : on part du
-    produit, on traverse ses recettes de production (ingrédient par
-    ingrédient) ; si on retombe sur le produit → boucle. ``visited`` garde
-    la terminaison même sur un sous-graphe fermé sans cycle contenant P.
+    BFS borné (pas de stack overflow sur le graphe final) : on part du produit,
+    on traverse ses recettes de production ; si on retombe sur lui → boucle.
+    ``visited`` garantit la terminaison même sur un sous-graphe fermé sans
+    cycle contenant P.
     """
     frontier = {product}
     visited: set[tuple[str, str]] = set()
@@ -278,8 +268,8 @@ def _detect_heavy(
 ) -> list[tuple[str, str]]:
     """Produits « crafts négatifs » : profondeur ≥ seuil OU sur une boucle.
 
-    Retourne la liste (kind, name) classée par impact décroissant (nombre de
-    recettes qui les consomment en ingrédient), plafonnée à ``max_recipes``.
+    Retourne (kind, name) classés par impact décroissant (nombre de recettes
+    qui les consomment en ingrédient), plafonnés à ``max_recipes``.
     """
     depths = _compute_depths(state)
     by_product = _producers(state)
@@ -310,11 +300,10 @@ def _detect_heavy(
         circular = _is_circular((kind, name), by_product, state)
         if not circular and depth < _config.depth_threshold:
             continue
-        # Tri par « craft négatif » : d'abord les plus PROFONDS (les plus
-        # lourds à fabriquer), puis les boucles (craft infaisables par ce
-        # chemin) et enfin les plus CONSOMMÉS en ingrédient (les plus
+        # Tri : d'abord les plus PROFONDS (lourds à fabriquer), puis les boucles
+        # (crafts infaisables par ce chemin), puis les plus CONSOMMÉS (les plus
         # bloquants). Les boucles bénignes (§8) restent éligibles mais ne
-        # doivent PAS dévorer les slots au détriment d'un vrai craft lourd.
+        # dévorent pas les slots au détriment d'un vrai craft lourd.
         ranked.append((-depth, not circular, -usage.get((kind, name), 0), kind, name))
 
     ranked.sort()

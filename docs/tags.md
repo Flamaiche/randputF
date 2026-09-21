@@ -158,7 +158,7 @@ affiche une puissance de décharge mais n'est ni `produces_electricity` ni
 
 La chaleur est un milieu transportable à la manière d'un fluide, mais qui ne
 circule qu'entre les bâtiments capables de l'échanger. Trois tags ORTHOGONAUX
-par capacités (README §10bis) ; `produces_heat` est restreint à la SOURCE (il
+par capacités (docs/energie.md §10bis) ; `produces_heat` est restreint à la SOURCE (il
 corrige l'ancien `has_heat_output` qui taguait aussi la heat-pipe et
 l'échangeur).
 

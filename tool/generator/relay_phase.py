@@ -1,34 +1,22 @@
-"""Phase du relais des ressources non-infinies (README §7, §8 et §9.3).
+"""Phase du relais des ressources non-infinies (§7, §8, §9.3).
 
-Au tout début, le joueur possède toutes les ressources : patchs ET ressources
-environnementales (arbres -> wood, rochers -> stone, poissons -> raw-fish).
-Ces dernières ne sont PAS infinies : elles servent de matière première du
-bootstrap (fabriquer les extracteurs, les premiers bâtiments, etc.), mais ce
-n'est pas tenable à long terme.
+Au début le joueur a les patchs ET les ressources environnementales (arbres →
+wood, rochers → stone, poissons → raw-fish) : matière première du bootstrap,
+non infinie, intenable à long terme.
 
 Cette phase tourne APRÈS toutes les phases productrices de recettes (starter,
-électricité, récursif) et crée, pour chaque produit dont la recette générée
-utilise un item environnemental en ingrédient, une RECETTE RELAIS :
+électricité, récursif) et crée pour chaque produit dont la recette générée
+utilise un environnemental une RECETTE RELAIS : même produit, ingrédients
+tirés uniquement dans le POOL GELÉ DE DÉBUT DE RUN (instantané après starter +
+électricité, avant le récursif) — un relais ne dépend jamais d'un déblocage
+tardif ; bâtiment de craft limité à ceux déjà obtenables. Les relais sont
+dispatchés dans les 3 techs suivant les techs gratuites du starter, puis
+consolidés en techs de prologue (≤ 5 unlocks, §13), débloquées par
+HAND-CRAFT d'un item du bootstrap — pas de science packs, pas de lab.
 
-- même produit ;
-- ingrédients tirés uniquement dans le POOL GELÉ DE DÉBUT DE RUN (instantané
-  de l'état APRÈS le starter + électricité, AVANT le récursif) : un relais ne
-  dépend jamais d'un bâtiment ou d'un item débloqué seulement après (science
-  packs, oil-refinery, etc.) — il reste donc utilisable dès le départ ;
-- bâtiment de craft limité à ceux déjà obtenables dans ce même instantané
-  (jamais de déblocage sur le tas hors pool) ;
-- recettes relais dispatchées, réparties au hasard, dans les 3 techs qui
-  suivent les techs gratuites du starter, puis consolidées en techs de
-  prologue (≤ 5 unlocks chacune, §13 — jamais une tech géante). Ces prologue
-  ne se paient PAS en science packs : elles se
-  débloquent par HAND-CRAFT d'un item du bootstrap (§7, §9.3) — façon vanilla
-  (automation/logistics), le joueur fabrique l'item à la main et la tech
-  s'active tout de suite, au lieu de rester dépendant du bois/pierre/poisson
-  ou d'attendre un laboratoire.
-
-Anti-cycle §8 : les recettes relais ne dépendent jamais d'un produit relais
-plus ancien (le set de produits relayés est ajouté aux ingrédients interdits
-des relais suivants). Le graphe relais est donc un DAG.
+Anti-cycle §8 : les relais ne dépendent jamais d'un relais plus ancien (les
+produits relayés sont ajoutés aux ingrédients interdits des suivants) — le
+graphe relais est un DAG.
 """
 
 from __future__ import annotations
@@ -60,19 +48,15 @@ def build_relay_recipes(
 ) -> list[dict]:
     """Crée les recettes relais et les ajoute à ``state.recipes``.
 
-    ``base`` est l'instantané GELÉ du pool de début de run (état après le
-    starter + électricité, avant le récursif) : les ingrédients d'un relais et
-    son bâtiment de craft en sont exclusivement tirés. ``state`` est l'état
-    complet (contient les recettes finales à scanner). Sans ``base`` fourni,
-    on prend l'état courant (utile pour les tests unitaires).
+    ``base`` : l'instantané GELÉ du pool de début de run (après starter +
+    électricité, avant le récursif) — les ingrédients d'un relais et son
+    bâtiment de craft en sont exclusivement tirés. ``state`` : état complet
+    (recettes finales à scanner). Sans ``base``, on prend l'état courant
+    (tests unitaires). Retourne ``[{product_kind, product, recipe_name}, ...]``.
 
-    Retourne la liste des produits relayés :
-    ``[{product_kind, product, recipe_name}, ...]``.
-
-    Le scan est relancé jusqu'à stabilité : les recettes créées « sur le tas »
-    pendant le tirage d'un relais (déblocage d'un bâtiment, §9.3) peuvent à
-    leur tour consommer des environnementaux et méritent leur propre relais.
-    """
+    Le scan est relancé jusqu'à stabilité : des recettes créées « sur le tas »
+    (déblocage d'un bâtiment, §9.3) peuvent à leur tour consommer des
+    environnementaux et méritent leur propre relais."""
     if base is None:
         base = state
     relays: list[dict] = []
@@ -86,8 +70,8 @@ def build_relay_recipes(
                 (r for r in recipe.get("results", []) if r["type"] == SLOT_ITEM),
                 None,
             )
-            # Jamais de relais pour un environnemental lui-même (il n'a pas de
-            # recette, il se récolte à la main).
+            # Pas de relais pour un environnemental lui-même (récolte à la main,
+            # pas de recette).
             if product is None or product["name"] in ENVIRONMENTAL_ITEMS:
                 continue
             if product["name"] in relayed_products:
@@ -114,16 +98,14 @@ def dispatch_relay_steps(
     relays: list[dict],
     rng: random.Random | None = None,
 ) -> list[dict]:
-    """Répartit les recettes relais dans les 3 techs qui SUIVENT les techs
-    gratuites du starter (§9.3).
+    """Répartit les recettes relais dans les 3 techs suivant les techs gratuites
+    du starter (§9.3).
 
-    La répartition est aléatoire (mélangée) quand un ``rng`` est fourni ;
-    sinon l'ordre de création est conservé (déterministe, pour les tests).
-
-    Chaque step se recherche immédiatement (cost=[], count=1, sans packs) :
-    ce sont les 3 premières recherches que le joueur lance après le bootstrap,
-    pas des free_researches — le bootstrap reste en route unique le temps
-    d'arriver aux recettes propres."""
+    Répartition mélangée quand ``rng`` est fourni, sinon ordre de création
+    (déterministe, tests). Chaque step se recherche immédiatement (cost=[],
+    count=1, sans packs) : les 3 premières recherches après le bootstrap, pas
+    des free_researches — le bootstrap reste en route unique jusqu'aux recettes
+    propres."""
     names = [r["recipe_name"] for r in relays]
     if not names:
         return []
@@ -158,17 +140,14 @@ def consolidate_intro_steps(
 ) -> list[dict]:
     """Consolide les recettes du bootstrap en techs « prologue ».
 
-    Prend les recettes débloquées par les dispatches relais (les recettes
-    propres du bootstrap) et les regroupe en techs prologue de **≤ 5 unlocks
-    chacune** (plafond §13, être une tech de démarrage ne dispense pas du
-    plafond de taille).
+    Regroupe les recettes débloquées par les dispatches relais en techs de
+    ≤ 5 unlocks chacune (plafond §13 — une tech de démarrage n'y échappe pas).
 
-    Ces techs NE sont PAS des free_researches NI des recherches en laboratoire
-    payées en science packs (cost=[]) : chacune se débloque par HAND-CRAFT
-    d'un item du bootstrap (``trigger_candidates``, un item par prologue,
-    tous distincts) — façon vanilla (automation/logistics se débloquent en
-    fabriquant un objet). Au runtime, `control.lua` active la tech dès que le
-    joueur fabrique l'item déclencheur à la main.
+    Ces techs ne sont ni free_researches ni recherches en lab payées en packs
+    (cost=[]) : chacune se débloque par HAND-CRAFT d'un item du bootstrap
+    (``trigger_candidates``, un item par prologue, tous distincts) — façon
+    vanilla automation/logistics ; `control.lua` active la tech dès que le
+    joueur fabrique l'item à la main.
 
     ``rng`` fourni : tirage des déclencheurs ET mélange des recettes. Sinon
     déterminisme (déclencheur vide) pour les tests.
@@ -191,21 +170,16 @@ def consolidate_intro_steps(
     if rng is not None:
         rng_local.shuffle(unique)
 
-    # Regroupement des recettes du bootstrap en techs de prologue : jamais une
-    # tech géante (toutes les recettes relais d'un coup) — chaque tech ne
-    # dépasse pas le plafond de 5 unlocks (§13), comme toute autre tech.
+    # Regroupement en techs de prologue bornées par le plafond §13 (jamais une
+    # tech géante regroupant toutes les recettes relais).
     used_triggers: set[str] = set()
     steps: list[dict] = []
     for i, start in enumerate(range(0, len(unique), _MAX_PER_TECH)):
         chunk = unique[start : start + _MAX_PER_TECH]
-        # Nombre d'items du déclencheur à HAN-CRAFTER pour débloquer la tech
-        # (§9.3) : 2^(n + indice_science/4), JAMAIS un singleton (crafter 1
-        # item = tech triviale, auto-complétée par la moindre fabrication du
-        # bootstrap). `n` est tiré au hasard dans (1, 6] (1 exclu, 6 inclu) :
-        # n ∈ {2,3,4,5,6}. `indice_science` = position de la science dans
-        # l'ordre du tech tree : le prologue précède la chaîne des sciences,
-        # il se cale donc sur la PREMIÈRE science (indice 1) — réutilisable tel
-        # quel pour un tirage aléatoire parmi les techs plus profondes.
+        # Nombre de crafts de l'item déclencheur (§9.3) : 2^(n + 1/4) avec
+        # n ∈ {2..6} — jamais un singleton (crafter 1 item = tech triviale, le
+        # moindre craft du bootstrap l'auto-compléterait). L'exposant se cale
+        # sur la première science (indice 1), réutilisable tel quel.
         n = rng_local.randint(2, 6)
         craft_trigger_count = round(2 ** (n + 1 / 4))
         steps.append(
@@ -232,7 +206,7 @@ def _pick_trigger(
 ) -> str | None:
     """Tire UN item de bootstrap distinct (jamais déjà attribué) comme
     déclencheur hand-craft d'une tech de prologue. ``candidates``
-    absent/vide -> None (déterminisme test)."""
+    absent/vide → None (déterminisme test)."""
     if not candidates:
         return None
     pool = [c for c in candidates if c not in used]
@@ -263,13 +237,13 @@ def _make_relay_recipe(
 ) -> dict | None:
     """Tire la recette relais d'un produit.
 
-    ``base`` (instantané gelé du début de run) fournit SON pool pour les
-    ingrédients ET SES bâtiments comme whitelist de craft : un relais compile
+    ``base`` (instantané gelé du début de run) fournit son pool pour les
+    ingrédients ET ses bâtiments comme whitelist de craft : un relais compile
     uniquement avec ce qui est déjà obtenable dès le départ.
 
-    Ingrédients interdits : items environnementaux + produit lui-même +
-    produits déjà relayés (dans l'ordre de création, les relais ne peuvent
-    jamais dépendre d'un relais plus ancien -> DAG, anti-cycle §8)."""
+    Ingrédients interdits : environnementaux + produit lui-même + produits
+    déjà relayés (dans l'ordre de création) — les relais ne dépendent jamais
+    d'un relais plus ancien, DAG anti-cycle §8."""
     forbidden = (
         set(ENVIRONMENTAL_ITEMS) | relayed_products | {product["name"]}
     )

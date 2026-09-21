@@ -1,14 +1,11 @@
-"""Sélection pondérée à pourcentages (§9.1).
+"""Sélection pondérée à pourcentages.
 
 Utilitaire central pour toutes les mécaniques de pioche aléatoire pondérée.
-Chaque prototype de mécanique utilise WeightedPicker pour sélectionner
-des éléments avec des probabilités configurables.
 
-Exemple d'utilisation :
+Exemple :
     picker = WeightedPicker()
     picker.add("transformer", weight=30)
-    picker.add("extractor", weight=15)
-    choix = picker.pick(rng)  # "transformer" a 67% de chance
+    choix = picker.pick(rng)  # probabilités configurables
 """
 
 from __future__ import annotations
@@ -26,15 +23,13 @@ class WeightedItem:
 
 
 class WeightedPicker:
-    """Sélecteur pondérée configurable.
+    """Sélecteur pondéré configurable.
 
-    Chaque élément a un poids (plus le poids est élevé, plus l'élément
-    a de chances d'être sélectionné). Le pick() retire l'élément choisi
-    du pool (sampling sans remise) ou le garde (sampling avec remise).
+    Un poids élevé = plus de chances d'être sélectionné. pick() retire
+    l'élément choisi du pool (sans remise) ou le garde (avec remise).
 
-    Attributes:
-        items: Liste des éléments pondérés.
-        replacement: Si True, les éléments restent après sélection.
+    - items : éléments pondérés
+    - replacement : True si les éléments restent après sélection
     """
 
     def __init__(self, replacement: bool = False) -> None:

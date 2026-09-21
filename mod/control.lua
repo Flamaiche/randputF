@@ -1,23 +1,8 @@
 -- randputF — contrôle runtime.
---
--- Stratégie de spawn : le kit est délivré 100% par nous, PAS par le freeplay.
--- On NEUTRALISE le kit du scenario freeplay (created_items + respawn_items à
--- vide via les remote calls) puis on distribue nous-mêmes :
---   * on_player_created  → le kit seed COMPLET (arme + munitions + machines),
---     une seule fois par vie ;
---   * on_player_respawned → un kit de survie MINCE (pistol + munitions),
---     jamais le kit complet (une mort ne re-stocke pas le kit de départ) ;
---   * jamais au chargement d'une sauvegarde (on_player_joined) : réarmer là
---     viderait l'inventaire du joueur en cours de partie.
--- Un filet court (fenêtre SPAWN_SETTLE_TICKS, garde KIT_APPLIED par vie)
--- rattrape le cas où le personnage n'existe pas encore à on_player_created
--- (cutscene du crash) : il applique le kit UNE fois dès que le personnage est
--- là. Le scénario crash-site insère parfois ses propres items (SMG + munitions)
--- en différé ou dans d'autres slots d'armes (2.0) : un normaliseur (points de
--- contrôle 300/900/1800 ticks, §7) ramène le kit à son EXACT contenu à la volée,
--- sans jamais toucher le loot du joueur. Aucun autre chemin ne fournit d'items
--- de spawn.
--- ____________________________________________________________________________
+-- Spawn : kit 100% géré par nous (pas freeplay). on_player_created → kit complet,
+-- on_player_respawned → kit mince (pistol + munitions). Jamais au chargement.
+-- Filet SPAWN_SETTLE_TICKS pour cutscene du crash. Normaliseur (300/900/1800 ticks)
+-- corrige les doublons injectés par le scénario sans toucher le loot.
 
 local seed = {}
 do
@@ -27,17 +12,9 @@ do
   end
 end
 
--- ____________________________________________________________________________
--- Site de crash (§7)
---
--- Le crash vanilla pose un kit fixe (munitions, plaques…) dans les conteneurs
--- `crash-site-*`. On le VIDE puis on remplit chaque slot avec `n` copies d'un
--- matériau aléatoire, où `n ∈ {0,1,2,3}` suit la loi pondérée de la seed
--- (seed.wreck.counts = [c0, c1, c2, c3], c0 > c1 > c2 > c3, 0 × c0 + 1 × c1 +
--- 2 × c2 + 3 × c3 = 100) : 0 est le plus fréquent (slot vide), 3 le plus rare.
--- Garantie : un conteneur n'est JAMAIS entièrement vide (force-fill si 0 stack).
--- Chaque conteneur n'est traité QU'UNE FOIS (marque unit_number dans storage),
--- donc le loot du joueur n'est JAMAIS écrasé au rechargement ultérieur.
+-- Conteneurs crash-site : on vide le kit vanilla, on remplit avec n copies (0..3)
+-- d'un matériau aléatoire (loi pondérée de la seed). Force-fill si 0 stack.
+-- Idempotent via marque unit_number (jamais re-traité au rechargement).
 
 local WRECK_SETTLE_TICKS = 300  -- fenêtre de balayage (world just créé)
 local WRECK_SWEEP_INTERVAL = 10 -- pas du balayage pendant la fenêtre
@@ -45,10 +22,8 @@ local WRECK_SWEEP_INTERVAL = 10 -- pas du balayage pendant la fenêtre
 local function init_wreck()
   storage.randputf.wreck_processed = storage.randputf.wreck_processed or {}
   if storage.randputf.wreck_stop == nil and game then
-    -- `game` est NIL pendant on_load (API 2.0) : on ne peut calculer le stop
-    -- qu'au runtime (on_init / premier tick). Les saves anciennes sans ce
-    -- champ gardent stop à nil → pas de balayage (idempotence garantie par la
-    -- marque unit_number : chaque conteneur n'est traité qu'une fois).
+    -- `game` est NIL pendant on_load (API 2.0) : stop calculé au runtime.
+    -- Saves sans ce champ : stop=nil → pas de balayage (idempotent via marque unit_number).
     storage.randputf.wreck_stop = game.tick + WRECK_SETTLE_TICKS
   end
 end
@@ -81,8 +56,7 @@ local function process_crash_container(entity)
     return
   end
   local wreck = seed.wreck
-  -- Un conteneur n'expose qu'un seul inventaire (index auto 1) : il n'existe
-  -- pas de nommage `defines.inventory.*` dédié aux coffres vanilles.
+  -- Un conteneur n'expose qu'un seul inventaire (index 1, pas de defines.inventory.* coffres).
   local inv = entity.get_inventory(1)
   if not (inv and wreck and wreck.counts) then
     return
@@ -103,9 +77,7 @@ local function process_crash_container(entity)
       end
     end
   end
-  -- Garantie : un conteneur du crash n'est JAMAIS entièrement vide (sinon le
-  -- joueur perçoit « le vaisseau est vide »). Si le tirage pondéré a tout mis
-  -- à 0 (possible), on force 1 matériau dans le premier slot.
+  -- Garantie : conteneur jamais entièrement vide. Force-fill 1 matériau si tout à 0.
   if filled == 0 and #inv > 0 and #loot > 0 then
     inv[1].set_stack({name = loot[rng(1, #loot)], count = 1})
     filled = 1
@@ -138,15 +110,8 @@ local function process_crash_site(surface, area)
   end
 end
 
--- Récap en chat des raw ressources de la seed : pour CHAQUE ressource on
--- marque sa provenance (d'où elle vient) en plus de son nom. 2 sources :
---   [LAC]   = lac de fluide (tuile randputf-lac-<fluide>) — volume INFINI,
---            pompé par une pompe offshore posée sur la tuile ;
---   [PATCH] = gisement posé au RUNTIME par le mod (§6.5) — puits (pumpjack)
---            pour un fluide, blocs (foreuse) pour un item.
--- Chaque nom est affiché avec son ICONE (texte enrichi : `[item=...]` pour un
--- item, `[fluid=...]` pour un fluide) : le nom seul ne suffit pas pour les
--- pétroles (petroleum-gas, light-oil, ...) qui se ressemblent à l'écran.
+-- Récap chat : ressources [LAC] (fluide infini) et [PATCH] (gisement runtime),
+-- avec icône texte enrichi pour distinguer les fluides.
 local function resource_label(kind, resource)
   local tag = (kind == "item") and "item" or "fluid"
   return "[" .. tag .. "=" .. resource .. "]"
@@ -189,10 +154,7 @@ local function get_character(player)
   return nil
 end
 
--- Neutralise le kit de départ / respawn du scenario freeplay : created_items +
--- respawn_items à VIDE, la délivrance est 100% chez nous (on_player_created /
--- on_player_respawned). Sans effet si le freeplay (ou ses remote calls) n'est
--- pas présent.
+-- Neutralise kit freeplay (created_items + respawn_items à vide).
 local function configure_freeplay_kit()
   if not remote.interfaces["freeplay"] then
     return
@@ -235,21 +197,12 @@ local function init_storage()
   init_wreck()
 end
 
--- ____________________________________________________________________________
--- Purge de l'eau vanilla §7.5
---
--- Le fix API (`autoplace probability_expression` + `property_expression_names`)
--- n'agit que sur les chunks GENERES APRES son activation. Une carte créée avant
--- garde définitivement ses tuiles water/deepwater (données en briques dans la
--- save). Ce balayage runtime les remplace par la terre dominante du chunk :
--- les cartes ANCIENNES sont réparées au premier chargement (mesuré : 139546
--- tuiles water/deepwater → 0 en ~1000 ticks), idempotent (les tuiles déjà
--- converties ne sont plus dans WATER_TILES). Nos lacs randputf sont exclus de
--- la liste : jamais nettoyés.
+-- Purge eau vanilla : les cartes créées avant le fix gardent leurs tuiles water.
+-- Balayage runtime incrémental, remplace par la terre dominante du chunk.
+-- Idempotent (tuiles converties sortent de WATER_TILES). Lacs randputf exclus.
 local WATER_PURGE_CHUNKS_PER_TICK = 32
 
--- Tuiles d'eau vanilla : mêmes noms que la liste neutralisée au mapgen
--- (data-updates.lua §7.5). Les lacs randputf-lac-* en sont évidemment exclus.
+-- Tuiles d'eau vanilla (lacs randputf-lac-* exclus).
 local WATER_TILES = {
   water = true, deepwater = true, ["water-shallow"] = true,
   ["water-green"] = true, ["deepwater-green"] = true, ["water-mud"] = true,
@@ -286,11 +239,8 @@ local function purge_chunk_water(surface, cx, cy)
   surface.set_tiles(tiles, false)
 end
 
--- Filet de sécurité en cas de spawn différé (cutscene du crash) : fenêtre
--- courte pendant laquelle on applique le kit UNE fois dès que le personnage
--- existe. La garde KIT_APPLIED (par vie, nil au spawn) garantit qu'on ne le
--- re-dépose JAMAIS deux fois : aucune course freeplay/mod ne peut donner deux
--- kits.
+-- Filet : applique le kit UNE fois si le personnage apparaît en retard (cutscene).
+-- KIT_APPLIED empêche le double dépôt.
 local SPAWN_SETTLE_TICKS = 1200
 local ARMED = {}       -- player_index -> ticks_left
 local KIT_APPLIED = {} -- player_index -> true (kit complet déjà posé cette vie)
@@ -299,13 +249,8 @@ local function set_armed(player_index)
   ARMED[player_index] = SPAWN_SETTLE_TICKS
 end
 
--- ____________________________________________________________________________
--- Enforcement (§7) : le scénario crash-site insère ses propres items (dont le
--- SMG + munitions) dans l'inventaire du personnage, parfois APRES
--- on_player_created (cutscene) ou dans des slots différents (2.0 : plusieurs
--- slots d'armes, ammo par slot). On neutralise donc tout surplus PAR RAPPORT au
--- kit seed à plusieurs points de contrôle. Jamais de clear global : on ne touche
--- que les items de notre plan (le loot du joueur est préservé).
+-- Enforcement : le scénario crash-site injecte des items en différé (SMG etc.).
+-- Normaliseur à 300/900/1800 ticks, chirurgical (item par item, loot préservé).
 local KIT_ENFORCE_TICKS = { 300, 900, 1800 } -- points de contrôle (tick)
 local KIT_ENFORCE = {} -- player_index -> index du prochain point de contrôle
 
@@ -329,7 +274,7 @@ local function kit_plan()
   return KIT_PLAN
 end
 
--- DIAG : journalise les compteurs des items du kit pour tracer les doublons.
+-- DIAG : journalise les compteurs des items du kit.
 local function log_kit_state(label, player)
   local parts = {}
   for _, entry in ipairs(seed.starter_kit or {}) do
@@ -344,8 +289,7 @@ local function log_kit_state(label, player)
   log("[randputF][KIT] " .. label .. " {" .. table.concat(parts, ", ") .. "}")
 end
 
--- DIAG dure : dump de CHAQUE slot des inventaires du personnage (voir dans
--- quel inventaire vit le doublon : main / gun slots / ammo slots).
+-- DIAG : dump de chaque slot des inventaires du personnage.
 local function dump_character_inventories(player, label)
   local character = get_character(player)
   if not character then
@@ -380,8 +324,7 @@ local function dump_character_inventories(player, label)
   end
 end
 
--- Kit seed : dépôt exact des items du kit (guns/munitions dans les bons
--- inventaires, le reste dans l'inventaire principal). Idempotent.
+-- Dépôt exact du kit seed (guns/munitions dans les bons inventaires). Idempotent.
 local function give_starter_kit(player)
   local character = get_character(player)
   if not character then
@@ -410,11 +353,7 @@ local function give_starter_kit(player)
   return true
 end
 
--- Normaliseur : ramène chaque item du plan seed à sa quantité cible, où qu'il
--- vive. Gun/ammo hors de leur slot (ex. SMG dans le main) = doublon du
--- scénario → retiré. Excédent dans le slot cible → retiré depuis la fin. Item
--- machine manquant (ex. steel-furnace) → ré-inséré. Chirurgical : aucun autre
--- item n'est touché.
+-- Normaliseur : ramène chaque item du plan seed à sa quantité cible (chirurgical).
 local function normalize_kit(player)
   local character = get_character(player)
   if not character then
@@ -429,9 +368,7 @@ local function normalize_kit(player)
   for name, spec in pairs(plan) do
     if spec.type == "gun" or spec.type == "ammo" then
       if main_inv then
-        -- Retire TOUTES les copies de ce gun/ammo du main (elles doivent vivre
-        -- dans leur slot). Compter la quantité d'abord : `remove` n'accepte pas
-        -- math.huge (= inf) comme count.
+        -- Compter d'abord : `remove` refuse math.huge comme count.
         local amount = 0
         for i = 1, #main_inv do
           local s = main_inv[i]
@@ -455,9 +392,7 @@ local function normalize_kit(player)
           local s = slot_inv[i]
           if s and s.valid_for_read then
             local take = math.min(excess, s.count)
-            -- Retirer TOUTE la stack (take == s.count) ⇒ count = 0 refusé par
-            -- l'API (« count must be positive ») : on vide la stack au lieu
-            -- de faire un set_stack{count = 0}.
+            -- stack complète → s.clear() (API refuse count=0).
             if s.count - take > 0 then
               s.set_stack{ name = s.name, count = s.count - take }
             else
@@ -467,8 +402,7 @@ local function normalize_kit(player)
           end
         end
       end
-      -- 3) Déficit (ex. notre arme restée dans le main après un clear du
-      -- scénario) : ré-équipée dans le slot cible.
+      -- 3) Déficit : ré-équipée dans le slot cible.
       local cur2 = player.get_item_count(name)
       if cur2 < spec.count then
         local need = spec.count - cur2
@@ -492,8 +426,7 @@ local function normalize_kit(player)
   end
 end
 
--- Kit seed COMPLET au premier spawn : purge + dépôt. C'est le SEUL chemin qui
--- distribue le kit complet (pas le freeplay, pas un rechargement de partie).
+-- Kit seed complet au premier spawn : purge + dépôt (seul chemin de distribution).
 local function apply_spawn_kit(player)
   if not get_character(player) then
     return false
@@ -503,10 +436,7 @@ local function apply_spawn_kit(player)
   return true
 end
 
--- Kit de respawn volontairement MINCE (une arme + des munitions), jamais le
--- kit complet : une mort ne re-stocke pas le kit de départ au complet — c'était
--- la cause perçue du « 2 fois le starter pack » (mort au site de crash → kit
--- complet re-donné). Miroir du respawn vanilla (pistol + 10 firearm-magazine).
+-- Respawn mince (pistol + 10 firearm-magazine) : une mort ne re-stocke pas le kit complet.
 local RESPAWN_KIT = {
   { name = "pistol", count = 1 },
   { name = "firearm-magazine", count = 10 },
@@ -549,24 +479,9 @@ local function apply_respawn_kit(player)
   return true
 end
 
--- ____________________________________________________________________________
--- §7.5 — REMPLISSAGE DES LACS PAR FLOOD-FILL
---
--- Les lacs sont DESSINÉS par le moteur d'altitude natif de Factorio : toute
--- l'eau devient la tuile « fantôme » randputf-lac-neutre (fluide inexistant —
--- voire les définitions data-updates.lua). Au runtime on les REMPLIT : quand
--- un chunk est généré, chaque tuile fantôme entreprise une flood-fill (BFS)
--- de tout le lac connexe contenu dans le chunk, et toutes ses tuiles sont
--- remplacées par la tuile-par-fluide choisie. La sélection :
---   * si une tuile VOISINE (dans le chunk OU d'un chunk déjà généré) est déjà
---     une tuile-par-fluide → le lac ADOPTE ce fluide (propagation le long du
---     lac, y compris à travers les limites de chunks : un même lac n'a jamais
---     deux fluides) ;
---   * sinon (lac « frais », sans voisin coloré) → on tire le PROCHAIN fluide
---     de la seed, en boucle (tourniquet) : chaque lac indépendant reçoit un
---     fluide, et s'il y a plus de lacs que de fluides on réutilise en boucle.
--- Une tuile transformée n'est plus fantôme, donc jamais re-traversée : c'est
--- le « visited » naturel — on ne repasse jamais deux fois sur le même lac.
+-- Flood-fill lacs : BFS sur chaque tuile fantôme (randputf-lac-neutre) au
+-- chunk généré. Fluide = voisin déjà coloré (propagation inter-chunks)
+-- sinon prochain de la seed (tourniquet).
 local PHANTOM_TILE = "randputf-lac-neutre"
 
 -- Tuiles-par-fluide dans l'ordre de la seed ; lookup nom de tuile -> fluide.
@@ -584,8 +499,7 @@ local function init_lake_fluids()
   end
 end
 
--- Prochain fluide de la seed, en boucle (persisté dans storage pour rester
--- stable entre chunks/sessions). N'est appelé que pour un lac FRAIS.
+-- Prochain fluide de la seed (boucle persistée). Uniquement pour lacs frais.
 local function next_lake_fluid_tile()
   local n = #LAKE_FLUID_TILES
   if n == 0 then return nil end
@@ -659,10 +573,7 @@ local function fill_lake(surface, x0, y0, area)
   for i, p in ipairs(region) do
     tiles[i] = { position = p, name = tile_name }
   end
-  -- correct_tiles = true (défaut) : le remplacement tuile-fantôme -> tuile-lac
-  -- recalcule les bords autour des tuiles modifiées. Les tuiles-lac étant déjà
-  -- ciblées par les transitions des tuiles de terre (data-updates §7.5), les
-  -- berges sable/herbe du biome se dessinent autour du lac rempli.
+  -- correct_tiles recalcule les bords (berges du biome dessinées autour).
   surface.set_tiles(tiles)
 end
 
@@ -682,16 +593,8 @@ local function fill_lakes_in_area(surface, area)
   end
 end
 
--- ── Gisements posés au runtime (§6.5) ──────────────────────────────────────
--- Les patchs (ITEMS et FLUIDES) ne sont plus placés par le mapgen (autoplace à
--- base_density=0 dans data-updates). Ici, à chaque chunk généré, on pose les
--- blocs/puits du gisement sur ce chunk : entité-resource
--- `randputf-minerai-<item>` (minée par une foreuse) ou `randputf-oil-<fluide>`
--- (pompée par un pumpjack). La position de chaque bloc est dérivée de façon
--- REPRODUCTIBLE et INDÉPENDANTE de l'ordre de génération des chunks : on crée
--- un PRNG frais par bloc (seed = well_seed + index), donc l'ordre
--- chunk-par-chunk n'importe pas. Richesse = celle de la seed, appliquée au
--- runtime via entity.amount.
+-- Gisements posés au runtime : blocs/puits dérivés d'un PRNG par bloc
+-- (indépendant de l'ordre des chunks). Richesse via entity.amount.
 local WELL_MIX = 2654435761 -- constant de mélange (Knuth), masqué sous 2^31
 
 local function place_resource_block(surface, entity_name, x, y, richness)
@@ -705,47 +608,29 @@ local function place_resource_block(surface, entity_name, x, y, richness)
   end
   if richness and richness > 0 then
     e.amount = richness
-    -- `initial_amount` est INSCRIPTIBLE sur les gisements INFINIS uniquement
-    -- (API 1.1+) : aucune propriété prototype ne l'expose au runtime, on le
-    -- tente donc en pcall — un gisement FINI jette silencieusement
-    -- « Can't set initial amount on a non-infinite resource entity » et la
-    -- richesse reste posée via `amount`.
+    -- initial_amount : tentative sur gisements infinis uniquement (pcall, échec silencieux sinon).
     pcall(function() e.initial_amount = richness end)
   end
   return true
 end
 
--- Positions des blocs/puits du gisement `patch` qui tombent dans l'aire `area`.
---
--- ITEM : le champ est produit AVEC L'ALGO DU MAPGEN VANILLA — une tuile est
--- posée ssi un champ de BRUIT LISSE seuillé y dépasse un seuil (l'équivalent
--- de `ore iff noise(tile) >= 0` de resource_autoplace). Le bruit lisse
--- (interpolation bilinéaire value-noise) rend les veines ORGANIQUES :
--- contours sinueux, avancées/dents, trous internes — jamais des cercles
--- parfaits. Déterministe : graine = well_seed, dérivée de coordonnées de
--- tuile uniquement (indépendant de l'ordre des chunks). `count` (= aire du
--- disque nominale) ne sert qu'à répartir la richesse par tuile.
-local NOISE_CELL = 4      -- maille du bruit (échelle du relief des veines)
+-- Positions des blocs/puits dans `area`. Items : champ organique = disque bruité
+-- posé par un HASH déterministe par tuile (cœur plein « façon vanilla », anneau
+-- externe dilué, bord ondule) — miroir EXACT de `tool/generator/map_patches.py`
+-- (`_tile_hash`, `item_field_tiles`) : le count stocké dans la seed = nombre
+-- réel de tuiles posées, donc richesse/count tombe pile sur le champ.
+-- Fluides : puits éparpillés.
 local NOISE_WOBBLE = 0.20 -- amplitude du bruit sur le bord (contours sinueux)
-local NOISE_SHAKE = 127.1
+local NOISE_CORE = 0.72  -- fraction du rayon = cœur plein
+local NOISE_CORE_KEEP = 0.99 -- proba de poser une tuile au cœur (quasi plein)
+local NOISE_DILUTE = 0.85 -- densité maximale de l'anneau externe (bord dilué)
+local NOISE_M = 2147483647 -- modulo (nombre premier, produits < 2^53 : exacts)
 
-local function vnoise(seed, x, y)
-  local s = math.sin(x * NOISE_SHAKE + y * 311.7 + seed) * 43758.5453123
-  return s - math.floor(s)
-end
-
-local function smooth_noise(seed, x, y)
-  local x0 = math.floor(x / NOISE_CELL)
-  local y0 = math.floor(y / NOISE_CELL)
-  local fx = x / NOISE_CELL - x0
-  local fy = y / NOISE_CELL - y0
-  local ux = fx * fx * (3 - 2 * fx)
-  local uy = fy * fy * (3 - 2 * fy)
-  local a = vnoise(seed, x0, y0)
-  local b = vnoise(seed, x0 + 1, y0)
-  local c = vnoise(seed, x0, y0 + 1)
-  local d = vnoise(seed, x0 + 1, y0 + 1)
-  return (a * (1 - ux) + b * ux) * (1 - uy) + (c * (1 - ux) + d * ux) * uy
+local function tile_hash(seed, x, y)
+  local h = (seed % NOISE_M) + 1 + (x + 31) * 48271 + (y + 31) * 33919
+  h = ((h % NOISE_M) * 48271) % NOISE_M
+  h = (h * 48271) % NOISE_M
+  return h / NOISE_M
 end
 
 local function block_positions_in_area(patch, area)
@@ -758,8 +643,7 @@ local function block_positions_in_area(patch, area)
   local minx, maxx = area.left_top.x, area.right_bottom.x - 1
   local miny, maxy = area.left_top.y, area.right_bottom.y - 1
   if patch.kind == "fluid" then
-    -- Puits FLUIDES éparpillés à l'extérieur du centre (0.25..1) : la densité
-    -- n'apporte rien à un pumpjack, il se branche sur n'importe quelle tuile.
+    -- Puits fluides : éparpillés à l'extérieur du centre (0.25..1).
     for idx = 0, count - 1 do
       local g = game.create_random_generator((well_seed + idx * WELL_MIX) % 2147483648)
       local ang = g() * 2 * math.pi
@@ -771,12 +655,10 @@ local function block_positions_in_area(patch, area)
       end
     end
   else
-    -- Champ ITEM organique type vanilla (thresholded noise). Deux bruits
-    -- lisses : le 1er fait onduler le bord (dents/avancées), le 2nd règle la
-    -- densité (cœur plein, bords qui se délitent + trous internes).
+    -- Champ ITEM organique façon vanilla : disque bruité, cœur quasi plein,
+    -- anneau externe dilué, bord ondule (~1 % de trous internes).
     local seed_a = well_seed
-    -- Constante Φ (partie entière, ~1.6e9) pour décorréler le 2e champ de
-    -- bruit (addition exacte sans dépassement flottant).
+    -- Constante Φ (~1.6e9) pour décorréler le 2e champ de hash.
     local seed_b = well_seed + 1618033989
     local margin = math.ceil(radius * (1 + NOISE_WOBBLE))
     local first_wy = math.max(miny, cy - margin)
@@ -788,16 +670,20 @@ local function block_positions_in_area(patch, area)
         local dx = wx - cx
         local dy = wy - cy
         local d = math.sqrt(dx * dx + dy * dy)
-        local wobble = (smooth_noise(seed_a, wx, wy) - 0.5) * 2 * radius * NOISE_WOBBLE
+        local wobble = (tile_hash(seed_a, dx, dy) - 0.5) * 2 * radius * NOISE_WOBBLE
         if d <= radius + wobble then
           local edge = d / radius
-          -- Densité « ore vanilla » : le CŒUR est quasi plein, le champ se
-          -- délite en allant vers le bord (jamais l'inverse). Bruit comparé
-          -- EN DESSOUS du seuil : seuil haut au centre (≈90 % gardé), seuil
-          -- qui chute au bord (≈30 %) → gisement qui se dissout en poussière
-          -- comme une vraie couche de minerai, sans « tout manger au milieu ».
-          if smooth_noise(seed_b, wx, wy) < 0.90 - edge * 0.60 then
-            out[#out + 1] = { wx, wy }
+          if edge <= NOISE_CORE then
+            -- Cœur plein : quasi toutes les tuiles internes.
+            if tile_hash(seed_b, dx, dy) < NOISE_CORE_KEEP then
+              out[#out + 1] = { wx, wy }
+            end
+          else
+            -- Anneau externe : densité décroissante jusqu'au bord (dilué).
+            local weak = (edge - NOISE_CORE) / (1 - NOISE_CORE)
+            if tile_hash(seed_b, dx, dy) < (1 - weak) * NOISE_DILUTE then
+              out[#out + 1] = { wx, wy }
+            end
           end
         end
       end
@@ -818,10 +704,7 @@ local function place_patch_gisements_in_area(surface, area)
     else
       entity_name = "randputf-minerai-" .. patch.resource
     end
-    -- FLUIDE : la richesse est un RENDEMENT par puits (chaque puits vaut
-    -- `richness`). ITEM : la richesse est le TOTAL du champ — répartie par
-    -- tuile (richness / count), comme une vraie couche d'ore vanilla qui se
-    -- tarit morceau par morceau.
+    -- FLUIDE : rendement par puits. ITEM : total du champ réparti par tuile.
     local richness = patch.richness
     local per_tile = richness
     if patch.kind ~= "fluid" and patch.count and patch.count > 0 then
@@ -833,8 +716,7 @@ local function place_patch_gisements_in_area(surface, area)
   end
 end
 
--- Calculé une fois au chargement du mod (re-calculé à chaque chargement de
--- session) : indépendant de game, donc fiable aussi en on_load.
+-- Calculé une fois au chargement module (indépendant de game).
 init_lake_fluids()
 
 
@@ -864,24 +746,16 @@ script.on_init(function()
     end
   end
 
-  -- Les conteneurs du crash sont créés par le scénario au boot : le balayage
-  -- par on_tick (fenêtre WRECK_SETTLE_TICKS) les ratisse après coup, une fois
-  -- chacun (protection unit_number), pour vider + remplir aléatoirement (§7).
+  -- Crash containers : balayage on_tick pendant WRECK_SETTLE_TICKS (idempotent).
   for _, surface in pairs(game.surfaces) do
     process_crash_site(surface)
   end
 
-  -- Lacs (§7.5) : remplissage fait dans on_chunk_generated (flood-fill), les
-  -- fluides/positions sont déjà initialisés au module scope (init_lake_fluids).
-  -- Le kit de spawn n'est PAS posé ici : il est délivré aux événements
-  -- on_player_created / on_player_respawned (et jamais au rechargement).
+  -- Lacs : remplissage via on_chunk_generated. Kit de spawn délivré aux events player.
 end)
 
 script.on_load(function()
-  -- On ne peut PAS toucher `game` ni muter `storage` ici (API 2.0) : on
-  -- restaure juste le storage des composants runtime qui en dépendent
-  -- (références + loi du site de crash). Le kit de spawn n'est pas concerné :
-  -- jamais redonné à on_player_joined (charge/reconnexion).
+  -- Pas de mutation possible ici (API 2.0). Kit jamais redonné à on_player_joined.
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
@@ -893,16 +767,13 @@ script.on_event(defines.events.on_player_created, function(event)
   player.print(describe_patches())
   -- Nouvelle vie : on autorise UN dépôt du kit complet (garde réarmée).
   KIT_APPLIED[idx] = nil
-  -- Délivrance immédiate si le personnage existe déjà ; sinon le filet
-  -- (fenêtre courte) l'appliquera une fois que le personnage sera là.
+  -- Délivrance immédiate ou via le filet (fenêtre courte).
   if apply_spawn_kit(player) then
     KIT_APPLIED[idx] = true
   end
   log_kit_state("created", player)
   set_armed(idx)
-  -- Enforcement : le scénario crash-site peut insérer des items en différé
-  -- (cutscene) ou dans d'autres slots. Le normaliseur (points de contrôle 300 /
-  -- 900 / 1800 ticks) ramène le kit à son exact contenu au fil du temps.
+  -- Enforcement : normaliseur à 300/900/1800 ticks active.
   KIT_ENFORCE[idx] = 1
 end)
 
@@ -912,10 +783,7 @@ script.on_event(defines.events.on_player_respawned, function(event)
   if not player then
     return
   end
-  -- Si KIT_APPLIED n'est PAS encore vrai, c'est le spawn initial (pas une
-  -- vraie mort). On ne touche à rien : le kit complet sera délivré par
-  -- on_player_created / le filet. Si KIT_APPLIED est vrai, c'est une vraie
-  -- mort → on pose le kit de survie mince (pistol + firearm×10).
+  -- KIT_APPLIED=nil → spawn initial (on ne touche rien). Sinon → respawn mince.
   if not KIT_APPLIED[idx] then
     log("[randputF][KIT] respawn skipped (initial spawn, KIT_APPLIED=nil)")
     return
@@ -924,10 +792,7 @@ script.on_event(defines.events.on_player_respawned, function(event)
   log_kit_state("respawn", player)
 end)
 
--- NOTE : PAS de handler on_player_joined_game. Réarmer le filet au chargement
--- d'une sauvegarde (ou reconnexion) purgerait l'inventaire du joueur en cours
--- de partie (le kit ne correspond plus après quelques heures de jeu). Le kit
--- n'est distribué qu'à on_player_created / on_player_respawned.
+-- Pas de on_player_joined : réarmer purgerait l'inventaire existant.
 
 script.on_event(defines.events.on_tick, function()
   for idx, ticks_left in pairs(ARMED) do
@@ -945,10 +810,7 @@ script.on_event(defines.events.on_tick, function()
     end
   end
 
-  -- Enforcement (§7) : normalise le kit aux points de contrôle définis, pour
-  -- neutraliser les doublons injectés par le scénario (slots d'armes 2.0,
-  -- insertions pendant la cutscene). Le dump d'inventaire n'a lieu qu'au 1er
-  -- passage, pour identifier où vit le doublon.
+  -- Enforcement : normalise le kit aux points de contrôle. Dump au 1er passage.
   for idx, stage in pairs(KIT_ENFORCE) do
     local target = KIT_ENFORCE_TICKS[stage]
     if target and game.tick >= target then
@@ -971,12 +833,7 @@ script.on_event(defines.events.on_tick, function()
     end
   end
 
-  -- Purge de l'eau vanilla (§7.5) : les cartes générées AVANT le fix
-  -- property_expression_names gardent leurs tuiles water/deepwater sur les
-  -- chunks déjà créés. Balayage incrémental de chunks générés (32 par tick) en
-  -- carré croissant jusqu'à épuisement de la zone explorée. Le curseur est
-  -- persisté (storage.water_purge) donc la passe reprend après rechargement,
-  -- et elle est idempotente (les tuiles converties ne sont plus dans la liste).
+  -- Purge eau vanilla : balayage incrémental (32 chunks/tick), curseur persisté, idempotent.
   local purge = storage.randputf.water_purge
   local done = false
   if purge ~= nil then
@@ -1014,15 +871,13 @@ script.on_event(defines.events.on_tick, function()
       end
     end
   else
-    -- Pas encore lancée : on amorce UNE passe sur la surface principale. La
-    -- marque water_purge_done évite de rescanner sans cesse les maps neuves.
+    -- Amorce une passe. water_purge_done évite de rescanner les maps neuves.
     if storage.randputf.water_purge_done == nil and game.surfaces[1] then
       storage.randputf.water_purge = { ring = 0, x = 0, y = 0 }
     end
   end
 
-  -- DIAG TEMPORAIRE (§7.5) : une fois, scanne une zone autour du spawn et
-  -- journalise la composition des tuiles-lac (fantôme restantes vs fluides).
+  -- DIAG : scan une fois la composition des tuiles-lac autour du spawn.
   if storage.randputf.__diag_lakes_done == nil and game.tick > 30 then
     storage.randputf.__diag_lakes_done = true
     local s = game.surfaces[1]
@@ -1048,10 +903,7 @@ script.on_event(defines.events.on_tick, function()
     end
   end
 
-  -- Balayage du site de crash : pendant la fenêtre de démarrage, on ratisse
-  -- régulièrement les surfaces pour traiter les conteneurs du crash créés par
-  -- le scénario APRES notre on_init (l'idempotence est garantie par la marque
-  -- unit_number : chaque conteneur n'est rempli qu'une seule fois).
+  -- Balayage crash containers pendant la fenêtre de démarrage (idempotent).
   local stop = storage.randputf.wreck_stop
   if stop ~= nil then
     if game.tick > stop then
@@ -1071,13 +923,7 @@ script.on_event(defines.events.on_surface_created, function(event)
   end
 end)
 
--- (§7.5) Pose de pompe sur lac NON encore coloré : au-delà du rayon de chunks
--- générés, les tuiles de lac restent la tuile fantôme `randputf-lac-neutre` au
--- fluide marqueur `randputf-neutre`. Une pompe côtière posée dessus turbine ce
--- fluide fantôme : la turbine (input filter = fluide assigné par la seed) n'a
--- alors « pas d'entrée pour les fluides » et rien ne sort. On force donc le
--- remplissage du lac connexe au moment où le joueur pose la pompe (flood-fill
--- circonscrit autour de la pompe ; le reste se recolore à la génération).
+-- Remplissage forcé du lac au moment de la pose de pompe offshore (flood-fill locale).
 local function color_lake_under_pump(surface, position)
   local tile = surface.get_tile(position.x, position.y)
   if tile.valid and tile.name == PHANTOM_TILE then
@@ -1108,13 +954,9 @@ script.on_event(defines.events.on_chunk_generated, function(event)
   local surface = event.surface
   if surface and surface.valid then
     process_crash_site(surface, event.area)
-    -- (§7.5) Remplissage des lacs : à chaque chunk généré, chaque tuile
-    -- fantôme démarre une flood-fill de son lac connexe, qui adopte le fluide
-    -- d'un voisin déjà coloré (propagation inter-chunks) sinon le prochain de
-    -- la seed (tourniquet).
+    -- Remplissage lacs : flood-fill par tuile fantôme (propagation ou tourniquet).
     fill_lakes_in_area(surface, event.area)
-    -- (§6.5) Gisements (items + fluides) : pose explicite des blocs/puits des
-    -- patchs sur ce chunk (plus d'autoplace mapgen).
+    -- Gisements : pose blocs/puits des patchs sur ce chunk.
     place_patch_gisements_in_area(surface, event.area)
   end
 end)

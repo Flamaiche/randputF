@@ -1,4 +1,4 @@
-"""Tests de la chaîne de départ (README §7) : kit, extraction, transformation,
+"""Tests de la chaîne de départ (docs/starter.md §7) : kit, extraction, transformation,
 transports, et partage d'état avec les phases suivantes."""
 
 from __future__ import annotations
@@ -176,7 +176,7 @@ def test_state_partage_avec_phases_suivantes():
 
 
 def test_pool_environnemental_disponible_des_le_depart():
-    """Arbres/rochers/poissons (README §3, §6) : items obtenus dès le départ,
+    """Arbres/rochers/poissons (docs/model.md §3, docs/ressources.md §6) : items obtenus dès le départ,
     avant tout patch — ils alimentent le pool d'ingrédients initial."""
     db = build_demo_db()
     chain = build_starter_chain(random.Random(1), db, make_patches(("fluid", "water")))
@@ -243,7 +243,7 @@ def test_patches_sans_ressource_dupliquee():
 
 
 def test_landfill_garanti_des_lacs():
-    """C4 : quand la seed tire au moins un lac (plus d'eau vanilla), le landfill
+    """Quand la seed tire au moins un lac (plus d'eau vanilla), le landfill
     est craftable dès le bootstrap (recette randputf-landfill + unlock par la
     tech gratuite starter-transformation), jamais laissé au hasard du balayage."""
     rng = random.Random(11)
@@ -265,7 +265,7 @@ def test_landfill_garanti_des_lacs():
 
 
 def test_pas_de_landfill_sans_lac():
-    """C4 : sans lac, on ne force PAS le landfill dans le starter (il reste au
+    """Sans lac, on ne force PAS le landfill dans le starter (il reste au
     balayage §9.6). La seed préserve son aléa."""
     rng = random.Random(11)
     db = build_demo_db()

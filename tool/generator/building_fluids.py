@@ -1,14 +1,13 @@
 """Assignation de fluides aux bâtiments à comportement fixe (§6/§10).
 
-Détecte automatiquement les bâtiments qui trasforment un fluide en un autre
-(boilers, heat-exchangers) ou qui consomment un fluide pour produire de
-l'énergie (turbines, steam-engines) — et leur assigne un fluide obtainable
-au début du run (un lac, §7.5).
+Détecte automatiquement les bâtiments qui transforment un fluide en un autre
+(boilers, heat-exchangers) ou qui en consomment pour produire de l'énergie
+(turbines, steam-engines), et leur assigne un fluide obtainable dès le début
+du run (un lac, §7.5).
 
-Rien n'est codé en dur : la détection repose sur les TAGS du bâtiment
-(is_generator + produces_electricity, is_crafter pour les transformateurs) et
-ses CAPACITÉS (fluid_inputs, fluid_outputs, energy_type), jamais sur une
-liste de noms.
+Rien n'est codé en dur : détection par TAGS (is_generator +
+produces_electricity, is_crafter pour les transformateurs) et CAPACITÉS
+(fluid_inputs, fluid_outputs, energy_type), jamais par liste de noms.
 
 La seed exporte ``building_fluid_assignments`` :
   { "steam-turbine": {"input": "water"},
@@ -25,11 +24,9 @@ from tool.generator.recipes import ProgressionState
 
 
 def _is_steam_generator(building) -> bool:
-    """Un générateur à vapeur prend un FLUIDE en entrée (fluid_inputs > 0) :
-    steam-engine / steam-turbine. Son amorçage dépend d'un fluide extractible
-    sans électricité (un lac). Le tag ``produces_electricity`` exclut les
-    producteurs de chaleur taggés ``is_generator`` (heat-exchanger) : la
-    chaleur n'est pas consommatrice de fluide « moteur »."""
+    """Générateur à vapeur : is_generator + produces_electricity + fluide en
+    entrée (steam-engine / steam-turbine). ``produces_electricity`` exclut les
+    producteurs de chaleur taggés ``is_generator`` (heat-exchanger)."""
     return (
         getattr(building, "is_generator", False)
         and getattr(building, "produces_electricity", False)
@@ -43,26 +40,23 @@ def assign_building_fluids(
     state: ProgressionState,
     lake_resources: set[str],
 ) -> dict[str, dict[str, str]]:
-    """Assigne un fluide obtainable (lac) à chaque bâtiment à comportement fixe.
+    """Assigne un fluide de lac à chaque bâtiment à comportement fixe.
 
-    Deux catégories de bâtiments :
+    1. Générateurs à vapeur : ``input`` = fluide du lac (consommation →
+       énergie).
+    2. Transformateurs à recette fixe (boiler, heat-exchanger) : ``input`` et
+       ``output`` = deux fluides distincts du lac (transformation active par
+       combustible).
 
-    1. **Générateurs à vapeur** (steam-engine, steam-turbine) : consomment un
-       fluide pour produire de l'énergie. ``input`` = fluide du lac assigné.
-
-    2. **Transformateurs à recette fixe** (boiler, heat-exchanger) : transforment
-       un fluide en un autre, avec activation par combustible. ``input`` et
-       ``output`` = deux fluides distincts du lac.
-
-    Retourne un dict ``{building_name: {"input": fluid, "output"?: fluid}}``
-    destiné à être exporté dans la seed et consommé par le mod en data-stage.
+    Retourne ``{building_name: {"input": fluid, "output"?: fluid}}``, exporté
+    dans la seed et appliqué par le mod en data-stage.
     """
     assignments: dict[str, dict[str, str]] = {}
     if not lake_resources:
         return assignments
 
     # Ordre déterministe : ``lake_resources`` est un set (itération non stable
-    # entre processus / PYTHONHASHSEED) et alimente des rng.choice.
+    # entre processus) et alimente des rng.choice.
     available = sorted(lake_resources)
     used_as_input: set[str] = set()
 
@@ -80,10 +74,9 @@ def assign_building_fluids(
             used_as_input.add(fluid)
 
     # 2) Transformateurs à recette fixe (boiler, heat-exchanger)
-    # L'output peut réutiliser un fluide déjà utilisé en input ailleurs (rôle
-    # physique différent). La seule contrainte pour l'output est :
-    #   - output ≠ input du MÊME bâtiment
-    #   - pas de doublon output entre transformateurs
+    # L'output peut réutiliser un fluide déjà en input ailleurs (rôle physique
+    # différent) ; contraintes : output ≠ input du même bâtiment, pas de
+    # doublon output entre transformateurs.
     fixed_transformers = [
         b for b in db.buildings.values()
         if is_fixed_fluid_crafter(b)
@@ -112,7 +105,7 @@ def _pick_fluid(
     available: list[str],
     exclude: set[str],
 ) -> str | None:
-    """Choisit un fluide aléatoirement parmi les candidats, hors ``exclude``."""
+    """Choisit un fluide aléatoire parmi les candidats, hors ``exclude``."""
     candidates = [f for f in available if f not in exclude]
     if not candidates:
         return None

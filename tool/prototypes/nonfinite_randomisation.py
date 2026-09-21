@@ -1,17 +1,9 @@
-"""Prototype C1 : randomisation des ressources non-infinies (IDEES §C1).
+"""Prototype C1 : randomisation des ressources non-infinies.
 
-Les patchs items et fluides (gisements finis) sont déjà posés au runtime
-(§6.5), mais leur **identité** (quelle ressource) est fixe à la seed.  Cette
-phase randomise **en plus** :
-- la **richesse** (volume total) de chaque patch ;
-- le **nombre de blocs/pièces** (count) ;
-- le **rayon** du cluster.
-
-L'identité (quel minerai/fluide) n'est PAS modifiée ici : elle est tirée
-par ``generate_patches`` et ne doit pas être dédoublonnée (C6).
-
-**Constante on/off** (``enabled``) : quand ``false``, aucune modification
-n'est appliquée (comportement vanilla actuel).
+Les patches items et fluides (gisements finis) ont leur identité fixe à la
+seed. Cette phase randomise en plus : la richesse (volume total), le nombre
+de blocs/pièces (count), le rayon du cluster. L'identité n'est PAS modifiée
+ici : elle est tirée par ``generate_patches``.
 """
 
 from __future__ import annotations
@@ -68,10 +60,8 @@ def randomise_patches(
 ) -> list[PatchSpec]:
     """Applique la randomisation non-infinie sur une liste de patchs.
 
-    - ``enabled=False`` → aucune modification, retourne la liste originale
-      (identique par identité, shallow copy).
-    - ``enabled=True``   → re-tire richness, count, cluster_radius pour
-      chaque patch avec le PRNG fourni (déterministe).
+    - ``enabled=False`` → liste identique (shallow copy).
+    - ``enabled=True`` → re-tire richness, count, cluster_radius avec le PRNG.
     - L'identité (kind + resource) n'est JAMAIS changée.
     - Richesse ≥ 1, count ≥ 1, radius ≥ 3 (bornes de sécurité).
     """
@@ -104,8 +94,7 @@ def verify_solvability(
 ) -> list[str]:
     """Vérifie que les ressources obligatoires sont toujours présentes.
 
-    Renvoie la liste des ressources manquantes (vide = OK).  Cette
-    vérification est INDÉPENDANTE de l'ordre : elle teste uniquement les
+    Renvoie la liste des ressources manquantes (vide = OK). Teste les
     identités, pas les quantités.
     """
     present_items = {p.resource for p in patches if p.kind == "item"}
