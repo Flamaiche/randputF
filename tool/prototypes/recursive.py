@@ -1,13 +1,12 @@
-"""Configuration : récursion pondérée (§9.1).
+"""Configuration : récursion pondérée.
 
-Configuration lue par le générateur recursive_phase :
 - poids de base par catégorie
 - facteur d'accélération progressive
 - nombre max d'itérations
 - seuil de stall (itérations sans nouveauté)
 - bornes de recipes par bâtiment
 - bornes de count pour les tech steps
-- randomisation des armes montées (§12.1)
+- randomisation des armes montées
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from tool.prototypes.base import PrototypeConfig
 @dataclass
 class RecursiveConfig(PrototypeConfig):
     """Configuration pour la récursion pondérée."""
-    # Poids de base par catégorie (§9.1)
+    # Poids de base par catégorie
     category_weights: dict[str, float] = field(default_factory=lambda: {
         "transformer": 30.0,
         "extractor": 15.0,
@@ -30,7 +29,7 @@ class RecursiveConfig(PrototypeConfig):
         "combat": 15.0,
         "science": 20.0,
     })
-    # Facteur d'accélération progressive (§9.1)
+    # Facteur d'accélération progressive
     # Poids effectif = base × (1 + nombre_bâtiments × progressive_factor)
     progressive_factor: float = 0.15
     # Bâtiments toujours exclus
@@ -38,11 +37,8 @@ class RecursiveConfig(PrototypeConfig):
     # Itérations
     max_iterations: int = 120
     stall_threshold: int = 10
-    # Cadence garantie des pylônes/distribution (§9.1) : 3 pôles verrouillés
-    # à des positions espacées de la récursion (chacun tire un type DIFFÉRENT,
-    # jamais déjà déployé). Index = nombre de steps récursifs produits.
-    # ex. (8, 28, 48) : un pôle avant ~8 steps, un autre ~20 après, un 3e ~20
-    # plus loin. Le reste des distributions reste randomisé normalement.
+    # Cadence garantie des pylônes : 3 pôles à positions espacées de la récursion
+    # (chacun tire un type DIFFÉRENT, jamais déjà déployé). Ex. (8, 28, 48).
     dist_marks: tuple[int, int, int] = (8, 28, 48)
     dist_guaranteed: int = 3
     # Recipes par bâtiment
@@ -53,17 +49,10 @@ class RecursiveConfig(PrototypeConfig):
     tech_count_max: int = 30
     science_cost_min: int = 5
     science_cost_max: int = 15
-    # Randomisation des armes MONTÉES (§7/§12.1) : chaque véhicule armé reçoit
-    # ``vehicle_slots`` armes tirées dans ``vehicle_weapons`` — de VRAIS ITEMS
-    # gun (tank-cannon, combat-shotgun, ...). La pool peut mêler les armes de
-    # véhicule (jamais craftables : elles restent des données de montage) et
-    # des armes de poing adoptables (ex. fusil à pompe : craftable à la main,
-    # ET clonable sur un véhicule). ``vehicle_slots_with_replacement`` : tirage
-    # avec remise (une même arme peut être tirée plusieurs fois puis est
-    # dédupliquée) ou sans remise.
-    # Portée montée (§12.1) : chaque arme assignée est CLONÉE pour le véhicule
-    # (« arme dans arme »), et la portée du clone est augmentée selon la taille
-    # de l'entité : facteur = 1 + max(taille - base_size, 0) × scale.
+    # Randomisation des armes MONTÉES : chaque véhicule armé reçoit
+    # ``vehicle_slots`` armes tirées dans ``vehicle_weapons``.
+    # Portée montée : chaque arme est clonée pour le véhicule, portée
+    # augmentée selon la taille : facteur = 1 + max(taille - base_size, 0) × scale.
     armed_vehicles: list[str] = field(default_factory=lambda: ["tank", "spidertron", "artillery-wagon"])
     vehicle_weapons: list[str] = field(default_factory=lambda: [
         "tank-cannon",
@@ -83,11 +72,8 @@ class RecursiveConfig(PrototypeConfig):
     vehicle_slots_with_replacement: bool = True
     vehicle_range_base_size: float = 2.0
     vehicle_range_scale: float = 0.4
-    # C3 : « companion guarantee » — paires/graphes d'items dépendants qui ne
-    # doivent JAMAIS être diffusés loin l'un de l'autre (un robot sans roboport
-    # = contenu mort). Chaque sous-liste est un groupe de compagnons mutuels :
-    # dès qu'un membre est déployé (balayage §9.6 / générateur), les autres
-    # membres sans recette sont créés juste après (dispatch ≤ 3 techs).
+    # Paires/graphes d'items dépendants qui ne doivent jamais être diffusés
+    # loin l'un de l'autre (un robot sans roboport = contenu mort).
     companions: list[list[str]] = field(default_factory=lambda: [
         ["roboport", "logistic-robot", "construction-robot"],
         ["solar-panel", "accumulator"],
@@ -158,14 +144,11 @@ class RecursiveConfig(PrototypeConfig):
 
     @property
     def vehicle_weapon_names(self) -> list[str]:
-        """Items d'armes de la pool (ordre de config) : ``pools.vehicle_weapons``
-        de la seed, et source du tirage (§7). Peut couvrir n'importe quelle
-        arme gun licence (même non montée de base : ex. fusil à pompe)."""
+        """Items d'armes de la pool (ordre de config)."""
         return list(self.vehicle_weapons)
 
     def roll_vehicle_slot_count(self, rng: random.Random) -> int:
-        """Nombre d'emplacements d'armes d'un véhicule (§7) :
-        bornes min/max de config."""
+        """Nombre d'emplacements d'armes d'un véhicule."""
         return rng.randint(self.vehicle_slots_min, self.vehicle_slots_max)
 
     def companion_group_for(self, item_name: str) -> list[str] | None:

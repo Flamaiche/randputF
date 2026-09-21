@@ -1,11 +1,10 @@
-"""Vérification des invariants de solvabilité (README §15).
+"""Vérification des invariants de solvabilité.
 
-IMPLEMENTE generiquement sur la structure seed :
-1. anti-cycle : tri topologique (Kahn) sur le graphe prerequis -> produit ;
-2. progressivite : chaque recette n'utilise que des choses deja atteignables
-   au moment de son deblocage, sauf marquage explicite on_the_spot_unlock ;
-3. completude : presence d'une chaine vers les prerequis fusée (hook, la
-   definition exacte des composants requis sera figée avec le moteur).
+Implémente génériquement sur la structure seed :
+1. anti-cycle : tri topologique (Kahn) sur le graphe prerequis → produit ;
+2. progressivite : chaque recette n'utilise que des choses atteignables au
+   moment de son deblocage, sauf ``on_the_spot_unlock`` ;
+3. completude : presence d'une chaine vers les prerequis fusee.
 """
 
 from __future__ import annotations
@@ -55,9 +54,8 @@ def _check_anti_cycle(seed: dict) -> list[str]:
 
 def _check_progressivity(seed: dict) -> list[str]:
     issues: list[str] = []
-    # Pool initial : patchs + lacs (§7.5) + ressources environnementales
-    # (arbres/rochers/poissons) toujours récoltables à la main (README §3, §6
-    # et §9.3).
+    # Pool initial : patchs + lacs + ressources environnementales
+    # (toujours récoltables à la main).
     pool: set[str] = {p["resource"] for p in seed.get("map", {}).get("patches", [])}
     pool |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
     pool |= set(ENVIRONMENTAL_ITEMS)

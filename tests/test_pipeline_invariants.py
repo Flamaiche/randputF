@@ -232,7 +232,7 @@ def test_munitions_vehicules_dispatch_apres(seeds):
 
 
 def test_companions_proches(seeds):
-    """C3 : « companion guarantee » — les groupes d'items dépendants restent
+    """« companion guarantee » — les groupes d'items dépendants restent
     PROCHES dans l'arbre (jamais une paire diffusée loin l'une de l'autre).
     - roboport ↔ robots (logistic/construction) : un robot sans roboport est
       du contenu mort ;
@@ -272,9 +272,10 @@ def test_companions_proches(seeds):
 def test_munitions_armes_de_poing(seeds):
     """§11 : une arme de poing débloquée par une tech combat ne doit JAMAIS être
     sans munition. Règle : si AUCUNE munition de sa catégorie n'est débloquée
-    avant, les munitions manquantes sont générées dans la MÊME tech que l'arme.
-    Invariant vérifié : une munition de chaque arme de poing craftable est
-    unlockée AU PLUS TARD à la tech de l'arme (idx_ammo <= idx_arme)."""
+    avant, une seule munition aléatoire parmi celles restantes est générée dans
+    la MÊME tech que l'arme (pas toutes d'un coup). Invariant vérifié : au
+    moins une munition craftée de la catégorie est unlockée AU PLUS TARD à la
+    tech de l'arme (min(timings) <= idx_arme)."""
     for s, seed in seeds.items():
         order = seed["progression_order"]
         idx = {tid: i for i, tid in enumerate(order)}
@@ -305,8 +306,11 @@ def test_munitions_armes_de_poing(seeds):
             timings = []
             for ammo in ammos:
                 atech = unlocker(ammo)
-                assert atech is not None, f"seed {s}: munition {ammo} ({gun}) jamais unlockée"
-                timings.append(idx[atech])
+                if atech is not None:
+                    timings.append(idx[atech])
+            assert timings, (
+                f"seed {s}: arme de poing {gun} ({cat}) sans munition craftée"
+            )
             assert min(timings) <= g_idx, (
                 f"seed {s}: arme de poing {gun} débloquée @{g_idx} sans munition "
                 f"disponible (munitions @{sorted(timings)})"
@@ -346,7 +350,7 @@ def test_aucun_science_pack_en_patch(seeds):
 
 
 def test_c6_aucune_ressource_dupliquee_sur_la_carte(seeds):
-    """IDEES C6 : une même ressource brute n'apparaît qu'UNE fois sur la carte —
+    """Une même ressource brute n'apparaît qu'UNE fois sur la carte —
     jamais à la fois en patch et en lac, ni deux fois en patch (tirages sans
     remise garantis par `generate_patches(lake_resources=...)` + ordre
     lacs→patchs dans `generate_seed`)."""
@@ -363,9 +367,10 @@ def test_oil_puits_posse_explicite_chaque_patch(seeds):
     """§6.5 : CHAQUE patch (item ET fluide) doit porter son gisement posé au
     runtime — centre déterministe, un nombre de blocs/puits et un rayon adaptés
     au KIND (fluides : 3..8 puits éparpillés rayon 9..16 ; items : champ plein
-    « type mapgen vanilla » — disque de rayon 9..17, count = aire du disque),
+    « type mapgen vanilla » — disque de rayon 9..17, count = nombre RÉEL de
+    tuiles posées par l'algo de forme, dérivé de `item_field_tiles`),
     une graine locale > 0."""
-    import math
+    from tool.generator.map_patches import item_field_tiles
 
     for s, seed in seeds.items():
         for patch in seed["map"]["patches"]:
@@ -379,9 +384,9 @@ def test_oil_puits_posse_explicite_chaque_patch(seeds):
             else:
                 assert 9 <= patch["cluster_radius"] <= 17, \
                     f"seed {s}: {patch['resource']} rayon item invalide"
-                expect = math.ceil(math.pi * patch["cluster_radius"] ** 2)
-                assert abs(patch["count"] - expect) <= 1, \
-                    f"seed {s}: {patch['resource']} count {patch['count']} != aire disque {expect}"
+                expect = len(item_field_tiles(patch["cluster_radius"], patch["well_seed"]))
+                assert patch["count"] == expect, \
+                    f"seed {s}: {patch['resource']} count {patch['count']} != tuiles réelles {expect}"
             assert patch["well_seed"] > 0, f"seed {s}: well_seed nul"
 
 
@@ -418,7 +423,7 @@ def test_oil_puits_deterministe_entre_generations():
 
 
 def test_c2_lac_est_obtenable_sans_recette():
-    """IDEES C2 : un lac est une ressource brute obtenable DÈS LE DÉPART (pompe
+    """Un lac est une ressource brute obtenable DÈS LE DÉPART (pompe
     offshore, volume infini) — il compte comme source externe de la solvabilité,
     au même titre qu'un patch. Vérifie en isolation que
     `_detect_unreachable_products` ne signale PAS une recette consommant un
@@ -436,7 +441,7 @@ def test_c2_lac_est_obtenable_sans_recette():
 
 
 def test_c2_validate_pipeline_valide_avec_lacs(seeds):
-    """IDEES C2 : `validate_pipeline` reçoit désormais les lacs comme sources
+    """`validate_pipeline` reçoit désormais les lacs comme sources
     externes (au même titre que les patchs). Sur des seeds réelles, aucun
     cycle/problème de progressivité n'est dû à un fluide de lac : le validateur
     le traite comme obtenable (pompe offshore)."""
@@ -780,7 +785,7 @@ def test_detecteur_de_cycle_repere_un_cycle_reel():
 
 
 def test_aucune_recette_sur_machine_a_recette_fixe(seeds):
-    """SUJETRATION (§10 + IDEES C7) : les bâtiments à RECETTE CACHÉE taggés
+    """§10 : les bâtiments à RECETTE CACHÉE taggés
     ``has_hidden_recipe`` (boiler/heat-exchanger/nuclear-reactor en vanilla) ne
     reçoivent JAMAIS une recette quelconque en tant qu'atelier — seule la
     recette randomisée assignée (crafted_in) les concerne. Tout bâtiment à

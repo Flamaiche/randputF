@@ -1,24 +1,15 @@
-"""Primitives partagees de creation de recettes (README §7 et §8).
+"""Primitives partagees de creation de recettes (§7/§8).
 
-Coeur du generateur : deux fonctions que toutes les phases consomment.
+- make_recipe / _make_recipe : recette pour un produit (ingredients ponderes
+  dans le pool deja valide, montants, batiment compatible).
+- ensure_obtainable : garantit qu'un item/fluide est obtenable, en creant au
+  besoin sa recette (et recursivement les intermediaires manquants).
 
-- make_recipe / _make_recipe : tire une recette pour un produit donne
-  (ingredients pondere dans le pool deja valide, montants, batiment compatible).
-- ensure_obtainable : garantit qu'un item ou un fluide est obtenable, en
-  creant au besoin la recette qui le produit (et recursivement les
-  intermediaires manquants, ex. le batiment de craft).
-
-Anti-cycle §8 garanti par construction, sur DEUX axes :
-
-1. Ingredients : tires EXCLUSIVEMENT dans le pool deja valide au moment de
-   la creation (ressources au sol, kit, recettes enregistrees avant), jamais
-   dans l'ensemble en cours de fabrication ; le produit est ajoute a sa
-   propre liste interdite.
-2. Batiments (crafted_in) : un bâtiment n'est utilisable comme atelier qu'une
-   fois son item obtenable resolu (deblockage sequentiel : item d'abord,
-   inscription ensuite). Un garde ``pending`` detecte toute reentrance sur
-   un produit deja en cours de resolution, ce qui rend impossible tout
-   cycle du type chaudiere -> assembleur -> chaudiere.
+Anti-cycle §8 garanti par construction : ingredients tires EXCLUSIVEMENT dans
+le pool deja valide (le produit est ajoute a sa propre liste interdite) et
+batiments resolus sequentiellement (item d'abord, inscription ensuite) ;
+le garde ``pending`` detecte toute reentrance (cycle chaudiere > assembleur >
+chaudiere impossible).
 """
 
 from __future__ import annotations
@@ -66,23 +57,20 @@ class ProgressionState:
     recipes: list[dict] = field(default_factory=list)
     steps: list[dict] = field(default_factory=list)
     pending: set[str] = field(default_factory=set)
-    # Équilibre production/consommation (C2) : compteurs cumulés au fil de la
-    # génération, et cible tirée une fois par seed. Sert à pondérer le tirage
-    # des ingrédients (consommer le surplus) et le choix des produits (ne pas
-    # produire plus de ce qui est déjà pléthore).
+    # Équilibre production/consommation (C2) : compteurs cumulés, cible tirée
+    # une fois par seed ; pondère le tirage des ingrédients (consommer le
+    # surplus) et le choix des produits (ne pas reproduire la pléthore).
     production: Counter = field(default_factory=Counter)
     consumption: Counter = field(default_factory=Counter)
     balance_target: float | None = None
     # Assignation de fluides aux bâtiments à comportement fixe (§6/§10) :
-    # {building_name: {"input": fluid, "output"?: fluid}}. Construit par
-    # electricity.resolve_electricity (turbine du premier générateur) et
-    # building_fluids.assign_building_fluids (boilers, autres turbines).
+    # {building_name: {"input": fluid, "output"?: fluid}}. Rempli par
+    # electricity.resolve_electricity et building_fluids.assign_building_fluids.
     building_fluid_assignments: dict = field(default_factory=dict)
-    # Bootstrap inline (§10ter, redesign) : watershed pré-électricité maintenu
-    # pendant le starter + l'électricité. Dès qu'il est ACTIVE, `_make_recipe`
-    # tire les ingrédients UNIQUEMENT dans ce watershed et sans atelier
-    # électrique → toute recette promise du starter est jouable pré-élec par
-    # construction (plus de passe de rattrapage post-hoc).
+    # Bootstrap inline (§10ter) : watershed pré-électricité, actif pendant le
+    # starter + l'électricité. Actif, `_make_recipe` tire UNIQUEMENT dans ce
+    # watershed et sans atelier électrique — toute recette promise du starter
+    # est jouable pré-élec par construction.
     early: EarlyOracle = field(default_factory=EarlyOracle)
 
     def is_obtained(self, kind: str, name: str) -> bool:
@@ -115,16 +103,14 @@ class ProgressionState:
             self.consumption[ing["name"]] += ing.get("amount", 1)
 
     def balance_factor(self, name: str) -> float:
-        """C2 : facteur de pondération équilibre pour `name`.
+        """C2 : facteur de pondération d'équilibre pour `name`.
 
-        ratio = consommation / production. Une valeur **basse** = item
-        PRODUIT mais peu CONSOMMÉ (pléthore/unused) ; une valeur **haute** =
-        CONSOMMÉ mais peu PRODUIT (rare). La cible `balance_target` est le
-        ratio « juste ». On oriente PAR USAGE :
-        - comme INGRÉDIENT (consommer) : on récompense la pléthore
-          (ratio bas) → facteur > 1, on pénalise la rareté (ratio haut) → < 1 ;
-        - le signe inverse sert côté PRODUCTION (`_pick_product`).
-        Absent du comptage → facteur neutre 1.0."""
+        ratio = consommation / production : bas = produit peu consommé
+        (pléthore), haut = consommé mais peu produit (rare). La cible
+        `balance_target` est le ratio « juste ». Orienté par usage : comme
+        ingrédient on récompense la pléthore (facteur > 1) et on pénalise la
+        rareté (< 1) ; le signe inverse sert côté production. Absent du
+        comptage → 1.0."""
         if name not in self.production and name not in self.consumption:
             return 1.0
         ratio = self.consumption.get(name, 0) / (self.production.get(name, 0) + 1e-9)
@@ -146,21 +132,15 @@ def ensure_obtainable(
 ) -> None:
     """Garantit que ``name`` est produisible, en creant sa recette si besoin.
 
-    ``force=True`` crée la recette MÊME si l'item est déjà obtenu (cas d'un
-    item également présent en patch au sol, §6) : exigé par les extracteurs —
-    leur item doit disposer d'une recette de craft dans la tech d'extraction
-    (starter-extraction, AVANT tout consommateur, §7) pour que « quand on a
-    besoin d'une ressource, son extracteur soit déjà débloqué ». Sans force,
-    un extracteur-patch (perceuse tirée en patch) n'aurait AUCUNE recette
-    starter et finirait craftable uniquement en profondeur de seed.
-
-    ``finite_materials=True`` interdit les ingrédients « infinis » : items
-    environnementaux (récolte à la main illimitée) et tout fluide — la recette
-    se fabrique exclusivement avec de la matière produite (use chest du kit)."""
+    ``force=True`` crée la recette même si l'item est déjà obtenu (cas d'un
+    patch au sol, §6) : un extracteur-patch doit avoir une recette starter
+    (tech d'extraction, §7), sinon il ne serait craftable qu'en profondeur.
+    ``finite_materials=True`` interdit items environnementaux et fluides (la
+    recette se fabrique exclusivement avec de la matière produite)."""
     if state.is_obtained(kind, name) and not force:
         return
-    # Dédup : une recette existe déjà pour ce produit (ex. bootstrap) → rien
-    # à créer, pas de double too step, on ne marque que l'obtention.
+    # Dédup : recette déjà présente (ex. bootstrap) → rien à créer, pas de
+    # double step, on marque simplement l'obtention.
     for existing in state.recipes:
         if (
             existing["results"]
@@ -240,26 +220,18 @@ def _make_recipe(
 ) -> dict:
     """Tire une recette brute pour ``product_name``.
 
-    ``recipe_name`` permet d'attribuer un nom different du nom canonique
-    ``randputf-<produit>`` (utilise par les recettes relais §9.3, qui doivent
-    coexister avec la recette de bootstrap du meme produit).
+    ``recipe_name`` : nom different du canonique ``randputf-<produit>``
+    (recettes relais §9.3, qui coexistent avec la recette de bootstrap).
+    ``building_whitelist`` : ateliers restreints à la liste (jamais de
+    déblocage sur le tas en dehors) — relais §9.3.
+    ``handcraft`` : recette craftable à la main — ingrédients 100% solides,
+    aucun atelier. Réservé au bootstrap (§10) : le générateur d'amorçage ne
+    peut exiger un atelier électrique (boucle bootstrap sinon).
 
-    ``building_whitelist`` restreint le choix de l'atelier aux bâtiments de la
-    liste (jamais de déblocage sur le tas en dehors) : utilisé par les relais
-    pour rester sur les bâtiments réellement obtenables dès le début du run.
-
-    ``handcraft`` force une recette **craftable à la main** : ingrédients 100%
-    solides (jamais de fluide) et AUCUN atelier (pas de catégorie → « crafting »
-    par défaut, fabricable dans l'inventaire). Réservé au bootstrap (§10) —
-    générateur et pylône d'amorçage électrique : un atelier électrique
-    (assembling-machine-2, usine chimique...) exigerait l'électricité que ce
-    générateur est censé amorcer — boucle bootstrap sinon.
-
-    Les RECETTES DE BOOTSTRAP (craftables à la main) doublent le coût de leurs
+    Les recettes de bootstrap (craftables à la main) DOUBLENT le coût de leurs
     ingrédients non infinis (wood/stone/raw-fish, `is_environmental`) : le
-    début de run se joue sur ces ressources rares, et les recettes relais
-    (§9.3) fournissent ensuite les recettes « propres » sans elles. Les
-    ingrédients déjà produits (items de production) ne sont pas doublés."""
+    début se joue sur ces ressources rares ; les relais (§9.3) fournissent
+    ensuite les recettes « propres » sans elles."""
     eligible = [entry for entry in state.pool() if entry[1] not in forbidden]
     if not eligible:
         raise ValueError(
@@ -267,9 +239,9 @@ def _make_recipe(
             "aucune branche valide disponible"
         )
     if state.early.active:
-        # Bootstrap inline (§10ter) : on ne tire JAMAIS d'ingrédient hors du
-        # watershed pré-électricité courant — tout produit promise du starter
-        # reste jouable sans réseau (correct-by-construction).
+        # Bootstrap inline (§10ter) : jamais d'ingrédient hors du watershed
+        # pré-électricité courant — tout produit promis reste jouable sans
+        # réseau (correct-by-construction).
         item_pool = [
             e for e in eligible
             if e[0] == SLOT_ITEM and state.early.in_watershed(SLOT_ITEM, e[1])
@@ -285,10 +257,8 @@ def _make_recipe(
             )
         eligible = item_pool + fluid_pool
     if finite_materials:
-        # Recette à matière FINIE (§7 chest du kit) : on bannit les items
-        # environnementaux (wood/stone/raw-fish, récolte à la main illimitée)
-        # ET tout fluide (lacs infinis). La recette moule uniquement des items
-        # produits — jamais de l'infini.
+        # Recette à matière finie (§7, chest du kit) : on bannit les items
+        # environnementaux et tout fluide (infinis) — que des items produits.
         eligible = [
             e for e in eligible
             if e[0] == SLOT_ITEM
@@ -302,13 +272,10 @@ def _make_recipe(
     max_ingredients = min(_config.roll_ingredient_count(rng), len(eligible))
 
     if handcraft:
-        # Bootstrap du PREMIER générateur électrique (§10) : AUCUN atelier et
-        # ingrédients 100% solides. En plus, on BANNIT tout ingrédient dont la
-        # production exige déjà un BÂTIMENT ÉLECTRIQUE : cet ingrédient ne
-        # serait craftable qu'une fois l'électricité en place — mais c'est ce
-        # générateur même qui l'amorce (anti-boucle). On ne garde donc que des
-        # ingrédients obtenables SANS électricité (patch item direct, kit,
-        # environnement, ou recette dans un atelier non-électrique à la main).
+        # Bootstrap du premier générateur (§10) : AUCUN atelier, ingrédients
+        # 100% solides, et on bannit tout ingrédient dont la production exige
+        # déjà un bâtiment électrique (il ne serait craftable qu'une fois le
+        # réseau en place — anti-boucle).
         item_eligible = [
             e for e in eligible if e[0] == SLOT_ITEM
             and not _production_is_electric(db, state, e[1])
@@ -324,15 +291,14 @@ def _make_recipe(
     fluid_eligible = [e for e in eligible if e[0] == SLOT_FLUID]
     item_eligible = [e for e in eligible if e[0] == SLOT_ITEM]
     if _is_extractor_item(db, product_kind, product_name):
-        # Un extracteur (perceuse, pumpjack, pompe offshore...) se fabrique
-        # UNIQUEMENT avec des items : jamais avec un fluide — surtout pas avec
-        # celui qu'il sert justement à extraire (anti-cycle §8).
+        # Un extracteur se fabrique uniquement avec des items — jamais avec un
+        # fluide, surtout pas celui qu'il sert à extraire (anti-cycle §8).
         max_fluid_ing = 0
         fluid_eligible = []
     n_fluid_ing = min(rng.randint(0, min(len(fluid_eligible), max_fluid_ing)), max_ingredients)
     if needs_fluid_out and n_fluid_ing == 0:
-        # Une sortie fluide sans entrée fluide reste autorisée (ex. chaudière),
-        # mais on préfère garder au moins un fluide quand c'est possible.
+        # Sortie fluide sans entrée fluide autorisée (ex. chaudière), mais on
+        # garde au moins un fluide d'entrée quand c'est possible.
         n_fluid_ing = min(1, min(len(fluid_eligible), max_fluid_ing))
     n_item_ing = min(max_ingredients - n_fluid_ing, len(item_eligible))
     ingredients = (
@@ -353,9 +319,8 @@ def _make_recipe(
             f"unlocked={sorted(state.unlocked_buildings)})"
         )
     if building is None and n_fluid_ing > 0:
-        # Bootstrap (§2) : si aucun atelier ne peut encore traiter des fluides,
-        # on retire les fluides de la recette (ex. premier bâtiment d'une seed
-        # 100% fluides) ; le produit, lui, est un item craftable à la main.
+        # Bootstrap (§2) : sans atelier capable de traiter des fluides, on
+        # retire les fluides de la recette (produit craftable à la main).
         n_fluid_ing = 0
         n_item_ing = min(max_ingredients - 0, len(item_eligible))
         ingredients = _sample_items_weighed(rng, db, item_eligible, n_item_ing, state)
@@ -368,8 +333,8 @@ def _make_recipe(
     recipe = _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name,
                           x2_environmental=(building is None))
     if building is None:
-        # Bootstrap a la main (dernier recours, cf. four de pierre vanilla) :
-        # recette sans categorie ni atelier, fabricable dans l'inventaire.
+        # Bootstrap à la main (dernier recours, cf. four de pierre vanilla) :
+        # recette sans catégorie ni atelier, fabricable dans l'inventaire.
         return recipe
     recipe["category"] = _recipe_category(building, n_fluid_ing > 0, needs_fluid_out)
     recipe["crafted_in"] = building.name
@@ -378,20 +343,21 @@ def _make_recipe(
 
 def _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name=None,
                  x2_environmental: bool = False, record: bool = True):
-    """Assemble le dictionnaire de recette (nom, energy, ingrédients, résultats)
-    hors atelier : le choix du bâtiment (`crafted_in`/`category`) est laissé à
-    l'appelant. Sans atelier la recette a aucune catégorie → « crafting » par
-    défaut, fabricable dans l'inventaire du joueur.
+    """Assemble le dictionnaire de recette (nom, energy, ingrédients, résultats) ;
+    le choix du bâtiment (`crafted_in`/`category`) est laissé à l'appelant.
+    Sans atelier → aucune catégorie (« crafting » par défaut, inventaire).
 
     ``x2_environmental`` : les recettes de bootstrap (craftables à la main)
-    DOUBLENT la quantité de leurs ingrédients non infinis (wood/stone/raw-fish,
-    `is_environmental`) — le début de run se joue sur ces ressources rares
-    (§9.1/§9.3). Les ingrédients déjà produits restent à quantité normale."""
+    doublent leurs ingrédients non infinis (wood/stone/raw-fish) — ressources
+    rares du début de run (§9.1/§9.3) ; les ingrédients produits restent à
+    quantité normale.
+    ``record=False`` : remplacement de recette existante (§10ter), l'appelant
+    ajuste le comptage production/consommation."""
     final_name = recipe_name if recipe_name is not None else _config.recipe_name(product_name)
     result_amount = _config.roll_result_amount(rng)
     if product_kind == SLOT_ITEM and not _item_is_stackable(db, product_name):
-        # Item non-stackable (armure, arme, véhicule...) : une recette ne peut
-        # en produire qu'un seul exemplaire (erreur de chargement sinon).
+        # Item non-stackable (armure, arme, véhicule...) : au plus un exemplaire
+        # par recette (erreur de chargement sinon).
         result_amount = 1
     recipe = {
         "name": final_name,
@@ -404,20 +370,17 @@ def _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe
             {"type": product_kind, "name": product_name, "amount": result_amount}
         ],
     }
-    # C2 : alimente le comptage production/consommation (les quantités réelles
-    # sont déjà rollées ci-dessus). `record=False` pour un remplacement de
-    # recette existante (§10ter) : l'appelant ajuste le comptage lui-même.
+    # C2 : alimente le comptage production/consommation (quantités déjà
+    # rollées). `record=False` = remplacement de recette (§10ter), l'appelant
+    # ajuste le comptage lui-même.
     if record:
         state.record_recipe(recipe)
     return recipe
 
 
 def _bootstrap_amount(rng, db, name: str, x2_environmental: bool) -> int:
-    """Quantité d'un ingrédient de recette de bootstrap.
-
-    Doublée pour les ressources non infinies (``is_environmental``) : le début
-    de run se joue à la main sur arbres/rochers/poissons, et c'est justement
-    cette rareté que le relais (§9.3) vient lever ensuite."""
+    """Quantité d'un ingrédient de bootstrap : doublée pour les ressources non
+    infinies (``is_environmental``) — rareté levée ensuite par le relais (§9.3)."""
     amount = _roll_amount(rng, db, name)
     if x2_environmental:
         item = db.items.get(name)
@@ -427,11 +390,9 @@ def _bootstrap_amount(rng, db, name: str, x2_environmental: bool) -> int:
 
 
 def _has_production_item(db: VanillaDB, state: ProgressionState) -> bool:
-    """Un item « de production » est hors ressources environnementales et hors
-    kit de combat : patch item posé ou item déjà fabriqué par une recette.
-    Tant qu'il n'en existe aucun, la partie est en cold start et les items
-    environnementaux (arbres/rochers/poissons) font office de matière première
-    — en particulier pour fabriquer les extracteurs."""
+    """Un item « de production » = hors environnement et hors kit de combat.
+    Sans aucun, la partie est en cold start et les environnementaux
+    (arbres/rochers/poissons) servent de matière première."""
     for name in state.obtained_items:
         item = db.items.get(name)
         if item is not None and item.is_environmental:
@@ -445,9 +406,8 @@ def _has_production_item(db: VanillaDB, state: ProgressionState) -> bool:
 
 def _sample_items_weighed(rng, db, eligible, n: int, state: ProgressionState):
     """Échantillonne ``n`` items sans remise, pondérés par leur statut
-    environnemental. En cold start (aucun item de production), les items
-    environnementaux sont prioritaires ; dès que l'économie possède un item
-    de production, ils redevenent rares (petites quantités, surtout en début)."""
+    environnemental : prioritaires en cold start, rares ensuite (petites
+    quantités, surtout en début)."""
     if n <= 0 or not eligible:
         return []
     state.ensure_balance_target(rng)
@@ -471,9 +431,8 @@ def _sample_items_weighed(rng, db, eligible, n: int, state: ProgressionState):
 
 
 def _environmental_weight(db: VanillaDB, name: str, cold_start: bool) -> float:
-    """Poids d'un item environnemental comme ingrédient : fort uniquement en
-    cold start (seed sans aucun item de production), faible ensuite. DÉCIDÉ
-    PAR TAG ``is_environmental`` (item inconnu → 1.0, non environnemental)."""
+    """Poids d'un environnemental comme ingrédient : fort en cold start, faible
+    ensuite. Décidé par tag ``is_environmental`` (item inconnu → 1.0)."""
     item = db.items.get(name)
     if item is None or not item.is_environmental:
         return 1.0
@@ -483,10 +442,9 @@ def _environmental_weight(db: VanillaDB, name: str, cold_start: bool) -> float:
 
 
 def _roll_amount(rng, db, name: str) -> int:
-    """Quantité d'un ingrédient. Les ressources environnementales restent en
-    petite quantité même quand elles sont prioritaires (sans patch item). Un
-    item non-stackable (armure, arme, véhicule...) ne peut jamais être
-    consommé qu'en 1 exemplaire par recette (erreur de chargement sinon)."""
+    """Quantité d'un ingrédient. Les environnementaux restent en petite quantité
+    (même prioritaires) ; un item non-stackable ne peut être consommé qu'en 1
+    exemplaire par recette (erreur de chargement sinon)."""
     if not _item_is_stackable(db, name):
         return 1
     item = db.items.get(name)
@@ -502,13 +460,9 @@ def _item_is_stackable(db: VanillaDB, name: str) -> bool:
 
 
 def _recipe_category(building, fluid_ing: bool, fluid_out: bool) -> str:
-    """Catégorie de craft réelle supportée par le bâtiment.
-
-    ``building.crafting_categories`` (les tags du bâtiment, comme
-    ``is_crafter``, n'ont rien à voir avec les categories de craft du jeu) :
-    il faut une valeur de ``crafting_categories`` qui
-    existe dans data.raw["recipe-category"] et accepte les fluides.
-    """
+    """Catégorie de craft réelle supportée par le bâtiment : une valeur de
+    ``crafting_categories`` présente dans data.raw["recipe-category"] et qui
+    accepte les fluides (les tags ``is_crafter`` n'ont rien à voir)."""
     cats = [c for c in building.crafting_categories if c in VALID_RECIPE_CATEGORIES]
     if fluid_ing or fluid_out:
         cats = [c for c in cats if c in FLUID_RECIPE_CATEGORIES]
@@ -560,28 +514,19 @@ def _is_atelier(b) -> bool:
 
 
 def _is_fixed_recipe_transformer(b) -> bool:
-    """Un transformateur à RECETTE FIXE dont le générateur randomise la
-    recette UNIQUE — sortie fluide (boiler/heat-exchanger) OU item (équivalent
-    fourni par un mod).
+    """Transformateur à RECETTE FIXE dont le générateur randomise la recette
+    UNIQUE (sortie fluide boiler/heat-exchanger OU item d'un mod).
 
     @deprecated shim — délègue à ``is_fixed_crafter`` (tool.common.db),
-    détecté par capacités au chargement du dump (pas de liste de noms)."""
+    détecté par capacités au chargement du dump."""
     return is_fixed_crafter(b)
 
 
 def _production_is_electric(db: VanillaDB, state: ProgressionState, item_name: str) -> bool:
-    """L'item ``item_name`` est-il produit par une recette en BÂTIMENT ÉLECTRIQUE ?
-
-    Utilisé pour banir les ingrédients du bootstrap du premier générateur (§10) :
-    un item dont la production exige l'électricité ne peut être crafté qu'une
-    fois le réseau en place — si ce même item est ingrédient du générateur qui
-    amorce ce réseau, c'est une boucle (incraftable).
-
-    Une recette :
-      * `crafted_in` = bâtiment ÉLECTRIQUE → True (exige l'électricité) ;
-      * `crafted_in` = bâtiment non-électrique (burner…) → False ;
-      * sans `crafted_in` (handcraft / patch direct / kit / environnement) →
-        False (obtenu sans électricité)."""
+    """L'item est-il produit par une recette en bâtiment ÉLECTRIQUE ? Sert à
+    bannir les ingrédients du bootstrap du premier générateur (§10) : un tel
+    ingrédient ne serait craftable qu'une fois le réseau en place, mais c'est
+    ce générateur qui l'amorce (boucle)."""
     for r in state.recipes:
         res = r.get("results") or []
         if res and res[0].get("type") == SLOT_ITEM and res[0].get("name") == item_name:
@@ -616,16 +561,10 @@ def _pick_building(
 ):
     def fits(b) -> bool:
         # Un bâtiment à RECETTE CACHÉE (has_hidden_recipe : boiler/heat-
-        # exchanger, nuclear-reactor, tout équivalent de mod) est SUBTRAIT du
-        # pool des ateliers : sa recette est unique et randomisée par le
-        # générateur, on ne lui choisit JAMAIS une recette générique ici.
-        # Garde explicite doublant `_is_atelier` (un fixe n'a aucune catégorie
-        # valide — le réacteur, générateur, n'en a pas plus), pour lisibilité
-        # du contrat.
-        #
-        # Bootstrap inline (§10ter) : dans la mode « early » on n'accepte AUCUN
-        # atelier électrique — le réseau n'existe pas encore, seul un craft à la
-        # main ou un brûleur (four) est exécutable.
+        # exchanger, nuclear-reactor, équivalents de mod) est exclu du pool
+        # des ateliers : sa recette unique est randomisée par le générateur.
+        # Bootstrap inline (§10ter) : en mode « early », aucun atelier
+        # électrique — le réseau n'existe pas encore.
         return (
             not has_hidden_recipe(b)
             and (not state.early.active or b.energy_type != "electric")
@@ -640,12 +579,9 @@ def _pick_building(
 
     if force_building is not None:
         # Transformateur à recette fixe (§6/§10) : la recette reste hébergée
-        # par CE bâtiment (sa « recette » unique, entièrement randomisée). Il
-        # est déjà débloqué (déployé en tant qu'élément transformer). Le
-        # bâtiment « convient » si ses fluid boxes acceptent le fluide d'entrée
-        # et la sortie fluide ; la catégorie de craft réelle lui est attribuée
-        # en data-updates (donnée ici par `_recipe_category`). Bootstrap
-        # inline : en mode « early », un atelier électrique est inacceptable.
+        # par CE bâtiment (déjà débloqué). Il convient si ses fluid boxes
+        # acceptent entrée fluide et sortie ; en mode « early » un atelier
+        # électrique est inacceptable.
         if (
             force_building.name not in exclude_buildings
             and (not state.early.active or force_building.energy_type != "electric")
@@ -725,19 +661,12 @@ def _ensure_burner_fuel(
     state: ProgressionState,
     building,
 ) -> None:
-    """Garantit un combustible à tout bâtiment en consommant un (burner) :
-    four, foreuse thermique, chaudière (boiler), burner-generator…
-
-    Un bâtiment dont `energy_type == "burner"` a besoin d'un combustible ITEM
-    pour fonctionner (les fluides sont gérés à part, §10). On pioche un item
-    combustible au hasard parmi tous et on le rend OBTENABLE sur le tas (§9.3)
-    : s'il n'est pas encore produit par la seed, on crée sa recette
-    (`randputf-<fuel>`). Un fuel déjà obtenu est un no-op.
-
-    La chaîne fusée (dont `rocket-fuel`) est exclue du tirage : réservée à la
-    fin de partie (§14). Échec (pool vide / circularité) = on laisse le
-    bâtiment sans combustible plutôt que de faire capoter la seed — même
-    robustesse que le kit (§8)."""
+    """Garantit un combustible ITEM à tout bâtiment burner (four, foreuse
+    thermique, chaudière, boiler) : on rend obtenable sur le tas (§9.3) un item
+    combustible du pool (recette ``randputf-<fuel>`` si besoin) ; un fuel déjà
+    obtenu est un no-op. Chaîne fusée (dont rocket-fuel) exclue (§14). Échec
+    (pool vide / circularité) = bâtiment sans combustible, jamais de seed
+    cassée."""
     if building is None or building.energy_type != "burner":
         return
     fuel_items = [
@@ -757,9 +686,9 @@ def _item_for_building(db: VanillaDB, entity_name: str):
 
 
 def _is_extractor_item(db: VanillaDB, product_kind: str, product_name: str) -> bool:
-    """Vrai si le produit est l'item qui place une entité extractrice (perceuse,
-    pumpjack, pompe offshore). De telles entités se fabriquent uniquement avec
-    des items : jamais avec un fluide ingrédient (anti-cycle §8)."""
+    """Vrai si le produit place une entité extractrice (perceuse, pumpjack,
+    pompe offshore). De telles entités se fabriquent uniquement avec des items
+    (jamais de fluide ingrédient, anti-cycle §8)."""
     if product_kind != SLOT_ITEM:
         return False
     item = db.items.get(product_name)

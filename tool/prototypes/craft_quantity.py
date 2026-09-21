@@ -1,16 +1,12 @@
-"""Prototype D : randomisation des quantités de craft (IDEES §D).
+"""Prototype D : randomisation des quantités de craft.
 
-Au lieu du pur 1-pour-1, un **facteur aléatoire** est appliqué aux volumes
-d'entrée/sortie de chaque recette.  Deux variantes :
-- **symétrique** : même facteur sur toutes les lignes d'une recette
-  (« craft plus gros/moins gros, proportionnellement ») ;
-- **asymétrique** : facteur indépendant par ingrédient (plus chaotique,
-  risque de déséquilibre).
+Au lieu du pur 1-pour-1, un facteur aléatoire est appliqué aux volumes
+d'entrée/sortie de chaque recette. Deux variantes :
+- symétrique : même facteur sur toutes les lignes d'une recette ;
+- asymétrique : facteur indépendant par ingrédient (plus chaotique).
 
-**Contraintes** :
-- minimum 1 unité par ingrédient (pas de quantité nulle) ;
-- déterminisme total (PRNG par seed) ;
-- desactivation possible (facteur 1.0 partout = comportement vanilla).
+Contraintes : minimum 1 unité par ingrédient, PRNG déterministe par seed,
+désactivation possible (facteur 1.0 partout).
 """
 
 from __future__ import annotations
@@ -25,8 +21,7 @@ from tool.prototypes.base import PrototypeConfig
 class CraftQuantityConfig(PrototypeConfig):
     """Configuration pour la randomisation des quantités de craft."""
     enabled: bool = False
-    # Mode : "symmetric" (même facteur pour toute la recette) ou
-    # "asymmetric" (facteur indépendant par ingrédient).
+    # Mode : "symmetric" (même facteur pour toute la recette) ou "asymmetric".
     mode: str = "symmetric"
     # Bornes du facteur multiplicatif sur les quantités.
     factor_min: float = 0.5
@@ -69,9 +64,8 @@ def randomise_recipe_quantities(
 ) -> RecipeSpec:
     """Applique la randomisation de quantités sur une recette.
 
-    - ``enabled=False`` → retourne une copie identique.
-    - ``mode="symmetric"`` → un seul facteur pour tous les ingrédients
-      ET toutes les sorties (proportionnel).
+    - ``enabled=False`` → copie identique.
+    - ``mode="symmetric"`` → un seul facteur pour tous les ingrédients et sorties.
     - ``mode="asymmetric"`` → un facteur indépendant par ligne.
     - ``amount_min`` garanti sur chaque ingrédient.
     """
@@ -121,7 +115,7 @@ def randomise_all_quantities(
     recipes: list[RecipeSpec],
     config: CraftQuantityConfig,
 ) -> list[RecipeSpec]:
-    """Applique la randomisation à une liste de recettes (par PRNG séquentiel)."""
+    """Applique la randomisation à une liste de recettes."""
     if not config.enabled:
         return [
             RecipeSpec(

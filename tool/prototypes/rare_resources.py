@@ -1,20 +1,14 @@
-"""Prototype « ressources rares au début » (mode exploration, IDEES §D).
+"""Prototype « ressources rares au début » (mode exploration).
 
-Un mode (constante on/off) qui rend les ressources **rares/précieuses au
-départ** : peu de gisements près du spawn → le joueur doit aller chercher
-plus loin (où les nappes/patchs sont plus denses/nombreux).
+Mode (constante on/off) qui rend les ressources rares/précieuses au départ :
+peu de gisements près du spawn → chercher plus loin (patchs plus denses).
+Richesse et densité de blocs selon la distance au spawn : réduites près du
+spawn (< ``near_radius``), augmentées loin (> ``far_radius``), interpolation
+linéaire entre les deux.
 
-**Principe** : chaque patch reçoit une richesse et une densité de blocs
-fonction de sa distance au spawn :
-- près du spawn (< ``near_radius``) : facteurs réduits (``near_factor`` < 1) ;
-- loin (> ``far_radius``) : facteurs augmentés (``far_factor`` > 1) ;
-- entre les deux : interpolation linéaire.
-
-**Solvabilité** : le bootstrap reste jouable — le « kit » (starter) impose
-qu'au moins un gisement de chaque ressource obligatoire (iron, copper,
-coal, water) soit présent À PROXIMITÉ du spawn : la fonction déplace les
-patchs obligatoires dans la zone proche à densité mini (jamais < 1 bloc,
-jamais de suppression).
+Solvabilité : au moins un gisement de chaque ressource obligatoire (iron,
+copper, coal, water) reste proche du spawn, à densité mini (jamais 0, jamais
+de suppression).
 """
 
 from __future__ import annotations
@@ -102,9 +96,8 @@ def apply_rare_mode(
     """Applique le mode rareté.
 
     - ``enabled=False`` → liste identique.
-    - ``enabled=True``  → richeness/count multipliés selon la distance ;
-      les ressources obligatoires restent proches (dist ≈ 10 tuiles) avec
-      au moins 1 bloc.
+    - ``enabled=True`` → richness/count multipliés selon la distance ;
+      les ressources obligatoires restent proches avec au moins 1 bloc.
     """
     if not config.enabled:
         return list(patches)
@@ -115,8 +108,7 @@ def apply_rare_mode(
     for p in patches:
         dist = p.distance_to_spawn
         if p.resource in set(config.required_resources) and p.resource not in required_seen:
-            # forcer la proximité pour la première occurrence
-            dist = min(dist, 15)
+            dist = min(dist, 15)  # forcer la proximité pour la première occurrence
             required_seen.add(p.resource)
         rf, cf = terrain_factor(dist, config)
         new_richness = max(500, int(p.richness * rf))

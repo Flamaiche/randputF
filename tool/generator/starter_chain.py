@@ -1,18 +1,14 @@
-"""Phase 2 : chaîne initiale - starter (README §7 et §8).
+"""Phase 2 : chaîne initiale - starter (§7/§8).
 
 IMPLEMENTE sur les primitives partagees (generator/recipes.py) :
-- kit de depart : arme + munitions calees ;
+- kit de depart (arme + munitions calees) ;
 - un extracteur par ressource de patch selon son milieu ;
 - un bâtiment de transformation tire parmi la banque ;
-- transports adaptés : tapis/splitter/underground (+ bras si besoin) pour
-  les items, tuyaux + pipe-to-ground pour les fluides ; le palier (tier)
-  de chaque transport est tiré au sort ;
-- anti-cycle §8 : garanti par construction dans les primitives (ingredients
-  tires uniquement dans le pool deja valide, ateliers debloques
-  sequentiellement, bootstrap final = fabrication a la main).
+- transports adaptés (tapis/splitter/underground + bras ; tuyaux pour les
+  fluides), palier tire au sort ;
+- anti-cycle §8 garanti par construction dans les primitives.
 
-Le ProgressionState produit ici EST l'etat repris par les phases suivantes
-(recursive, electricite, tech tree).
+Le ProgressionState produit ici EST l'etat repris par les phases suivantes.
 """
 
 from __future__ import annotations
@@ -52,10 +48,9 @@ class StarterChain:
     first_science_pack: str = ""
     fabricator: str = ""
     extractors: list[str] = field(default_factory=list)
-    # GEL DES PROMESSES (§10ter) : produits des recettes des techs gratuites,
-    # snapshot pris au moment du gel (pipeline.py, après l'électricité). Les
-    # primitives dédupées garantissent qu'aucun produit promis n'est re-baké
-    # par la phase récursive.
+    # GEL DES PROMESSES (§10ter) : snapshot des produits des recettes des techs
+    # gratuites, pris après l'électricité (pipeline.py). Les primitives
+    # dédupées garantissent qu'aucun produit promis n'est re-baké.
     promises: set[str] = field(default_factory=set)
 
 
@@ -64,23 +59,18 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     chain.kit = _roll_starter_kit(rng, db)
 
     state = ProgressionState()
-    # Pool environnemental de base (README §3, §6) : arbres/rochers/poissons
-    # sont récoltables à la main dès le départ. Ils alimentent le pool
-    # d'ingrédients initial ; les recettes de démarrage n'ont donc pas besoin
-    # de tourner à vide (plus de bootstrap 0-ingrédient).
+    # Environnement (arbres/rochers/poissons), docs/ressources.md §6 : obtenable à la
+    # main dès le départ — alimente le pool d'ingrédients initial.
     for env_item in ENVIRONMENTAL_ITEMS:
         if env_item in db.items:
             state.mark_obtained(SLOT_ITEM, env_item)
     for patch in patches:
         state.mark_obtained(patch.kind, patch.resource)
 
-    # Bootstrap inline (§10ter, redesign) : ON ACTIVE LE WATERSHED PRÉ-ÉLEC
-    # DÈS ICI. Toutes les recettes créées par le starter (et ensuite par la
-    # phase électricité, avant le gel pipeline.py:95 -> `state.early` reste
-    # actif) tirent leurs ingrédients UNIQUEMENT dans ce watershed et sans
-    # atelier électrique. Plus de passe de rattrapage post-hoc : chaque produit
-    # promis par les techs gratuites est jouable pré-élec par construction.
-    # Le gel des promesses (pipeline.py) désactivera l'oracle avant le récursif.
+    # Bootstrap inline (§10ter) : activer le watershed pré-élec ici. Toutes
+    # les recettes du starter (et de l'électricité, avant le gel pipeline.py)
+    # tirent leurs ingrédients uniquement dans ce watershed, sans atelier
+    # électrique : chaque produit promis est jouable pré-élec par construction.
     patch_items = {p.resource for p in patches if p.kind == SLOT_ITEM}
     early_items, early_fluids = build_early_sources(db, patch_items, set(lake_resources))
     state.early.activate(early_items, early_fluids)
@@ -88,10 +78,9 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     for resource_kind, resource_name in _unique_resources(patches):
         _ensure_extraction(rng, db, state, chain, resource_kind, resource_name)
 
-    # Les LACS (§7.5) sont des TUILES fluides : leur extracteur est une pompe
-    # sans électricité (offshore-pump) qui pompe la tuile — distincte de
-    # l'extracteur des PATCHS fluides (§7.5, entités basic-fluid → pumpjack). Sans
-    # patch fluide, on évite la seed « lacs muets » (aucun extracteur au kit).
+    # Les LACS (§7.5) sont des TUILES fluides : leur extracteur est une pompe sans
+    # électricité (offshore-pump), distincte de l'extracteur des patchs fluides
+    # (entités basic-fluid → pumpjack). Sans patch fluide, pas de « lacs muets ».
     for lake_resource in sorted(lake_resources):
         _ensure_extraction(rng, db, state, chain, SLOT_FLUID, lake_resource, is_lake=True)
 
@@ -101,33 +90,27 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     _ensure_first_science_pack(
         rng, db, state, chain, db.raw_resources({p.resource for p in patches})
     )
-    # C4 : un lac tiré (donc plus d'eau vanilla) = le (ou les) lac(s) sont un
-    # mur sur la carte. Le landfill doit être craftable DÈS LE DÉPART (unlocké
-    # par starter-transformation), jamais au hasard en profondeur de seed —
-    # sinon le joueur ne peut pas traverser son lac de spawn.
+    # C4 : un lac tiré (plus d'eau vanilla) = mur sur la carte ; le landfill
+    # doit être craftable dès le départ (unlocké par starter-transformation),
+    # jamais au hasard en profondeur de seed.
     if has_lakes:
         _ensure_landfill(rng, db, state)
 
-    # Kit de départ : arme(s) de poing + munitions ALIGNÉES (roulé en tête de
-    # build_starter_chain). On rend ensuite l'arme et les munitions REFABRI-
-    # QUABLES dans la seed : même si le kit fournit un stock initial, le joueur
-    # doit pouvoir en recrafter (§7). Échec = kit quand même fourni.
+    # Kit de départ : arme + munitions alignées (roulé en tête de fonction).
+    # On rend ensuite l'arme et les munitions refabriquables dans la seed
+    # (recette §7), même si le kit fournit un stock initial. Échec = kit quand
+    # même fourni.
     _ensure_kit_craftable(rng, db, state, chain.kit)
 
-    # Conteneur de stockage (§7) : GARANTIR une recette de chest dans la seed,
-    # craftable avec des matériaux FINIS (produits), jamais environnementaux ou
-    # infinis. Flux RNG INDÉPENDANT (comme les lacs/ease-up) : seul le tirage
-    # du chest est déterministe sur `seed_value`, le flux partagé du starter
-    # (et donc la carte : `resolve_electricity` re-tire les patches réparateurs
-    # avec ce même rng) reste INTACT.
+    # Conteneur de stockage (§7) : recette de chest garantie, en matériaux
+    # finis (produits). Flux RNG INDÉPENDANT pour ne pas perturber celui du
+    # starter (et donc la carte, re-tirée par `resolve_electricity`).
     _ensure_chest_craftable(
         random.Random(f"randputf:chest:{db.seed_value}"), db, state
     )
 
-    # Spawn cohérent avec la seed : on remplace l'inventaire de départ vanilla
-    # par le fabricateur + l'extracteur URPLS de la seed. Si l'un d'eux est à
-    # combustible ("burner"), on ajoute aussi un combustible pour pouvoir les
-    # démarrer sans chercher à la main.
+    # Spawn cohérent avec la seed : inventaire de départ = fabricateur +
+    # extracteur de la seed, plus un combustible s'ils sont à "burner".
     _extend_spawn_kit(rng, db, chain, state)
 
     chain.state = state
@@ -148,14 +131,10 @@ def _unique_resources(patches: list[Patch]) -> list[tuple[str, str]]:
 def build_tech_steps(state: ProgressionState, db: VanillaDB) -> list[dict]:
     """Regroupe les micro-steps en macro-steps pour le tech tree.
 
-    Appelé après le starter PUIS rejoué après l'électricité (pipeline.py) :
-    toute recette créée sur le tas (générateur, combustible) doit appartenir à
-    une tech, jamais rester sans unlock.
-
-    Chaque recette est unlockée par UNE SEULE tech : les recettes des items
-    d'extracteur appartiennent à la tech d'extraction, la tech de
-    transformation n'ouvre que les autres recettes de craft (pas de doublon
-    d'unlock entre les deux techs starter).
+    Rejoué après l'électricité (pipeline.py) : toute recette créée sur le tas
+    (générateur, combustible) doit appartenir à une tech. Chaque recette est
+    unlockée par une seule tech : items d'extracteur → tech d'extraction, les
+    autres crafts → tech de transformation.
     """
     tech_steps = []
 
@@ -221,15 +200,10 @@ def _ensure_extraction(
     extractor = rng.choice(candidates)
     item = _item_for_building(db, extractor.name)
     if item is not None:
-        # force=True (§7) : l'extracteur doit TOUJOURS avoir sa recette de
-        # craft dans la tech d'extraction (starter-extraction, tech 0) — même
-        # quand son item est lui-même posé au sol en patch (§6). Sans ça, une
-        # perceuse-patch n'aurait aucune recette starter (ensure_obtainable
-        # s'arrête car déjà obtenu) et son craft n'arriverait qu'en profondeur
-        # de seed : « quand on a besoin d'une ressource, son extracteur n'est
-        # pas encore débloqué ». La recette forcée est craftée dans un atelier
-        # starter (jamais un bâtiment profond), donc disponible au même palier
-        # que le premier besoin.
+        # force=True (§7) : l'extracteur doit avoir sa recette de craft dans la
+        # tech d'extraction (tech 0), même si son item est posé au sol en patch
+        # (§6) — sinon un extracteur-patch ne serait craftable qu'en profondeur
+        # de seed. La recette forcée reste dans un atelier starter.
         ensure_obtainable(
             rng, db, state, SLOT_ITEM, item.name,
             exclude_buildings=_EXCLUDED_BUILDINGS, force=True,
@@ -253,16 +227,12 @@ def _extractors_for_resource(db: VanillaDB, kind: str, name: str, *, is_lake: bo
         ]
         if is_lake:
             # Un LAC est une TUILE fluide (copie de la tuile eau, §7.5) : la
-            # pompe offshore extrait directement le fluide de la tuile, SANS
-            # électricité. Le pumpjack (électrique) n'y a aucun rôle.
+            # pompe offshore extrait sans électricité ; le pumpjack n'y a rien.
             water_pumps = [b for b in fluid_extractors if b.pumped_fluid == "water"]
             return water_pumps or [b for b in fluid_extractors if b.energy_type in ("void", "burner")]
-        # Un PATCH fluide est une ENTITÉ resource (basic-fluid) posée sur la
-        # TERRE (§6.5, §7.5) : les pompes offshore ne minent que les tuiles
-        # d'eau et ne s'appliquent pas aux entités — seul un mining-drill qui
-        # déclare la catégorie (pumpjack, électrique) le miniage. Le pumpjack
-        # est donc l'extracteur des patchs fluides, les lacs gardant une pompe
-        # sans électricité.
+        # Un PATCH fluide est une entité resource sur la TERRE (§6.5, §7.5) :
+        # les pompes offshore ne minent que les tuiles d'eau — seul un drill de
+        # la catégorie (pumpjack, électrique) miniage. Priorité au non-électrique.
         no_electric_drills = [
             b for b in fluid_extractors
             if "basic-fluid" in b.resource_categories
@@ -303,15 +273,9 @@ def _ensure_transformer(rng: random.Random, db: VanillaDB, state: ProgressionSta
 
 
 def _ensure_research(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
-    """Garantit un bâtiment de RECHERCHE (type "research", par essence un lab)
-    dès la phase starter.
-
-    Toute recherche non gratuite (les 3 dispatches relais, §9.3, puis toutes
-    les sciences §13) se réalise DANS un lab : sans lab, le joueur ne peut
-    rien rechercher après les techs gratuites et la partie se fige. Le lab est
-    donc une brique indispensable du bootstrap, au même titre que les
-    transports : cette recette de craft est unlockée par la 2e recherche
-    gratuite (starter-transformation)."""
+    """Garantit un lab dès le starter : toute recherche non gratuite se fait
+    dans un lab — sans lab la partie se fige après les techs gratuites. Sa
+    recette est unlockée par la 2e recherche gratuite (starter-transformation)."""
     candidates = sorted(
         (
             i
@@ -337,18 +301,12 @@ def _ensure_first_science_pack(
     chain: StarterChain,
     raw_resources: frozenset[str] = frozenset(),
 ) -> None:
-    """Garantit un PREMIER science pack craftable dès le bootstrap (façon
-    red-science vanilla : sa recette est disponible au début, et les techs de
-    prologue la consomment comme coût — seuls les items TOOL, ici les packs,
-    peuvent servir de coût de recherche §13).
+    """Garantit un premier science pack craftable dès le bootstrap (façon
+    red-science vanilla) : unlocké gratuitement par starter-transformation,
+    c'est le point d'entrée de l'économie de packs (§13, seuls les items TOOL
+    servent de coût de recherche).
 
-    Sa recette est un step de craft du starter : elle est donc unlockée
-    GRATUITEMENT par la tech starter-transformation, avant toute tech de
-    prologue payante. C'est le point d'entrée de l'économie de packs.
-
-    §13 : la recette du pack est tirée SANS ressource brute (patches,
-    environnement, fluides d'extraction eau/pétrole/vapeur — infinis ou non) :
-    les packs ne se craftent jamais à partir de matières extraites du sol."""
+    §13 : recette tirée sans ressource brute (jamais de matière du sol)."""
     packs = sorted(
         (i for i in db.items.values()
          if i.is_science_pack and i.name not in state.obtained_items),
@@ -386,10 +344,8 @@ def _ensure_transports(rng: random.Random, db: VanillaDB, state: ProgressionStat
             _ensure_transport_item(rng, db, state, role)
 
 
-# Rôle de transport → TAG de bâtiment §2 (docs/tags.md §2). Les items de
-# transport sont sélectionnés PAR LE TAG de LEUR bâtiment posé (place_result),
-# jamais par un motif de nom en dur : un belt de mod au nom exotique est
-# automatiquement capté (type transport-belt → is_belt).
+# Rôle de transport → TAG de bâtiment (§2, docs/tags.md §2). Sélection par le
+# tag du bâtiment posé (place_result), jamais par motif de nom en dur.
 TRANSPORT_ROLE_TAGS = {
     "belt": "is_belt",
     "splitter": "is_splitter",
@@ -423,14 +379,9 @@ def _ensure_transport_item(
 
 
 def _ensure_landfill(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
-    """C4 : garantit le landfill craftable dès le bootstrap quand un lac est tiré.
-
-    Plus d'eau vanilla : un lac (fluide, infini) est un MUR sur la carte. Sa
-    recette de craft (obtenue par le balayage §9.6) arrive au hasard en
-    profondeur de seed — trop tard pour traverser le lac de spawn. Ici on la
-    rend obtenable dès le départ (recette randomisée randputf-landfill unlockée
-    par la tech gratuite starter-transformation comme les autres crafts du
-    bootstrap)."""
+    """C4 : landfill craftable dès le bootstrap quand un lac est tiré. Sans eau
+    vanilla, un lac est un mur de spawn ; sa recette (balayage §9.6) arriverait
+    trop tard. Unlockée par starter-transformation comme les autres crafts."""
     if "landfill" not in db.items:
         return
     if state.is_obtained(SLOT_ITEM, "landfill"):
@@ -445,14 +396,10 @@ def _ensure_chest_craftable(
     db: VanillaDB,
     state: ProgressionState,
 ) -> None:
-    """Garantit une recette de CHEST (stockage d'items) dans la seed.
-
-    Tiré ALÉATOIREMENT parmi les containers d'items (is_chest, jamais
-    logistic-container). Recette à matière FINIE uniquement (``finite_materials``
-    dans recipes.py) : les ingrédients sont des items PRODUITS — pas de
-    wood/stone/raw-fish (récolte main illimitée) ni de fluide (lacs infinis).
-    Échec (aucun container ou aucun pool fini) = fonction silencieuse : une
-    seed sans chest n'est pas bloquante."""
+    """Garantit une recette de CHEST (stockage) dans la seed : container d'items
+    (is_chest, jamais logistic-container) tiré aléatoirement, recette à matière
+    FINIE uniquement (``finite_materials``) — pas d'environnemental ni de
+    fluide. Échec = silencieux (une seed sans chest n'est pas bloquante)."""
     candidates: list[str] = []
     for item in db.items.values():
         if not item.place_result:
@@ -504,14 +451,10 @@ def _ensure_kit_craftable(
     state: ProgressionState,
     kit: list[dict],
 ) -> None:
-    """Rend l'arme et les munitions du kit CRAFTABLES dans la seed.
-
-    « Coneorde avec le reste » (§7) : l'arme de départ ne doit pas être une
-    munition/arme frappée de recette désactivée — même si le kit en fournit
-    un stock initial, le joueur doit pouvoir EN REFABRIQUER. `ensure_obtainable`
-    crée la recette randomisée randputf-<arme> / randputf-<munition>, attachée
-    aux techs du starter via build_tech_steps. Échec = kit quand même fourni
-    (le stock initial suffit)."""
+    """Rend l'arme et les munitions du kit craftables dans la seed : malgré le
+    stock initial fourni, le joueur doit pouvoir en refabriquer (§7).
+    « ensure_obtainable » crée la recette randputf-<arme> / randputf-<munition>,
+    attachée aux techs du starter. Échec = kit quand même fourni."""
     for entry in kit:
         if entry.get("type") != SLOT_ITEM:
             continue
@@ -527,18 +470,13 @@ def _extend_spawn_kit(
     chain: StarterChain,
     state: ProgressionState,
 ) -> None:
-    """Ajoute au kit de départ le fabricateur et l'extracteur URPLS de la seed,
-    ainsi qu'un combustible si l'un d'eux est à combustible (burner).
+    """Ajoute au kit de départ le fabricateur et l'extracteur de la seed, plus un
+    combustible si l'un d'eux est à burner.
 
-    Pas de vérification de compatibilité de catégorie : le mod unifie toutes
-    les catégories de combustible au data-stage (§8) — tout brûleur accepte
-    tout combustible. On glisse donc simplement la plus grosse fuel_value du
-    pool (uranium-fuel-cell inclus s'il est obtenu).
-
-    Les mêmes items sont déjà rendus CRAFTABLES (état de la seed), donc on ne
-    refait pas `ensure_obtainable` ici : on fournit simplement un stock initial
-    cohérent. Seuls des items obtenus par la seed (fabricateur/extracteur
-    choisis ; combustible issu du pool de state) peuvent être glissés au kit."""
+    Pas de vérification de catégorie : le mod unifie toutes les catégories de
+    combustible au data-stage (§8) — on glisse la plus grosse fuel_value du
+    pool (uranium-fuel-cell inclus). Items déjà craftables (état de la seed),
+    pas de `ensure_obtainable` ici : on fournit seulement un stock initial."""
     to_add: list[dict] = []
 
     fabricator_item = _item_for_building(db, chain.fabricator) if chain.fabricator else None
@@ -552,20 +490,16 @@ def _extend_spawn_kit(
         seen_extractors.add(name)
         item = _item_for_building(db, name)
         if item is not None:
-            # Un seul exemplaire par type d'extracteur (§7) : le kit ne fait
-            # qu'AMORCER la chaîne (briser l'œuf/poule : poser le premier
-            # extracteur pour extraire de quoi en refabriquer). Le reste se
-            # craft — la recette de l'extracteur est unlockée par la tech
-            # d'extraction (starter-extraction, tech 0), AVANT toute recette
-            # qui consomme la ressource extraite.
+            # Un seul exemplaire par type d'extracteur (§7) : le kit amorce la
+            # chaîne (poser le premier extracteur pour extraire de quoi en
+            # refabriquer) ; la recette est unlockée par la tech d'extraction.
             to_add.append({"type": SLOT_ITEM, "name": item.name, "count": 1})
 
     if to_add and _needs_fuel(db, chain):
         fuel = _pick_spawn_fuel(db, state)
         if fuel is not None:
             # Compte borné par la stackabilité réelle : un nuclear-fuel
-            # (stack_size 1) ne remplit qu'UN seul slot — en donner 50
-            # inonde l'inventaire de slots à 1 exemplaire.
+            # (stack_size 1) ne remplit qu'un slot — en donner 50 inonderait.
             count = _SPAWN_FUEL_COUNT
             if fuel.stack_size:
                 count = min(_SPAWN_FUEL_COUNT, fuel.stack_size)
@@ -591,14 +525,11 @@ def _needs_fuel(db: VanillaDB, chain: StarterChain) -> bool:
 
 
 def _pick_spawn_fuel(db: VanillaDB, state: ProgressionState) -> ItemDef | None:
-    """Meilleur combustible de la seed : item combustible présent dans le pool
-    des items obtenus (le plus gros fuel_value), sinon le bois (toujours
-    obtenable, environnemental).
+    """Meilleur combustible de la seed : plus gros fuel_value parmi les items
+    obtenus, sinon le bois (toujours obtenable, environnemental).
 
     PAS de filtrage par catégorie : le mod applique une catégorie de
-    combustible globale au data-stage (mod/data-updates.lua, §8) — tout
-    brûleur accepte tout combustible (item ou fluide). La plus grosse
-    fuel_value est donc toujours utilisable dans le brûleur du kit."""
+    combustible globale au data-stage (§8) — tout brûleur accepte tout."""
     obtainable = [
         db.items[name]
         for name in state.obtained_items

@@ -1,13 +1,11 @@
-"""Prototype : relais des ressources non-infinies (§9.3).
+"""Prototype : relais des ressources non-infinies.
 
-Gère les recettes « relais » : pour chaque recette du début qui consommait
-des ressources environnementales (arbres/rochers/poissons), une nouvelle
-recette produit le même item avec uniquement des ressources durables, et
-est dispatchée dans les 3 premières techs.
+Pour chaque recette du début consommant des ressources environnementales
+(arbres/rochers/poissons), une recette relais produit le même item avec
+uniquement des ressources durables, dispatchée dans les 3 premières techs.
 
-Configuration :
 - prefix : préfixe des noms de recettes relais
-- max_dispatch_steps : nombre max de techs de dispatch (les 3 premières)
+- max_dispatch_steps : nombre max de techs de dispatch
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class RelayConfig(PrototypeConfig):
-    """Configuration pour la phase relais (§9.3)."""
+    """Configuration pour la phase relais."""
     prefix: str = "randputf-relay-"
     max_dispatch_steps: int = 3
 

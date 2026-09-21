@@ -1,6 +1,6 @@
 """Pipeline de génération d'une seed randputF.
 
-Orchestre les phases décrites au README §6 à §13 et produit le dictionnaire
+Orchestre les phases décrites dans les docs (§7 à §14) et produit le dictionnaire
 seed consommé par le mod (structure documentée dans exporters/mod_seed.py).
 """
 
@@ -42,26 +42,23 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
 
     rng = map_patches.make_rng(db.seed_value)
 
-    # Phase 1bis : Lacs de fluide (§7.5). Flux RNG INDÉPENDANT (make_rng dédié)
-    # pour ne pas perturber le tirage des phases suivantes. 3e type de raw,
-    # même système que les patchs : `count ∈ [min, max]` (défaut 1), chaque lac
-    # un fluide du pool pipable ; 0 lac tiré = aucun lac sur la carte (le mod
-    # supprime aussi l'eau vanilla). Les lacs sont tirés AVANT les patchs pour
-    # que ceux-ci évitent de reposer en patch un fluide déjà en lac (IDEES C6).
+    # Phase 1bis : Lacs de fluide (§7.5). Flux RNG indépendant (make_rng dédié).
+    # 3e type de raw : count ∈ [min, max], chaque lac un fluide du pool pipable ;
+    # 0 lac = aucun lac (le mod supprime l'eau vanilla). Tirés AVANT les patchs
+    # pour que ceux-ci évitent de reposer en patch un fluide déjà en lac (C6).
     lake_list = lakes.generate_lakes(lakes.make_rng(db.seed_value), db, cfg)
     log.debug("lacs tirés: %s", [la.to_seed() for la in lake_list])
 
-    # Phase 1 : Ressources au sol. Un fluide déjà posé en lac n'est jamais
-    # re-tiré en patch (une même ressource brute n'apparaît qu'une fois, C6).
+    # Phase 1 : Ressources au sol. Un fluide déjà en lac n'est jamais re-tiré
+    # en patch (C6).
     patches = map_patches.generate_patches(
         rng, db, cfg, lake_resources={la.resource for la in lake_list}
     )
 
-    # Phase 2 : Chaîne initiale (starter). ``has_lakes`` : si la seed tire au
-    # moins un lac, le landfill est rendu craftable dès le bootstrap (C4).
-    # ``lake_resources`` : les fluides des lacs sont extraits par la pompe du
-    # starter — le kit doit contenir une pompe par fluide distinct à extraire
-    # en plus des fluides des patchs (§7/§7.5).
+    # Phase 2 : Chaîne initiale (starter). ``has_lakes`` : si au moins un lac
+    # est tiré, le landfill est craftable dès le bootstrap (C4). ``lake_resources``
+    # : fluides des lacs extraits par la pompe du starter — le kit contient une
+    # pompe par fluide distinct en plus des patchs (§7/§7.5).
     initial_lake_resources = frozenset(la.resource for la in lake_list)
     starter = starter_chain.build_starter_chain(
         rng, db, patches, has_lakes=bool(lake_list),
@@ -69,12 +66,11 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     )
 
     # Phase 3 : Électricité (déclenchement à la demande, combustible assigné).
-    # ``lake_resources`` : les fluides EXTRACTIBLES SANS ÉLECTRICITÉ (les lacs
-    # tirés par la seed). Un générateur à vapeur (turbine/steam-engine) est
-    # amorçable si et seulement si un tel fluide existe (IDEES C1) — il prend
-    # n'importe QUEL fluide pipable, pas spécifiquement l'eau. Si aucun
-    # générateur n'est fonctionnel, la phase FORCE un patch réparateur (lac
-    # fluide ou item) et le MÈLE au pool de la seed (§10, C1).
+    # ``lake_resources`` : fluides extractibles sans électricité (lacs tirés).
+    # Un générateur à vapeur n'est fonctionnel que si un tel fluide existe — il
+    # prend n'importe quel fluide pipable, pas spécifiquement l'eau. Si aucun
+    # générateur n'est fonctionnel, la phase force un patch réparateur (lac
+    # fluide ou item) et l'ajoute au pool (§10).
     lake_resources = {la.resource for la in lake_list}
     used_resources = {p.resource for p in patches} | lake_resources
     patch_items_before = {p.resource for p in patches if p.kind == SLOT_ITEM}
@@ -87,28 +83,23 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         elif kind == "item":
             patches.append(value)
 
-    # Bootstrap inline (§10ter) : les patches/lacs RÉPARATEURS ajoutés par
-    # l'électricité sont obtenables sans électricité (foreuse non-élec /
-    # pompe offshore) → ils rejoignent le watershed de l'oracle, TOUJOURS
-    # actif jusqu'au gel ci-dessous.
+    # Bootstrap inline (§10ter) : patches/lacs réparateurs ajoutés par
+    # l'électricité sont obtenables sans électricité (foreuse non-élec / pompe
+    # offshore) → ils rejoignent le watershed de l'oracle, actif jusqu'au gel.
     starter.state.early.add_sources(
         items={p.resource for p in patches if p.kind == SLOT_ITEM} - patch_items_before,
         fluids={la.resource for la in lake_list} - lake_resources,
     )
 
     # Rejoue les macro-techs du starter : les recettes créées par l'électricité
-    # (générateur, combustible) doivent être unlockées par une tech, jamais
-    # rester orphelines (sinon un relais pourrait en dépendre sans pouvoir la
-    # fabriquer).
+    # doivent être unlockées par une tech, jamais rester orphelines.
     starter.tech_steps = starter_chain.build_tech_steps(starter.state, db)
 
-    # Bootstrap inline (§10ter, redesign) : GEL DES PROMESSES + EXTINCTION DE
-    # L'ORACLE. `starter.promises` = snapshot des produits des recettes des techs
-    # gratuites (tout item produit par une recette du starter/électricité au
-    # moment du gel). Dès maintenant, la phase récursive re-tire SANS contrainte
-    # early (recettes profondes/électriques bienvenues) ; le dédup des
-    # primitives (`ensure_obtainable`/`make_recipe`) garantit qu'aucun produit
-    # promis n'est re-baké ensuite.
+    # GEL DES PROMESSES + EXTINCTION DE L'ORACLE (§10ter). `starter.promises`
+    # = snapshot des produits des recettes des techs gratuites au moment du gel.
+    # Dès maintenant la phase récursive re-tire sans contrainte early ;
+    # ``ensure_obtainable``/``make_recipe`` garantissent qu'aucun produit promis
+    # n'est re-baké ensuite.
     starter.promises = {
         recipe["results"][0]["name"]
         for recipe in starter.state.recipes
@@ -117,10 +108,9 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     starter.state.early.deactivate()
 
     # Phase 2bis : Assignation de fluides aux bâtiments à comportement fixe
-    # (§6/§10). Détecte automatiquement les steam-generators (turbine, steam-
-    # engine) et les transformateurs à recette fixe (boiler, heat-exchanger) qui
-    # n'ont pas encore reçu de fluide, et leur assigne un fluide obtainable
-    # (un lac). La turbine du premier générateur a déjà reçu son fluide dans
+    # (§6/§10). Détecte steam-generators et transformateurs à recette fixe
+    # (boiler, heat-exchanger) non encore assignés, leur attribue un fluide
+    # obtainable (un lac). Le premier générateur a déjà reçu son fluide dans
     # resolve_electricity ; cette phase couvre le reste.
     lake_res = {la.resource for la in lake_list}
     building_fluid_assignments = building_fluids.assign_building_fluids(
@@ -132,17 +122,14 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         if bld not in building_fluid_assignments:
             building_fluid_assignments[bld] = assignment
 
-    # Phase 1ter : Gisements posés au runtime (§6.5). Après l'électricité (la
-    # liste de patchs est finale : les réparations n'ajoutent que des lacs ou
-    # des patchs item — ces derniers reçoivent alors leur gisement ici). TOUS
-    # les patchs (items ET fluides) reçoivent leur gisement de blocs/puits posés
-    # au runtime autour d'un centre proche du spawn.
+    # Phase 1ter : Gisements posés au runtime (§6.5). Après l'électricité, la
+    # liste des patchs est finale (les réparations n'ajoutent que des lacs ou des
+    # patchs item) — tous reçoivent ici leur gisement autour d'un centre proche
+    # du spawn.
     map_patches.assign_patch_gisements(patches, db.seed_value, cfg)
 
-    # INSTANTANÉ GELÉ du pool de début de run : pris APRÈS le starter +
-    # électricité, AVANT le récursif. C'est la ressource exclusive des recettes
-    # relais (§9.3) : un relais ne dépend jamais d'un bâtiment ou d'un item
-    # débloqué seulement en profondeur de seed.
+    # INSTANTANÉ GELÉ du pool de début de run : après starter + électricité,
+    # avant le récursif. Source exclusive des recettes relais (§9.3).
     base = copy.deepcopy(starter.state)
 
     # Phase 4 : Récursion pondérée
@@ -153,33 +140,20 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     # environnemental n'y entre (les recettes de fusée ne sont pas relayées).
     endgame_steps = endgame_phase.ensure_rocket_chain(rng, db, starter.state)
 
-    # Phase 4bis : relais des ressources non-infinies (README §9.3). Les items
-    # environnementaux (bois/pierre/poisson) ont servi au bootstrap du début ;
-    # on crée des recettes « propres » pour chaque produit qui en consommait.
-    # Le pool d'ingrédients et les bâtiments de craft proviennent de ``base``,
-    # jamais du pool final.
+    # Phase 4bis : relais des ressources non-infinies (§9.3). Les items
+    # environnementaux ont servi au bootstrap ; on crée des recettes « propres »
+    # pour chaque produit qui en consommait. Le pool d'ingrédients et bâtiments
+    # proviennent de ``base``, jamais du pool final.
     relays = relay_phase.build_relay_recipes(rng, db, starter.state, base)
 
-    # Phase 4ter : techs de prologue. Les recettes propres du bootstrap (relais)
-    # sont consolidées en techs FRONTALES à l'arbre (≤ 5 unlocks chacune,
-    # §13) : le palier « bootstrap → sciences », façon début Factorio vanilla.
-    # Nombre de techs déduit du plafond (§13), une seule si peu de recettes.
-    #
-    # Chaque tech de prologue se débloque par HAND-CRAFT d'un item du bootstrap
-    # (façon vanilla automation/logistics) : pas de packs à fournir en labo, la
-    # `unit` reste vide et le `research_trigger` (craft-item) fait le travail
-    # (§9.3). Déclencheurs = items craftables à la main (produits des recettes
-    # du starter), pour que chaque prologue reçoive un
-    # déclencheur DISTINCT. Le premier science pack (craftable dès le bootstrap)
-    # en fait naturellement partie via les recettes du starter.
-    #
-    # ⚠️ IL NE FAUT PAS lire `starter.recipes` ici : c'est la MÊME liste que
-    # `state.recipes`, que la phase récursive continue d'étendre — on y
-    # trouverait TOUTES les recettes de la seed (nuclear-reactor, rocket-silo,
-    # spidertron…), y compris des items unlockés bien plus tard que le prologue
-    # (§9.3). Un tel déclencheur n'est jamais craftable le moment venu → la
-    # tech prologue resterait bloquée pour toujours. On ne prend donc QUE les
-    # recettes des techs gratuites du starter (jamais gonflées après coup).
+    # Phase 4ter : techs de prologue. Les recettes propres du bootstrap sont
+    # consolidées en techs frontales à l'arbre (≤ 5 unlocks chacune, §13) :
+    # le palier « bootstrap → sciences », façon début Factorio vanilla.
+    # Chaque tech se débloque par HAND-CRAFT d'un item du bootstrap (façon
+    # vanilla automation/logistics) : pas de packs en labo, la `unit` reste vide
+    # et le `research_trigger` (craft-item) fait le travail (§9.3).
+    # ⚠️  Déclencheurs = items des recettes des techs gratuites du starter
+    # (jamais gonflées après coup) — sinon la tech prologue resterait bloquée.
     trigger_candidates: list[str] = []
     for step in starter.tech_steps:
         for recipe in step.get("unlocks_recipes", []):
@@ -194,18 +168,15 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     )
 
     # Phase 4ter-bis : recettes alternatives « ease-up » pour les crafts trop
-    # lourds (graphe trop profond ou boucle — ex. un pylône exigeant un science
-    # pack tardif). Détection sur le graphe FINAL ; recette alternative tirée
-    # du pool gelé ``base`` (comme les relais §9.3) ; déblocage par des techs
-    # de type prologue (hand-craft) insérées juste après les techs du
-    # bootstrap/relais. Flux RNG INDÉPENDANT (make_rng) : les phases
-    # précédentes ne sont pas perturbées — une seed régénérée est strictement
-    # la précédente PLUS les ease-up (additif, sauvegarde préservée).
+    # lourds (graphe trop profond ou boucle). Détection sur le graphe FINAL ;
+    # recette alternative du pool gelé ``base`` (comme les relais §9.3) ;
+    # déblocage par des techs prologue (hand-craft) insérées après le
+    # bootstrap/relais. Flux RNG indépendant (make_rng) : additif pur,
+    # une seed régénérée = la précédente plus les ease-up.
     #
-    # ⚠️ Déclencheurs hand-craft : les techs ease-up réutilisent LE MÊME pool
-    # que les prologue relais, mais les triggers déjà pris par `welcome_steps`
-    # leur sont INTERDITS (deux techs avec le même craft-item se déclencheraient
-    # ensemble). On passe la liste des triggers consommés.
+    # Déclencheurs hand-craft : les techs ease-up réutilisent le même pool que
+    # les prologue relais, mais les triggers déjà pris leur sont interdits
+    # (deux techs avec le même craft-item se déclencheraient ensemble).
     easeup_rng = easeup_phase.make_rng(db.seed_value)
     used_triggers = [
         s.get("craft_trigger") for s in welcome_steps if s.get("craft_trigger")
@@ -221,20 +192,17 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         steps_rng=easeup_rng,
     )
 
-    # Phase 5 : Arbre technologique (macro-steps uniquement)
-    # Ordre demandé : d'abord les techs gratuites du starter (les premières
-    # recettes, craftables avec tout le pool de début), PUIS les techs de
-    # prologue (recettes alternatives + premier pack science et ease-up).
+    # Phase 5 : Arbre technologique (macro-steps uniquement). Ordre : d'abord les
+    # techs gratuites du starter (premières recettes), puis les techs de prologue
+    # (recettes alternatives + premier pack science + ease-up).
     all_tech_steps = (
         starter.tech_steps + welcome_steps + ease_steps + recursive_phase.steps() + endgame_steps
     )
     technologies = tech_tree.build_linear_tech_tree(all_tech_steps, rng, db)
 
-    # Seules les techs du starter sont gratuites (auto-complétées au runtime) :
-    # elles débloquent les recettes du bootstrap. Les techs de prologue
-    # suivent immédiatement (cost=[] = se recherchent sans packs, trigger
-    # hand-craft) mais restent
-    # des recherches à lancer par le joueur, PAS des free_researches.
+    # Seules les techs du starter sont gratuites (auto-complétées au runtime) ;
+    # les techs de prologue suivent immédiatement (cost=[], trigger hand-craft)
+    # mais restent des recherches à lancer par le joueur, pas des free_researches.
     starter.free_researches = [s["id"] for s in starter.tech_steps]
 
     # Phase 6 : Validation
@@ -266,17 +234,14 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
             "item_resources": sorted(i.name for i in db.beltable_items()),
             "fluid_resources": sorted(f.name for f in db.pipable_fluids()),
             # Pool des armes montées (§7/§12.1) : items gun tirés pour les
-            # véhicules — aucune valeur en dur dans le mod. Origine : config.
+            # véhicules — aucune valeur en dur dans le mod.
             "vehicle_weapons": recursive_phase.vehicle_weapons_pool(),
             # Scale de portée montée (§12.1) : portée du clone =
-            # base × (1 + max(taille_véhicule - base_size, 0) × scale).
+            # base × (1 + max(taille_véhicule − base_size, 0) × scale).
             "vehicle_range_scaling": recursive_phase.vehicle_range_scaling(),
             # Ressources brutes (§3/§13) : patches + environnement +
-            # fluides d'extraction (eau/pétrole brut/vapeur, infinis ou non) —
-            # un science pack n'en consomme JAMAIS. Exposées ici pour une
-            # vérification data-driven de la seed assemblée. Les LACS (§7.5)
-            # sont une raw resource comme les autres : leurs fluides entrent
-            # dans le pool.
+            # fluides d'extraction (infinis ou non) — les lacs (§7.5) y sont
+            # inclus. Un science pack n'en consomme jamais.
             "raw_resources": sorted(
                 db.raw_resources(
                     {p.resource for p in patches} | {la.resource for la in lake_list}
@@ -287,19 +252,17 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
                 "lakes": [la.to_seed() for la in lake_list]},
         "starter_kit": starter.kit,
         "free_researches": starter.free_researches,
-        # Loot du site de crash (§7) : pool de matériaux + loi pondérée 0..3 par
-        # slot (seed.wreck.counts = [c0, c1, c2, c3], somme des valeurs = 100).
+        # Loot du site de crash (§7) : pool de matériaux + loi pondérée 0..3 par slot
+        # (seed.wreck.counts = [c0, c1, c2, c3], somme des valeurs = 100).
         "wreck": wreck_loot.build_wreck_config(cfg, db),
         "recipes": starter.recipes + recursive_phase.recipes_to_seed(),
         "technologies": technologies,
         "progression_order": [t["id"] for t in technologies],
         "vehicle_armament": recursive_phase.vehicle_armament(),
         # Assignation de fluides aux bâtiments à comportement fixe (§6/§10) :
-        # {building_name: {"input": fluid, "output"?: fluid}}. Le mod lit cette
-        # section en data-stage pour assigner les filters et tooltips des fluid
-        # boxes — plus aucun bâtiment n'est figé sur steam/water. La clé fait
-        # autorité : les assignations du récursif (fabricateurs à recette fixe,
-        # recette réelle = source de vérité) écrasent celles de `building_fluids`.
+        # {building_name: {"input": fluid, "output"?: fluid}}. La clé fait
+        # autorité : les assignations du récursif écrasent celles de
+        # `building_fluids` (source unique de vérité).
         "building_fluid_assignments": {
             **building_fluid_assignments,
             **starter.state.building_fluid_assignments,

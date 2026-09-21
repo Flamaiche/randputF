@@ -166,7 +166,7 @@ def test_extracteurs_se_craftent_uniquement_avec_des_items():
 
 
 def test_energie_scale_avec_le_nombre_d_ingredients():
-    """C6 : le temps de craft (energy) croît avec la complexité de la recette.
+    """Le temps de craft (energy) croît avec la complexité de la recette.
     Base fixe (liste 1 valeur) → n ingrédients ⇒ energy = base ×
     (1 + energy_per_ingredient × n). Une recette lourde prend logiquement plus
     de temps qu'une recette simple."""
@@ -185,7 +185,7 @@ def test_energie_scale_avec_le_nombre_d_ingredients():
 
 
 def test_equilibre_production_consommation():
-    """C2 : un item PRODUIT mais jamais CONSOMMÉ (pléthore) devient un
+    """Un item PRODUIT mais jamais CONSOMMÉ (pléthore) devient un
     ingrédient privilégié (on écoule le surplus) et un produit freiné (on ne
     fabrique pas plus de ce qui est déjà pléthore). Le facteur d'équilibre
     traduit ce déséquilibre : > 1 en tant qu'ingrédient."""
@@ -217,7 +217,7 @@ def test_equilibre_production_consommation():
 
 
 def test_equilibre_etat_neutre_sans_recettes():
-    """C2 : sans aucune recette, tous les items sont à l'équilibre (facteur
+    """Sans aucune recette, tous les items sont à l'équilibre (facteur
     1.0) — aucun biais a priori du générateur."""
     from tool.generator.recipes import ProgressionState
 

@@ -1,14 +1,14 @@
 """Diagnostic SCC du graphe de production (§10ter, redesign).
 
-L'ancien garde CASSAIT les cycles inaccessibles sans électricité ou à rendement
+L'ancien garde cassait les cycles inaccessibles sans électricité ou à rendement
 net ≤ 0 en réécrivant/ajoutant des recettes de secours. Depuis le redesign
-« bootstrap inline », la correction est faite À LA CRÉATION (oracle early,
-`early_oracle.EarlyOracle`) et cette passe de rattrapage n'existe plus.
+« bootstrap inline », la correction est faite à la création (oracle early,
+`early_oracle.EarlyOracle`) et cette passe n'existe plus.
 
-Ce module ne conserve QUE le diagnostic : ``find_cycles`` repère les composantes
-fortement connexes (SCC) du graphe produit→ingrédients et classe chaque cycle
-(atteignable sans électricité ? rendement net ?). NET≤0 n'est plus un gate de
-correction — seule l'atteignabilité pré-élec compte (assurée à la création).
+Ce module ne conserve QUE le diagnostic : ``find_cycles`` repère les SCC
+du graphe produit→ingrédients et classe chaque cycle (atteignable sans
+électricité ? rendement net ?). NET≤0 n'est plus un gate de correction —
+seule l'atteignabilité pré-élec compte (assurée à la création).
 """
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _dependency_graph(db: VanillaDB, recipes: list[dict]):
 def _find_sccs(nodes: list[str], succ: dict[str, list[str]], pred: dict[str, list[str]]):
     """Composantes fortement connexes (Kosaraju itératif, ordre déterministe).
 
-    Retourne (composante_par_nœud, liste de composantes triées)."""
+    Retourne ``(composante_par_nœud, liste de composantes triées)``."""
     visited: set[str] = set()
     order: list[str] = []
     for start in nodes:
@@ -111,14 +111,14 @@ def find_cycles(
     recipes: list[dict],
     early_items: set[str],
 ) -> list[dict]:
-    """TOUS les cycles de production de la seed (SCC produit→ingrédients, y
+    """Tous les cycles de production de la seed (SCC produit→ingrédients, y
     compris self-loops) avec leur diagnostic :
 
     - ``members`` : membres de la boucle (triés) ;
     - ``reachable`` : au moins un membre est dans le watershed pré-électricité ;
     - ``net_yield`` : Σ quantités membres produites − Σ quantités membres
       consommées par les recettes du cycle (≥ 1 contributeurs membres).
-      Négatif → le cycle ne peut RIEN exporter vers le monde extérieur.
+      Négatif → le cycle ne peut rien exporter vers l'extérieur.
 
     Une SCC à 1 nœud sans self-loop n'est pas un cycle (trivial). L'ordre de
     retour est trié par membre — déterminisme total."""

@@ -1,8 +1,8 @@
 """Normalisation du dump JSON produit par le mod exporter vers VanillaDB.
 
 Le dump est ecrit par Factorio au runtime (prototypes API 2.0) dans
-script-output/randputF/vanilla_dump.json. Ce module transforme ce brut en
-schema intermediaire stable utilisee par le generateur.
+script-output/randputF/vanilla_dump.json. Ce module le transforme en schema
+intermediaire stable utilise par le generateur.
 """
 
 from __future__ import annotations
@@ -45,10 +45,9 @@ JUNK_NAMES = {
 }
 
 
-# Rails POLLABLES (donnaient un vrai tracé de voie) : droits/courbes/half-
-# diagonal, legacy et surélevés. Les ``-remnants`` (décors de crash), ``rail-
-# ramp``/``rail-support`` (dummies) et ``loader``/``linked-belt`` sont exclus
-# (junk ou types non-rongeables). Jeu de TYPES d'entités API 2.0, pas de noms.
+# Rails POLLABLES (vrai tracé de voie) : droits/courbes/half-diagonal, legacy
+# et surélevés. Les ``-remnants``, ``rail-ramp``/``rail-support`` (dummies) et
+# ``loader``/``linked-belt`` sont exclus. Jeu de TYPES d'entités API 2.0.
 RAIL_TYPES = frozenset({
     "straight-rail",
     "curved-rail-a",
@@ -113,9 +112,7 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         )
 
     for name, entry in (dump.get("entities") or {}).items():
-        # Les entités cheat/junk (electric-energy-interface, bottomless-chest,
-        # linked-belt...) n'ont aucun intérêt : un bâtiment classé "other" ou
-        # générateur sans effet finirait par remplir l'arbre tech de fillers.
+        # Les entités cheat/junk finiraient par remplir l'arbre tech de fillers.
         if is_junk(name):
             db.excluded_items[name] = entry
             continue
@@ -132,12 +129,11 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             energy=float(entry.get("energy", 0.5)),
         )
 
-    # POST-PARSE (§6/§10, IDEES C7) : le tag « recette cachée » dépend des
-    # RÉSIDUS de combustible (``burnt_result`` des items du bâtiment) — une
-    # information de la base items, indisponible à la volée pendant le parse.
-    # On stampe donc sur chaque bâtiment ses résidus PUIS le tag
-    # ``has_hidden_recipe``. Le réacteur (item quelconque → item résidu)
-    # devient ainsi une recette cachée item → item, sans aucune liste de noms.
+    # POST-PARSE : le tag « recette cachée » dépend des RÉSIDUS de combustible
+    # (``burnt_result`` des items), une info de la base items indisponible à la
+    # volée pendant le parse. On stampe les résidus PUIS le tag sur chaque
+    # bâtiment. Le réacteur (item → item résidu) devient une recette cachée
+    # sans aucune liste de noms.
     for b in db.buildings.values():
         b.fuel_residues = db.fuel_residues(b)
         b.has_hidden_recipe = has_hidden_recipe(b)
@@ -167,13 +163,10 @@ def _parse_stack(stack: dict) -> tuple:
 
 
 def _is_environmental_item(name: str, subgroup: str, itype: str) -> bool:
-    """Item récoltable à la main (wood/stone/raw-fish) : ENRICHISSEMENT d'un
-    ensemble connu (``ENVIRONMENTAL_ITEMS``) via un tag. Le dump ne distingue
-    pas les items « récoltés à la main » des items « minés » (même type
-    ``raw-resource``). On se rabat sur l'ensemble existant comme source de
-    vérité ; le tag est ensuite consommé par les générateurs (poids, anti-
-    cycle, pool). Quand l'exporter émettra un flag ``hand_harvestable``, on
-    basculera sur celui-ci."""
+    """Item récoltable à la main (wood/stone/raw-fish) : enrichissement de
+    ``ENVIRONMENTAL_ITEMS`` via un tag. Le dump ne distingue pas récolté à la
+    main / miné (même type ``raw-resource``) : on se rabat sur l'ensemble
+    existant comme source de vérité."""
     return name in ENVIRONMENTAL_ITEMS
 
 
@@ -186,19 +179,17 @@ _VIRTUAL_ITEM_TYPES = frozenset({
 def _is_virtual_item(name: str, itype: str, place_result: str) -> bool:
     """Items « contrôle » non fabricables / non empilables (blueprint, planners,
     remotes) : détectés par type ET par absence d'objet posé. Le rail vanilla
-    (type ``rail-planner`` en 2.0, ``place_result = straight-rail``) n'est PAS
-    virtuel : il se fabrique et se pose. Les science packs (``tool``) ne
-    tombent pas ici non plus (subgroup ``science-pack`` géré séparément)."""
+    (``rail-planner`` 2.0) n'est PAS virtuel : il se fabrique et se pose."""
     return itype in _VIRTUAL_ITEM_TYPES and not place_result
 
 
 def equivalent_functional_type(b: BuildingDef) -> str:
     """RECONSTRUIT l'ancien type fonctionnel exclusif (research/transformer/
-    generator/distribution/extractor/other) à partir des TAGS cumulables, dans
-    le MÊME ordre de priorité que l'ancien ``_parse_entity``. Outil de
-    VÉRIFICATION : la logique du générateur ne repose plus que sur les tags,
-    mais ce « rôle gagnant » sert encore aux décisions d'héritage intrinsèques
-    au DUMP (medium, directives fluid_inputs)."""
+    generator/distribution/extractor/other) depuis les TAGS cumulables, dans
+    le même ordre de priorité que l'ancien ``_parse_entity``. Outil de
+    VÉRIFICATION : la logique ne repose plus que sur les tags, mais ce « rôle
+    gagnant » sert encore aux décisions d'héritage du dump (medium,
+    directives fluid_inputs)."""
     if b.is_research:
         return "research"
     if b.is_crafter:
@@ -213,20 +204,18 @@ def equivalent_functional_type(b: BuildingDef) -> str:
 
 
 def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
-    """Tagging PAR CAPACITES intrinseques, sans liste de types : chaque
-    bâtiment reçoit des TAGS ORTHOGONAUX CUMULABLES (il peut être à la fois
-    atelier et générateur) :
-    - consommation de science packs (lab_inputs) -> ``is_research`` :
-      premier-plan, le lab est une brique de base, pas un atelier de craft ;
-    - categories de craft / pieces de fusee / temperature cible -> ``is_crafter`` ;
-    - production electrique ou chaleur -> ``is_generator`` ;
-    - perimetre de supply (pylônes) -> ``is_distribution`` ;
-    - categories de ressources minables ou pompage -> ``is_extractor`` ;
-    - sinon -> ``is_other`` (backup, jamais perdu).
+    """Tagging PAR CAPACITES in trinseques, sans liste de types : chaque
+    bâtiment reçoit des TAGS ORTHOGONAUX CUMULABLES (atelier et générateur à
+    la fois) :
+    - consommation de science packs (lab_inputs) → ``is_research`` ;
+    - categories de craft / pieces de fusee / temperature cible → ``is_crafter`` ;
+    - production electrique ou chaleur → ``is_generator`` ;
+    - perimetre de supply (pylônes) → ``is_distribution`` ;
+    - categories de ressources minables ou pompage → ``is_extractor`` ;
+    - sinon → ``is_other`` (backup, jamais perdu).
 
-    ``equivalent_functional_type`` reproduit l'ancien classement EXCLUSIF ; on
-    le réutilise ici pour les décisions d'héritage du dump (medium,
-    directives) — strictement identiques à l'ancien comportement.
+    ``equivalent_functional_type`` reproduit l'ancien classement EXCLUSIF ;
+    réutilisé ici pour les décisions d'héritage du dump (medium, directives).
     """
     directives: dict = {}
 
@@ -253,24 +242,21 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         directives["rocket_parts_required"] = int(rocket_parts)
 
     if lab_inputs:
-        # Le lab consomme des science packs : bâtiment de RECHERCHE, pas un
-        # atelier de craft (anti-cycle §8) ni un générateur.
+        # Le lab consomme des science packs : bâtiment de RECHERCHE, pas atelier.
         directives["lab_inputs"] = tuple(lab_inputs)
         is_research = True
     else:
         is_research = False
 
     if craft_categories or rocket_parts or target_temp is not None:
-        # Le personnage lui-meme tombe ici (categories de craft) :
-        # c'est la fabrication a la main, le premier fabricant gratuit.
+        # Le personnage lui-meme tombe ici : fabrication a la main.
         is_crafter = True
     else:
         is_crafter = False
 
     # Un accumulateur affiche un max_power_output (decharge) mais ne PRODUIT
-    # pas d'energie : il n'a rien a faire parmi les generateurs (electricite
-    # §10 le prendrait pour source de courant -> faux depart). Le réacteur
-    # (has_heat_output, pas de max_power) produit de la CHALEUR.
+    # pas d'energie : exclu des generateurs (l'electricite le prendrait pour
+    # source de courant). Le réacteur (has_heat_output) produit de la CHALEUR.
     is_accumulator = entity_type == "accumulator"
     is_generator = (
         not is_accumulator
@@ -289,7 +275,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     is_other = not (is_research or is_crafter or is_generator or is_distribution or is_extractor)
 
     # « Rôle gagnant » (ex-classement exclusif) — sert aux décisions d'héritage
-    # du dump (medium, directives) : strictement identique à l'ancien code.
+    # du dump (medium, directives).
     functional = equivalent_functional_type(
         SimpleNamespace(
             is_research=is_research,
@@ -300,10 +286,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         )
     )
 
-    # Électricité vs chaleur (TAGS orthogonaux) : un VRAI producteur de courant
-    # (steam-engine, turbine, burner-generator, solar-panel) produit de
-    # l'électricité ; un réacteur produit de la CHALEUR. L'accumulateur
-    # affiche une puissance de décharge mais ne PRODUIT pas de courant.
+    # Électricité vs chaleur (TAGS orthogonaux) : un vrai producteur produit de
+    # l'électricité ; un réacteur produit de la CHALEUR. L'accumulateur affiche
+    # une puissance de décharge mais ne PRODUIT pas de courant.
     produces_electricity = (
         not is_accumulator and (max_power > 0 or energy_prod > 0)
     )
@@ -326,16 +311,14 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     # --- Tags §1 : raffinement des rôles (docs/tags.md §1.1) ---
     is_power_pole = entity_type == "electric-pole"
     is_beacon = entity_type == "beacon"
-    # Stockage d'énergie : le dump n'emporte pas ``buffer_capacity`` (exporter
-    # §10) — on se rabat sur le seul accumulateur de type (indice API 2.0, pas
-    # une liste de noms). À rouvrir quand l'exporter émettra la capacité réelle.
+    # Stockage d'énergie : le dump n'emporte pas ``buffer_capacity`` (exporter) —
+    # on se rabat sur le seul accumulateur de type (indice API 2.0, pas une
+    # liste de noms). À rouvrir quand l'exporter émettra la capacité réelle.
     is_energy_storage = is_accumulator
     is_offgrid = produces_electricity and (
         energy_type != "electric" or entity_type == "solar-panel"
     )
-    # Consomme du courant : source 'electric' SANS être producteur ni stockeur
-    # (solar-panel est étiqueté 'electric' mais PRODUIT ; l'accumulateur stocke —
-    # ni l'un ni l'autre ne consomme du réseau).
+    # Consomme du courant : source 'electric' SANS être producteur ni stockeur.
     consumes_electricity = (
         energy_type == "electric" and not produces_electricity and not is_accumulator
     )
@@ -352,13 +335,13 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     is_pipe_to_ground = entity_type == "pipe-to-ground"
     is_fluid_transport = is_pipe or is_pipe_to_ground
     # Les poitrines cheat/finies (bottomless/linked/infinity) sont exclues
-    # plus haut (is_junk) : un 'container' restant est un stockage d'items.
+    # plus haut (is_junk).
     is_chest = entity_type == "container"
     is_logistics_chest = entity_type == "logistic-container"
     is_storage = is_chest or is_logistics_chest
     is_roboport = entity_type == "roboport"
-    # Robots LOGISTIQUES/DE CONSTRUCTION uniquement (le robot de combat est
-    # une unité offensive distincte, taggée ``is_combat_robot`` §7).
+    # Robots logistiques/de construction uniquement (le robot de combat est
+    # une unité offensive distincte, taggée ``is_combat_robot``).
     is_robot = entity_type in ("logistic-robot", "construction-robot")
 
     # --- Tags §3 : train & véhicules (docs/tags.md §3) ---
@@ -381,17 +364,16 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     is_rocket_parts_crafter = bool(cats & {"rocket-building"}) or bool(rocket_parts)
 
     # --- Tags §5 : énergie & chaleur (docs/tags.md §5) ---
-    # boiler ET heat-exchanger partagent le type 'boiler' dans le dump : on les
-    # distingue par l'énergie de la source ('burner' vs 'heat').
+    # boiler ET heat-exchanger partagent le type 'boiler' : distingués par
+    # l'énergie de la source ('burner' vs 'heat').
     is_boiler = entity_type == "boiler" and energy_type == "burner"
     is_heat_exchanger = entity_type == "boiler" and energy_type == "heat"
     is_solar = entity_type == "solar-panel"
     is_reactor = entity_type == "reactor"
     is_heat_transport = entity_type == "heat-pipe"
-    # Modèle « chaleur » (docs/tags.md §5bis) : une SOURCE PRODUIT de la
-    # chaleur (réacteur : energy burner + has_heat_output, hors transport dont
-    # l'énergie est vide) ; un CONSOMMATEUR la DEMANDE (échangeur : energy
-    # _source type 'heat'). ``produces_heat`` est restreint à la source.
+    # Modèle « chaleur » (docs/tags.md §5bis) : une SOURCE PRODUIT la chaleur
+    # (réacteur) ; un CONSOMMATEUR la DEMANDE (échangeur). ``produces_heat``
+    # est restreint à la source.
     is_heat_source = entity_type == "reactor" or (has_heat and energy_type == "burner")
     is_heat_sink = energy_type == "heat"
     is_burner_generator = entity_type == "burner-generator"
@@ -403,9 +385,8 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     is_well_pump = entity_type == "pump"
 
     # --- Tags §7 : combat & défense (docs/tags.md §10) ---
-    # Les 4 familles de tourelles vanilla ont 4 types API distincts ;
-    # is_turret est l'union (jamais un 5e type en dur). Aucun de ces bâtiments
-    # ne produit (is_other) : ce sont des raffinements OTHORGONAUX au rôle.
+    # 4 familles de tourelles vanilla = 4 types API distincts ; is_turret est
+    # l'union. Aucun ne produit (is_other) : raffinements orthogonaux au rôle.
     is_gun_turret = entity_type == "ammo-turret"
     is_laser_turret = entity_type == "electric-turret"
     is_flame_turret = entity_type == "fluid-turret"
@@ -414,14 +395,13 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     is_defensive_wall = entity_type in ("wall", "gate")
     is_landmine = entity_type == "land-mine"
     # Robot de COMBAT (destroyer/defender/distractor) : distinct du robot
-    # logistique/construction (is_robot §2 — jamais confondu).
+    # logistique/construction (is_robot, jamais confondu).
     is_combat_robot = entity_type == "combat-robot"
 
     # --- Tags §8 : signal-réseau & électronique (docs/tags.md §11) ---
     # Combinators : les 3 types de calcul + l'émetteur constant. is_circuit_io
-    # est l'union avec speaker/display/switch (tous se raccordent au réseau
-    # circuits). Ce sont des CONSOMMATEURS de courant (energy_type == 'electric')
-    # : leur tag de réseau circuits est orthogonal au rôle (is_other).
+    # est l'union avec speaker/display/switch. Consommateurs de courant ;
+    # tag de réseau circuits orthogonal au rôle (is_other).
     is_circuit_combinator = entity_type in (
         "arithmetic-combinator", "decider-combinator", "selector-combinator",
     )

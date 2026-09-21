@@ -1,19 +1,11 @@
-"""Prototype C3 : knobs de difficulté par seed (IDEES §C3).
+"""Prototype C3 : knobs de difficulté par seed.
 
-La seed devient un profil de difficulté.  Chaque seed dérive (de façon
-déterministe via son PRNG) des valeurs de map settings :
-- ``starting_area`` (taille de la zone de départ) ;
-- densité de nids de biters / fréquence d'évolution ;
-- taux de pollution par bâtiment ;
-- densité de falaises ;
-- biome de départ (bois facile / désert dur).
+La seed dérive (déterministe via son PRNG) des valeurs de map settings :
+``starting_area``, densité de nids / évolution, pollution, falaises, biome
+de départ. Sortie compatible ``map_gen_settings``.
 
-La sortie est un dictionnaire compatible avec les map settings de Factorio
-(``map_gen_settings``) consommé par le mod au runtime.
-
-**Attention solvabilité** : le profil est imposé AVANT le bootstrap ; il ne
-doit pas rendre le démarrage injuste (pas de forêt trop pauvre en bois, pas
-de starting_area trop petite qui encercle le joueur de nids).
+Solvabilité : le profil est imposé AVANT le bootstrap ; il ne doit pas rendre
+le démarrage injuste (forêt trop pauvre en bois, starting_area trop petite).
 """
 
 from __future__ import annotations
@@ -81,10 +73,10 @@ def derive_difficulty_profile(
     rng: random.Random,
     config: DifficultyConfig,
 ) -> DifficultyProfile:
-    """Dérive le profil de difficulté d'une seed, de façon déterministe.
+    """Dérive le profil de difficulté d'une seed, déterministe.
 
     - ``enabled=False`` → profil vanilla (valeurs neutres).
-    - ``enabled=True``  → chaque valeur est tirée dans sa plage.
+    - ``enabled=True`` → chaque valeur tirée dans sa plage.
     """
     if not config.enabled:
         return DifficultyProfile(

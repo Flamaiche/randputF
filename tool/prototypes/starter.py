@@ -1,6 +1,5 @@
-"""Configuration : kit de départ, extraction et transformation (§7 et §8).
+"""Configuration : kit de départ, extraction et transformation.
 
-Configuration lue par le générateur starter_chain :
 - nombre de munitions du kit
 - probabilité d'inclure un inserter
 - patterns de transport par rôle

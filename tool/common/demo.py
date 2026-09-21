@@ -54,8 +54,8 @@ def build_demo_db() -> VanillaDB:
         ("burner-inserter", "inserter"),
     ]:
         # Fidèle au vanilla : chaque item de transport pose SON bâtiment
-        # (place_result) — la sélection starter_chain §2 passe par le TAG du
-        # bâtiment (is_belt, is_pipe…), pas par un motif de nom.
+        # (place_result) — la sélection passe par le tag du bâtiment
+        # (is_belt, is_pipe…), pas par un motif de nom.
         db.items[name] = ItemDef(name=name, subgroup="intermediate", place_result=place)
 
     for name, place, fuel in [
@@ -85,8 +85,8 @@ def build_demo_db() -> VanillaDB:
         db.items[ammo] = ItemDef(name=ammo, subgroup="combat", is_ammo=True, ammo_category="bullet")
     for pack in ["automation-science-pack"]:
         # Un science pack EST un objet de type ``tool`` (raffinage is_tool →
-        # is_science_pack, cf. vanilla §9) et sa filière reste gérée par le
-        # flux recherche (strategic_phase §13), pas par le craft des items.
+        # is_science_pack, cf. vanilla) ; sa filière reste gérée par le flux
+        # recherche, pas par le craft des items.
         db.items[pack] = ItemDef(name=pack, subgroup="science", is_tool=True,
                                  is_science_pack=True)
 
@@ -135,9 +135,8 @@ def build_demo_db() -> VanillaDB:
              fuel_categories=("chemical",), produces_electricity=True)
     building("lab", "research", energy_type="electric", item_input_slots=1,
              directives={"lab_inputs": ("automation-science-pack",)})
-    # rocket-silo : le building existe en base vanilla (entity rocket-silo) ;
-    # sans lui, la phase endgame (endgame_phase.py) ne licencierait pas la
-    # recette randputf-rocket-silo et la validation de complétude échouerait.
+    # rocket-silo : sans le building vanilla, la phase endgame ne licencierait
+    # pas la recette randputf-rocket-silo et la complétude échouerait.
     building("rocket-silo", "rocket_silo", etype="rocket-silo", energy_type="electric",
              crafting_categories=("rocket-building",))
 
@@ -154,8 +153,7 @@ def build_demo_db() -> VanillaDB:
         )
 
     # Conteneur d'items (chest) : fidèle au vanilla (entity_type `container`,
-    # tag is_chest, rôle fonctionnel is_other) — le kit de départ peut rouler
-    # un objet de stockage.
+    # tag is_chest) — le kit de départ peut rouler un objet de stockage.
     db.buildings["wooden-chest"] = BuildingDef(
         name="wooden-chest", entity_type="container", is_chest=True, is_other=True
     )

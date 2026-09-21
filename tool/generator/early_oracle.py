@@ -1,24 +1,23 @@
-"""Oracle « early » — watershed obtenable SANS électricité (bootstrap inline).
+"""Oracle « early » — watershed obtenable sans électricité (bootstrap inline).
 
 Redesign §10ter (correct-by-construction, plus de passe de rattrapage) :
-plutôt que de CAS SER après coup les recettes promises devenues profondes, on
-contraint leur CRÉATION. L'oracle maintient INC RÉMENTALEMENT le watershed
+plutôt que de casser après coup les recettes promises devenues profondes, on
+contraint leur CRÉATION. L'oracle maintient incrémentalement le watershed
 pré-électricité pendant la phase starter + électricité :
 
-- initialisé depuis les sources DÈS LE DÉPART : environnement (bois/pierre/
-  poisson), patchs **items** (minables par foreuse non-électrique) et lacs
+- initialisé depuis les sources dès le départ : environnement (bois/pierre/
+  poisson), patchs items (minables par foreuse non-électrique) et lacs
   (fluides pompés par pompe offshore, sans électricité) ;
-- le KIT DU SPAWN en est VOLONTAIREMENT EXCLU : stock fini de crash, pas une
-  matière première re-fabriquable (tout comme pour l'ancien garde) ;
-- chaque recette CRÉÉE PENDANT la mode « early » étend le watershed si son
-  atelier est non-électrique (handcraft / burner) : son produit devient une
-  ressource pour les recettes promises suivantes.
+- le kit du spawn est volontairement exclu : stock fini de crash, pas une
+  matière première re-fabriquable ;
+- chaque recette créée pendant le mode « early » étend le watershed si son
+  atelier est non-électrique (handcraft / burner).
 
-Quand la mode « early » est active, ``recipes._make_recipe`` tire les
-ingrédients UNIQUEMENT dans ce watershed et n'accepte que des ateliers
+Quand le mode « early » est actif, ``recipes._make_recipe`` tire les
+ingrédients uniquement dans ce watershed et n'accepte que des ateliers
 non-électriques → toute recette promise du starter est jouable pré-électricité
-par construction. La contrainte NET≤0 / SCC (ancien garde) n'est plus qu'un
-diagnostic (``find_cycles``) : seule l'atteignabilité pré-élec compte.
+par construction. La contrainte NET≤0 / SCC n'est plus qu'un diagnostic
+(``find_cycles``) : seule l'atteignabilité pré-élec compte.
 """
 
 from __future__ import annotations
@@ -33,12 +32,12 @@ def build_early_sources(
     patch_resources: set[str],
     lake_resources: set[str],
 ) -> tuple[set[str], set[str]]:
-    """Ressources obtenables DÈS LE DÉPART, sans électricité ni craft.
+    """Ressources obtenables dès le départ, sans électricité ni craft.
 
-    - environnement : bois/pierre/poisson récoltés à la main ;
-    - patchs **items** : minables par foreuse non-électrique (jamais une
-      entité fluide : un patch fluide exige un pumpjack électrique) ;
-    - lacs (fluides) : pompés par pompe offshore (void, sans électricité).
+    - environnement : bois/pierre/poisson (main) ;
+    - patchs items : minables par foreuse non-électrique (jamais un patch
+      fluide — pumpjack électrique) ;
+    - lacs : fluides pompés par pompe offshore (void).
 
     Retourne ``(items, fluides)``."""
     items = set(ENVIRONMENTAL_ITEMS) & set(db.items)
@@ -48,11 +47,9 @@ def build_early_sources(
 
 
 def is_electric_crafter(db: VanillaDB, recipe: dict) -> bool:
-    """La recette est-elle craftée dans un BÂTIMENT ÉLECTRIQUE ?
-
-    Sans atelier (recette de bootstrap) → False. Atelier burner/void/heat →
-    False. Un bâtiment inconnu est traité avec indulgence (non-électrique) —
-    on ne bloque jamais une recette sur un bâtiment que l'on ne connaît pas."""
+    """La recette est-elle craftée dans un bâtiment électrique ? Sans atelier
+    (bootstrap) → False. Atelier burner/void/heat → False. Bâtiment inconnu :
+    indulgence (on ne bloque pas sur un bâtiment qu'on ne connaît pas)."""
     crafted_in = recipe.get("crafted_in")
     if not crafted_in:
         return False
@@ -64,10 +61,10 @@ def is_electric_crafter(db: VanillaDB, recipe: dict) -> bool:
 class EarlyOracle:
     """Watershed pré-électricité courant, maintenu pendant le bootstrap.
 
-    ``active`` : mode « contrainte à la création ». Tant que le starter et
-    l'électricité n'ont pas fini (le gel des promesses, pipeline.py), les
-    recettes sont tirées UNIQUEMENT dans ``items``/``fluids`` et sans atelier
-    électrique ; chaque recette non-électrique ajoute son produit au watershed.
+    ``active`` : tant que starter + électricité n'ont pas fini (gel des
+    promesses, pipeline.py), les recettes sont tirées uniquement dans
+    ``items``/``fluids`` et sans atelier électrique ; chaque recette
+    non-électrique ajoute son produit au watershed.
     """
 
     items: set[str] = field(default_factory=set)

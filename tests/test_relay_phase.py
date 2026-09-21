@@ -1,4 +1,4 @@
-"""Tests de la phase relais (README §9.3).
+"""Tests de la phase relais (docs/recettes.md §9.3).
 
 Les items environnementaux (arbres/rochers/poissons) servent au bootstrap du
 début mais ne sont pas infinis : pour chaque produit dont la recette générée

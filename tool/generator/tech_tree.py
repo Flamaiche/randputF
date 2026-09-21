@@ -1,15 +1,10 @@
-"""Arbre technologique linéaire valide (README §13).
+"""Arbre technologique linéaire valide (§13).
 
-Chaque groupe de steps consécutifs produit UNE technologie qui débloque
-**1 objet de base, étendu en chaîne probabiliste** (un objet = un
-unlock-recipe) : 75 % de chance d'un 2e, 65 % d'un 3e, 35 % d'un 4e,
-15 % d'un 5e (probabilités configurables via `tree.group_chances`). Les
-prérequis suivent strictement l'ordre du graphe (aucune boucle) ; l'arbre
-reste linéaire v1.
-
-Le coût d'une tech peut mêler PLUSIEURS science packs (façon vanilla) : on
-rassemble les packs des steps fusionnés et chaque tech paie d'autant plus de
-packs qu'elle est avancée. Le branchement en arborescence reste hors scope v1.
+Chaque groupe de steps consécutifs produit UNE technologie qui débloque un
+objet de base, étendu en chaîne probabiliste (75/65/35/15 % via
+`tree.group_chances`) ; prérequis suivant l'ordre du graphe (aucune boucle,
+arbre linéaire v1). Coût d'une tech = plusieurs science packs (les techs
+avancées en combinent typiquement jusqu'à 4).
 """
 
 from __future__ import annotations
@@ -19,39 +14,36 @@ import random
 
 from tool.common.db import VanillaDB
 
-# Durée de recherche par unité (secondes). Avec `amount = 1` par pack, la jauge
-# de recherche compte exactement le nombre de cycles (packs) à fournir (§13).
+# Durée de recherche par unité (secondes). Avec `amount = 1` par pack, la
+# jauge compte exactement le nombre de cycles (packs) à fournir (§13).
 _DEFAULT_RESEARCH_TIME = 60
 
-# Nombre max de science packs DIFFÉRENTS demandés par une tech (façon vanilla,
-# les techs avancées combinent typiquement jusqu'à 4 packs).
+# Nombre max de science packs DIFFÉRENTS par tech (les techs avancées
+# combinent typiquement jusqu'à 4 packs, façon vanilla).
 _MAX_COST_PACKS = 4
 
-# Plafond ABSOLU d'objets (unlocks) par tech : 1 de base + 4 extensions de
-# _config_group_chances (aucune tech au-delà de 5 objets).
+# Plafond d'objets (unlocks) par tech : 1 de base + 4 extensions (§13).
 _MAX_PER_TECH = 1 + 4
 
-# Probabilités d'extension du groupe (§13) : après le 1er objet, chance d'en
-# ajouter un 2e, puis un 3e, un 4e, un 5e. Tirage en chaîne (on s'arrête au
-# premier tirage raté). Défauts repris dans config/settings.yaml.
+# Probabilités d'extension du groupe (§13) : chance d'un 2e objet puis 3e, 4e,
+# 5e ; tirage en chaîne (arrêt au premier échec). Défauts in config/settings.yaml.
 _DEFAULT_GROUP_CHANCES = (0.75, 0.65, 0.35, 0.15)
 
 _config_group_chances = _DEFAULT_GROUP_CHANCES
 
 
 def _count_objects(step: dict) -> int:
-    """Nombre d'« objets » débloqués par un step : chaque unlock-recipe compte
-    pour un objet (une recette = un effet unlock-recipe, un bâtiment devient
-    aussi un unlock-recipe randputf-<bâtiment>)."""
+    """Objets débloqués par un step : chaque unlock-recipe compte pour un objet
+    (un bâtiment devient aussi un unlock-recipe randputf-<bâtiment>)."""
     return len(step.get("unlocks_recipes", [])) + len(step.get("unlocks_buildings", []))
 
 
 def _step_unlocks_pole(step: dict, db: VanillaDB) -> bool:
     """Un step débloque un VRAI pylône (poteau électrique) ?
 
-    Deux étapes débloquant chacune un pylône ne doivent JAMAIS être fusionnées
-    dans la même tech : la cadence garantie des pôles (§9.4) exige des
-    positions d'arbre DISTINCTES (vérifiée en test)."""
+    Deux étapes débloquant chacune un pylône ne doivent jamais être fusionnées
+    dans la même tech : la cadence des pôles (§9.4) exige des positions
+    d'arbre distinctes (vérifié en test)."""
     for building in step.get("unlocks_buildings", []):
         b = db.buildings.get(building)
         if b and b.is_power_pole:
@@ -65,12 +57,9 @@ def _step_unlocks_pole(step: dict, db: VanillaDB) -> bool:
 
 
 def _is_science_step(step: dict) -> bool:
-    """Un step de la catégorie science débloque un NOUVEAU science pack.
-
-    Il doit rester isolé (jamais fusionné) : le pack qu'il rend unlocké est
-    consommé par les steps SUIVANTS comme coût — si on le fusionnait avec un
-    consommateur, le pack serait payé par la même tech que celle qui
-    l'unlocke, cassant l'invariant de « production avant consommation » (§13)."""
+    """Step science débloquant un NOUVEAU science pack : il doit rester isolé
+    (jamais fusionné), sinon le pack serait payé par la tech qui l'unlocke,
+    cassant « production avant consommation » (§13)."""
     return (step.get("id") or "").startswith("randputf-science-")
 
 
@@ -82,9 +71,9 @@ def _is_free_step(step: dict) -> bool:
 
 
 def _per_pack_count(depth: int, total: int) -> int:
-    """Quantité (cycles) payable de CHAQUE pack pour une tech de profondeur
-    donnée. Déterministe par graine (hash de la profondeur), croît avec la
-    profondeur : une tech en profondeur exige plus de packs qu'un début."""
+    """Cycles payables de CHAQUE pack pour une tech de profondeur donnée :
+    déterministe par graine (hash de la profondeur), croît avec la profondeur
+    (une tech profonde exige plus de packs)."""
     ratio = depth / max(total - 1, 1)
     if ratio < 0.3:
         lo, hi = 5, 10
@@ -98,7 +87,7 @@ def _per_pack_count(depth: int, total: int) -> int:
 
 def set_config(config: dict) -> None:
     """§13 : probabilités d'extension du nombre d'objets par tech (chaîne de
-    1..5), lues dans ``tree.group_chances`` (liste de 4 probabilités)."""
+    1..5), lues dans ``tree.group_chances``."""
     global _config_group_chances
     chances = (config.get("tree") or {}).get("group_chances", None)
     if chances is None:
@@ -110,10 +99,9 @@ def set_config(config: dict) -> None:
 
 
 def _roll_group_size(rng: random.Random) -> int:
-    """Taille (en objets) d'une tech PAYANTE groupable, tirée en chaîne :
-    1 objet de base, puis une chance d'extension pour chaque objet suivant
-    (75 % → 2e, 65 % → 3e, 35 % → 4e, 15 % → 5e par défaut). Le premier
-    tirage raté stoppe la chaîne."""
+    """Taille (objets) d'une tech payante groupable, tirée en chaîne : 1 objet
+    de base, puis une chance d'extension par objet suivant (75/65/35/15 % par
+    défaut) ; premier échec = arrêt."""
     size = 1
     for probability in _config_group_chances:
         if rng.random() >= probability:
@@ -140,17 +128,17 @@ def build_linear_tech_tree(
 ) -> list[dict]:
     """Assemble un arbre technologique linéaire à partir des macro-steps.
 
-    Regroupe les steps payants CONSECUTIFS en techs dont le nombre d'objets
-    suit la chaîne probabiliste (§13) : 1 objet de base, extensions 75/65/35/15
-    % ; les techs gratuites du starter, les prologue (hand-craft) et la tech
-    endgame restent des nœuds dédiés. Unlock UNIQUE (§13) : une recette n'est
-    débloquée que par la PREMIÈRE tech qui la revendique.
+    Regroupe les steps payants consécutifs en techs dont le nombre d'objets
+    suit la chaîne probabiliste (§13) ; les techs gratuites du starter, les
+    prologue (hand-craft) et la tech endgame restent des nœuds dédiés.
+    Unlock unique (§13) : une recette n'est débloquée que par la première
+    tech qui la revendique.
     """
     technologies: list[dict] = []
     previous_id: str | None = None
     unlocked_recipes: set[str] = set()
 
-    # ── Groupement des steps payants consécutifs (taille tirée en chaîne) ────
+    # Groupement des steps payants consécutifs (taille tirée en chaîne).
     groups: list[dict] = []          # {kind, steps}
     cur_paid: list[dict] = []
     cur_objs = 0
@@ -187,7 +175,7 @@ def build_linear_tech_tree(
             groups.append({"kind": "free", "steps": [step]})
             continue
 
-        # Step PAYANT, groupable.
+        # Step payant, groupable.
         objs = _count_objects(step)
         is_science = _is_science_step(step)
         is_isolated = step.get("isolate") or False
@@ -205,8 +193,7 @@ def build_linear_tech_tree(
             or (cur_objs + objs > cur_target)
         )
         if flush_before and flush_paid():
-            # Un groupe vient d'être vidé : ce step ouvre un NOUVEAU groupe,
-            # on tire sa taille (nb d'objets) en chaîne.
+            # Groupe vidé : ce step ouvre un NOUVEAU groupe, on tire sa taille.
             cur_target = _roll_group_size(rng)
 
         cur_paid.append(step)
@@ -215,21 +202,20 @@ def build_linear_tech_tree(
             cur_has_pole = True
 
         if is_science or is_isolated:
-            # Isole le step science (le pack qu'il débloque est consommé par
-            # les steps SUIVANTS comme coût — jamais fusionné avec eux, §13) et
-            # les steps DISPATCH isolés (ammo de véhicule §12.1, chaque dispatch
-            # garde sa propre tech avant celle du véhicule).
+            # Isole le step science (le pack débloqué est consommé par les
+            # steps suivants, §13) et les steps dispatch isolés (ammo de
+            # véhicule §12.1, chaque dispatch garde sa propre tech).
             flush_paid()
     flush_paid()
 
-    # ── Coût multi-packs de la tech endgame (packs les plus avancés) ────────
+    # Coût multi-packs de la tech endgame (packs les plus avancés).
     all_packs = _collect_packs(steps, limit=None)
     endgame_packs = all_packs[-_MAX_COST_PACKS:] if all_packs else []
 
     n_paid = sum(1 for g in groups if g["kind"] == "paid")
     paid_index = 0
 
-    # ── Conversion des groupes en technologies ──────────────────────────────
+    # Conversion des groupes en technologies.
     for group in groups:
         kind = group["kind"]
         gsteps = group["steps"]

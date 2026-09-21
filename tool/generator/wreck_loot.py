@@ -1,46 +1,32 @@
 """Loot du site de crash (§7) : pile pondérée 0..3 par slot.
 
-Le site de crash vanilla contient un kit fixe (pistolets, plaques, etc.). On le
-VIDE et on remplit chaque slot avec un nombre `n` d'un matériau aléatoire du
-pool de loot, où `n ∈ {0, 1, 2, 3}` suit une loi pondérée STRICTEMENT
-décroissante : 0 est le plus fréquent (slots vides), 3 le plus rare.
+Le kit vanilla (pistolets, plaques, etc.) est vidé ; chaque slot reçoit un
+nombre `n` d'un matériau aléatoire du pool, où `n ∈ {0,1,2,3}` suit une loi
+pondérée STRICTEMENT décroissante : 0 = plus fréquent (slots vides), 3 = plus
+rare. La formule paramétrique (exchangée avec le joueur) garantit la somme
+des poids × valeur = 100 :
 
-La loi est paramétrée par la formule générique échangée avec le joueur :
+    c3 = t,  c2 = t + a,  c1 = 100 − 5t − 2a,  c0 = c1 + b
 
-    c3 = t
-    c2 = t + a
-    c1 = 100 - 5t - 2a
-    c0 = c1 + b            (b >= 1)
-
-avec la contrainte 6t + 3a < 100 (⟺ c1 > c2), ce qui garantit
-c0 > c1 > c2 > c3 et surtout la SOMME DES VALEURS :
-
-    0×c0 + 1×c1 + 2×c2 + 3×c3 = 100.
-
-Les `c_i` sont les poids de tirage (P(0) = c0 / Σ). Exportés dans la seed sous
-`wreck.counts = [c0, c1, c2, c3]` pour le mod runtime.
+avec la contrainte 6t + 3a < 100 (⟺ c1 > c2, b ≥ 1), ce qui donne
+c0 > c1 > c2 > c3. Les `c_i` sont les poids de tirage (P(0) = c0 / Σ),
+exportés dans la seed sous `wreck.counts = [c0, c1, c2, c3]`.
 """
 
 from __future__ import annotations
 
 from tool.common.db import VanillaDB
 
-# Butins de base du crash : ressources NON-infinies uniquement (bois, pierre,
-# poisson) — les seules que le joueur ne peut pas miner/automatiser. On évite
-# tout item crafté (plaques, fours...) dont la recette n'est pas garantie
-# débloquée par l'arbre de la seed : le crash doit servir de bootstrap, pas
-# d'injecter des recettes non disponibles.
+# Butins de base : ressources NON-infinies uniquement (bois, pierre, poisson).
+# Pas d'item crafté (plaques, fours...) dont la recette n'est pas garantie.
 DEFAULT_LOOT = [
     "wood",
     "stone",
     "raw-fish",
 ]
 
-# Paramètres par défaut de la formule : c0 = 24, c1 = 23, c2 = 16, c3 = 15 —
-# P(0) ≈ 30,8 % : les slots sont rarement vides (le crash doit sentir le loot,
-# ne JAMAIS importer un vaisseau vide) et un conteneur n'est jamais entièrement
-# vide (garantie runtime dans control.lua). Le vaisseau (5 slots) donne en
-# moyenne ~6,4 items.
+# Paramètres par défaut de la formule : c0=24, c1=23, c2=16, c3=15 — P(0) ≈
+# 31 %, vaisseau (5 slots) ≈ 6,4 items en moyenne.
 DEFAULT_T = 15
 DEFAULT_A = 1
 DEFAULT_B = 1

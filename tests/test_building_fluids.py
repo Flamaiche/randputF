@@ -122,7 +122,7 @@ def test_sans_lac_aucune_assignation():
 
 
 def test_tag_large_devoile_toutes_les_machines_a_recette_fixe():
-    """§10 + IDEES C7 : ``has_hidden_recipe`` dévoile les bâtiments « qui ont
+    """§10 : ``has_hidden_recipe`` dévoile les bâtiments « qui ont
     une recette cachée » = une VRAIE recette (entrée item/fluide/combustible ET
     sortie item/fluide, y compris les résidus de combustion ``fuel_residues``)
     non accessible comme recette de craft. En vanilla : boiler + heat-exchanger
@@ -251,7 +251,7 @@ def _make_item_fixed_transformer(db) -> "BuildingDef":
 
 
 def test_reacteur_est_routé_vers_recette_item():
-    """SUJETRATION IDEES C7 étendue : le réacteur nucléaire (recette cachée
+    """Extension : le réacteur nucléaire (recette cachée
     item → item via ses résidus de combustion ``fuel_residues``) est désormais
     un ``is_fixed_crafter`` : il reçoit une recette UNIQUE randomisée dont la
     SORTIE est son résidu (depleted-uranium-fuel-cell), crafted_in = le
@@ -288,7 +288,7 @@ def test_reacteur_est_routé_vers_recette_item():
 def test_is_fixed_crafter_couvre_item_et_fluide():
     """``is_fixed_crafter`` couvre les fabricateurs à recette fixe à sortie
     FLUIDE (boiler/heat-exchanger) ET à sortie ITEM (mod), alors que
-    ``is_fixed_fluid_crafter`` (pairing C7, filters de fluid boxes) n'est vrai
+    ``is_fixed_fluid_crafter`` (pairing, filters de fluid boxes) n'est vrai
     que pour la variante fluide."""
     from tool.common.db import is_fixed_crafter, is_fixed_fluid_crafter
 
@@ -331,7 +331,7 @@ def test_recette_fixe_sortie_item_assignee_au_batiment():
 
 def test_recette_fixe_sortie_item_forced_output():
     """Le paramètre ``output_item`` force l'output de la recette du fabricateur
-    fixe (équivalent du ``output_fluid`` du pairing C7 pour la variante item)."""
+    fixe (équivalent du ``output_fluid`` du pairing pour la variante item)."""
     from tool.generator.recursive_phase import _make_fixed_recipe_for_crafter
 
     rng = random.Random(42)
@@ -348,7 +348,7 @@ def test_recette_fixe_sortie_item_forced_output():
 
 def test_recette_fixe_item_refuse_fluid_output():
     """Un fabricateur à sortie item ne peut PAS recevoir un ``output_fluid``
-    imposé (les deux variantes sont exclusives : c'est le pairing C7 qui garde
+    imposé (les deux variantes sont exclusives : c'est le pairing qui garde
     le pending strictement sur ``is_fixed_fluid_crafter``)."""
     from tool.generator.recursive_phase import _make_fixed_recipe_for_crafter
 

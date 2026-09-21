@@ -1,4 +1,4 @@
-"""Modèle « chaleur » (README §10bis, docs/tags.md §5bis) : un consommateur de
+"""Modèle « chaleur » (docs/energie.md §10bis, docs/tags.md §5bis) : un consommateur de
 chaleur (heat-exchanger) ne doit JAMAIS être débloqué avant sa SOURCE
 (nuclear-reactor) ni son TRANSPORT (heat-pipe). La garantie est posée « à la
 volée » par `recursive_phase._ensure_heat_prereq` au premier sink qui reçoit

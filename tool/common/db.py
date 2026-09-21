@@ -2,7 +2,7 @@
 
 Schema intermediaire entre le dump brut du jeu et le moteur de tirage.
 Chaque bâtiment y est decrit par type fonctionnel, slots in/out types
-et directives (possibilites), conformement au README §5.
+et directives (possibilites).
 """
 
 from __future__ import annotations
@@ -14,18 +14,14 @@ SLOT_FLUID = "fluid"
 SLOT_FUEL = "fuel"
 SLOT_ENERGY = "energy"
 
-# Ressources non automatisables (README §3, §6 et §9.3) : récoltées à la main
-# depuis des entités du monde (arbres -> wood, rochers -> stone, poissons ->
-# raw-fish). Elles ne constituent JAMAIS un patch, demeurent disponibles dès
-# le départ comme pool environnemental de base (ingrédients des premiers
-# crafts), et restent des ingrédients possibles des recettes randomisées.
+# Ressources non automatisables : récoltées à la main depuis des entités du
+# monde (arbres → wood, rochers → stone, poissons → raw-fish). Jamais un patch,
+# disponibles dès le départ, ingrédients possibles des recettes randomisées.
 ENVIRONMENTAL_ITEMS = frozenset({"wood", "stone", "raw-fish"})
 
-# Catégories de crafting valides (un bâtiment qui en possède une est un
-# ATELIER GÉNÉRAL multi-recettes, pas un fabricateur à recette fixe). La liste
-# est partagée ici (et non dans recipes.py) pour éviter tout cycle d'import
-# avec les parsers : la détection du tag ``has_hidden_recipe`` (vanilla.py)
-# et le moteur de tirage (recipes.py) s'appuient sur la même source.
+# Catégories de crafting valides : un bâtiment qui en possède une est un atelier
+# général multi-recettes, pas un fabricateur à recette fixe. Partagée ici pour
+# éviter tout cycle d'import avec les parsers.
 VALID_RECIPE_CATEGORIES = frozenset({
     "crafting",
     "basic-crafting",
@@ -39,46 +35,32 @@ VALID_RECIPE_CATEGORIES = frozenset({
 })
 
 
-# Les TAGS de bâtiment qui POSSÈDENT une production propre (« ont une
-# recette ») : ils transforment une entrée en une sortie — fluide, item,
-# énergie, ressource ou recherche. Les « distribution » (pylônes) et « other »
-# ne produisent rien : ils ne sont jamais des fabricateurs à recette fixe.
+# TAGS de bâtiment qui possèdent une production propre (« ont une recette ») :
+# ils transforment une entrée en une sortie. Les « distribution » (pylônes) et
+# « other » ne produisent rien : jamais des fabricateurs à recette fixe.
 PRODUCING_TAGS = ("is_research", "is_crafter", "is_generator", "is_extractor")
 
 
 def has_hidden_recipe(b: "BuildingDef") -> bool:
-    """Détecte les bâtiments porteurs d'une RECETTE CACHÉE : une production
-    codée en dur = une VRAIE recette, mais non accessible comme recette de
-    craft AVANT la transformation du mod. Détecté PAR CAPACITÉS (aucune liste
-    de noms) :
-
+    """Bâtiment porteur d'une RECETTE CACHÉE : production codée en dur, non
+    accessible comme recette de craft avant la transformation du mod.
+    Détection PAR CAPACITÉS (aucune liste de noms) :
       * un tag PRODUCTEUR (``is_research``, ``is_crafter``, ``is_generator``,
-        ``is_extractor`` — le bâtiment « produit » quelque chose) ;
-      * une ENTRÉE — item, fluide OU combustible (fuel = pseudo-ingrédient :
-        sans combustible la machine ne tourne pas) ; la SORTIE, elle, reste
-        item/fluide : slots (''item_output_slots''/''fluid_outputs'') OU items
-        résiduels de combustion (''fuel_residues'', burnt_result) — jamais
-        électricité/chaleur/ressource/recherche (autres mécanismes, traités
-        séparément) ;
-      * AUCUNE catégorie de crafting valide : cette recette n'est pas
-        accessible — ce n'est PAS un atelier général multi-recettes.
+        ``is_extractor``) ;
+      * une ENTRÉE — item, fluide OU combustible (fuel = pseudo-ingrédient) ;
+        la SORTIE reste item/fluide : slots (''item_output_slots''/
+        ''fluid_outputs'') OU items résiduels de combustion
+        (''fuel_residues'', burnt_result) — jamais électricité/chaleur/
+        ressource/recherche ;
+      * AUCUNE catégorie de crafting valide (pas un atelier multi-recettes).
 
-    En vanilla cela revient à boiler/heat-exchanger (fluide → fluide) ET au
-    nuclear-reactor : il consomme un ITEM quelconque comme pseudo-combustible
-    et produit un ITEM en résidu (depleted-uranium-fuel-cell) — une recette
-    cachée item → item. Sa CHALEUR (``produces_heat``) et l'électricité de ses
-    pairs sont des sorties non-recettables, traitées plus tard : le réacteur
-    est donc RÉVÉLÉ (jamais un atelier, aucun fake crafted_in — générateur,
-    ``is_fixed_crafter`` est restreint aux ateliers ``is_crafter``). Les
-    générateurs/extracteurs/lab restants (soleil/combustible → électricité,
-    champ → ressource, packs → recherche : pas de sortie item/fluide) n'ont
-    PAS cette signature — mécanique moteur, jamais taggés. Les ateliers
-    généraux (furnaces, AM, refinery, chemical-plant, silo) ne sont pas
-    tagués (catégorie valide).
+    En vanilla : boiler/heat-exchanger (fluide → fluide) et nuclear-reactor
+    (item → résidu item). Sa chaleur et l'électricité de ses pairs sont des
+    sorties non-recettables : le réacteur est RÉVÉLÉ. Les générateurs/
+    extracteurs/lab restants n'ont pas cette signature.
 
-    ``is_fixed_crafter`` / ``is_fixed_fluid_crafter`` restreignent ce tag au
-    sous-ensemble qui reçoit réellement une recette randomisée (atelier
-    ``is_crafter`` à sortie item OU fluide)."""
+    ``is_fixed_crafter`` / ``is_fixed_fluid_crafter`` restreignent au
+    sous-ensemble qui reçoit réellement une recette randomisée."""
     if not any(getattr(b, tag, False) for tag in PRODUCING_TAGS):
         return False
     has_atelier_category = any(
@@ -100,13 +82,10 @@ def has_hidden_recipe(b: "BuildingDef") -> bool:
 
 
 def is_fixed_fluid_crafter(b: "BuildingDef") -> bool:
-    """Sous-ensemble de ``has_hidden_recipe`` sur lequel le générateur
-    crée UNE recette « fluide → fluide » randomisée (IDEES C7) : un
-    atelier ``is_crafter`` produisant un fluide avec une entrée fluide. En
-    vanilla : boiler et heat-exchanger uniquement. Les autres bâtiments à
-    recette fixe (générateurs, extracteurs, lab) gardent leur comportement
-    figé — on ne leur invente jamais de recette de craft (fake
-    ``crafted_in``)."""
+    """Sous-ensemble de ``has_hidden_recipe`` pour lequel le générateur crée
+    UNE recette « fluide → fluide » randomisée : atelier ``is_crafter`` à
+    entrée et sortie fluides. En vanilla : boiler et heat-exchanger. Les
+    autres bâtiments à recette fixe gardent leur comportement figé."""
     return (
         has_hidden_recipe(b)
         and getattr(b, "is_crafter", False)
@@ -116,14 +95,12 @@ def is_fixed_fluid_crafter(b: "BuildingDef") -> bool:
 
 
 def is_fixed_crafter(b: "BuildingDef") -> bool:
-    """Un bâtiment à recette FIXE qui peut HÉBERGER une recette de craft :
-    atelier ``is_crafter`` taggé produisant une sortie (fluide OU item), OU
-    un combusteur à résidu (``fuel_residues`` non vide) — le réacteur nucléaire
-    produit depleted-uranium-fuel-cell en résidu : c'est sa sortie item
-    recevable. Sur CE sous-ensemble le générateur crée sa recette randomisée
-    (« fluide → fluid » comme boiler/heat-exchanger, « item → item » pour le
-    réacteur ou un équivalent de mod). Les générateurs/extracteurs/lab (chaleur,
-    électricité, ressource, recherche = pas de sortie recette) restent exclus."""
+    """Bâtiment à recette FIXE pouvant HÉBERGER une recette de craft :
+    atelier ``is_crafter`` taggé avec sortie (fluide OU item), ou combusteur
+    à résidu (``fuel_residues`` non vide — réacteur nucléaire → résidu item).
+    Sur ce sous-ensemble le générateur crée sa recette randomisée. Les
+    générateurs/extracteurs/lab (chaleur, électricité, ressource, recherche)
+    restent exclus."""
     return (
         has_hidden_recipe(b)
         and (
@@ -135,11 +112,9 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
         )
     )
 
-# La chaîne fusée (les 3 ingrédients de ``rocket-part``, recette vanilla
-# exempte §14). Elle est réservée à la fin de partie : aucune autre phase (en
-# particulier l'électricité, qui pioche des combustibles) ne doit la débloquer
-# en avance. Shared ici (et non dans endgame_phase) pour éviter tout cycle
-# d'import entre generators.
+# La chaîne fusée (ingrédients de ``rocket-part``, recette exempte) : réservée
+# à la fin de partie, aucune autre phase ne doit la débloquer en avance.
+# Partagée ici pour éviter tout cycle d'import entre generators.
 ROCKET_CHAIN = frozenset({"processing-unit", "low-density-structure", "rocket-fuel"})
 
 # Les VRAIS pylônes (poteaux électriques) sont désormais taggés
@@ -147,17 +122,10 @@ ROCKET_CHAIN = frozenset({"processing-unit", "low-density-structure", "rocket-fu
 # mais PAS un pylône (il ne transporte pas le courant, §9.1/§10). La cadence
 # garantie et le starter ne débloquent que ceux-ci.
 
-# Armes MONTÉES sur des entités (chars, véhicules, artillerie, spidertron) :
-# dans le dump vanilla leur type est « gun », donc is_gun=True, mais elles ne
-# sont PAS utilisables à pied par le personnage — les randomiser comme armes
-# de poing (kit de départ, combat) produit du contenu mort / trompeur
-# (ex. spidertron-rocket-launcher sans spidertron). Elles restent exclues du
-# pool d'armes « de poing » et du balayage de couverture §9.6. Depuis la
-# randomisation des véhicules (§7/§12.1), la pool RecursiveConfig.vehicle_weapons
-# peut contenter ces items MONTÉS-UNIQUEMENT : jamais craftés, ils ne servent
-# que de source à un clone monté sur le véhicule (§12.1) — les items legacy
-# (tank-machine-gun, spidertron-rocket-launcher-2/3/4, identiques à -1) sont
-# du contenu mort : jamais tirés, jamais unlockés.
+# Armes MONTÉES sur des entités : de type « gun » dans le dump mais PAS
+# utilisables à pied — les randomiser comme armes de poing produit du contenu
+# mort. Exclues du pool « de poing ». La pool RecursiveConfig.vehicle_weapons
+# peut les inclure comme source d'un clone monté sur véhicule.
 VEHICLE_GUNS = frozenset(
     {
         "tank-cannon",
@@ -172,12 +140,10 @@ VEHICLE_GUNS = frozenset(
     }
 )
 
-# Types d'items non-empilables (stack_size = 1 dans Factorio vanilla 2.0) :
-# une recette ne peut en produire/consommer que 1 exemplaire. Fallback quand
-# le dump n'emporte pas stack_size (type conservateur : clamper davantage ne
-# casse rien, rater un item non-stackable fait crasher le chargement).
-# NB : "tool" (science packs !) et "module"/"ammo" sont stackables et donc
-# volontairement absents.
+# Types d'items non-empilables (stack_size = 1) : une recette ne peut en
+# produire/consommer que 1 exemplaire. Fallback quand le dump n'emporte pas
+# stack_size (type conservateur). "tool" (science packs !) et "module"/"ammo"
+# sont stackables et volontairement absents.
 NON_STACKABLE_ITEM_TYPES = frozenset(
     {
         "gun",
@@ -210,20 +176,16 @@ class ItemDef:
     is_science_pack: bool = False
     is_tool: bool = False
     ammo_category: str = ""
-    # Type brut du dump (source de vérité : "item", "gun", "armor",
-    # "item-with-entity-data", "capsule", "tool", ...).
+    # Type brut du dump (source de vérité : "item", "gun", "armor", ...).
     item_type: str = ""
-    # Combustible : categorie de fuel (brûlable dans les brûleurs qui la
-    # listent dans leurs ``fuel_categories``) et RESIDU de combustion — l'item
-    # produit quand le combustible est brûlé. Ce résidu est la SORTIE recevable
-    # (item) d'un générateur à combustible (ex. réacteur :
-    # uranium-fuel-cell → depleted-uranium-fuel-cell). Champ rempli quand le
-    # dump a été régénéré avec l'exporter (exporter/control.lua) ; sinon vide.
+    # Combustible : catégorie de fuel et RÉSIDU de combustion (l'item produit
+    # quand le combustible est brûlé, ex. réacteur : uranium-fuel-cell →
+    # depleted-uranium-fuel-cell). Rempli quand le dump a été régénéré avec
+    # l'exporter ; sinon vide.
     fuel_category: str = ""
     burnt_result: str | None = None
     # Stack size réel (0 = inconnu : dump non régénéré). Quand il est connu,
-    # il fait foi ; sinon on déduit la stackabilité du type (voir
-    # is_stackable).
+    # il fait foi ; sinon on déduit la stackabilité du type.
     stack_size: int = 0
     # --- Tags §9 : items (docs/tags.md §12) ---
     is_environmental: bool = False    # récolté à la main (wood/stone/raw-fish)
@@ -238,13 +200,10 @@ class ItemDef:
 
     @property
     def is_stackable(self) -> bool:
-        """Un item est-il empilable (stack_size > 1) ? Factorio refuse qu'une
-        recette produise/consomme plus de 1 exemplaire d'un item non-stackable
-        (armure, arme à feu, véhicule, télécommande...) — erreur de chargement
-        « not stackable but has a max count of N ». ``stack_size`` réel du dump
-        fait foi quand il est fourni ; sinon on se rabat sur le type (les
-        types non-stackables sont connus : gun, armor, item-with-entity-data,
-        capsules/remotes, outils de planification)."""
+        """Empilable (stack_size > 1) ? Factorio refuse qu'une recette produise/
+        consomme plus de 1 exemplaire d'un item non-stackable (armure, arme,
+        véhicule, télécommande...). ``stack_size`` réel fait foi ; sinon on se
+        rabat sur le type (types non-stackables connus)."""
         if self.stack_size:
             return self.stack_size > 1
         return self.item_type not in NON_STACKABLE_ITEM_TYPES
@@ -252,8 +211,8 @@ class ItemDef:
 
 @dataclass(frozen=True)
 class FluidDef:
-    """Un fluide est identifie par son nom uniquement (README §6) :
-    la temperature n'est pas une dimension, elle n'existe pas ici."""
+    """Un fluide est identifie par son nom uniquement :
+    la temperature n'est pas une dimension ici."""
 
     name: str
     fuel_value: float | None = None
@@ -261,12 +220,10 @@ class FluidDef:
 
 @dataclass
 class BuildingDef:
-    """Un bâtiment est décrit par des TAGS orthogonaux cumulables : il peut être
-    à la fois atelier (``is_crafter``), générateur (``is_generator``) et
-    producteur de chaleur (``produces_heat``) — plus aucune classification
-    exclusive. `equivalent_functional_type` (vanilla.py) peut RECONSTRUIRE
-    l'ancien type exclusif pour vérification, mais la logique ne repose plus
-    que sur les tags."""
+    """Bâtiment décrit par des TAGS ORTHOGONAUX CUMULABLES (atelier, générateur
+    et producteur de chaleur en même temps, aucune classification exclusive).
+    ``equivalent_functional_type`` (vanilla.py) peut reconstruire l'ancien type
+    exclusif pour vérification."""
 
     name: str
     entity_type: str
@@ -298,29 +255,23 @@ class BuildingDef:
     fluid_outputs: int = 0
     item_output_slots: int = 0
     pumped_fluid: str | None = None
-    # Sorties « spéciales », NON recettables (jamais des produits de recette de
-    # craft) — TAGS ORTHOGONAUX qui se cumulent : une machine peut être à la
-    # fois consommatrice de combustible, productrice de chaleur et productrice
-    # de courant. ``produces_electricity`` = VRAI producteur de courant
-    # (steam-engine, turbine, burner-generator, solar-panel) ; ``produces_heat``
-    # = producteur de chaleur (nuclear-reactor). Le réacteur produit de la
-    # chaleur (+ son résidu de combustible), PAS de l'électricité : il est donc
-    # écarté de l'électricité PAR CAPACITÉS, sans liste de noms. ``has_hidden_recipe``
-    # ne compte jamais ces sorties — leur traitement viendra plus tard.
+    # Sorties « spéciales » NON recettables — TAGS ORTHOGONAUX cumulables.
+    # ``produces_electricity`` = vrai producteur de courant (steam-engine,
+    # turbine, burner-generator, solar-panel) ; ``produces_heat`` = producteur
+    # de chaleur (nuclear-reactor). Le réacteur produit de la chaleur (+ résidu
+    # de combustible), pas d'électricité : écarté de l'électricité PAR
+    # CAPACITÉS, sans liste de noms. ``has_hidden_recipe`` ne compte jamais
+    # ces sorties.
     produces_heat: bool = False
     produces_electricity: bool = False
-    # Items résiduels de combustion (les ``burnt_result`` des combustibles du
-    # bâtiment INSCRITS APRÈS LE PARSE — ils dépendent de la base items, pas du
-    # seul bâtiment). Ce sont des SORTIES item RECEVABLES : ex. le réacteur
-    # produit depleted-uranium-fuel-cell. ``has_hidden_recipe`` les compte comme
-    # sortie → un combusteur à résidu est une recette cachée item → item
-    # (entrée = un item quelconque, pseudo-combustible).
+    # Items résiduels de combustion (burnt_result des combustibles du bâtiment,
+    # INSCRITS APRÈS LE PARSE — dépendent de la base items). SORTIES item
+    # recevables (ex. réacteur → depleted-uranium-fuel-cell).
     fuel_residues: frozenset[str] = frozenset()
     directives: dict = field(default_factory=dict)
-    # Tag « fabricateur à recette cachée » détecté par capacités au chargement
-    # du dump (boiler/heat-exchanger et tout équivalent de mod). L'arbre de
-    # tech s'appuie sur ce tag pour soustraire ces bâtiments du pool des
-    # ateliers et assigner une recette fixe aux transformateurs (IDEES C7).
+    # Tag « fabricateur à recette cachée » détecté par capacités au chargement du
+    # dump (boiler/heat-exchanger et équivalents de mod). Sert à soustraire ces
+    # bâtiments du pool des ateliers et à assigner une recette fixe.
     has_hidden_recipe: bool = False
     # --- Tags §1 : raffinement des rôles (docs/tags.md §1.1) ---
     is_power_pole: bool = False       # poteau électrique (type electric-pole + supply_area)
@@ -429,12 +380,10 @@ class VanillaDB:
 
     @property
     def extraction_only_fluids(self) -> frozenset[str]:
-        """Fluides sans recette de production DIRECTE : l'eau (offshore-pump),
-        le pétrole brut (pumpjack) et la vapeur (chaudière). Le
-        barillage/débarillage est un cycle (fluide → baril → fluide), pas une
-        production : on ignore les recettes dont le nom contient "barrel". Ces
-        fluides sont des RESSOURCES BRUTES (README §3) : extraites de
-        l'environnement, jamais craftées — infinies ou non."""
+        """Fluides sans recette de production DIRECTE : eau (offshore-pump),
+        pétrole brut (pumpjack), vapeur (chaudière). Le barillage est un cycle
+        (fluide → baril → fluide) : recettes "barrel" ignorées. RESSOURCES
+        BRUTES extraites de l'environnement, jamais craftées — infinies ou non."""
         produced = {
             p[1]
             for r in self.recipes.values()
@@ -445,12 +394,10 @@ class VanillaDB:
         return frozenset(name for name in self.fluids if name not in produced)
 
     def raw_resources(self, patch_resources: set[str]) -> frozenset[str]:
-        """Ressources « brutes » d'une seed (README §3) : patches posés au sol
-        (fini), items environnementaux récoltables à la main (arbres/rochers/
-        poissons) et fluides d'extraction (eau/pétrole brut/vapeur — infinis
-        ou non). Un science pack ne doit JAMAIS être crafté avec une ressource
-        brute (§13) : exclue en génération (forbidden) et vérifiée par
-        pipeline_validator."""
+        """Ressources « brutes » d'une seed : patches posés au sol, items
+        environnementaux récoltables à la main, fluides d'extraction. Un
+        science pack ne doit JAMAIS être crafté avec une ressource brute :
+        exclue en génération (forbidden) et vérifiée par pipeline_validator."""
         return frozenset(patch_resources) | set(ENVIRONMENTAL_ITEMS) | self.extraction_only_fluids
 
     def fuel_items(self) -> list[ItemDef]:
@@ -460,10 +407,9 @@ class VanillaDB:
         )
 
     def fuels_for(self, b: "BuildingDef") -> list[ItemDef]:
-        """Les combustibles qu'un bâtiment PEUT brûler : items avec fuel_value
-        dont la catégorie de fuel appartient aux ``fuel_categories`` du
-        bâtiment. Un brûleur ne tourne qu'avec du combustible (pseudo-ingrédient
-        d'entrée §6) — la correspondance se fait PAR CATÉGORIE, rien en dur."""
+        """Combustibles qu'un bâtiment PEUT brûler : items avec fuel_value dont
+        la catégorie appartient aux ``fuel_categories`` (correspondance PAR
+        CATÉGORIE, rien en dur)."""
         if not getattr(b, "fuel_categories", ()):
             return []
         accepted = set(b.fuel_categories)
@@ -474,33 +420,28 @@ class VanillaDB:
         )
 
     def fuel_residues(self, b: "BuildingDef") -> frozenset[str]:
-        """Les SORTIES recevables (items) issues de la combustion : le résidu
-        de chaque combustible du bâtiment (``burnt_result``). Pour le réacteur
-        (categorie "nuclear") : depleted-uranium-fuel-cell — c'est SA sortie
-        item. Vide si le dump n'a pas été régénéré (champs absents de
-        vanilla_dump.json)."""
+        """SORTIES recevables (items) issues de la combustion : le ``burnt_result``
+        de chaque combustible du bâtiment. Réacteur → depleted-uranium-fuel-cell
+        (c'est SA sortie item). Vide si le dump n'a pas été régénéré."""
         return frozenset(
             i.burnt_result for i in self.fuels_for(b) if i.burnt_result
         )
 
     def fuel_item_flow(self, b: "BuildingDef") -> dict:
-        """Vue NORMALISÉE d'une machine à combustible (TAG générique) : entrée
-        = UN ITEM QUELCONQUE en pseudo-combustible (aucune référence à une
-        catégorie type « nuclear »), sorties = les items résiduels de
-        combustion (``burnt_result``). La machine devient ainsi simplement
-        item → item (combustible → résidu) — plus simple et plus malléable
-        pour la suite (chaleur/électricité traitées séparément).
-        Exemple : nuclear-reactor → {"input": "item", "outputs":
-        {"depleted-uranium-fuel-cell"}}."""
+        """Vue normalisée d'une machine à combustible : entrée = un ITEM
+        quelconque en pseudo-combustible, sorties = les items résiduels
+        (``burnt_result``). La machine devient item → item (chaleur/électricité
+        traitées séparément).
+        Exemple : nuclear-reactor → {"input": "item",
+        "outputs": {"depleted-uranium-fuel-cell"}}."""
         return {
             "input": "item" if bool(getattr(b, "fuel_categories", ())) else None,
             "outputs": self.fuel_residues(b) or frozenset(),
         }
 
     def has_fuel_item_flow(self, b: "BuildingDef") -> bool:
-        """Un combusteur produit-il un RÉSIDU item ? Entrée item (combustible)
-        générique ET sortie item (résidu) : c'est une vraie transformation
-        item → item, indépendante de toute catégorie de fuel (nuclear, ...)."""
+        """Combusteur produisant un RÉSIDU item : entrée item (combustible)
+        générique ET sortie item (résidu) — vraie transformation item → item."""
         flow = self.fuel_item_flow(b)
         return flow["input"] is not None and bool(flow["outputs"])
 
@@ -511,9 +452,8 @@ class VanillaDB:
         )
 
     def buildings_with_tag(self, tag: str) -> list[BuildingDef]:
-        """Tous les bâtiments portant un TAG donné (``is_crafter``,
-        ``is_generator``, ...). Un bâtiment multi-tags apparaît dans CHAQUE
-        catégorie qu'il porte."""
+        """Bâtiments portant un TAG donné. Un bâtiment multi-tags apparaît dans
+        CHAQUE catégorie qu'il porte."""
         return sorted(
             (b for b in self.buildings.values() if getattr(b, tag, False)),
             key=lambda b: b.name,
