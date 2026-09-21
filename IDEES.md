@@ -122,6 +122,12 @@ Randomisation des **quantités** des recettes (plus du pur 1-pour-1 : un
 minimum 1 unité par ingrédient, déterminisme PRNG, constante `enabled`) — non
 branché au pipeline.*
 
+*FAIT (branche `annexe`) : passe post-assemblage branchée —
+`tool/generator/craft_quantity.py`, flux RNG dédié, section `craft_quantity:`
+de la config (`enabled: false`), montants jamais < `amount_min`, structure et
+solvabilité intactes (le validateur ne lit que la structure). Voir
+`docs/recettes.md §9.8` et `tests/test_craft_quantity_pipeline.py`.*
+
 ### C2. Tags de déblocage de l'arbre tech / sciences par bâtiment
 
 **État : pas fait.** Aujourd'hui la contrainte « bâtiment avant usage » est
