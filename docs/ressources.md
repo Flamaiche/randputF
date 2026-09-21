@@ -107,6 +107,17 @@ posable), les autres restent. Pour un **item**, la richesse de la seed est le
 théorique sur-estimée), un **fluide** garde un **rendement par puits**
 (`richness` intégral à chaque puits).
 
+#### Randomisation non-finie (A1)
+
+Optionnel (section `nonfinite:` de la config, `enabled: false` par défaut —
+chantier A1) : par gisement et avec un flux RNG dédié (`randputF:nonfinite:`),
+la richesse totale est multipliée par un facteur aléatoire `richness_factor`
+(défaut `0.4..2.5`) et le rayon par `radius_factor` (défaut `0.6..1.8`). Pour un
+**ITEM**, `count` est systématiquement réévalué via
+`item_field_tiles(radius, well_seed)` : le champ posé reste exactement le
+disque bruité déterministe, seul le ratio `richness/count` par tuile varie.
+L'identité (kind + ressource) n'est jamais touchée (tirée par §6).
+
 En `data-updates`, ces entités ont `autoplace` avec `base_density = 0` : le
 mapgen ne les instancie jamais (spécification requise — le moteur refuse un
 resource sans autoplace — mais génération nulle) ; seule la logique runtime
