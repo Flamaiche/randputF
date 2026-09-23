@@ -114,10 +114,13 @@ générateur suivantes (D4ter) d'autre part :
   obtenable ; un patch fluide exige un pumpjack (électricité) ; un lac se pompe
   par pompe offshore (void) ;
 - **mineur non-électrique au starter** : quand la seed tire
-  electric-mining-drill pour ses patchs item, un foreuse burner est AMORCÉ au
-  kit (1 exemplaire, façon vanilla) + refabrique via une tech gratuite — sinon
-  rien d'extractible avant le réseau alors que les recettes gratuites peuvent
-  consommer des patchs item ;
+  electric-mining-drill pour ses patchs item, la recette du foreuse burner
+  (burner-mining-drill) naît dans le GRAPHE du starter (craft à la main, tech
+  gratuite) — le joueur se le fabrique, pas d'exemplaire gratuit ni de remplaçant
+  au kit. Son pool d'ingrédients interdit tout item qui dépend (même
+  transitivement) d'une mine : sinon cycle (foreuse ← four-pierre ← plastic-bar
+  <patch> ← foreuse), et rien n'est minable avant le réseau alors que les
+  recettes gratuites peuvent consommer des patchs item ;
 - **fin de l'auto-hébergement** : aucune recette n'est hébergée dans un
   bâtiment dont l'item EST son produit (`randputf-stone-furnace` dans
   stone-furnace) — cercle atelier=produit mort (garde dans `recipes._pick_building`

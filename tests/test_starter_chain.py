@@ -276,12 +276,14 @@ def test_pas_de_landfill_sans_lac():
     assert "randputf-landfill" not in uncovered
 
 
-def test_mineur_non_electrique_amorce_au_kit_quand_extracteur_electrique():
+def test_mineur_non_electrique_fait_partie_du_graphe_quand_extracteur_electrique():
     """D4ter : quand le starter tire electric-mining-drill pour ses patchs item,
     le kit ne pourrait rien miner avant le réseau — l'oracle early traite pourtant
-    les patchs item comme obtenables pré-élec. Un mineur NON-électrique
-    (burner-mining-drill) est donc AMORCÉ au kit ET refabriquable (recette dans
-    une tech gratuite), façon vanilla."""
+    les patchs item comme obtenables pré-élec. Le graphe est ENTIÈREMENT le
+    nôtre : pas d'exemplaire gratuit « amorti » au kit (l'objet apparaîtrait
+    hors graphe) — la recette du mineur non-électrique (burner-mining-drill)
+    est une recette NORMALE du starter, unlockée par une tech gratuite, et le
+    joueur se le fabrique."""
     rng = random.Random(1)  # seed 1 : item-patch extractor = electric-mining-drill
     db = build_demo_db()
     chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")))
@@ -291,11 +293,13 @@ def test_mineur_non_electrique_amorce_au_kit_quand_extracteur_electrique():
     )
     assert extractor == "electric-mining-drill"
     kit = {e["name"] for e in chain.kit}
-    assert "burner-mining-drill" in kit
+    assert "burner-mining-drill" not in kit
     assert any(
         r["results"] and r["results"][0]["name"] == "burner-mining-drill"
         for r in chain.recipes
     )
+    covered = {r for step in chain.tech_steps for r in step.get("unlocks_recipes", [])}
+    assert "randputf-burner-mining-drill" in covered
 
 
 def test_aucune_recette_auto_hebergee():
