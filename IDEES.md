@@ -175,6 +175,30 @@ pipeline. À connecter avec A1 (randomisation non-infinies) et la garantie
 « extracteur avant besoin » (§7) : la garantie suffit pour la solvabilité, il
 faut EN PLUS échelonner le starter pour ne pas tout donner d'emblée.*
 
+### C4. Coûts de tech et rythme de déblocage (piloté par l'ardoise)
+
+Deux axes à équilibrer une fois l'ardoise (B/tool difficulty) en place :
+
+1. **Coûts des techs** : aujourd'hui les science packs ne sont pas calibrés —
+   une tech peut coûter cher alors que son apport arrive tôt (et vice-versa).
+   Les coûts devraient refléter la valeur du déblocage (rang dans la
+   progression, utilité réelle via les tags C2, position dans l'ardoise).
+2. **Contrôle de QUAND une tech se débloque** : c'est le vrai levier de rythme.
+   Au lieu d'un simple ordre d'index (D2), conditionner le déblocage au
+   **progrès réel dans l'ardoise** : n'autoriser la tech T que lorsque le joueur
+   a obtenu (crafté/possédé) une fraction des items requis pour la run —
+   ex. « X % du total de l'ardoise déjà produits » ou « les N items précédents
+   du graphe maîtrisés ». Effet recherché : la progression se déroule « quand
+   c'est le moment » (on ne déboule pas une tech profonde au tout début parce
+   qu'on a eu sa clé par hasard), et chaque tech arrive alors que le joueur a
+   déjà eu le besoin pratique qu'elle couvre — plutôt que de choisir au hasard
+   dans un panier de déblocages.
+
+Approximation C4 s'appuie sur : idx tech + ardoise (C1/B), graphe primaire DAG
+(tests difficulty), et la garantie D2 (jamais de déblocage avant l'usage).
+À trancher : mesure « items obtenus / total à avoir » au sens cumulé (ardoise)
+ou au sens local (voisins du graphe).
+
 ---
 
 ## D. Écosystème & garanties
@@ -185,3 +209,109 @@ Les « paires utiles » ne sont garanties que pour les armes et les véhicules
 (§12.1). Étendre le pairing au-delà (bâtiment de production → recette associée,
 consommable → arme, etc.) : à préciser une fois les chantiers A/B/C avancés,
 c'est un renfort de cohérence, pas une brique de contenu.
+
+## D2. Garantie d'usage « dure » (bâtiment avant usage, niveau SEED) — FAIT
+
+**Validation** : `tools/audit_usage.py 0 201` → U1 = 0, U2 = 0 ; pytest **669
+passed** (dont `tests/test_usage_pass.py`, 2 tests × 20 seeds) ; seed 5
+régénérée et réinstallée. Voir « Implémentation » (actualisée) en bas.
+
+**État ANCIEN — garantie MONTANTE, pilotée par la recette (mou)** : le
+générateur ne pose jamais une recette dans un atelier non débloqué
+(`state.unlocked_buildings`, `_pick_building`) — au besoin il *débloque sur le
+tas* (choisit un atelier quelconque et l'inscrit). C'est une garantie de
+FABRICABILITÉ (C2) : chaque recette a un bâtiment jouable au moment où elle
+existe. Mais rien ne garantit l'inverse sur la seed finale :
+
+1. **Un bâtiment débloqué peut n'avoir AUCUN usage** — aucune recette de la
+   seed `crafted_in`/`category` dessus → l'item débloqué est du contenu mort
+   (déblocage par une tech, jamais utile ensuite) ;
+2. **L'ordre des techs peut inverser l'usage** — une recette hébergée dans un
+   bâtiment B peut être unlockée par une tech d'index **strictement inférieur**
+   à celle qui débloque B lui-même (impossible à la création sur le tas, mais
+   le panache du bootstrap/kit crée des exceptions à documenter).
+
+**Garantie désirée — DEScendante, vérifiable sur la seed assemblée** : une
+**passe post-récursion / avant relais** (`tool/generator/usage_pass.py`) analyse
+le graphe final et GARANTIT par correction (pas juste détection) :
+
+- **(U1) usage non-nul** : tout bâtiment **unlocké** (recette `randputf-<b>`
+  présente) héberge ≥ 1 recette de la seed (par `crafted_in` ou une `category`
+  dans ses `crafting_categories`) — sauf bâtiments **terminaux** dont l'usage
+  est leur rôle moteur (lab, rocket-silo, générateurs : usage = produit qu'ils
+  consomment au lancement / leur électricité, vérifié via le graphe) et sauf
+  le kit du starter (bâtiments livrés par le kit, `starter.kit`).
+- **(U2) ordre strict** : pour chaque recette R hébergée dans B (`crafted_in`),
+  `index_tech(unlock(R)) ≥ index_tech(unlock(B))` — B est « la tech d'avant ».
+  Exception assumée et vérifiée : les bâtiments du **kit** de départ (four de
+  pierre, extracteur starter) et les bâtiments d'**auto-consommation** du
+  bootstrap (§7 œuf/poule, déjà gérés par l'amorce du kit) — un bâtiment dans
+  le kit est réputé débloqué en tech 0.
+- **Correction (U2)** — par ordre de préférence, déterministe :
+  1. **Bascule** : re-home R sur un atelier déjà débloqué `i_other ≤ i_recipe`
+     du même pool (jamais si la source se retrouverait sans recette — U1) ;
+  2. **Précéder R** : décaler le claim d'unlock de R sur le step qui débloque B
+     → l'invariant devient une égalité. Refusé (exempté) si l'item de R est
+     consommé par une recette débloquée AVANT B — c'est une
+     **auto-consommation du bootstrap** (§7) : décaler R casserait la recette
+     consommatrice, le déblocage précoce de R est voulu
+     (`_reorder_claim` → `"consumed:<recette>"` → exemption) ;
+  3. Sinon `warning` (jamais observé sur 0-200).
+- **Correction (U1)** : bâtiment unlocké sans usage → soit **retirer** son
+  déblocage (pas de contenu mort), soit lui **rattacher** une recette du même
+  produit-d'atelier quand un candidat existe. Jamais de seed livrée avec un
+  bâtiment mort.
+
+**Implémentation** (actualisée) :
+- prototype `tool/prototypes/usage.py` (dataclass `UsageConfig(PrototypeConfig)`,
+  constantes `enabled` (défaut **true**), `kit_exempt` (bâtiments livrés par le
+  kit, déduits de `StarterConfig`), `strict_order` (U2 on/off)) ;
+- section `usage:` dans `config/settings.yaml` ;
+- passe `tool/generator/usage_pass.py` appelée DEUX fois dans
+  `pipeline.generate_seed` :
+  - **passe primaire** après `ensure_rocket_chain`, AVANT `build_relay_recipes`
+    (relais peuvent ré-utiliser un bâtiment mort et le masquer ; U1/U2 doivent
+    être vérifiés sur le primaire avant leur création) ;
+  - **passe finale** juste avant `build_linear_tech_tree`, sur l'ordre COMPLET
+    `starter + welcome + ease + recursive + endgame` — les recettes relais et
+    ease-up sont créées après la passe primaire et leurs techs prologue sont
+    tôt alors que leur hôte peut être profond (cas seed 42, résolu par bascule
+    vers l'AM-1 du kit) ;
+  idempotente, déterministe (0 tirage RNG) ;
+- audit dans `tools/audit_usage.py` (source unique de vérité `audit()`, relue
+  par les tests) : lit les unlocks via `effects` `unlock-recipe` des techs
+  FINALES (les clés `unlocks_recipes`/`unlocks_buildings` sont absentes des
+  techs assemblées — toute lecture de ces clés est VACUÉE) ;
+- invariants : `tests/test_usage_pass.py::test_u1_batiments_hotes_non_morts`
+  (U1) et `test_u2_ordre_tech_avant_usage` (U2) — 20 seeds chacun, en plus du
+  fuzz existant (667 → 669) ;
+- stats sur 0-200 : passe primaire = 41 bascules U2 / 26 seeds, 71 rattachements
+  U1 / 65 seeds, 0 warning ; exemptions bootstrap (reorder bloqué par
+  consommation) sur seeds 36 (burner-generator→AM-2) et 83 (inserter→steel-furnace)
+  — ces recettes ne peuvent ni être basculées (aucun hôte assez tôt à 2 slots
+  item) ni être repoussées (leurs items sont consommés par le bootstrap :
+  burner-mining-drill / pipe) ;
+- tarring avec `progressive_extractors` (C3) : C3 échelonne le starter, la
+  garantie U2 assure que tout déblocage d'extracteur précède son premier usage.
+
+**Champs touchés** : `state.unlocked_buildings`, `state.steps`, ordre des
+`technologies` (claims d'unlock déplacés), recettes (`crafted_in`),
+`starter.kit`.
+
+## D3. Prochain pas après D2 — SPEC
+
+Une fois D2 en place, les chantiers C2 (tags bâtiment→tech) et C3 (extracteurs
+progressifs) s'appuient dessus : C2 rend les tags explicites (déduits de la
+garantie, plus implicites), C3 échelonne le starter en se reposant sur
+« bâtiment avant usage » vérifié.
+
+### Idées ouvertes (à trancher au fil du travail)
+
+- **B1-style proche** : D2 pourrait être couplé à un audit `tool/audit/usage.py`
+  en aval du pipeline (comme `audit/tags.py`) — rapport par seed des bâtiments
+  morts au lieu d'une simple correction.
+- **Connexion B1 (difficulté)** : à haute difficulté, des bâtiments volontaire-
+  ment morts *pour la recette* mais utiles (cinglage, réacteurs) — la garantie
+  U1 doit différencier « pas de recette hébergée » et « aucun usage gameplay ».
+- **D1 pairing générique** : les paires utiles pourront réutiliser le même
+  analyseur de graphe (consommateurs d'un bâtiment) au-delà des armes/véhicules.

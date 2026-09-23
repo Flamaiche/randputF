@@ -146,6 +146,21 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     # environnemental n'y entre (les recettes de fusée ne sont pas relayées).
     endgame_steps = endgame_phase.ensure_rocket_chain(rng, db, starter.state)
 
+    # Phase 4ter-bis : garantie d'usage dure (§D2, usage_pass). Passée AVANT les
+    # relais — une recette « propre » du bootstrap hébergée dans un bâtiment mort
+    # masquerait le contenu sans usage (U1). Corrige par construction U1 (usage
+    # non-nul) et U2 (bâtiment débloqué avant son premier usage) ; déterministe,
+    # ne touche que crafted_in/category (§D2).
+    from tool.generator.usage_pass import enforce_usage
+
+    usage_report = enforce_usage(
+        db,
+        starter.state,
+        starter,
+        starter.tech_steps + recursive_phase.steps() + endgame_steps,
+        cfg,
+    )
+
     # Phase 4bis : relais des ressources non-infinies (§9.3). Les items
     # environnementaux ont servi au bootstrap ; on crée des recettes « propres »
     # pour chaque produit qui en consommait. Le pool d'ingrédients et bâtiments
@@ -204,6 +219,19 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     all_tech_steps = (
         starter.tech_steps + welcome_steps + ease_steps + recursive_phase.steps() + endgame_steps
     )
+
+    # Ré-applique la garantie d'usage dure sur l'ORDRE FINAL (recettes relais et
+    # ease-up créées après la passe primaire ; leurs techs prologue sont tôt alors
+    # que leur bâtiment d'hébergement peut être profond). La passe est idempotente
+    # et déterministe ; elle ne touche que crafted_in/category/claims d'unlock.
+    enforce_usage(
+        db,
+        starter.state,
+        starter,
+        all_tech_steps,
+        cfg,
+    )
+
     technologies = tech_tree.build_linear_tech_tree(all_tech_steps, rng, db)
 
     # Seules les techs du starter sont gratuites (auto-complétées au runtime) ;
