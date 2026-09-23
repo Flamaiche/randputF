@@ -27,13 +27,29 @@ def _item_products(db: VanillaDB, recipes: list[dict]) -> list[str]:
     )
 
 
+def _product_nodes(db: VanillaDB, recipes: list[dict]) -> list[str]:
+    """Produits (items ET fluides) ayant au moins une recette, triés.
+
+    Le cycle à casser se joue au niveau produit — que les recettes produisent un
+    item ou un fluide — toutes les arêtes item→ingrédient entrent dans le graphe
+    (anti-boucle transitive §10ter-redesign)."""
+    return sorted(
+        {
+            res["name"]
+            for recipe in recipes
+            for res in recipe.get("results", [])
+            if res["type"] in (SLOT_ITEM, SLOT_FLUID)
+        }
+    )
+
+
 def _dependency_graph(db: VanillaDB, recipes: list[dict]):
     """Graphe produit → ingrédients-produits (anti-dépendance pour l'analyse).
 
     Nœud = produit item de la seed ; arête p→q s'il existe une recette
     produisant p ET consommant q (q lui-même produit par une recette de la
     seed). Retourne ``(succ, pred, self_loops)`` triés (déterminisme)."""
-    nodes = _item_products(db, recipes)
+    nodes = _product_nodes(db, recipes)
     node_set = set(nodes)
     succ = {n: [] for n in nodes}
     pred = {n: [] for n in nodes}
@@ -41,13 +57,13 @@ def _dependency_graph(db: VanillaDB, recipes: list[dict]):
     for recipe in recipes:
         res_items = [
             r["name"] for r in recipe.get("results", [])
-            if r["type"] == SLOT_ITEM and r["name"] in node_set
+            if r["type"] in (SLOT_ITEM, SLOT_FLUID) and r["name"] in node_set
         ]
         if not res_items:
             continue
         for product in res_items:
             for ing in recipe.get("ingredients", []):
-                if ing["type"] != SLOT_ITEM or ing["name"] not in node_set:
+                if ing["type"] not in (SLOT_ITEM, SLOT_FLUID) or ing["name"] not in node_set:
                     continue
                 if ing["name"] == product:
                     self_loops.add(product)
@@ -136,7 +152,7 @@ def find_cycles(
         for recipe in recipes:
             member_results = [
                 r for r in recipe.get("results", [])
-                if r["type"] == SLOT_ITEM and r["name"] in comp
+                if r["type"] in (SLOT_ITEM, SLOT_FLUID) and r["name"] in comp
             ]
             if not member_results:
                 continue
@@ -144,7 +160,7 @@ def find_cycles(
             consumed += sum(
                 ing.get("amount", 1)
                 for ing in recipe.get("ingredients", [])
-                if ing["type"] == SLOT_ITEM and ing["name"] in comp
+                if ing["type"] in (SLOT_ITEM, SLOT_FLUID) and ing["name"] in comp
             )
         cycles.append(
             {

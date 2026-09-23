@@ -85,3 +85,31 @@ def test_graph_seed_reelle(tmp_path: Path) -> None:
         assert f'"' + raw.replace('"', '\\"') + f'" [shape=ellipse' in dot or raw in dot
     # les environnements (bois/pierre/poisson) sont bien sources
     assert any(name in dot for name in ENVIRONMENTAL_ITEMS)
+
+
+def test_ressource_brute_jamais_consommee_toujours_visible() -> None:
+    """Une ressource brute absente de TOUTES les recettes reste un nœud source
+    (§6) : matière non-infinie jamais consommée → pas invisible au graphe
+    (bug « on dirait qu'elle n'est pas dans le jeu »)."""
+    # Seed miniature SANS consommation d'eau : le lac/fluide d'extraction
+    # (water) n'apparaît dans aucune recette, il doit quand même être rendu.
+    seed = {
+        "meta": {"seed": "mini", "generator_version": "0.1.0", "factorio_version": "2.0"},
+        "pools": {"raw_resources": ["water", "wood", "stone", "raw-fish"]},
+        "map": {"patches": [], "lakes": [{"resource": "water"}]},
+        "recipes": [
+            {
+                "name": "a",
+                "ingredients": [{"type": "item", "name": "wood", "amount": 2}],
+                "results": [{"type": "item", "name": "iron-stick", "amount": 1}],
+            }
+        ],
+    }
+    dot = build_seed_graph_dot(seed)
+    assert '"water"' in dot  # présent même sans être consommé
+    assert '"stone"' in dot  # idem, environnemental jamais dans une recette
+    assert '"raw-fish"' in dot
+    # rendu en nœud source (ellipse grise OU image vanilla), jamais en arête
+    water_lines = [l for l in dot.splitlines() if l.startswith('  "water"')]
+    assert water_lines, "water doit avoir un nœud"
+    assert "-->" not in water_lines[0]
