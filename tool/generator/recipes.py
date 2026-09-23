@@ -613,6 +613,12 @@ def _pick_building(
     force_building=None,
 ):
     def fits(b) -> bool:
+        # D4ter : jamais héberger une recette dans un bâtiment dont l'item EST
+        # le produit (randputf-stone-furnace dans stone-furnace) : cercle
+        # atelier=produit — la recette exige le bâtiment qu'elle fabrique.
+        self_item = _item_for_building(db, b.name)
+        if self_item is not None and self_item.name == product_name:
+            return False
         # Un bâtiment à RECETTE CACHÉE (has_hidden_recipe : boiler/heat-
         # exchanger, nuclear-reactor, équivalents de mod) est exclu du pool
         # des ateliers : sa recette unique est randomisée par le générateur.
@@ -634,14 +640,16 @@ def _pick_building(
         # Transformateur à recette fixe (§6/§10) : la recette reste hébergée
         # par CE bâtiment (déjà débloqué). Il convient si ses fluid boxes
         # acceptent entrée fluide et sortie ; en mode « early » un atelier
-        # électrique est inacceptable.
+        # électrique est inacceptable. Jamais un atelier dont l'item EST le
+        # produit (cercle atelier=produit).
+        force_item = _item_for_building(db, force_building.name)
         if (
-            force_building.name not in exclude_buildings
-            and (not state.early.active or force_building.energy_type != "electric")
-            and force_building.item_input_slots >= n_item_ing
-            and force_building.fluid_inputs >= n_fluid_ing
-            and (not needs_fluid_out or force_building.fluid_outputs >= 1)
-        ):
+            force_item is None or force_item.name != product_name
+        ) and force_building.name not in exclude_buildings and (
+            not state.early.active or force_building.energy_type != "electric"
+        ) and force_building.item_input_slots >= n_item_ing and (
+            force_building.fluid_inputs >= n_fluid_ing
+        ) and (not needs_fluid_out or force_building.fluid_outputs >= 1):
             return force_building
         return None
 

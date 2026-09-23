@@ -78,6 +78,19 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     for resource_kind, resource_name in _unique_resources(patches):
         _ensure_extraction(rng, db, state, chain, resource_kind, resource_name)
 
+    # D4ter : prémisse de l'oracle early (« patchs items minables par foreuse
+    # NON-électrique », early_oracle.py) rendue VRAIE. Quand l'extracteur des
+    # patchs item est électrique (electric-mining-drill), le kit ne peut rien
+    # miner avant le réseau — or les recettes des techs gratuites peuvent
+    # consommer ces patchs item (p.ex. un module posé en gisement). On garantit
+    # alors un mineur non-électrique (burner-mining-drill) : AMORCÉ au kit
+    # (un exemplaire, façon vanilla) + recette refab dans une tech gratuite.
+    # Flux RNG DÉDIÉ (artefact, comme le chest) pour ne pas perturber la carte
+    # rechangée par l'électricité.
+    _ensure_prepower_item_miner(
+        random.Random(f"randputf:bootstrap-miner:{db.seed_value}"), db, state, chain
+    )
+
     # Les LACS (§7.5) sont des TUILES fluides : leur extracteur est une pompe sans
     # électricité (offshore-pump), distincte de l'extracteur des patchs fluides
     # (entités basic-fluid → pumpjack). Sans patch fluide, pas de « lacs muets ».
@@ -126,6 +139,59 @@ def _unique_resources(patches: list[Patch]) -> list[tuple[str, str]]:
     for patch in patches:
         seen.setdefault((patch.kind, patch.resource))
     return list(seen)
+
+
+def _ensure_prepower_item_miner(
+    rng: random.Random,
+    db: VanillaDB,
+    state: ProgressionState,
+    chain: StarterChain,
+) -> None:
+    """D4ter : garantit un mineur de patchs ITEM non-électrique au spawn.
+
+    L'oracle early (build_early_sources) traite TOUS les patchs item comme
+    obtenables pré-élec (« minables par foreuse non-électrique »). Ce n'est
+    vrai en jeu que si un foreuse non-électrique est réellement disponible :
+    quand la seed tire electric-mining-drill pour ses patchs item, le kit est
+    inutile avant le réseau et toute recette gratuite consommant un de ces
+    patches se fige au spawn. Le mineur non-électrique est donc AMORCÉ au kit
+    (un exemplaire, façon vanilla) ET rendu refabriquable par une tech
+    gratuite. Échec silencieux (pool vide / circularité) : la branche est déjà
+    couverte par un autre mineur non-électrique."""
+    has_item_patch = any(
+        s.get("type") == "extract" and s.get("resource", {}).get("type") == SLOT_ITEM
+        for s in state.steps
+    )
+    if not has_item_patch:
+        return
+    for step in state.steps:
+        if step.get("type") != "extract" or step.get("resource", {}).get("type") != SLOT_ITEM:
+            continue
+        building = db.buildings.get(step["extractor"])
+        if building is not None and getattr(building, "energy_type", "") != "electric":
+            return  # déjà un mineur non-électrique au starter
+    candidates = sorted(
+        (
+            b
+            for b in db.extractors_for_medium("ground")
+            if b.fluid_outputs == 0 and getattr(b, "energy_type", "") != "electric"
+        ),
+        key=lambda b: b.name,
+    )
+    if not candidates:
+        return
+    item = _item_for_building(db, candidates[0].name)
+    if item is None:
+        return
+    if item.name not in chain.extractors:
+        chain.extractors.append(item.name)  # amorce au kit (_extend_spawn_kit)
+    try:
+        ensure_obtainable(
+            rng, db, state, SLOT_ITEM, item.name,
+            exclude_buildings=_EXCLUDED_BUILDINGS, force=True,
+        )
+    except ValueError:
+        pass
 
 
 def build_tech_steps(state: ProgressionState, db: VanillaDB) -> list[dict]:

@@ -106,35 +106,31 @@ génération. Le balayage `tools/audit_playthrough.py 0 201` affiche le taux de
 victoires et, pour chaque échec, la **première tech bloquante** + un bordereau
 d'explication multi-étapes (l'item manquant, remonté jusqu'à sa source).
 
-**Résultat mesuré (balayage 0-200)** : **178 victoires / 23 échecs** — avec le
-modèle d'extraction PHYSIQUE (data-updates.lua) : tout patch item est en
-`basic-solid`, donc mineable par TOUTE foreuse obtenable (la foreuse burner du
-kit suffit pré-électricité), un patch fluide exige un pumpjack (électricité),
-un lac se pompe par pompe offshore (void). La mapping `extractor_timing` ne
-fixe que le DÉBLOCAGE au fil de l'arbre (audit EXT), pas la physique — le
-rejoueur ne la lit volontairement pas pour la jouabilité (il la lit pour
-expliquer un blocage : « ce patch-là est miné par X »).
+**Résultat mesuré (balayage 0-200)** : **201 victoires / 0 échec** — avec le
+modèle d'extraction PHYSIQUE (data-updates.lua) d'une part et les corrections
+générateur suivantes (D4ter) d'autre part :
 
-Premier passage englué à 99/201 ? Le rejoueur liait chaque ressource à SON
-extracteur mappé (foreuse électrique pour tel patch) → faux négatifs massifs :
-le lab gratuit exigeait une foreuse électrique, donc l'électricité, donc le
-lab (cercle). Correction du rejoueur (capacité mathématique, ou 178/201 des
-deux branches, annexe ET C3, identiques).
+- tout patch item est en `basic-solid`, donc mineable par TOUTE foreuse
+  obtenable ; un patch fluide exige un pumpjack (électricité) ; un lac se pompe
+  par pompe offshore (void) ;
+- **mineur non-électrique au starter** : quand la seed tire
+  electric-mining-drill pour ses patchs item, un foreuse burner est AMORCÉ au
+  kit (1 exemplaire, façon vanilla) + refabrique via une tech gratuite — sinon
+  rien d'extractible avant le réseau alors que les recettes gratuites peuvent
+  consommer des patchs item ;
+- **fin de l'auto-hébergement** : aucune recette n'est hébergée dans un
+  bâtiment dont l'item EST son produit (`randputf-stone-furnace` dans
+  stone-furnace) — cercle atelier=produit mort (garde dans `recipes._pick_building`
+  et `usage_pass` U1/U2) ;
+- **gardien pré-élec** : une recette unlockée par une tech gratuite ne change
+  JAMAIS d'atelier pour un bâtiment électrique (usage_pass) — la promesse
+  §10ter (recettes du starter jouables pré-électricité) est préservée.
 
-**D4bis (passé en FAIT)** : la passe `extractor_timing` garde À LA TECH
-GRATUITE tout extracteur consommé par la « boîte du spawn » — fermeture des
-recettes des techs gratuites, déclencheur de la 1re tech payante, et le fluide
-de la turbine du premier générateur (l'électricité est garantie au starter
-§10, la turbine est le producteur préféré). L'écart entre branches mesuré
-avant (178 vs 99) était un artefact du rejoueur, pas une chute C3.
-
-**Reste (chantier ouvert, côté GÉNÉRATION)** : ~23 graines ont des recettes
-d'une tech GRATUITE non réalisables dans le watershed pré-électricité final
-— le plus souvent la chaîne du lab gratuit passe par un pumpjack (électricité)
-ou un item profond, ou un `craft_trigger` dont la recette est profonde
-(cycle stone-furnace→stone-furnace pour les packs). Garantir en génération que
-TOUTE recette attachée à une tech gratuite reste dans le watershed
-pré-électricité final ⇒ balayage vers 100 %.
+Premier passage à 99/201 ? Le rejoueur liait chaque ressource à SON extracteur
+mappé (foreuse électrique pour tel patch) → faux négatifs massifs. Passé en
+capacité physique + extracteurs du spawn gardés au starter (D4bis) : 178/201
+identique sur annexe et C3. Puis D4ter (ci-dessus) : 201/201 — aucune graine
+ne se fige au spawn ni au fil de l'arbre.
 
 ## 15. Règles de solvabilité
 

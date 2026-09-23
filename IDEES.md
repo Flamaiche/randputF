@@ -345,13 +345,25 @@ de 99/201 à **178/201** :
   fluide d'entrée de la turbine §10) reste À LA TECH GRATUITE. La deux branches
   (annexe et C3) donnent désormais le même 178/201 : pas de chute C3.
 
-**Reste (chantier ouvert, D4ter imagine)**: ~23 graines échouent encore —
-des recettes attachées à une tech GRATUITE non réalisables dans le watershed
-pré-électricité final (chaîne du lab passant par un pumpjack/électricité ou un
-item profond, `craft_trigger` dont la recette est profonde, cycles
-stone-furnace→stone-furnace des packs). Garantir en phase de génération que
-TOUTE recette d'une tech gratuite tient dans le watershed pré-électricité
-final ⇒ balayage vers 100 %.
+**Reste (D4ter, passé en FAIT)** : trois corrections générateur portent le
+balayage 0-200 à **201/201 victoires** :
+
+- **mineur non-électrique au starter** : quand la seed tire
+  electric-mining-drill pour ses patchs item, un foreuse burner est amorcé au
+  kit + refabrique via une tech gratuite (`starter_chain._ensure_prepower_item_miner`,
+  flux RNG dédié) — sans quoi les recettes gratuites consommant des patchs
+  item (module en gisement…) sont injouables avant le réseau ;
+- **fin de l'auto-hébergement** : une recette n'est plus jamais hébergée dans
+  un bâtiment dont l'item EST son produit (ex. `randputf-stone-furnace` dans
+  stone-furnace) — garde dans `recipes._pick_building` et `usage_pass` U1/U2
+  (seeds 36/41/65/125/129 : cycles stone/steel/electric-furnace) ;
+- **gardien pré-élec** : `usage_pass` n'est plus autorisé à re-héberger une
+  recette unlockée par une tech gratuite vers un atelier ÉLECTRIQUE (seed 42 :
+  splitter → assembling-machine-1 → trigger injouable pré-élec).
+
+Constat : c'est le rejoueur (§15ter) qui a isolé chaque classe ; les gardes
+sont posées là où le générateur POUVAIT créer le blocage, sans passe de
+rattrapage.
 
 ### Idées ouvertes (à trancher au fil du travail)
 

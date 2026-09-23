@@ -274,3 +274,49 @@ def test_pas_de_landfill_sans_lac():
         r for step in chain.tech_steps for r in step.get("unlocks_recipes", [])
     }
     assert "randputf-landfill" not in uncovered
+
+
+def test_mineur_non_electrique_amorce_au_kit_quand_extracteur_electrique():
+    """D4ter : quand le starter tire electric-mining-drill pour ses patchs item,
+    le kit ne pourrait rien miner avant le réseau — l'oracle early traite pourtant
+    les patchs item comme obtenables pré-élec. Un mineur NON-électrique
+    (burner-mining-drill) est donc AMORCÉ au kit ET refabriquable (recette dans
+    une tech gratuite), façon vanilla."""
+    rng = random.Random(1)  # seed 1 : item-patch extractor = electric-mining-drill
+    db = build_demo_db()
+    chain = build_starter_chain(rng, db, make_patches(("item", "iron-ore")))
+    extractor = next(
+        s["extractor"] for s in chain.steps
+        if s["type"] == "extract" and s["resource"]["name"] == "iron-ore"
+    )
+    assert extractor == "electric-mining-drill"
+    kit = {e["name"] for e in chain.kit}
+    assert "burner-mining-drill" in kit
+    assert any(
+        r["results"] and r["results"][0]["name"] == "burner-mining-drill"
+        for r in chain.recipes
+    )
+
+
+def test_aucune_recette_auto_hebergee():
+    """D4ter : aucune recette n'est hébergée dans un bâtiment dont l'item EST
+    son produit (randputf-stone-furnace dans stone-furnace) — cercle
+    atelier=produit qui rend la recette inconstructible. Vérifié sur une
+    poignée de seeds aux patchs item + fluide."""
+    db = build_demo_db()
+    for seed in range(12):
+        for patch in (("item", "iron-ore"), ("fluid", "water"), ("item", "copper-ore")):
+            chain = build_starter_chain(
+                random.Random(seed), db, make_patches(patch)
+            )
+            for r in chain.recipes:
+                crafted_in = r.get("crafted_in")
+                if not crafted_in or not r.get("results"):
+                    continue
+                item = next(
+                    (i for i in db.items.values() if i.place_result == crafted_in), None
+                )
+                assert item is None or item.name != r["results"][0]["name"], (
+                    f"seed {seed}: recette {r['name']} auto-hébergée dans "
+                    f"{crafted_in}"
+                )

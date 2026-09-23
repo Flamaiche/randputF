@@ -45,8 +45,8 @@ from __future__ import annotations
 
 import logging
 
-from tool.common.db import SLOT_FLUID, VanillaDB, has_hidden_recipe
-from tool.generator.recipes import _is_atelier, _recipe_category
+from tool.common.db import SLOT_ITEM, SLOT_FLUID, VanillaDB, has_hidden_recipe
+from tool.generator.recipes import _is_atelier, _item_for_building, _recipe_category
 from tool.prototypes.usage import UsageConfig
 
 log = logging.getLogger(__name__)
@@ -95,6 +95,26 @@ def _rehome(recipe: dict, building) -> None:
     fluid_ing, fluid_out = _recipe_needs_fluid(recipe)
     recipe["crafted_in"] = building.name
     recipe["category"] = _recipe_category(building, fluid_ing, fluid_out)
+
+
+def _self_hosted(db: VanillaDB, building, recipe: dict) -> bool:
+    """La recette serait hébergée dans un bâtiment dont l'item EST son produit
+    (ex. randputf-stone-furnace dans stone-furnace) : cercle atelier=produit —
+    la recette exige le bâtiment qu'elle fabrique, injouable sans kit."""
+    item = _item_for_building(db, building.name)
+    if item is None:
+        return False
+    res = (recipe.get("results") or [{}])[0]
+    return res.get("type") == SLOT_ITEM and res.get("name") == item.name
+
+
+def _prepower_ok(building, recipe: dict, free: set[str]) -> bool:
+    """Une recette unlockée par une tech gratuite du starter garde un atelier
+    NON-électrique (promesse §10ter / bootstrap inline) : la re-héberger dans
+    un bâtiment électrique la rendrait injouable avant l'électricité."""
+    if recipe["name"] not in free:
+        return True
+    return getattr(building, "energy_type", "") != "electric"
 
 
 def _unlock_proxy(ordered_steps, *, starter_steps: int) -> tuple[dict[str, int], set[str]]:
@@ -244,6 +264,8 @@ def _correct_u2(
         for other_name, other in db.buildings.items():
             if other_name == crafted_in or other_name not in locked:
                 continue
+            if _self_hosted(db, other, recipe) or not _prepower_ok(other, recipe, free):
+                continue
             if has_hidden_recipe(other) or not _is_atelier(other):
                 continue
             if other.item_input_slots < n_item:
@@ -296,6 +318,7 @@ def _correct_u1(
     db: VanillaDB,
     state,
     unlock: dict[str, int],
+    free: set[str],
     kit: set[str],
     terminals: frozenset[str],
     ordered_steps: list[dict],
@@ -331,6 +354,8 @@ def _correct_u1(
             i_recipe = unlock.get(recipe["name"])
             if i_recipe is None or i_recipe < i_building:
                 continue  # U2 : ne pas poser une recette AVANT le bâtiment
+            if _self_hosted(db, building, recipe) or not _prepower_ok(building, recipe, free):
+                continue
             if len(hosted.get(source, [])) <= 1:
                 continue  # la source garde ≥ 1 recette
             if not _fits(building, recipe):
@@ -411,7 +436,7 @@ def enforce_usage(
     # ensuite par U1), puis U1 (rattachement). Déterministe.
     u2, reordered = _correct_u2(db, state, unlock, free, kit, ordered_steps)
     attached, removed, warnings = _correct_u1(
-        db, state, unlock, kit, cfg.terminal_buildings, ordered_steps
+        db, state, unlock, free, kit, cfg.terminal_buildings, ordered_steps
     )
 
     report = {
