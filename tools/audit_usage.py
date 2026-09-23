@@ -113,14 +113,90 @@ def audit(seed: dict, db) -> dict:
                 continue
             u2.append((r["name"], ci, i_r, i_b))
 
-    return {"u1": u1, "u2": u2}
+    return {"u1": u1, "u2": u2, "extractors": audit_extractors(seed, db, idx, free)}
+
+
+def audit_extractors(seed: dict, db, idx: dict[str, int], free: set[str]) -> list[str]:
+    """C3 — déblocage « juste-au-besoin » des extracteurs.
+
+    Rejoue l'invariant de `extractor_timing.apply_extractor_timing` sur la seed
+    finale, à partir du mapping ``seed["extractor_timing"]["extractors"]``
+    (source de vérité posée par la passe pipeline) :
+
+    - EXT1 : ``claim(extracteur) ≥ claim(atelier)`` — craftable dès le claim
+      (miroir D2 U2, « bâtiment avant recette ») ;
+    - EXT2 : ressource consommée ⇒ ``claim ≤ max(premier-usage, claim(atelier))``
+      — jamais débloqué après le moment où elle devient utile et fabriquable ;
+    - EXT3 : ressource jamais consommée ⇒ le claim n'est PAS une tech gratuite
+      (son extracteur suit le balayage §9.6).
+    """
+    report = seed.get("extractor_timing") or {}
+    extractors = report.get("extractors", {})
+    if not extractors:
+        return []
+    kit = set()
+    for entry in seed.get("starter_kit") or []:
+        if entry.get("type") != "item":
+            continue
+        item = db.items.get(entry["name"])
+        if item is not None and item.place_result in db.buildings:
+            kit.add(item.place_result)
+    resources: set[tuple[str, str]] = {
+        (res["type"], res["name"])
+        for rs in extractors.values()
+        for res in rs
+    }
+    first: dict[tuple[str, str], int] = {}
+    for recipe in seed["recipes"]:
+        i = idx.get(recipe["name"])
+        if i is None:
+            continue
+        for ing in recipe.get("ingredients", []):
+            key = (ing.get("type"), ing.get("name"))
+            if key not in resources:
+                continue
+            if key not in first or i < first[key]:
+                first[key] = i
+
+    def _atelier(r: dict) -> int:
+        ci = r.get("crafted_in")
+        if not ci or ci in kit:
+            return 0
+        return idx.get(f"randputf-{ci}", 0)
+
+    violations = []
+    for name, rs in extractors.items():
+        i_r = idx.get(name)
+        if i_r is None:
+            continue
+        recipe = next(r for r in seed["recipes"] if r["name"] == name)
+        atelier = _atelier(recipe)
+        consumed = [
+            first[(res["type"], res["name"])]
+            for res in rs
+            if (res["type"], res["name"]) in first
+        ]
+        if i_r < atelier:
+            violations.append(f"{name}: claim {i_r} < atelier {atelier}")
+        if consumed:
+            bound = max(min(consumed), atelier)
+            if i_r > bound:
+                violations.append(
+                    f"{name}: claim {i_r} > max(1er usage {min(consumed)}, "
+                    f"atelier {atelier})"
+                )
+        elif name in free:
+            violations.append(
+                f"{name}: jamais consommé mais débloqué par une tech gratuite"
+            )
+    return violations
 
 
 def main() -> int:
     cfg = _load_config()
     lo = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     hi = int(sys.argv[2]) if len(sys.argv) > 2 else 201
-    u1_total = u2_total = 0
+    u1_total = u2_total = ex_total = 0
     bad_seeds = []
     for seed_value in range(lo, hi):
         db = _load_db(False, DUMP)
@@ -131,9 +207,13 @@ def main() -> int:
         res = audit(seed, db)
         u1_total += len(res["u1"])
         u2_total += len(res["u2"])
-        if res["u1"] or res["u2"]:
-            bad_seeds.append((seed_value, res["u1"], res["u2"][:3]))
+        ex_total += len(res["extractors"])
+        if res["u1"] or res["u2"] or res["extractors"]:
+            bad_seeds.append(
+                (seed_value, res["u1"], res["u2"][:3], res["extractors"][:3])
+            )
     print(f"seeds {lo}-{hi-1}: U1 = {u1_total}, U2 = {u2_total}, "
+          f"extracteurs = {ex_total}, "
           f"seeds violants = {len(bad_seeds)}")
     for s in bad_seeds[:20]:
         print("  ", s)

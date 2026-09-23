@@ -18,14 +18,19 @@ logique, §10) :
    patchs, **une pompe offshore** pour les lacs — §7.5, deux milieux
    distincts). Ce n'est PAS la dotation qui rend la suite faisable : c'est
    l'**unlock**.
-   **Toute ressource du run (patchs ou lacs, §7.5) a la recette de son
-   extracteur unlockée par `starter-extraction` (tech 0, gratuite) — la
-   « tech d'avant » — STRICTEMENT AVANT toute tech dont une recette consomme
-   cette ressource** (starter-transformation @1 puis toutes les techs
-   profondes). Quand on a besoin d'une ressource, son extracteur est déjà
-   craftable : on en refabrique autant qu'il faut (le poisson se pêche dans
-   les lacs, §7.5). L'amorce du kit ne fait que briser l'œuf/poule du premier
-   exemplaire.
+   **Chaque ressource du run (patchs ou lacs, §7.5) a la recette de son
+   extracteur débloquée « juste-au-besoin » (§C3)** : la tech gratuite
+   `starter-extraction` ne garde que les extracteurs utiles dès le spawn (leur
+   ressource est consommée par la chaîne initiale) ; un extracteur dont la
+   ressource n'est servie qu'en profondeur part avec le **premier consommateur**
+   (tech d'usage, au plus tard — jamais après) ; un extracteur jamais utilisé
+   suit le balayage de contenu (§9.6), sur une tech payante tirée
+   aléatoirement. Contrainte de fabrication : l'extracteur n'est jamais
+   débloqué avant l'atelier qui le fabrique (U2). Quand on a besoin d'une
+   ressource, son extracteur est donc déjà craftable : on en refabrique autant
+   qu'il faut (le poisson se pêche dans les lacs, §7.5). L'amorce du kit ne
+   fait que briser l'œuf/poule du premier exemplaire — même pour un extracteur
+   différé, le kit fournit toujours son item.
 2. **Techs gratuites du starter** : les premières recettes (la chaîne
    initiale, §8) sont débloquées par les techs du starter
    (`randputf-starter-*`), **gratuites** — coût nul, auto-complétées au
