@@ -74,6 +74,47 @@ Flux RNG **indépendant** (`make_rng`) : une seed se régénère à l'identique
 hormis les recettes de secours ajoutées. Config : section `bootstrap_guard`
 (`enabled`, `prefix`, `ingredient_min/max`, `max_iterations`, `replace_first`).
 
+## 15ter. Rejoueur « fake player » (vérification par simulation)
+
+Les invariants §15 raisonnent sur l'ORDRE (unlock avant usage) et les CYCLES —
+ils ne disent rien d'un playlist réel : « cette recette est unlockée avant
+celle-là » n'implique pas « le joueur peut la fabriquer à ce moment-là ».
+Le rejoueur (`tool/replay/player.py`, balayage `tools/audit_playthrough.py`)
+**simule une partie** sur la seed finale, comme un joueur qui la découvre :
+
+- **départ** : kit spawn (`starter_kit`) + loot de l'épave (`wreck`) +
+  environnement (bois/pierre/poisson, récolte à la main) ;
+- **sources brutes** : chaque patch/lac n'est obtenu que si l'extracteur qui
+  le mine est lui-même obtenable ET opérationnel (foreuse → combustible ou
+  électricité ; pumpjack → électricité ; pompe offshore → énergie void) —
+  mapping C3 de `seed["extractor_timing"]` ;
+- **électricité** : disponible dès qu'un générateur (`produces_electricity`)
+  obtenable PEUT TOURNER — fluide de lac assigné en entrée
+  (`building_fluid_assignments`) s'il en consomme, combustible s'il brûle,
+  solaire/hors-réseau autonome — et qu'un pylône est obtenable ;
+- **ateliers** : une recette ne tourne que si son `crafted_in` est obtenable
+  et alimenté (électricité / combustible / chaîne chaleur source+transport
+  pour les bâtiments en énergie `heat`) ; sans `crafted_in` → craft à la main ;
+- **recherche** : les techs gratuites (`free_researches`) sont déjà
+  recherchées ; chaque tech suivante est recherchée dès que son coût (packs)
+  ou son `craft_trigger` (prologue §7) est **produisible à ce moment** ;
+- **victoire** : chaîne fusée atteignable en fin de parcours (silo +
+  processing-unit + low-density-structure + rocket-fuel, §14).
+
+C'est un audit EXTERNE (n'accède qu'à la seed finale) : ne modifie jamais la
+génération. Le balayage `tools/audit_playthrough.py 0 201` affiche le taux de
+victoires et, pour chaque échec, la **première tech bloquante** + un bordereau
+d'explication multi-étapes (l'item manquant, remonté jusqu'à sa source).
+
+**Résultat mesuré (balayage 0-200)** : ~50 % des graines actuelles sont
+BLOQUÉES au spawn — le plus souvent le lab gratuit (§8) exige un
+steel-furnace / exoskeleton-equipment / … débloqué EN PROFONDEUR : pas de lab
+→ pas de recherche → pas de steel-furnace. C'est une chaîne ACYCLIQUE (les
+§15/§10ter ne traitent que cycles et ordre) : seuls le rejoueur la voit.
+Chantier ouvert : garantir en phase de génération que **toutes les recettes
+des techs gratuites du starter sont réalisables dans le watershed
+pré-électricité final** (et non plus seulement les injectées au bootstrap).
+
 ## 15. Règles de solvabilité
 
 Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifiés
