@@ -56,6 +56,20 @@ def _step_unlocks_pole(step: dict, db: VanillaDB) -> bool:
     return False
 
 
+def _step_unlocks_handheld_gun(step: dict, db: VanillaDB) -> bool:
+    """Un step débloque une arme de poing ?
+
+    Deux steps d'armes ne doivent jamais être fusionnés dans la même tech :
+    chaque arme arrive avec SA munition unique (§11), jamais avec toute celle
+    du lot (bug « arme + toutes les munitions dans la même tech »)."""
+    for recipe in step.get("unlocks_recipes", []):
+        name = recipe[len("randputf-"):] if recipe.startswith("randputf-") else recipe
+        item = db.items.get(name)
+        if item is not None and item.is_handheld_gun:
+            return True
+    return False
+
+
 def _is_science_step(step: dict) -> bool:
     """Step science débloquant un NOUVEAU science pack : il doit rester isolé
     (jamais fusionné), sinon le pack serait payé par la tech qui l'unlocke,
@@ -144,9 +158,10 @@ def build_linear_tech_tree(
     cur_objs = 0
     cur_target = 1
     cur_has_pole = False
+    cur_has_gun = False
 
     def flush_paid() -> bool:
-        nonlocal cur_paid, cur_objs, cur_target, cur_has_pole
+        nonlocal cur_paid, cur_objs, cur_target, cur_has_pole, cur_has_gun
         if not cur_paid:
             return False
         groups.append({"kind": "paid", "steps": cur_paid})
@@ -154,6 +169,7 @@ def build_linear_tech_tree(
         cur_objs = 0
         cur_target = 1
         cur_has_pole = False
+        cur_has_gun = False
         return True
 
     for step in steps:
@@ -180,6 +196,7 @@ def build_linear_tech_tree(
         is_science = _is_science_step(step)
         is_isolated = step.get("isolate") or False
         step_has_pole = _step_unlocks_pole(step, db)
+        step_has_gun = _step_unlocks_handheld_gun(step, db)
 
         if not cur_paid:
             # Nouveau groupe : on tire sa taille (nb d'objets) en chaîne.
@@ -189,6 +206,7 @@ def build_linear_tech_tree(
             is_science
             or is_isolated
             or (cur_has_pole and step_has_pole)
+            or (cur_has_gun and step_has_gun)
             or (cur_objs + objs > _MAX_PER_TECH)
             or (cur_objs + objs > cur_target)
         )
@@ -200,6 +218,8 @@ def build_linear_tech_tree(
         cur_objs += objs
         if step_has_pole:
             cur_has_pole = True
+        if step_has_gun:
+            cur_has_gun = True
 
         if is_science or is_isolated:
             # Isole le step science (le pack débloqué est consommé par les

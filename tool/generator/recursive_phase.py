@@ -20,6 +20,7 @@ from tool.generator.heat import find_heat_roles
 from tool.generator.map_patches import Patch
 from tool.generator.recipes import (
     ProgressionState,
+    _ancestor_products,
     _bake_recipe,
     _is_fixed_recipe_transformer,
     _item_for_building,
@@ -65,9 +66,10 @@ _ROCKET_CHAIN_ITEM_NAMES = frozenset(ROCKET_CHAIN)
 
 # Balayage de couverture complète (§9.6) : items hors catégories fonctionnelles
 # (belts, inserters, chests, combinators...) → recette randputf-* + tech.
-# Exclus : chaîne fusée (endgame §14), armes montées (mortes sans véhicule,
+# Exclus : chaîne fusée (endgame §14, y compris rocket-part, recette exempte du
+# silo — sinon « craft en double » trivial), armes montées (mortes sans véhicule,
 # randomisées en §7), environnementaux et outils.
-_ROCKET_CHAIN_SWEEP_EXCLUDED = _ROCKET_CHAIN_ITEM_NAMES | {"rocket-silo"}
+_ROCKET_CHAIN_SWEEP_EXCLUDED = _ROCKET_CHAIN_ITEM_NAMES | {"rocket-silo", "rocket-part"}
 
 def _roman_value(n: int) -> str:
     """Romanisation d'un suffixe numérique d'ID de tech : Factorio exige des
@@ -940,29 +942,50 @@ def _make_fixed_fluid_recipe(
 ) -> dict:
     """Branche « fluide → fluide » (boiler/heat-exchanger). Voir l'appelant."""
     all_names = [f.name for f in db.pipable_fluids()]
-    # Input : fluide déjà obtenu SANS ce fabricateur (anti-boucle §10), en
-    # dernier recours tout fluide pipable.
-    input_pool = sorted(set(state.obtained_fluids) & set(all_names)) or all_names
-    if output_fluid is not None:
-        input_pool = [f for f in input_pool if f != output_fluid]
-        if not input_pool:
-            input_pool = [f for f in all_names if f != output_fluid]
-    if not input_pool:
-        raise ValueError(f"aucun input ≠ {output_fluid} pour {building.name} (1 seul fluide pipable)")
-    input_fluid = rng.choice(input_pool)
 
-    # Output : tout fluide pipable ≠ input, de préférence non déjà produit par une
-    # autre recette (le fabricateur = LE producteur du fluide).
+    # Output : tout fluide pipable, de préférence non déjà produit par une autre
+    # recette (le fabricateur = LE producteur du fluide). Quand l'output est
+    # libre, on itère sur les candidats pour en trouver un dont un input déjà
+    # obtenu évite la clôture transitive des ancêtres (anti-boucle §10ter).
     already_produced = {
         r["results"][0]["name"]
         for r in state.recipes
         if r["results"] and r["results"][0]["type"] == SLOT_FLUID
     }
-    if output_fluid is None:
-        output_candidates = [f for f in all_names if f != input_fluid and f not in already_produced]
-        if not output_candidates:
-            output_candidates = [f for f in all_names if f != input_fluid]
-        output_fluid = rng.choice(output_candidates)
+    if output_fluid is not None:
+        output_tries = [output_fluid]
+    else:
+        output_tries = [f for f in all_names if f not in already_produced]
+        if not output_tries:
+            output_tries = list(all_names)
+        rng.shuffle(output_tries)
+
+    error_messages: list[str] = []
+    for candidate in output_tries:
+        # Input : fluide déjà obtenu SANS ce fabricateur (anti-boucle §10),
+        # épuré de ceux déjà (transitivement) dépendants de la sortie. TOUJOURS
+        # un fluide déjà obtenu : piocher un fluide non encore produit casserait
+        # la progressivité du solveur.
+        forbidden_inputs = {
+            f for _k, f in _ancestor_products(db, state, SLOT_FLUID, candidate)
+        }
+        obtained_fluids = sorted(state.obtained_fluids)
+        input_candidates = [f for f in obtained_fluids if f != candidate]
+        narrowed = [f for f in input_candidates if f not in forbidden_inputs]
+        if not narrowed:
+            error_messages.append(
+                f"aucun input ≠ {candidate} SANS cycle : tous les fluides "
+                f"obtenus ({input_candidates}) sont des ancêtres de la sortie"
+            )
+            continue
+        output_fluid = candidate
+        input_fluid = rng.choice(narrowed)
+        break
+    else:
+        raise ValueError(
+            f"aucune sortie tenable pour {building.name} — "
+            + "; ".join(error_messages)
+        )
 
     # Recette « fluide → fluide » pilotée directement (jamais d'ingrédient item :
     # pas de slot item pour la recette, seulement du combustible — §6/§10). Nom
@@ -1008,6 +1031,7 @@ def _make_fixed_item_recipe(
             if n not in already_produced
             and not (db.items.get(n) is not None and db.items[n].is_environmental)
             and n not in _ROCKET_CHAIN_ITEM_NAMES
+            and n not in _ROCKET_CHAIN_SWEEP_EXCLUDED
             and not n.startswith("randputf-")
             and not _is_building_item(db, n)
         )
@@ -1025,7 +1049,9 @@ def _make_fixed_item_recipe(
     # fabricateur — amorçage, jamais de cycle solvable (§10). Limités par les
     # vrais slots du bâtiment (item_input_slots / fluid_inputs).
     item_pool = [
-        (SLOT_ITEM, n) for n in sorted(state.obtained_items) if n != output_item
+        (SLOT_ITEM, n) for n in sorted(state.obtained_items)
+        if n != output_item
+        and (SLOT_ITEM, n) not in _ancestor_products(db, state, SLOT_ITEM, output_item)
     ]
     max_ingredients = min(
         max(getattr(building, "item_input_slots", 1), 1),
@@ -1042,6 +1068,12 @@ def _make_fixed_item_recipe(
         # Un transformateur item qui accepte aussi un fluide : on ajoute un
         # ingrédient fluide obtenable quand la recette supporte des fluides.
         fluid_pool = [f for f in sorted(state.obtained_fluids)]
+        forbidden_fluids = {
+            f for _k, f in _ancestor_products(db, state, SLOT_ITEM, output_item)
+        }
+        narrowed = [f for f in fluid_pool if f not in forbidden_fluids]
+        if narrowed:
+            fluid_pool = narrowed
         ingredients.append((SLOT_FLUID, rng.choice(fluid_pool)))
         fluid_ing = True
     rng.shuffle(ingredients)
@@ -1082,7 +1114,9 @@ def _make_fixed_residue_recipe(
             output_item = rng.choice(others)
 
     item_pool = [
-        (SLOT_ITEM, n) for n in sorted(state.obtained_items) if n != output_item
+        (SLOT_ITEM, n) for n in sorted(state.obtained_items)
+        if n != output_item
+        and (SLOT_ITEM, n) not in _ancestor_products(db, state, SLOT_ITEM, output_item)
     ]
     if not item_pool:
         raise ValueError(
@@ -1124,7 +1158,8 @@ def _pick_product(
              and not (db.items.get(n) is not None and db.items[n].is_environmental)
              and n not in already
              and not _is_building_item(db, n)
-             and n not in _ROCKET_CHAIN_ITEM_NAMES),
+             and n not in _ROCKET_CHAIN_ITEM_NAMES
+             and n not in _ROCKET_CHAIN_SWEEP_EXCLUDED),
         )
     else:
         candidates = sorted(n for n in state.obtained_fluids if n not in already)

@@ -196,7 +196,12 @@ def test_integration_starter_100pct_fluides():
     ]
     assert env_using, "le starter 100% fluides doit consommer des environnementaux"
 
-    relays = build_relay_recipes(rng, db, chain.state)
+    base = ProgressionState()
+    for env in ENVIRONMENTAL_ITEMS:
+        base.mark_obtained(SLOT_ITEM, env)
+    base.mark_obtained(SLOT_ITEM, "iron-ore")
+    base.mark_obtained(SLOT_ITEM, "coal")
+    relays = build_relay_recipes(rng, db, chain.state, base)
     assert relays, "au moins un relais doit exister"
     for info in relays:
         recipe = next(r for r in chain.state.recipes if r["name"] == info["recipe_name"])

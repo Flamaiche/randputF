@@ -24,7 +24,7 @@ from __future__ import annotations
 import random
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_ITEM, VanillaDB
-from tool.generator.recipes import ProgressionState, _make_recipe
+from tool.generator.recipes import ProgressionState, _ancestor_products, _make_recipe
 from tool.generator.tech_tree import _MAX_PER_TECH
 from tool.prototypes.relay import RelayConfig
 
@@ -76,7 +76,7 @@ def build_relay_recipes(
                 continue
             if product["name"] in relayed_products:
                 continue
-            relay = _make_relay_recipe(rng, db, base, product, relayed_products)
+            relay = _make_relay_recipe(rng, db, state, base, product, relayed_products)
             if relay is None:
                 continue
             state.recipes.append(relay)
@@ -231,6 +231,7 @@ def _uses_environmental(recipe: dict) -> bool:
 def _make_relay_recipe(
     rng: random.Random,
     db: VanillaDB,
+    state: ProgressionState,
     base: ProgressionState,
     product: dict,
     relayed_products: set[str],
@@ -247,6 +248,11 @@ def _make_relay_recipe(
     forbidden = (
         set(ENVIRONMENTAL_ITEMS) | relayed_products | {product["name"]}
     )
+    # Anti-boucle transitive (§10ter-redesign) : ajouter aux interdits tout
+    # produit du graphe COMPLET (état courant) capable de refermer un cycle
+    # produit→produit avec le relais — le relais ne dépend jamais d'un produit
+    # qui (transitivement) dépend du produit relayé.
+    forbidden |= {n for _k, n in _ancestor_products(db, state, product["type"], product["name"])}
     eligible = [entry for entry in base.pool() if entry[1] not in forbidden]
     if not eligible:
         return None

@@ -10,6 +10,12 @@ le pool deja valide (le produit est ajoute a sa propre liste interdite) et
 batiments resolus sequentiellement (item d'abord, inscription ensuite) ;
 le garde ``pending`` detecte toute reentrance (cycle chaudiere > assembleur >
 chaudiere impossible).
+- Anti-boucle transitive (§10ter-redesign) : pour produire ``name``, on interdit
+  non seulement ``name`` lui-meme mais tout ingredient deja ATTEIGNABLE depuis
+  ``name`` dans le graphe de dependances courant (cloture des ancetres). Quel
+  que soit le craft de ``name`` (primaire, relais, ease, balayage), un
+  ingredient ne peut jamais refermer de cycle produit→produit : le graphe
+  complet reste un DAG, cycle et « craft negatif » exclus a la source.
 """
 
 from __future__ import annotations
@@ -238,6 +244,19 @@ def _make_recipe(
             f"pool vide pour produire {product_kind} {product_name} : "
             "aucune branche valide disponible"
         )
+    # Anti-boucle transitive (§10ter-redesign) : interdire tout ingrédient déjà
+    # capable de produire `product` via le graphe de dependances existant —
+    # sinon la nouvelle arête referme un cycle produit→produit (quel que soit
+    # le craft en cours : primaire, relais, ease, balayage §9.6). Le produit
+    # lui-meme est deja dans ``forbidden`` ; ici on ferme la cloture des
+    # ancetres. Quand le pool deja obtenu est entierement « en amont », on
+    # limite le retrait aux ancetres directs cerclables (graphe si reduit, la
+    # nouvelle arête ne peut pas boucler) au lieu d'echouer.
+    ancestors = _ancestor_products(db, state, product_kind, product_name)
+    if ancestors:
+        narrow = [e for e in eligible if (e[0], e[1]) not in ancestors]
+        if narrow:
+            eligible = narrow
     if state.early.active:
         # Bootstrap inline (§10ter) : jamais d'ingrédient hors du watershed
         # pré-électricité courant — tout produit promis reste jouable sans
@@ -339,6 +358,40 @@ def _make_recipe(
     recipe["category"] = _recipe_category(building, n_fluid_ing > 0, needs_fluid_out)
     recipe["crafted_in"] = building.name
     return recipe
+
+
+def _ancestor_products(
+    db: VanillaDB, state: ProgressionState, kind: str, name: str
+) -> frozenset[tuple[str, str]]:
+    """Ensemble des produits interdits comme ingredients de ``name`` pour
+    garantir un graphe acyclique (anti-boucle transitive §10ter-redesign).
+
+    Arête produit → ingrédient : « A dépend de B » si une recette produisant A
+    consomme B. Ajouter une recette pour ``name`` avec l'ingrédient X referme un
+    cycle si un chemin X →* ``name`` existe deja. On retourne donc tous les X
+    dont la fermeture descendante atteint ``name`` : on remonte depuis ``name``
+    les produits qui le consomment (puis recurse). Chaque nœud remonte est un
+    ingrédient interdit — quel que soit le craft de ``name`` (primaire, relais,
+    ease, balayage §9.6)."""
+    node = (kind, name)
+    consumers: dict[(str, str), set[(str, str)]] = {}
+    for recipe in state.recipes:
+        for res in recipe.get("results") or []:
+            product = (res.get("type"), res["name"])
+            for ing in recipe.get("ingredients") or []:
+                consumers.setdefault((ing.get("type"), ing["name"]), set()).add(product)
+    forbidden: set[(str, str)] = set()
+    frontier = [node]
+    visited = {node}
+    while frontier:
+        current = frontier.pop()
+        for user in consumers.get(current, ()):
+            if user in visited:
+                continue
+            visited.add(user)
+            forbidden.add(user)
+            frontier.append(user)
+    return frozenset(forbidden)
 
 
 def _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name=None,
