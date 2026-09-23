@@ -320,6 +320,25 @@ progressifs) s'appuient dessus : C2 rend les tags explicites (déduits de la
 garantie, plus implicites), C3 échelonne le starter en se reposant sur
 « bâtiment avant usage » vérifié.
 
+## D4. Rejoueur « fake player » — FAIT (constat + outil)
+
+Un simulateur de partie (`tool/replay/player.py`, testeur
+`tools/audit_playthrough.py -- <lo> <hi>`) rejoue chaque seed comme un joueur :
+extraction (patch/lac par extracteur opérationnel), électricité (générateur
+obtenable et alimenté + pylône), combustible/chaleur par bâtiment, ateliers,
+kit + loot d'épave, recherche dès que packs/trigger produisibles, victoire =
+chaîne fusée. Voir docs/solvabilite.md §15ter.
+
+**Constat** : ~50 % des graines actuelles sont bloquées AU SPAWN (le lab
+gratuit §8 exige un item profond — steel-furnace/exoskeleton… hors watershed
+pré-électricité). Chaîne ACYCLIQUE : aucun §15/§10ter ne la voit.
+
+**Chantier ouvert (D4bis)** : garantir EN GÉNÉRATION que TOUTES les recettes
+des techs gratuites du starter sont réalisables dans le watershed
+pré-électricité final de la seed (aujourd'hui seules celles injectées au
+bootstrap le sont). Rendrait le balayage 0-200 à 100 % de victoires ; à faire
+du côté du générateur, PAS du rejoueur (qui reste l'arbitre de la jouabilité).
+
 ### Idées ouvertes (à trancher au fil du travail)
 
 - **B1-style proche** : D2 pourrait être couplé à un audit `tool/audit/usage.py`
