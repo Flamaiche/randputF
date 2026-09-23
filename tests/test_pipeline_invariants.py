@@ -231,6 +231,25 @@ def test_munitions_vehicules_dispatch_apres(seeds):
                     )
 
 
+def test_une_seule_arme_de_poing_par_tech(seeds):
+    """§11 + §13 : jamais PLUSIEURS armes de poing dans la même tech.
+
+    Chaque tech combat débloque au plus une arme (avec sa munition alignée).
+    Deux steps combat consécutifs ne doivent pas être fusionnés par le
+    groupement §13, sinon la tech arrive « avec toute dans sa tech » — ex. seed
+    1 avant fix : submachine-gun + shotgun + leurs 2 munitions dans UNE tech."""
+    for s, seed in seeds.items():
+        for t in seed["technologies"]:
+            guns = [
+                e["recipe"].removeprefix("randputf-")
+                for e in t.get("effects") or []
+                if e.get("type") == "unlock-recipe"
+                and DB.items.get(e["recipe"].removeprefix("randputf-")) is not None
+                and DB.items[e["recipe"].removeprefix("randputf-")].is_handheld_gun
+            ]
+            assert len(guns) <= 1, f"seed {s}: tech {t['id']} débloque {len(guns)} armes {guns}"
+
+
 def test_companions_proches(seeds):
     """« companion guarantee » — les groupes d'items dépendants restent
     PROCHES dans l'arbre (jamais une paire diffusée loin l'une de l'autre).
@@ -807,3 +826,58 @@ def test_aucune_recette_sur_machine_a_recette_fixe(seeds):
                     f"seed {s}: recette {r['name']} craftée dans {ci}, "
                     "une machine à recette fixe hors `is_fixed_crafter` (jamais un atelier)"
                 )
+
+
+def test_aucun_cycle_produit_produit_item_ou_fluide(seeds):
+    """§10ter-redesign : le graphe produit→ingrédient, TOUS crafts confondus
+    et items comme fluides, doit être acyclique sur chaque seed générée — le
+    garde anti-boucle transitive est appliqué à chaque création (primaire,
+    relais, ease, fabricateurs fixes, balayage §9.6), le diagnostic `find_cycles`
+    couvre les SCC items+fluides."""
+    from tool.generator.bootstrap_guard import find_cycles
+    from tool.generator.early_oracle import compute_early_reachable
+
+    for s, seed in seeds.items():
+        recipes = seed["recipes"]
+        items = {
+            res["name"] for r in recipes
+            for res in r.get("results", []) if res["type"] == "item"
+        }
+        fluids = {
+            res["name"] for r in recipes
+            for res in r.get("results", []) if res["type"] == "fluid"
+        }
+        early, _ = compute_early_reachable(DB, recipes, items, fluids)
+        cycles = find_cycles(DB, recipes, early)
+        assert not cycles, (
+            f"seed {s}: {len(cycles)} SCC produit|fluide dans le graphe "
+            f"(membres: {[c['members'] for c in cycles[:3]]})"
+        )
+
+
+@pytest.mark.parametrize("seed", range(30, 60))
+def test_aucun_cycle_produit_produit_balayage_large(seed):
+    """Même invariant sur un éventail de graines plus large (sans solveur,
+    coupé vite) : la non-cyclicitté produit|fluide est une propriété
+    STRUCTURELLE de la génération, pas un accident de seed."""
+    from tool.generator.bootstrap_guard import find_cycles
+    from tool.generator.early_oracle import compute_early_reachable
+
+    db = copy.deepcopy(DB)
+    db.seed_value = seed
+    generated = generate_seed(db)
+    recipes = generated["recipes"]
+    items = {
+        res["name"] for r in recipes
+        for res in r.get("results", []) if res["type"] == "item"
+    }
+    fluids = {
+        res["name"] for r in recipes
+        for res in r.get("results", []) if res["type"] == "fluid"
+    }
+    early, _ = compute_early_reachable(DB, recipes, items, fluids)
+    cycles = find_cycles(DB, recipes, early)
+    assert not cycles, (
+        f"seed {seed}: {len(cycles)} SCC produit|fluide "
+        f"(membres: {[c['members'] for c in cycles[:3]]})"
+    )

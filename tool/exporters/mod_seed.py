@@ -37,16 +37,26 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from tool.audit.difficulty import compute_difficulty
+
 LUA_HEADER = "-- Généré par randputF tool. Ne pas éditer à la main.\n"
 
 
 def write_seed_files(seed: dict, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Difficulté injectée à l'export (jamais dans le pipeline) : le mod
+    # l'affiche en chat au spawn. ``difficulty`` = total de l'ardoise.
+    exported = dict(seed)
+    total = compute_difficulty(seed).total
+    exported["difficulty"] = {
+        "total": total,
+        "total_k": int(round(total / 1000)),
+    }
     (out_dir / "seed.json").write_text(
-        json.dumps(seed, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(exported, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     (out_dir / "seed.lua").write_text(
-        LUA_HEADER + "return " + _to_lua(seed) + "\n", encoding="utf-8"
+        LUA_HEADER + "return " + _to_lua(exported) + "\n", encoding="utf-8"
     )
     locale_en = out_dir.parent / "locale" / "en"
     locale_fr = out_dir.parent / "locale" / "fr"
@@ -54,7 +64,7 @@ def write_seed_files(seed: dict, out_dir: Path) -> None:
         if locale_dir.exists():
             locale_dir.mkdir(parents=True, exist_ok=True)
             (locale_dir / "seed.cfg").write_text(
-                _locale_cfg(seed), encoding="utf-8"
+                _locale_cfg(exported), encoding="utf-8"
             )
 
 

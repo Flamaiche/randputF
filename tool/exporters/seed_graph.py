@@ -412,6 +412,12 @@ def build_seed_graph_dot(
                 amount = int(ing.get("amount", 1))
                 edges.setdefault(key, set()).add(amount)
 
+    # Les ressources brutes de la seed (patches, environnementaux bois/pierre/
+    # poisson, fluides d'extraction) sont TOUJOURS des nœuds « source », même
+    # si aucune recette ne les consomme (une matière jamais consommée ne doit
+    # pas devenir invisible) : §6, `raw_sources` = pool.brutes de la seed.
+    nodes |= raw_sources
+
     lines: list[str] = []
     for name in sorted(nodes):
         q = _quote(name)

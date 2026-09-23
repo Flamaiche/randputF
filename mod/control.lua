@@ -120,6 +120,11 @@ end
 local function describe_patches()
   local lines = {}
   table.insert(lines, "[randputF] RESSOURCES DE LA SEED #" .. tostring(seed.meta and seed.meta.seed or "?"))
+  -- Difficulté (ardoise : sciences + fusée, totaux bruts) affichée en k.
+  local diff = seed.difficulty
+  if diff and diff.total_k then
+    table.insert(lines, "[randputF] Difficulté : " .. diff.total_k .. "k de ressources brutes")
+  end
   for _, lake in ipairs((seed.map or {}).lakes or {}) do
     table.insert(lines, string.format(
       "  [LAC] %s (infini, richesse=%s)",

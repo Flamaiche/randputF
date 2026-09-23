@@ -21,6 +21,7 @@ from tool.parsers.vanilla import load_db_from_dump, summarize_db
 from tool.validator.solver import validate_seed
 
 from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
+from tool.audit.difficulty import compute_difficulty, summarize_difficulty
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
 MOD_SOURCE = Path(__file__).resolve().parent.parent / "mod"
@@ -184,6 +185,15 @@ def cmd_generate(args: argparse.Namespace) -> None:
         print(f"Graphe interactif (cliquable) exporté dans {html_path}")
 
 
+def cmd_difficulty(args: argparse.Namespace) -> None:
+    db = _load_db(args.demo, Path(args.dump))
+    db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
+    seed = generate_seed(db)
+    report = compute_difficulty(seed)
+    print(f"Ardoise de la seed {db.seed_value} (recettes primaires, DAG)")
+    print(summarize_difficulty(report))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="randputf", description="Generateur de seeds randputF")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -197,6 +207,13 @@ def main(argv: list[str] | None = None) -> None:
     p_audit.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
     p_audit.add_argument("--dump", default="data/vanilla_dump.json")
     p_audit.set_defaults(func=cmd_audit)
+
+    p_diff = sub.add_parser("difficulty", help="Ardoise de la seed : ressources brutes pour finir une run")
+    p_diff.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_diff.add_argument("--dump", default="data/vanilla_dump.json")
+    p_diff.add_argument("--seed", type=int, default=None,
+                        help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
+    p_diff.set_defaults(func=cmd_difficulty)
 
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")

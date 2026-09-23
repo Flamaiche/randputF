@@ -17,6 +17,11 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   unlockées dans **la même tech** que l'arme — jamais une arme inutilisable.
   Si une munition de la catégorie est déjà débloquée (avant ou dans la même
   tech), rien n'est ajouté : l'arme peut déjà tirer.
+- **Une arme par tech** : le groupement §13 ne fusionne jamais deux steps
+  combat consécutifs dans la même tech (même garde-fou que les pylônes §9.4).
+  Sinon une tech arriverait avec « toute » : plusieurs armes et leurs munitions
+  cumulées (ex. submachine-gun + shotgun + leurs balles dans UNE tech). Chaque
+  arme sort seule, alignée sur SA munition.
 
 ## 12. Transports avancés
 
