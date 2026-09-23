@@ -53,7 +53,12 @@ def test_seeds_connues_gagnables(seeds):
 def test_seed0_bloquee_au_lab_detectee(seeds):
     """Sensibilité du rejoueur : il DÉTECTE le softlock réel de seed 0 (le lab
     gratuit exige un steel-furnace → exoskeleton-equipment, item profond).
-    À inverser quand la génération garantira un bootstrap jouable."""
+    Concerne le format actuel (passe extractor_timing) ; sur le format pré-C3
+    seed 0 est rejouable (les extracteurs restent au starter, bootstrap tenu).
+    À inverser quand la génération garantira un bootstrap jouable.
+    """
+    if not seeds[0].get("extractor_timing"):
+        pytest.skip("format pré-C3 : seed 0 rejouable, constat sans objet")
     db = copy.deepcopy(DB)
     db.seed_value = 0
     report = rp.play(db, seeds[0])
@@ -128,3 +133,27 @@ def test_generateur_et_electricite_modelises(seeds):
         inp = assign.get("input")
         if inp:
             assert inp in report.obtainable_fluids
+
+
+def test_fallback_sans_extractor_timing(seeds):
+    """Seeds de la branche de base (pré-C3, pas de ``extractor_timing``) :
+    le fallback rattache chaque lac/patch à un extracteur capable (pompe
+    offshore / foreuse / pumpjack). Couvre la vérification « ressources non
+    infinies et tout » : environnement + lacs + kit restent des sources."""
+    seed = copy.deepcopy(seeds[5])
+    if not seed.get("extractor_timing"):
+        pytest.skip("fixture au format pré-C3 : pas de passe extractor_timing")
+    del seed["extractor_timing"]                 # on simule le format pré-C3
+    db = copy.deepcopy(DB)
+    db.seed_value = 5
+    fp = rp.FakePlayer(db, seed)
+    items, fluids, power, generator = fp.closure()
+    lake = {la["resource"] for la in seed["map"]["lakes"]}
+    kit = {e["name"] for e in seed["starter_kit"] if e.get("type") == SLOT_ITEM}
+    if "offshore-pump" in kit:                   # pompe au kit → lacs pompables
+        assert lake <= fluids
+    assert "wood" in items                       # environnement (non infini)
+    assert kit <= items
+    assert isinstance(power, bool)
+    assert generator is None or isinstance(generator, str)
+    rp.play(db, seed)                            # jouable sans crash, les deux formats
