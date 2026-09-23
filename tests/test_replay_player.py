@@ -31,7 +31,7 @@ DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_
 # (extracteurs du spawn gardés au starter) + extraction par capacité physique ;
 # seed 20 était bloquée (lab → pipe → stone-furnace → productivity-module-2,
 # gisement non minable pré-élec) — rejouable depuis D4ter (mineur non-électrique
-# amorcé au kit + fin de l'auto-hébergement des recettes).
+# dans le graphe + fin de l'auto-hébergement des recettes).
 WINNING = (0, 1, 5, 7, 17, 20)
 
 
@@ -71,8 +71,8 @@ def test_seed20_rejouable_apres_d4ter(seeds):
     """D4ter : seed 20 était bloquée au lab (lab → pipe → stone-furnace →
     productivity-module-2, gisement miné par electric-mining-drill uniquement
     → rien d'extractible avant le réseau) et sa recette stone-furnace était
-    auto-hébergée (crafted_in==produit). Mineur non-électrique au kit + fin de
-    l'auto-hébergement → seed rejouable jusqu'à la victoire."""
+    auto-hébergée (crafted_in==produit). Le mineur non-électrique fait partie du
+    graphe + fin de l'auto-hébergement → seed rejouable jusqu'à la victoire."""
     db = copy.deepcopy(DB)
     db.seed_value = 20
     report = rp.play(db, seeds[20])
