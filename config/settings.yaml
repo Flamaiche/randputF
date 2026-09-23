@@ -135,3 +135,14 @@ craft_quantity:
   factor_min: 0.5
   factor_max: 3.0
   amount_min: 1
+
+usage:
+  # D2 — garantie d'usage dure (bâtiment avant usage, niveau seed) : passe
+  # post-récursion/avant relais qui garantit que tout bâtiment unlocké héberge
+  # ≥ 1 recette de la seed (U1, sauf bâtiments terminaux) et que la tech qui
+  # unlock une recette hébergée dans B vient à un index ≥ celle de B (U2, sauf
+  # bâtiments du kit réputés tech 0). invariant de solvabilité, activé par défaut.
+  enabled: true
+  strict_order: true
+  terminal_buildings: [lab, rocket-silo]
+  kit_exempt: []
