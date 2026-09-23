@@ -329,15 +329,29 @@ obtenable et alimenté + pylône), combustible/chaleur par bâtiment, ateliers,
 kit + loot d'épave, recherche dès que packs/trigger produisibles, victoire =
 chaîne fusée. Voir docs/solvabilite.md §15ter.
 
-**Constat** : ~50 % des graines actuelles sont bloquées AU SPAWN (le lab
-gratuit §8 exige un item profond — steel-furnace/exoskeleton… hors watershed
-pré-électricité). Chaîne ACYCLIQUE : aucun §15/§10ter ne la voit.
+## D4bis. Forêt starter + extraction par capacité — FAIT
 
-**Chantier ouvert (D4bis)** : garantir EN GÉNÉRATION que TOUTES les recettes
-des techs gratuites du starter sont réalisables dans le watershed
-pré-électricité final de la seed (aujourd'hui seules celles injectées au
-bootstrap le sont). Rendrait le balayage 0-200 à 100 % de victoires ; à faire
-du côté du générateur, PAS du rejoueur (qui reste l'arbitre de la jouabilité).
+Deux corrections, côté rejoueur ET générateur, qui ramènent le balayage 0-200
+de 99/201 à **178/201** :
+
+- **Rejoueur = capacité physique** (data-updates.lua) : tout patch item est en
+  `basic-solid` → mineable par TOUTE foreuse obtenable (la burner du kit suffit
+  pré-électricité) ; un patch fluide exige un pumpjack (électricité) ; un lac
+  se pompe par pompe offshore (void). L'ancien modèle liait chaque ressource à
+  SON extracteur mappé C3 → faux négatifs (le lab gratuit « exigeait » une
+  foreuse électrique, donc l'électricité, donc le lab — cercle artificiel).
+- **Générateur `extractor_timing` (D4bis)** : un extracteur consommé par la
+  « boîte du spawn » (recettes gratuites, trigger de la 1re tech payante,
+  fluide d'entrée de la turbine §10) reste À LA TECH GRATUITE. La deux branches
+  (annexe et C3) donnent désormais le même 178/201 : pas de chute C3.
+
+**Reste (chantier ouvert, D4ter imagine)**: ~23 graines échouent encore —
+des recettes attachées à une tech GRATUITE non réalisables dans le watershed
+pré-électricité final (chaîne du lab passant par un pumpjack/électricité ou un
+item profond, `craft_trigger` dont la recette est profonde, cycles
+stone-furnace→stone-furnace des packs). Garantir en phase de génération que
+TOUTE recette d'une tech gratuite tient dans le watershed pré-électricité
+final ⇒ balayage vers 100 %.
 
 ### Idées ouvertes (à trancher au fil du travail)
 

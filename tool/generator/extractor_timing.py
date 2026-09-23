@@ -17,6 +17,13 @@ claims d'unlock :
   aléatoirement (stream RNG dédié et déterministe, façon balayage §9.6),
   toujours ≥ l'index de l'atelier.
 
+D4bis (« forêt starter ») : une ressource consommée par la BOÎTE DU SPAWN —
+fermeture des recettes des techs gratuites, déclencheur de la 1re tech
+payante, fluide de la turbine du 1er générateur — garde TOUJOURS son
+extracteur à la tech gratuite. La différer bloquerait la partie au spawn
+(pas d'électricité, pas de lab) sur une chaîne acyclique qu'aucun §15 ne
+voit — c'est le rejoueur (§15ter) qui l'a mesuré (~50 % de graines).
+
 Seules les listes ``unlocks_recipes`` des macro-steps sont mutées : le graphe
 produit→ingrédient reste intact, l'« unlock unique » (§13) est préservé.
 
@@ -41,7 +48,7 @@ from __future__ import annotations
 import logging
 import random
 
-from tool.common.db import VanillaDB
+from tool.common.db import SLOT_FLUID, VanillaDB
 from tool.generator.recipes import _item_for_building
 
 log = logging.getLogger(__name__)
@@ -142,6 +149,67 @@ def _move_claim(source: int, target: int, steps: list[dict], recipe: str) -> Non
     steps[target].setdefault("unlocks_recipes", []).append(recipe)
 
 
+def _startup_raw_resources(state, extractors, all_tech_steps: list[dict], free_count: int):
+    """Ressources brutes consommées par la « boîte à outils » du SPAWN.
+
+    D4bis : la passe juste-au-besoin ne doit JAMAIS différer un extracteur dont
+    la ressource est consommée AVANT la première recherche — sinon la partie est
+    bloquée au spawn (lab, trigger, électricité coupés) sur une chaîne
+    ACYCLIQUE invisible pour les §15. Sont « au spawn » :
+
+    - la fermeture des recettes débloquées par les techs gratuites (lab, poêle,
+      turbines…) ; la fermeture s'arrête aux recettes gratuites : un ingrédient
+      dont la recette est PAYANTE est un problème de recettes, hors extracteurs ;
+    - le déclencheur (craft_trigger) de la premiere tech payante — la toute
+      première recherche doit être lançable dès le spawn ;
+    - les fluides consommés par les bâtiments du spawn (assignation §6/§10) :
+      la turbine du premier générateur reçoit son entrée (un lac) dès
+      l'électricité — si son extracteur est différé, plus d'électricité au
+      spawn, donc plus rien d'électrique.
+    """
+    free_recipes: set[str] = set()
+    for step in all_tech_steps[:free_count]:
+        free_recipes.update(step.get("unlocks_recipes", []))
+    extracted: set[tuple[str, str]] = {
+        key for rs in extractors.values() for key in rs
+    }
+    producers: dict[str, set[str]] = {}
+    byname: dict[str, dict] = {}
+    for recipe in state.recipes:
+        byname[recipe["name"]] = recipe
+        if recipe["name"] in free_recipes:
+            for res in recipe.get("results", []):
+                producers.setdefault(res["name"], set()).add(recipe["name"])
+    roots: list[str] = sorted(free_recipes)
+    # Déclencheur de la première tech payante : item craftable au spawn ; sa
+    # recette (si elle est gratuite) ferme l'ensemble.
+    if free_count < len(all_tech_steps):
+        trig = all_tech_steps[free_count].get("craft_trigger")
+        if trig:
+            roots.extend(sorted(producers.get(trig, ())))
+    raws: set[tuple[str, str]] = set()
+    processed: set[str] = set()
+    while roots:
+        name = roots.pop()
+        if name in processed or name not in byname:
+            continue
+        processed.add(name)
+        for ing in byname[name].get("ingredients", []):
+            key = (ing.get("type"), ing.get("name"))
+            if key in extracted:
+                raws.add(key)
+            else:
+                roots.extend(
+                    p for p in producers.get(ing.get("name"), ()) if p not in processed
+                )
+    # Fluides consommés par les bâtiments du spawn (ex. turbine → notre lac).
+    for assignment in (getattr(state, "building_fluid_assignments", None) or {}).values():
+        inp = assignment.get("input")
+        if inp:
+            raws.add((SLOT_FLUID, inp))
+    return raws
+
+
 def apply_extractor_timing(
     db: VanillaDB, starter, all_tech_steps: list[dict], *, seed_value: int
 ) -> dict:
@@ -165,6 +233,9 @@ def apply_extractor_timing(
     rng = random.Random(f"randputf:extractor-timing:{seed_value}")
     free_count = len(starter.tech_steps)
     paid = list(range(free_count, len(all_tech_steps)))
+    startup_raw = _startup_raw_resources(
+        starter.state, extractors, all_tech_steps, free_count
+    )
 
     for recipe, rs in sorted(extractors.items()):
         s = claim.get(recipe)
@@ -176,12 +247,20 @@ def apply_extractor_timing(
         atelier = _atelier_claim(starter.state, db, claim, kit, recipe)
         needy = [first[key] for key in rs if key in first]
         needed = min(needy) if needy else None
+        startup = any(key in startup_raw for key in rs)
 
         if needed is None:
             # Jamais consommé : comme les autres bâtiments (§9.6), le claim part
             # sur un step payant, tiré sur un RNG dédié déterministe, et jamais
             # avant l'atelier qui le fabrique.
             target = max(rng.choice(paid), atelier) if paid else atelier
+        elif startup:
+            # D4bis : ressource consommée par la boîte du SPAWN (techs
+            # gratuites / trigger de la 1re tech / fluide de la turbine) →
+            # l'extracteur reste À LA TECH GRATUITE. Le différer couperait le
+            # bootstrap sans même une recherche possible.
+            base = extraction_idx if extraction_idx is not None else needed
+            target = max(base, atelier)
         else:
             # Au plus tard à (premier usage, atelier) : utile dès que possible
             # ET fabriquable dès le claim (U2).
@@ -189,11 +268,19 @@ def apply_extractor_timing(
 
         if target != s:
             _move_claim(s, target, all_tech_steps, recipe)
-        if target == extraction_idx:
+        if needed is None:
+            bucket = "random"
+        elif startup:
             bucket = "starter"
         else:
-            bucket = "random" if needed is None else "timed"
+            bucket = "timed"
         report[bucket].append(recipe)
+        if startup and target >= free_count:
+            log.warning(
+                "[randputF] extractor_timing: %s requis au spawn mais atelier %d "
+                ">= plateau gratuit %d — fabricable seulement en profondeur",
+                recipe, atelier, free_count,
+            )
 
     if report["timed"] or report["random"]:
         log.info(

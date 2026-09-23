@@ -95,22 +95,16 @@ class FakePlayer:
                     continue
                 self.items_by_name.setdefault(res["name"], []).append(r["name"])
 
-        # Mapping extracteur (recette randputf-<extracteur>) -> ressources tirées.
-        # Format C3+ : ``seed["extractor_timing"]["extractors"]`` (passe
-        # extractor_timing). Format antérieur (sans passe) : inférence par
-        # capacité — un patch item est minable par toute foreuse obtenable, un
-        # patch fluide par tout pumpjack, un lac par toute pompe offshore ; si
-        # AUCUN extracteur correspondant n'est obtenable, la ressource reste
-        # inatteignable (comportement réel : on ne mine pas sans foreuse).
-        timing = seed.get("extractor_timing") or {}
-        mapped = timing.get("extractors") or {}
-        if mapped:
-            self.extractors = [
-                (recipe_name.removeprefix("randputf-"), list(resources))
-                for recipe_name, resources in mapped.items()
-            ]
-        else:
-            self.extractors = self._infer_extractors()
+        # Extraction : modèle de CAPACITÉ physique (data-updates.lua) — la mapping
+        # C3 (`extractor_timing`) ne fixe que le DÉBLOCAGE au fil de l'arbre
+        # (audit EXT), pas la physique : tout patch item est en ``basic-solid``
+        # et mineable par TOUTE foreuse compatible obtenable et opérationnelle
+        # (burner → combustible ; électrique → réseau), un patch fluide
+        # ``basic-fluid`` exige un pumpjack (électricité), un lac se pompe via
+        # une pompe offshore (void, sans électricité). Le joueur peut donc
+        # miner un patch item dès qu'il a une foreuse au kit — c'est ce que
+        # modèle le rejoueur, quel que soit le format de seed.
+        self.extractors = self._infer_extractors()
 
         # Fluides de lac (pompés par pompe offshore, énergie void) et patchs.
         map_ = seed.get("map") or {}

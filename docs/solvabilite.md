@@ -106,23 +106,35 @@ génération. Le balayage `tools/audit_playthrough.py 0 201` affiche le taux de
 victoires et, pour chaque échec, la **première tech bloquante** + un bordereau
 d'explication multi-étapes (l'item manquant, remonté jusqu'à sa source).
 
-**Résultat mesuré (balayage 0-200)** : ~50 % des graines actuelles sont
-BLOQUÉES au spawn — le plus souvent le lab gratuit (§8) exige un
-steel-furnace / exoskeleton-equipment / … débloqué EN PROFONDEUR : pas de lab
-→ pas de recherche → pas de steel-furnace. C'est une chaîne ACYCLIQUE (les
-§15/§10ter ne traitent que cycles et ordre) : seuls le rejoueur la voit.
-Chantier ouvert : garantir en phase de génération que **toutes les recettes
-des techs gratuites du starter sont réalisables dans le watershed
-pré-électricité final** (et non plus seulement les injectées au bootstrap).
+**Résultat mesuré (balayage 0-200)** : **178 victoires / 23 échecs** — avec le
+modèle d'extraction PHYSIQUE (data-updates.lua) : tout patch item est en
+`basic-solid`, donc mineable par TOUTE foreuse obtenable (la foreuse burner du
+kit suffit pré-électricité), un patch fluide exige un pumpjack (électricité),
+un lac se pompe par pompe offshore (void). La mapping `extractor_timing` ne
+fixe que le DÉBLOCAGE au fil de l'arbre (audit EXT), pas la physique — le
+rejoueur ne la lit volontairement pas pour la jouabilité (il la lit pour
+expliquer un blocage : « ce patch-là est miné par X »).
 
-**Étalonnage sur la branche de base (pré-C3)** : le même rejoueur, sur le même
-balayage 0-200 avec la génération d'avant la passe `extractor_timing` (tous les
-extracteurs unlockés au starter, y compris pour des patchs « item ») donne
-**178 victoires / 23 échecs**. L'écart (178 vs 99) prouve que la chute de
-jouabilité vient bien de C3 : différer « juste-au-besoin » le déblocage d'un
-extracteur peut couper la chaîne du lab gratuit. D4bis => en phase
-`extractor_timing`, TOUT extracteur consommé par une recette d'une tech
-gratuite du starter reste au starter (forêt starter), le reste est différé.
+Premier passage englué à 99/201 ? Le rejoueur liait chaque ressource à SON
+extracteur mappé (foreuse électrique pour tel patch) → faux négatifs massifs :
+le lab gratuit exigeait une foreuse électrique, donc l'électricité, donc le
+lab (cercle). Correction du rejoueur (capacité mathématique, ou 178/201 des
+deux branches, annexe ET C3, identiques).
+
+**D4bis (passé en FAIT)** : la passe `extractor_timing` garde À LA TECH
+GRATUITE tout extracteur consommé par la « boîte du spawn » — fermeture des
+recettes des techs gratuites, déclencheur de la 1re tech payante, et le fluide
+de la turbine du premier générateur (l'électricité est garantie au starter
+§10, la turbine est le producteur préféré). L'écart entre branches mesuré
+avant (178 vs 99) était un artefact du rejoueur, pas une chute C3.
+
+**Reste (chantier ouvert, côté GÉNÉRATION)** : ~23 graines ont des recettes
+d'une tech GRATUITE non réalisables dans le watershed pré-électricité final
+— le plus souvent la chaîne du lab gratuit passe par un pumpjack (électricité)
+ou un item profond, ou un `craft_trigger` dont la recette est profonde
+(cycle stone-furnace→stone-furnace pour les packs). Garantir en génération que
+TOUTE recette attachée à une tech gratuite reste dans le watershed
+pré-électricité final ⇒ balayage vers 100 %.
 
 ## 15. Règles de solvabilité
 

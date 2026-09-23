@@ -27,13 +27,15 @@ from tool.replay import player as rp
 DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_dump.json").read_text()))
 
 # Seeds « gagnables » avec la génération actuelle (vérifié par balayage).
-WINNING = (1, 5, 7, 17)
+# seed 0, autrefois bloquée au lab, est rejouable depuis D4bis (extracteurs du
+# spawn gardés au starter) + extraction par capacité physique (foreuses).
+WINNING = (0, 1, 5, 7, 17)
 
 
 @pytest.fixture(scope="module")
 def seeds():
     out = {}
-    for seed_value in (0, *WINNING):
+    for seed_value in WINNING:
         db = copy.deepcopy(DB)
         db.seed_value = seed_value
         out[seed_value] = generate_seed(db, {"seed": seed_value}, validate=False)
@@ -50,21 +52,16 @@ def test_seeds_connues_gagnables(seeds):
         assert report.researched == report.total_techs
 
 
-def test_seed0_bloquee_au_lab_detectee(seeds):
-    """Sensibilité du rejoueur : il DÉTECTE le softlock réel de seed 0 (le lab
-    gratuit exige un steel-furnace → exoskeleton-equipment, item profond).
-    Concerne le format actuel (passe extractor_timing) ; sur le format pré-C3
-    seed 0 est rejouable (les extracteurs restent au starter, bootstrap tenu).
-    À inverser quand la génération garantira un bootstrap jouable.
-    """
-    if not seeds[0].get("extractor_timing"):
-        pytest.skip("format pré-C3 : seed 0 rejouable, constat sans objet")
+def test_seed0_rejouable_apres_d4bis(seeds):
+    """D4bis : les extracteurs de la « boîte du spawn » restent à la tech
+    gratuite (foreuse burner minant les patchs item, pompe offshore pour le
+    lac de la turbine) — seed 0, bloquée au lab sur la passe C3 naïve, est
+    rejouable jusqu'à la victoire."""
     db = copy.deepcopy(DB)
     db.seed_value = 0
     report = rp.play(db, seeds[0])
-    assert not report.victory
-    assert report.blocker is not None
-    assert report.blocker.item == "lab"
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
 
 
 def test_victoire_donne_les_items_fusee(seeds):
@@ -135,15 +132,14 @@ def test_generateur_et_electricite_modelises(seeds):
             assert inp in report.obtainable_fluids
 
 
-def test_fallback_sans_extractor_timing(seeds):
-    """Seeds de la branche de base (pré-C3, pas de ``extractor_timing``) :
-    le fallback rattache chaque lac/patch à un extracteur capable (pompe
-    offshore / foreuse / pumpjack). Couvre la vérification « ressources non
-    infinies et tout » : environnement + lacs + kit restent des sources."""
+def test_extraction_par_capacite_physique(seeds):
+    """Couvre la vérification « ressources non infinies et tout » : le modèle
+    d'extraction est physique (data-updates.lua) — tout patch item
+    ``basic-solid`` est mineable par toute foreuse obtenable, un patch fluide
+    exige un pumpjack, un lac se pompe par pompe offshore (void). Indépendant
+    de la passe ``extractor_timing`` (le `del` est un no-op comportemental)."""
     seed = copy.deepcopy(seeds[5])
-    if not seed.get("extractor_timing"):
-        pytest.skip("fixture au format pré-C3 : pas de passe extractor_timing")
-    del seed["extractor_timing"]                 # on simule le format pré-C3
+    del seed["extractor_timing"]
     db = copy.deepcopy(DB)
     db.seed_value = 5
     fp = rp.FakePlayer(db, seed)
