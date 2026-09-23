@@ -26,10 +26,13 @@ from tool.replay import player as rp
 
 DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_dump.json").read_text()))
 
-# Seeds « gagnables » avec la génération actuelle (vérifié par balayage).
-# seed 0, autrefois bloquée au lab, est rejouable depuis D4bis (extracteurs du
-# spawn gardés au starter) + extraction par capacité physique (foreuses).
-WINNING = (0, 1, 5, 7, 17)
+# Seeds « gagnables » avec la génération actuelle (vérifié par balayage
+# 0-200 : 201/201). seed 0 était bloquée au lab — rejouable depuis D4bis
+# (extracteurs du spawn gardés au starter) + extraction par capacité physique ;
+# seed 20 était bloquée (lab → pipe → stone-furnace → productivity-module-2,
+# gisement non minable pré-élec) — rejouable depuis D4ter (mineur non-électrique
+# amorcé au kit + fin de l'auto-hébergement des recettes).
+WINNING = (0, 1, 5, 7, 17, 20)
 
 
 @pytest.fixture(scope="module")
@@ -60,6 +63,19 @@ def test_seed0_rejouable_apres_d4bis(seeds):
     db = copy.deepcopy(DB)
     db.seed_value = 0
     report = rp.play(db, seeds[0])
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
+
+
+def test_seed20_rejouable_apres_d4ter(seeds):
+    """D4ter : seed 20 était bloquée au lab (lab → pipe → stone-furnace →
+    productivity-module-2, gisement miné par electric-mining-drill uniquement
+    → rien d'extractible avant le réseau) et sa recette stone-furnace était
+    auto-hébergée (crafted_in==produit). Mineur non-électrique au kit + fin de
+    l'auto-hébergement → seed rejouable jusqu'à la victoire."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 20
+    report = rp.play(db, seeds[20])
     assert report.victory, report.summary()
     assert report.all_techs_researched
 
