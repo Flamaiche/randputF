@@ -115,6 +115,15 @@ Chantier ouvert : garantir en phase de génération que **toutes les recettes
 des techs gratuites du starter sont réalisables dans le watershed
 pré-électricité final** (et non plus seulement les injectées au bootstrap).
 
+**Étalonnage sur la branche de base (pré-C3)** : le même rejoueur, sur le même
+balayage 0-200 avec la génération d'avant la passe `extractor_timing` (tous les
+extracteurs unlockés au starter, y compris pour des patchs « item ») donne
+**178 victoires / 23 échecs**. L'écart (178 vs 99) prouve que la chute de
+jouabilité vient bien de C3 : différer « juste-au-besoin » le déblocage d'un
+extracteur peut couper la chaîne du lab gratuit. D4bis => en phase
+`extractor_timing`, TOUT extracteur consommé par une recette d'une tech
+gratuite du starter reste au starter (forêt starter), le reste est différé.
+
 ## 15. Règles de solvabilité
 
 Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifiés

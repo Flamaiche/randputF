@@ -95,12 +95,22 @@ class FakePlayer:
                     continue
                 self.items_by_name.setdefault(res["name"], []).append(r["name"])
 
-        # Mapping extracteur (recette randputf-<extracteur>) -> ressources
-        # tirées (source de vérité posée par C3, ``seed["extractor_timing"]``).
+        # Mapping extracteur (recette randputf-<extracteur>) -> ressources tirées.
+        # Format C3+ : ``seed["extractor_timing"]["extractors"]`` (passe
+        # extractor_timing). Format antérieur (sans passe) : inférence par
+        # capacité — un patch item est minable par toute foreuse obtenable, un
+        # patch fluide par tout pumpjack, un lac par toute pompe offshore ; si
+        # AUCUN extracteur correspondant n'est obtenable, la ressource reste
+        # inatteignable (comportement réel : on ne mine pas sans foreuse).
         timing = seed.get("extractor_timing") or {}
-        self.extractors: list[tuple[str, list[dict]]] = list(
-            timing.get("extractors", {}).items()
-        )
+        mapped = timing.get("extractors") or {}
+        if mapped:
+            self.extractors = [
+                (recipe_name.removeprefix("randputf-"), list(resources))
+                for recipe_name, resources in mapped.items()
+            ]
+        else:
+            self.extractors = self._infer_extractors()
 
         # Fluides de lac (pompés par pompe offshore, énergie void) et patchs.
         map_ = seed.get("map") or {}
@@ -145,6 +155,34 @@ class FakePlayer:
             for e in (self.seed.get("wreck") or {}).get("loot") or []
             if e in self.items_db
         }
+
+    def _infer_extractors(self) -> list[tuple[str, list[dict]]]:
+        """Fallback pour seeds SANS passe ``extractor_timing`` (branche de
+        base, pré-C3) : chaque ressource brute est rattachée à TOUS les
+        extracteurs capables (foreuses pour un patch item, pumpjacks pour un
+        patch fluide, pompes offshore pour un lac) ; elle devient atteignable
+        dès que l'un d'eux est obtenable et opérationnel."""
+        map_ = self.seed.get("map") or {}
+        buildings = list(self.db.buildings.values())
+        entries: list[tuple[str, list[dict]]] = []
+        for la in map_.get("lakes") or []:
+            cand = [b.name for b in buildings if getattr(b, "is_offshore_pump", False)]
+            for name in cand or ["offshore-pump"]:
+                entries.append((name, [{"type": SLOT_FLUID, "name": la["resource"]}]))
+        for p in map_.get("patches") or []:
+            res, kind = p["resource"], p.get("kind")
+            if kind == SLOT_ITEM:
+                cand = [b.name for b in buildings if getattr(b, "is_mining_drill", False)]
+                fallback, t = "burner-mining-drill", SLOT_ITEM
+            else:
+                cand = [
+                    b.name for b in buildings
+                    if getattr(b, "is_pumpjack", False) or getattr(b, "is_well_pump", False)
+                ]
+                fallback, t = "pumpjack", SLOT_FLUID
+            for name in cand or [fallback]:
+                entries.append((name, [{"type": t, "name": res}]))
+        return entries
 
     def _unlocks_of(self, tech: dict) -> set[str]:
         out = set()
