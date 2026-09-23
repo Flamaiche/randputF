@@ -153,27 +153,42 @@ obtenir les machines pour débloquer ce qu'elles fabriquent. À concilier avec l
 solvabilité 100 % (voir B1) : il s'agit de **réordonner/verrouiller** des
 branches, jamais de les rendre inaccessibles.
 
-### C3. Déblocage progressif des extracteurs
+### C3. Déblocage progressif des extracteurs — FAIT
 
-Constat en jeu : dès le spawn, le joueur accède à la fois à `burner-mining-drill`
-ET `electric-mining-drill`, plus pumpjack et offshore-pump : trop de bâtiments
-d'extraction d'un coup, la progression se « voit » en une seule tech. Désiré :
-débloquer l'extraction **au fur et à mesure** :
+**Implémentation** : `tool/generator/extractor_timing.py`, appelé dans
+`pipeline.generate_seed` juste avant la 2e passe `usage_pass` (D2). La tech
+gratuite `randputf-starter-extraction` ne garde que les extracteurs utiles dès
+le spawn (ressource consommée par la chaîne initiale) ; un extracteur dont la
+ressource n'est servie qu'en profondeur part avec le **premier consommateur**
+(`max(premier-usage, atelier)` — le claim n'est jamais avant l'atelier qui
+fabrique l'extracteur, contrainte U2 de D2) ; un extracteur jamais utilisé suit
+le balayage §9.6 sur une tech payante tirée sur un RNG dédié déterministe. Le
+rapport est stocké dans `seed["extractor_timing"]` et audité par
+`tools/audit_usage.py` (invariants EXT1/EXT2/EXT3).
 
-- un seul extracteur (le plus primitif) au starter ; les foreuses plus
-  évoluées se débloquent PAR la récursion, jamais en vrac au départ ;
-- la **« permission de miner »** façon vanilla : une ressource n'est minable que
-  si son extracteur compatible est débloqué **et que la recherche nécessaire a
-  été faite** (ex. l'uranium n'est pas minable sans recherche) ;
-- le déblocage d'un minerai peut être **conditionné à l'obtention d'un
-  fluide/extracteur qui permet de le miner** (gating ressource→permission) —
-  l'extraction devient une progression, pas un acquis du spawn.
+**Décisions actées** : le kit **garde son amorce** (1 item par extracteur,
+même différé — l'œuf/poule du premier exemplaire reste brisé) ; le **choix de
+l'extracteur par ressource reste le RNG actuel** (pas de préférence de
+primitif).
 
-*Prototype : `tool/prototypes/progressive_extractors.py` (palier starter
-`starter_max_extractors`, `research_map`, constante `enabled`) — non branché au
-pipeline. À connecter avec A1 (randomisation non-infinies) et la garantie
-« extracteur avant besoin » (§7) : la garantie suffit pour la solvabilité, il
-faut EN PLUS échelonner le starter pour ne pas tout donner d'emblée.*
+**Validation** : `tools/audit_usage.py 0 201` → **U1 = 0, U2 = 0,
+extracteurs = 0**, seeds violants = 0 ; pytest **672 passed** (dont
+`tests/test_extractor_timing.py`, 3 tests × 20 seeds, et
+`test_pipeline_invariants::test_extracteur_unlocke_avant_tout_consommateur`
+actualisé : l'extracteur n'est plus forcément @tech 0 mais jamais APRÈS son
+premier consommateur) ; seed 5 régénérée et réinstallée.
+
+**Idée ouverte (extracteur à entrée fluide)** : il est possible dans Factorio
+qu'un extracteur exige un **liquide en entrée** pour fonctionner (recette qui
+existe dans le jeu). Aujourd'hui §8 interdit tout fluide dans la **recette de
+craft** d'un extracteur — mais le cas serait l'inverse : le FONCTIONNEMENT
+demanderait un apport liquide (typiquement les **foreuses minières
+électriques**). À traiter en idée : il faudra un **nouveau tag** dans le dump
+vanilla (ex. `requires_liquid` / extracteur à input fluide) pour détecter ces
+entités et raisonner leur timing (un extracteur qui boit un liquide est un
+consommateur de la ressource-liquide : le déblocage juste-au-besoin doit tenir
+compte de sa propre source). Voir aussi la garantie « extracteur avant besoin »
+§7 et l'anti-boucle §8.
 
 ### C4. Coûts de tech et rythme de déblocage (piloté par l'ardoise)
 

@@ -220,6 +220,18 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         starter.tech_steps + welcome_steps + ease_steps + recursive_phase.steps() + endgame_steps
     )
 
+    # Phase 4quater : déblocage « juste-au-besoin » des extracteurs (§C3).
+    # Post-recettes complètes, juste avant la garantie d'usage dure — la tech
+    # gratuite ``starter-extraction`` ne garde que les extracteurs utiles dès le
+    # spawn ; les autres partent au first-premier consommateur ou sur une tech
+    # payante aléatoire (balayage §9.6). Le rapport est conservé dans la seed
+    # (source de vérité pour l'audit et les tests).
+    from tool.generator.extractor_timing import apply_extractor_timing
+
+    extractor_report = apply_extractor_timing(
+        db, starter, all_tech_steps, seed_value=db.seed_value
+    )
+
     # Ré-applique la garantie d'usage dure sur l'ORDRE FINAL (recettes relais et
     # ease-up créées après la passe primaire ; leurs techs prologue sont tôt alors
     # que leur bâtiment d'hébergement peut être profond). La passe est idempotente
@@ -286,6 +298,11 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
                 "lakes": [la.to_seed() for la in lake_list]},
         "starter_kit": starter.kit,
         "free_researches": starter.free_researches,
+        # C3 : mapping recette d'extracteur -> ressources + placement décidé par
+        # la passe `extractor_timing` (kept / moved / random). Consommé par
+        # l'audit et les tests comme source de vérité de l'« unlock juste-au
+        # -besoin » ; ignoré par le mod.
+        "extractor_timing": extractor_report,
         # Loot du site de crash (§7) : pool de matériaux + loi pondérée 0..3 par slot
         # (seed.wreck.counts = [c0, c1, c2, c3], somme des valeurs = 100).
         "wreck": wreck_loot.build_wreck_config(cfg, db),

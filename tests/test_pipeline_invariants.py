@@ -686,14 +686,12 @@ def test_pylone_du_bootstrap_craftable_a_la_main(seeds):
 
 
 def test_extracteur_unlocke_avant_tout_consommateur(seeds):
-    """§7 « la tech d'avant » : pour chaque ressource brute (patchs + lacs), la
-    recette de son extracteur est unlockée par starter-extraction (tech 0),
-    STRICTEMENT AVANT (ordre de tech) toute recette qui consomme la ressource.
-    Seule exception : les recettes des extracteurs eux-mêmes (auto-consomation
-    œuf/poule, brisée par l'amorce du kit §7 — recette unlockée au starter) et
-    les recettes relais propres (§9.3, qui retire des recettes de bootstrap).
-    Concrètement ici : tout consommateur « non-extracteur » d'une ressource
-    brute arrive APRÈS l'extraction (index de tech strictement supérieur)."""
+    """§7 + C3 « la tech d'avant » : pour chaque ressource brute (patchs +
+    lacs), la recette de son extracteur n'est JAMAIS débloquée après le premier
+    consommateur « non-extracteur » de la ressource (claim ≤ 1er usage —
+    l'extracteur est utilisable dès que la ressource devient nécessaire ; il
+    reste au starter quand celle-ci sert dès le spawn, sinon il part au moment
+    du besoin ou sur une tech payante s'il n'est jamais consommé, §C3)."""
     import tool.generator.starter_chain as sc
 
     captured = {}
@@ -744,10 +742,6 @@ def test_extracteur_unlocke_avant_tout_consommateur(seeds):
                     "dans la seed"
                 )
                 ext_unlock = min(unlock.get(r) for r in prod)
-                assert ext_unlock == 0, (
-                    f"seed {s}: {resource}/{item} recette@{ext_unlock} "
-                    "(unlock hors starter-extraction)"
-                )
                 consumers = [
                     r["name"] for r in seed["recipes"]
                     if any(i.get("name") == resource for i in r.get("ingredients") or [])
@@ -757,9 +751,12 @@ def test_extracteur_unlocke_avant_tout_consommateur(seeds):
                     unlock.get(rc) for rc in consumers if unlock.get(rc) is not None
                 )
                 if consumers_unlock:
-                    assert consumers_unlock[0] > ext_unlock, (
-                        f"seed {s}: {resource} consommé à la tech "
-                        f"{consumers_unlock[0]} (= tech d'extraction)"
+                    # C3 : jamais d'extracteur après le premier usage réel de sa
+                    # ressource (sinon le consommateur serait injouable) —
+                    # égalité quand le besoin et la fabrication arrivent ensemble.
+                    assert ext_unlock <= consumers_unlock[0], (
+                        f"seed {s}: {resource}/{item} recette@{ext_unlock} après "
+                        f"1er consommateur@tech {consumers_unlock[0]}"
                     )
     finally:
         sc.build_starter_chain = _orig
