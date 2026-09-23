@@ -152,12 +152,16 @@ def _ensure_prepower_item_miner(
     L'oracle early (build_early_sources) traite TOUS les patchs item comme
     obtenables pré-élec (« minables par foreuse non-électrique »). Ce n'est
     vrai en jeu que si un foreuse non-électrique est réellement disponible :
-    quand la seed tire electric-mining-drill pour ses patchs item, le kit est
-    inutile avant le réseau et toute recette gratuite consommant un de ces
-    patches se fige au spawn. Le mineur non-électrique est donc AMORCÉ au kit
-    (un exemplaire, façon vanilla) ET rendu refabriquable par une tech
-    gratuite. Échec silencieux (pool vide / circularité) : la branche est déjà
-    couverte par un autre mineur non-électrique."""
+    quand la seed tire electric-mining-drill pour ses patchs item, toute
+    recette gratuite consommant un de ces patches se fige au spawn.
+
+    Le graphe DE DÉPART est entièrement le nôtre : pas besoin d'un exemplaire
+    gratuit amorti au kit (l'item apparaîtrait hors graphe, « remplaçant » un
+    objet qui devrait se crafter). La recette du mineur non-électrique (burner
+    mining drill) EST simplement générée comme n'importe quelle recette du
+    starter, dans une tech gratuite, craftée pré-élec — le joueur le fabrique.
+    Échec silencieux (pool vide / circularité) : la branche est déjà couverte
+    par un autre mineur non-électrique."""
     has_item_patch = any(
         s.get("type") == "extract" and s.get("resource", {}).get("type") == SLOT_ITEM
         for s in state.steps
@@ -183,12 +187,41 @@ def _ensure_prepower_item_miner(
     item = _item_for_building(db, candidates[0].name)
     if item is None:
         return
-    if item.name not in chain.extractors:
-        chain.extractors.append(item.name)  # amorce au kit (_extend_spawn_kit)
+    # Le graphe est ENTIÈREMENT le nôtre : on en est l'auteur. Cette branche
+    # n'a aucun mineur non-électrique, donc AUCUN patch item n'est minable
+    # avant le réseau — la recette du premier mineur ne peut donc PAS dépendre
+    # (même transitivement) d'un patch item. On exclut tous les items dont
+    # l'obtention exige une mine (fixpoint : un item exige la mine si c'est un
+    # patch, ou si l'une de ses recettes consomme un item qui l'exige) — sinon
+    # la recette referme un cycle via ces items (ex. drill ← pierre-four ←
+    # plastic-bar <patch> ← drill). Elle naît des seules ressources vraiment
+    # disponibles à la main (environnement + manufactured sans mine).
+    patch_items = frozenset(
+        s["resource"]["name"]
+        for s in state.steps
+        if s.get("type") == "extract"
+        and s.get("resource", {}).get("type") == SLOT_ITEM
+    )
+    mine_dependent: set[str] = set(patch_items)
+    changed = True
+    while changed:
+        changed = False
+        for recipe in state.recipes:
+            results = recipe.get("results") or []
+            if not results or results[0].get("type") != SLOT_ITEM:
+                continue
+            out = results[0]["name"]
+            if out in mine_dependent:
+                continue
+            if any(ing.get("type") == SLOT_ITEM and ing["name"] in mine_dependent
+                   for ing in recipe.get("ingredients") or []):
+                mine_dependent.add(out)
+                changed = True
     try:
         ensure_obtainable(
             rng, db, state, SLOT_ITEM, item.name,
-            exclude_buildings=_EXCLUDED_BUILDINGS, force=True,
+            forbidden=frozenset(mine_dependent),
+            exclude_buildings=_EXCLUDED_BUILDINGS, handcraft=True, force=True,
         )
     except ValueError:
         pass

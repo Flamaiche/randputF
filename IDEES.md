@@ -349,10 +349,14 @@ de 99/201 à **178/201** :
 balayage 0-200 à **201/201 victoires** :
 
 - **mineur non-électrique au starter** : quand la seed tire
-  electric-mining-drill pour ses patchs item, un foreuse burner est amorcé au
-  kit + refabrique via une tech gratuite (`starter_chain._ensure_prepower_item_miner`,
-  flux RNG dédié) — sans quoi les recettes gratuites consommant des patchs
-  item (module en gisement…) sont injouables avant le réseau ;
+  electric-mining-drill pour ses patchs item, la recette du foreuse burner
+  naît DANS LE GRAPHE (`starter_chain._ensure_prepower_item_miner`, flux RNG
+  dédié) — craft à la main, tech gratuite, AUCUN exemplaire gratuit au kit
+  (le graphe est entièrement le nôtre : pas de remplaçant). Son pool interdit
+  tout item dépendant (fixpoint, même transitivement) d'une mine — sinon cycle
+  (foreuse ← four-pierre ← plastic-bar <patch> ← foreuse) — et les recettes
+  gratuites consommant des patchs item (module en gisement…) restent jouables
+  avant le réseau ;
 - **fin de l'auto-hébergement** : une recette n'est plus jamais hébergée dans
   un bâtiment dont l'item EST son produit (ex. `randputf-stone-furnace` dans
   stone-furnace) — garde dans `recipes._pick_building` et `usage_pass` U1/U2
