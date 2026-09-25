@@ -114,6 +114,15 @@ class FakePlayer:
         self.patch_resources: set[str] = {
             p["resource"] for p in map_.get("patches") or []
         }
+        # Patches ITEM : ramassés à la main au spawn (stock fini de départ,
+        # façon épave) — le drill ne sert qu'à les rendre infinis ensuite. Un
+        # patch FUIDE, lui, exige un pumpjack (électricité). C'est le modèle
+        # capacity (data-updates.lua) : tout patch item est en ``basic-solid``,
+        # Physicalement ramassable sans foreuse.
+        self.item_patch_resources: set[str] = {
+            p["resource"] for p in map_.get("patches") or []
+            if p.get("kind") == SLOT_ITEM
+        }
 
         # Fluides assignés aux bâtiments à comportement fixe (§6/§10) : un
         # générateur à vapeur consume son ``input`` (fluid de lac).
@@ -166,14 +175,15 @@ class FakePlayer:
         for p in map_.get("patches") or []:
             res, kind = p["resource"], p.get("kind")
             if kind == SLOT_ITEM:
-                cand = [b.name for b in buildings if getattr(b, "is_mining_drill", False)]
-                fallback, t = "burner-mining-drill", SLOT_ITEM
-            else:
-                cand = [
-                    b.name for b in buildings
-                    if getattr(b, "is_pumpjack", False) or getattr(b, "is_well_pump", False)
-                ]
-                fallback, t = "pumpjack", SLOT_FLUID
+                # Item patch : RAMASSÉ à la main au spawn (resource finie) —
+                # jamais une dépendance à une foreuse (le drill le rend infini,
+                # mais l'obtention du premier exemplaire n'exige rien).
+                continue
+            cand = [
+                b.name for b in buildings
+                if getattr(b, "is_pumpjack", False) or getattr(b, "is_well_pump", False)
+            ]
+            fallback, t = "pumpjack", SLOT_FLUID
             for name in cand or [fallback]:
                 entries.append((name, [{"type": t, "name": res}]))
         return entries
@@ -247,9 +257,13 @@ class FakePlayer:
         return False, None
 
     def _closure_items_buckets(self) -> tuple[set[str], set[str]]:
-        """Items/fluides de départ (sources + kit), avant recettes."""
+        """Items/fluides de départ (sources + kit + patches item ramassés)."""
         items = set(ENVIRONMENTAL_ITEMS) & set(self.items_db)
         items |= self.kit
+        # Patches ITEM : ramassables à la main au spawn (resource finie, façon
+        # épave/§7.4) — pas besoin de foreuse pour les obtenir au départ ; une
+        # foreuse opérationnelle les rend infinis (capacity, data-updates.lua).
+        items |= self.item_patch_resources
         fluids: set[str] = set()
         return items, fluids
 

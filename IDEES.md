@@ -369,6 +369,30 @@ Constat : c'est le rejoueur (§15ter) qui a isolé chaque classe ; les gardes
 sont posées là où le générateur POUVAIT créer le blocage, sans passe de
 rattrapage.
 
+### D4quater. Balayage élargi + catalogue des dérives — FAIT
+
+Deux corrections supplémentaires portent le balayage 0-200 → **0-500 (501/501)**,
+chacune causalement dérivée d'une seed isolée par le rejoueur (voir
+`docs/DEVIANCES.md`, le catalogue des écarts vs vanilla et des bugs rencontrés) :
+
+- **Cycle d'hébergement MUTUEL** (seed 255) : `_rehome` (U2) pouvait poser une
+  recette dans un bâtiment qui dépend déjà (transitivement) de son produit —
+  `randputf-assembling-machine-2` ← steel-furnace ⇄ `randputf-steel-furnace` ←
+  assembling-machine-2. Garde `_hosting_cycle` (fermeture transitive
+  ingrédients + crafted_in, arête atelier incluse) branchée dans les boucles de
+  candidats de U1 et U2 ;
+- **Fabrication d'atelier SANS fluide** (seed 426) : une recette de
+  **fabrication d'un item de bâtiment** pouvait consommer des fluides → hébergée
+  dans un atelier fluide (oil-refinery) unlocké APRÈS l'usage du bâtiment en
+  question (le chemical-plant servait aux science packs steps 11-12 mais sa
+  recette exigeait l'oil-refinery, unlock 45). La garde items-only des
+  extracteurs (§8) est étendue à TOUT bâtiment (atelier ou extracteur)
+  (`recipes._is_building_item_recipe`).
+
+**Récurrence** : chaque correction est posée à la racine (générateur ou
+rejoueur), le balayage est ensuite élargi de 500 en 500 et les nouveaux échecs
+deviennent de nouveaux chantiers DEVIANCES.
+
 ### Idées ouvertes (à trancher au fil du travail)
 
 - **B1-style proche** : D2 pourrait être couplé à un audit `tool/audit/usage.py`

@@ -11,9 +11,15 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from tool.common.db import ENVIRONMENTAL_ITEMS
-from tool.exporters.seed_graph import build_seed_graph_dot
+from tool.exporters.seed_graph import (
+    _node_info,
+    _technology_info,
+    build_seed_graph_dot,
+    write_seed_graph_html,
+)
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump
 
@@ -45,6 +51,112 @@ def _tiny_seed() -> dict:
             },
         ],
     }
+
+
+def test_technology_info_costs_and_unlocks() -> None:
+    seed = {
+        "recipes": [
+            {
+                "name": "recipe-a",
+                "ingredients": [{"name": "iron-plate", "amount": 1}],
+                "results": [{"name": "iron-gear", "amount": 1}],
+            },
+            {
+                "name": "recipe-b",
+                "ingredients": [{"name": "copper-plate", "amount": 1}],
+                "results": [{"name": "copper-cable", "amount": 1}],
+            },
+        ],
+        "technologies": [
+            {
+                "id": "tech-free",
+                "localised_name": "Tech gratuite",
+                "unit": {"count": 1, "ingredients": []},
+                "effects": [{"type": "unlock-recipe", "recipe": "recipe-a"}],
+            },
+            {
+                "id": "tech-paid",
+                "localised_name": "Tech payante",
+                "prerequisites": ["tech-free"],
+                "craft_trigger": "iron-plate",
+                "craft_trigger_count": 3,
+                "unit": {
+                    "count": 3,
+                    "time": 60,
+                    "ingredients": [
+                        {"name": "automation-science-pack", "amount": 2},
+                        {"name": "iron-plate", "amount": 4},
+                    ],
+                },
+                "effects": [
+                    {"type": "unlock-recipe", "recipe": "recipe-b"},
+                    {"type": "unlock-recipe", "recipe": "recipe-b"},
+                ],
+            },
+        ],
+        "progression_order": ["tech-free", "tech-paid"],
+        "free_researches": ["tech-free"],
+    }
+
+    techs = _technology_info(seed)
+    assert techs["tech-free"]["name"] == "Tech gratuite"
+    assert techs["tech-free"]["free"] is True
+    assert techs["tech-paid"]["prerequisites"] == [
+        {"id": "tech-free", "name": "Tech gratuite", "num": 1}
+    ]
+    assert techs["tech-paid"]["craft_trigger"] == {"name": "iron-plate", "count": 3}
+    assert techs["tech-paid"]["ingredients"] == [
+        {"name": "automation-science-pack", "amount": 6},
+        {"name": "iron-plate", "amount": 12},
+    ]
+    assert techs["tech-paid"]["unlocks"] == [
+        {"recipe": "recipe-b", "product": "copper-cable"}
+    ]
+
+    _, recipes = _node_info(seed)
+    assert recipes["recipe-a"]["techs"][0]["id"] == "tech-free"
+    assert recipes["recipe-b"]["techs"][0]["id"] == "tech-paid"
+
+
+def test_graph_html_embeds_technology_info(tmp_path: Path, monkeypatch) -> None:
+    seed = {
+        "meta": {"seed": "html"},
+        "pools": {"raw_resources": []},
+        "recipes": [
+            {
+                "name": "recipe-a",
+                "ingredients": [{"name": "iron-ore", "amount": 1}],
+                "results": [{"name": "iron-plate", "amount": 1}],
+            }
+        ],
+        "technologies": [
+            {
+                "id": "tech-paid",
+                "localised_name": "Tech payante",
+                "unit": {
+                    "count": 3,
+                    "time": 60,
+                    "ingredients": [{"name": "automation-science-pack", "amount": 2}],
+                },
+                "effects": [{"type": "unlock-recipe", "recipe": "recipe-a"}],
+            }
+        ],
+        "progression_order": ["tech-paid"],
+    }
+    monkeypatch.setattr("tool.exporters.seed_graph.shutil.which", lambda _: "dot")
+    monkeypatch.setattr(
+        "tool.exporters.seed_graph.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(stdout='<svg><g class="graph"></g></svg>'),
+    )
+
+    path = tmp_path / "seed.graph.html"
+    write_seed_graph_html(seed, path)
+    html = path.read_text(encoding="utf-8")
+
+    assert "__TECHS__" not in html
+    assert "const TECHS = " in html
+    assert '"tech-paid"' in html
+    assert '"amount": 6' in html
 
 
 def test_graph_format_mini() -> None:

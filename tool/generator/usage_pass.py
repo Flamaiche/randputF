@@ -108,6 +108,59 @@ def _self_hosted(db: VanillaDB, building, recipe: dict) -> bool:
     return res.get("type") == SLOT_ITEM and res.get("name") == item.name
 
 
+def _hosting_cycle(db: VanillaDB, state, building, recipe: dict) -> bool:
+    """Déplacer ``recipe`` (produit P) vers l'atelier ``building`` (item B)
+    formerait un CYCLE transitif d'hébergement si B dépend DÉJÀ de P.
+
+    Graphe de dépendance dirigé, arête « A dépend de B » :
+    - chaque ingrédient de la recette (produit A consomme l'ingrédient) ;
+    - l'ATELIER qui héberge la recette (produit A exige l'item du bâtiment).
+    Cycle mutuel exemple : randputf-assembling-machine-2 hébergé dans
+    steel-furnace ET randputf-steel-furnace hébergé dans assembling-machine-2 —
+    fabriquer A exige B, fabriquer B exige A. ``_self_hosted`` ne couvre que le
+    cercle DIRECT (atelier=produit) ; ici on suit la fermeture transitive."""
+    res = (recipe.get("results") or [{}])[0]
+    product = (res.get("type"), res.get("name"))
+    if product[0] != SLOT_ITEM:
+        return False  # un procédé fluide n'exige pas d'item de bâtiment
+    b_item = _item_for_building(db, building.name)
+    if b_item is None:
+        return False
+    # Graphe de dépendance dirigé « X require Y » (Forward) : chaque recette
+    # de produit ``p`` dépend de ses ingrédients ET de l'item de son atelier.
+    # Cycle ssi B →* P : déplacer la recette du produit P dans l'atelier B
+    # referme une boucle si l'atelier exige déjà (transitivement) ce produit —
+    # ex. AM2 in AM3, AM3 in rocket-silo, rocket-silo in oil-refinery,
+    # oil-refinery in AM2 (déplacer AM3 vers rocket-silo boucle).
+    requires: dict[(str, str), set[(str, str)]] = {}
+    for r in state.recipes:
+        rres = r.get("results") or []
+        if not rres:
+            continue
+        p = (rres[0].get("type"), rres[0]["name"])
+        deps = requires.setdefault(p, set())
+        for ing in r.get("ingredients") or []:
+            deps.add((ing.get("type"), ing["name"]))
+        ci = r.get("crafted_in")
+        bi = _item_for_building(db, ci) if ci else None
+        if bi is not None:
+            deps.add((SLOT_ITEM, bi.name))
+    # On marche depuis l'item de l'atelier cible vers P : « pour fabriquer B
+    # il faudrait déjà le produit P ».
+    frontier = [(SLOT_ITEM, b_item.name)]
+    visited = {frontier[0]}
+    while frontier:
+        current = frontier.pop()
+        for dep in requires.get(current, ()):
+            if dep == product:
+                return True
+            if dep in visited:
+                continue
+            visited.add(dep)
+            frontier.append(dep)
+    return False
+
+
 def _prepower_ok(building, recipe: dict, free: set[str]) -> bool:
     """Une recette unlockée par une tech gratuite du starter garde un atelier
     NON-électrique (promesse §10ter / bootstrap inline) : la re-héberger dans
@@ -266,6 +319,8 @@ def _correct_u2(
                 continue
             if _self_hosted(db, other, recipe) or not _prepower_ok(other, recipe, free):
                 continue
+            if _hosting_cycle(db, state, other, recipe):
+                continue
             if has_hidden_recipe(other) or not _is_atelier(other):
                 continue
             if other.item_input_slots < n_item:
@@ -355,6 +410,8 @@ def _correct_u1(
             if i_recipe is None or i_recipe < i_building:
                 continue  # U2 : ne pas poser une recette AVANT le bâtiment
             if _self_hosted(db, building, recipe) or not _prepower_ok(building, recipe, free):
+                continue
+            if _hosting_cycle(db, state, building, recipe):
                 continue
             if len(hosted.get(source, [])) <= 1:
                 continue  # la source garde ≥ 1 recette
