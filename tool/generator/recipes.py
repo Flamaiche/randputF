@@ -309,9 +309,11 @@ def _make_recipe(
     max_fluid_ing = _available_fluid_inputs(db, state, exclude_buildings, building_whitelist)
     fluid_eligible = [e for e in eligible if e[0] == SLOT_FLUID]
     item_eligible = [e for e in eligible if e[0] == SLOT_ITEM]
-    if _is_extractor_item(db, product_kind, product_name):
-        # Un extracteur se fabrique uniquement avec des items — jamais avec un
-        # fluide, surtout pas celui qu'il sert à extraire (anti-cycle §8).
+    if _is_building_item_recipe(db, product_kind, product_name):
+        # Un bâtiment (atelier ou extracteur) se fabrique uniquement avec des
+        # items — jamais avec un fluide (anti-cycle §8, ordre d'usage) : poser
+        # la recette de fabrication d'un atelier dans un atelier fluide le
+        # condamnerait à être unlocké APRÈS son premier usage ({unlock B} tardif).
         max_fluid_ing = 0
         fluid_eligible = []
     n_fluid_ing = min(rng.randint(0, min(len(fluid_eligible), max_fluid_ing)), max_ingredients)
@@ -668,7 +670,7 @@ def _pick_building(
         (
             b
             for b in db.buildings.values()
-            if b.name in state.unlocked_buildings and b.name not in exclude_buildings and fits(b)
+            if b.name in state.unlocked_buildings and b.name not in exclude_buildings and fits(b) and not blocked(b)
         ),
         key=lambda b: b.name,
     )
@@ -746,14 +748,16 @@ def _item_for_building(db: VanillaDB, entity_name: str):
     return next((i for i in db.items.values() if i.place_result == entity_name), None)
 
 
-def _is_extractor_item(db: VanillaDB, product_kind: str, product_name: str) -> bool:
-    """Vrai si le produit place une entité extractrice (perceuse, pumpjack,
-    pompe offshore). De telles entités se fabriquent uniquement avec des items
-    (jamais de fluide ingrédient, anti-cycle §8)."""
+def _is_building_item_recipe(db: VanillaDB, product_kind: str, product_name: str) -> bool:
+    """Vrai si le produit place une entité de BÂTIMENT (atelier/fabricateur ou
+    extracteur : perceuse, pumpjack, pompe offshore, four, assembleuse,
+    usine chimique, raffinerie…). Les bâtiments se fabriquent uniquement avec
+    des items (jamais de fluide ingrédient, anti-cycle §8 et ordre d'usage des
+    ateliers)."""
     if product_kind != SLOT_ITEM:
         return False
     item = db.items.get(product_name)
     if item is None or not item.place_result:
         return False
     building = db.buildings.get(item.place_result)
-    return building is not None and building.is_extractor
+    return building is not None and (building.is_extractor or _is_atelier(building))

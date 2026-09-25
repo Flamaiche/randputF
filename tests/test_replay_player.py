@@ -32,7 +32,14 @@ DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_
 # seed 20 était bloquée (lab → pipe → stone-furnace → productivity-module-2,
 # gisement non minable pré-élec) — rejouable depuis D4ter (mineur non-électrique
 # dans le graphe + fin de l'auto-hébergement des recettes).
-WINNING = (0, 1, 5, 7, 17, 20)
+# seed 255 (cycle d'hébergement mutuel AM-2 ⇄ steel-furnace) est rejouable
+# depuis D4quater (_hosting_cycle) ; seed 426 (fabrication d'atelier à fluides,
+# chemical-plant → oil-refinery unlock 45) est rejouable depuis le même chantier
+# (_is_building_item_recipe : bâtiments fabriqués items-only).
+# seed 1043 (cycle d'hébergement à 4 maillons AM2→AM3→rocket-silo→oil-refinery→AM2,
+# fermé par un rehome U1) est rejouable depuis D4quinquies (_hosting_cycle
+# parcourt le graphe FORWARD « ce que l'atelier exige »).
+WINNING = (0, 1, 5, 7, 17, 20, 255, 426, 1043)
 
 
 @pytest.fixture(scope="module")
@@ -78,6 +85,64 @@ def test_seed20_rejouable_apres_d4ter(seeds):
     report = rp.play(db, seeds[20])
     assert report.victory, report.summary()
     assert report.all_techs_researched
+
+
+def test_seed255_rejouable_apres_d4quater(seeds):
+    """D4quater : seed 255 restait bloquée par un cycle d'hébergement MUTUEL —
+    randputf-assembling-machine-2 ré-hébergé dans steel-furnace alors que
+    randputf-steel-furnace est fabriqué dans assembling-machine-2. La garde
+    transitive `_hosting_cycle` (U2) l'empêche à la racine → seed gagnable."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 255
+    report = rp.play(db, seeds[255])
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
+
+
+def test_seed426_rejouable_apres_d4quater(seeds):
+    """D4quater : seed 426 bloquée car la recette de FABRICATION du
+    chemical-plant exigeait 2 fluides → posée dans l'oil-refinery (unlock 45)
+    alors qu'il sert d'atelier au science pack dès step ~11. Un item de bâtiment
+    ne se fabrique plus qu'avec des items (_is_building_item_recipe) →
+    seed gagnable."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 426
+    report = rp.play(db, seeds[426])
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
+
+
+def test_seed1043_rejouable_apres_d4quinquies(seeds):
+    """D4quinquies : seed 1043 bloquée par un cycle d'hébergement à QUATRE
+    maillons — randputf-assembling-machine-2 in assembling-machine-3,
+    randputf-assembling-machine-3 in rocket-silo, randputf-rocket-silo in
+    oil-refinery, randputf-oil-refinery in assembling-machine-2. Le rehome U1
+    (AM3→rocket-silo) refermait la boucle sans que l'ancienne garde transitive
+    (chemin PAYANT « consommateurs ») ne la voie ; `_hosting_cycle` parcourt
+    désormais le graphe FORWARD (« ce que l'atelier cible exige », up to P) →
+    seed gagnable. Le coût de tech 18 (utility-science-pack) exigeait un pistol
+    lui-même fabriqué dans AM-2 — atelier intraçable sur ce cycle."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 1043
+    report = rp.play(db, seeds[1043])
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
+
+
+def test_patches_item_ramassables_a_la_main(seeds):
+    """Un patch ITEM est hand-pickable au spawn (stock fini façon épave) — le
+    drill ne sert qu'à le rendre infini. Le rejoueur doit donc obtenir ces
+    ressources dès la clôture initiale, SANS foreuse ni électricité.
+
+    NOTE ancrage temporel : la seed 5 tire-t-elle des patchs item ? Le test est
+    tolérant : si la carte est 100% fluide/lac il n'y a rien à vérifier
+    (patchs item = ensemble vide → invariants vrais par vacuité)."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 5
+    seed = seeds[5]
+    fp = rp.FakePlayer(db, seed)
+    items, _fluids, _power, _gen = fp.closure()
+    assert fp.item_patch_resources <= items
 
 
 def test_victoire_donne_les_items_fusee(seeds):

@@ -102,17 +102,19 @@ Le rejoueur (`tool/replay/player.py`, balayage `tools/audit_playthrough.py`)
   processing-unit + low-density-structure + rocket-fuel, §14).
 
 C'est un audit EXTERNE (n'accède qu'à la seed finale) : ne modifie jamais la
-génération. Le balayage `tools/audit_playthrough.py 0 201` affiche le taux de
-victoires et, pour chaque échec, la **première tech bloquante** + un bordereau
+génération. Le balayage `tools/audit_playthrough.py <lo> <hi>` affiche le taux
+de victoires et, pour chaque échec, la **première tech bloquante** + un bordereau
 d'explication multi-étapes (l'item manquant, remonté jusqu'à sa source).
 
-**Résultat mesuré (balayage 0-200)** : **201 victoires / 0 échec** — avec le
-modèle d'extraction PHYSIQUE (data-updates.lua) d'une part et les corrections
-générateur suivantes (D4ter) d'autre part :
+**Résultat mesuré (balayage 0-1500)** : **1501 victoires / 0 échec** — au-delà du
+modèle d'extraction PHYSIQUE (data-updates.lua) et des corrections générateur
+D4ter :
 
-- tout patch item est en `basic-solid`, donc mineable par TOUTE foreuse
-  obtenable ; un patch fluide exige un pumpjack (électricité) ; un lac se pompe
-  par pompe offshore (void) ;
+- tout patch item est en `basic-solid` et **ramassable à la main** au starter
+  (ressource finie, façon épave) ; une foreuse le rend infini ensuite ; un patch
+  fluide exige un pumpjack (électricité) ; un lac se pompe par pompe offshore
+  (void) — le rejoueur ajoute les patchs item aux buckets initiaux
+  (`item_patch_resources`), il n'exige pas de foreuse pour le premier commerce ;
 - **mineur non-électrique au starter** : quand la seed tire
   electric-mining-drill pour ses patchs item, la recette du foreuse burner
   (burner-mining-drill) naît dans le GRAPHE du starter (craft à la main, tech
@@ -129,11 +131,29 @@ générateur suivantes (D4ter) d'autre part :
   JAMAIS d'atelier pour un bâtiment électrique (usage_pass) — la promesse
   §10ter (recettes du starter jouables pré-électricité) est préservée.
 
+Corrections ajoutées sur 0-500 (détail dans `docs/DEVIANCES.md`) :
+
+- **cycle d'hébergement MUTUEL** (seed 255) : U2 ne ré-héberge plus une recette
+  vers un bâtiment qui dépend déjà (fermeture transitive) de son produit
+  (`_hosting_cycle` branché U1/U2) — `randputf-assembling-machine-2` ⇄
+  `randputf-steel-furnace` tournait en rond ;
+- **fabrication d'atelier SANS fluide** (seed 426) : un item de bâtiment
+  (atelier OU extracteur) se fabrique uniquement avec des items
+  (`recipes._is_building_item_recipe`) — une recette `randputf-chemical-plant`
+  à ingrédients fluides condamnait les science packs (steps 11-12) derrière
+  l'oil-refinery (unlock 45) ;
+- **cycle d'hébergement LONG** (seed 1043) : `_hosting_cycle` parcourt le
+  graphe FORWARD (ce que l'atelier cible exige, jusqu'au produit) au lieu du
+  sens inverse — un rehome U1 refermait une boucle à 4 maillons
+  `AM2→AM3→rocket-silo→oil-refinery→AM2` (pistol dans AM-2, atelier intraçable
+  → utility-science-pack impayable en tech 18).
+
 Premier passage à 99/201 ? Le rejoueur liait chaque ressource à SON extracteur
 mappé (foreuse électrique pour tel patch) → faux négatifs massifs. Passé en
 capacité physique + extracteurs du spawn gardés au starter (D4bis) : 178/201
-identique sur annexe et C3. Puis D4ter (ci-dessus) : 201/201 — aucune graine
-ne se fige au spawn ni au fil de l'arbre.
+identique sur annexe et C3. Puis D4ter : 201/201 sur 0-200, niveau porté à
+**1001/1001 sur 0-1000** puis **1501/1501 sur 0-1500** par les corrections
+ci-dessus — aucune graine ne se fige au spawn ni au fil de l'arbre.
 
 ## 15. Règles de solvabilité
 

@@ -247,6 +247,88 @@ def _recipe_tech_info(seed: dict) -> dict[str, dict]:
             "num": num,
             "name": local(items[0][1]) if items else "",
             "tech": " + ".join(f"{n} · {local(tid)}" for n, tid in items),
+            "techs": [
+                {"id": tid, "num": n, "name": local(tid), "free": tid in free}
+                for n, tid in items
+            ],
+        }
+    return out
+
+
+def _technology_info(seed: dict) -> dict[str, dict]:
+    tmap, order, free, _ = _tech_order(seed)
+    recipe_products: dict[str, str] = {}
+    for recipe in seed.get("recipes") or []:
+        results = recipe.get("results") or []
+        if results and results[0].get("name"):
+            recipe_products[recipe.get("name", "")] = results[0]["name"]
+
+    out: dict[str, dict] = {}
+    for tid, tech in tmap.items():
+        unit = tech.get("unit") or {}
+        try:
+            count = int(unit.get("count", 1) or 1)
+        except (TypeError, ValueError):
+            count = 1
+        count = max(count, 1)
+        ingredients = []
+        for ingredient in unit.get("ingredients") or []:
+            name = ingredient.get("name")
+            if not name:
+                continue
+            try:
+                amount = int(ingredient.get("amount", 1) or 1)
+            except (TypeError, ValueError):
+                amount = 1
+            ingredients.append({"name": name, "amount": amount * count})
+
+        unlocks = []
+        seen: set[str] = set()
+        for effect in tech.get("effects") or []:
+            if effect.get("type") != "unlock-recipe":
+                continue
+            recipe = effect.get("recipe")
+            if not recipe or recipe in seen:
+                continue
+            seen.add(recipe)
+            unlocks.append({
+                "recipe": recipe,
+                "product": recipe_products.get(recipe, recipe.removeprefix("randputf-")),
+            })
+
+        prerequisites = []
+        for prerequisite in tech.get("prerequisites") or []:
+            if not prerequisite:
+                continue
+            prerequisite_tech = tmap.get(prerequisite) or {}
+            prerequisites.append({
+                "id": prerequisite,
+                "name": prerequisite_tech.get("localised_name") or prerequisite,
+                "num": order.get(prerequisite, 0),
+            })
+
+        craft_trigger = None
+        if tech.get("craft_trigger"):
+            try:
+                trigger_count = int(tech.get("craft_trigger_count", 1) or 1)
+            except (TypeError, ValueError):
+                trigger_count = 1
+            craft_trigger = {
+                "name": tech["craft_trigger"],
+                "count": max(trigger_count, 1),
+            }
+
+        out[tid] = {
+            "id": tid,
+            "name": tech.get("localised_name") or tid,
+            "num": order.get(tid, 0),
+            "free": tid in free,
+            "count": count,
+            "time": unit.get("time"),
+            "ingredients": ingredients,
+            "prerequisites": prerequisites,
+            "craft_trigger": craft_trigger,
+            "unlocks": unlocks,
         }
     return out
 
@@ -483,12 +565,14 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
             dot_path.unlink(missing_ok=True)
         svg = _embed_icons(svg)
     info, recips = _node_info(seed)
+    techs = _technology_info(seed)
     title = f"randputF seed {seed.get('meta', {}).get('seed', '?')}"
     path.write_text(
         _HTML_TEMPLATE.replace("__TITLE__", title)
         .replace("__SVG__", svg)
         .replace("__INFO__", json.dumps(info))
-        .replace("__RECIPS__", json.dumps(recips)),
+        .replace("__RECIPS__", json.dumps(recips))
+        .replace("__TECHS__", json.dumps(techs)),
         encoding="utf-8",
     )
 
@@ -605,6 +689,7 @@ def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             "num": t.get("num", 0),
             "name": t.get("name", ""),
             "tech": t.get("tech", ""),
+            "techs": t.get("techs", []),
             "raw": p in resources,
             "icon": icon_uri(p),
         }
@@ -682,6 +767,15 @@ _HTML_TEMPLATE = """<!doctype html>
   .row .nn { white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
   .row .sub { font-size:10px; color:var(--muted); white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
   .row .sc { margin-left:auto; flex:none; font-size:10px; color:var(--muted); font-weight:700; }
+  .techlink { appearance:none; border:0; padding:0; background:transparent; color:inherit;
+    cursor:pointer; font:inherit; font-size:inherit; font-weight:inherit; line-height:inherit;
+    display:inline; vertical-align:baseline; text-align:left; }
+  .techlink:hover, .techlink.selected { color:#aeb0ff; text-decoration:underline; }
+  .grp.techgroup { appearance:none; border:0; padding:0; background:transparent; color:var(--muted);
+    cursor:pointer; display:block; width:100%; font-size:10px; text-transform:uppercase;
+    letter-spacing:.05em; font-weight:700; text-align:left; }
+  .grp.techgroup:hover, .grp.techgroup.selected { color:#aeb0ff; }
+  .grp.techgroup.selected { background:rgba(111,111,230,.12); }
   /* ---- viewer ---- */
   #viewer { position:absolute; top:0; right:0; bottom:0; left:var(--sidebarw,450px); }
   #biggraph, #minigraph { position:absolute; inset:0; }
@@ -726,8 +820,8 @@ _HTML_TEMPLATE = """<!doctype html>
   #theme { top:10px; left:300px; padding:8px 12px; font-size:12px; cursor:pointer;
     color:var(--txt); user-select:none; }
   #theme:hover { border-color:var(--txt); }
-  #panel { top:58px; right:10px; width:250px; padding:14px; display:none; font-size:13px;
-    max-height:calc(100% - 70px); overflow-y:auto; }
+  #panel { top:58px; right:10px; width:min(380px, calc(100vw - 20px)); padding:16px; display:none;
+    font-size:13px; max-height:calc(100% - 86px); overflow-y:auto; }
   #panel h3 { margin:0 0 6px; font-size:15px; word-break: break-word; }
   #panel img { width:96px; height:96px; float:right; margin:0 0 8px 8px; image-rendering: pixelated;
     border:1px solid var(--line); border-radius:6px; background:var(--field);
@@ -739,6 +833,30 @@ _HTML_TEMPLATE = """<!doctype html>
   #panel .sep { margin-top:10px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
     color:var(--muted); border-top:1px solid var(--line); padding-top:8px; }
   #panel .sci { color:#9ccc65; font-size:12px; margin-bottom:6px; font-weight:700; }
+  #panel .tech-id { color:var(--muted); font-size:10px; margin-bottom:9px; overflow-wrap:anywhere; }
+  #panel .tech-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin:8px 0 4px; }
+  #panel .tech-stat { min-width:0; padding:6px 8px; border:1px solid var(--line);
+    border-radius:7px; background:rgba(255,255,255,.04); }
+  #panel .tech-stat label { display:block; color:var(--muted); font-size:9px;
+    text-transform:uppercase; letter-spacing:.06em; }
+  #panel .tech-stat strong { display:block; margin-top:2px; font-size:12px; overflow-wrap:anywhere; }
+  #panel .tech-trigger { margin:8px 0 0; padding:8px; border:1px solid var(--line);
+    border-radius:7px; background:rgba(255,255,255,.04); }
+  #panel .tech-trigger-title { color:var(--muted); font-size:10px; text-transform:uppercase;
+    letter-spacing:.06em; margin-bottom:4px; }
+  #panel .tech-trigger-note { color:var(--txt); font-size:12px; line-height:1.4; }
+  #panel .tech-list { margin:8px 0 0; }
+  #panel .tech-list li { display:flex; align-items:center; gap:6px; min-width:0; }
+  #panel .tech-list img { width:22px; height:22px; float:none; margin:0; border:0; border-radius:3px; }
+  #panel .tech-list .label { flex:1; min-width:0; overflow-wrap:anywhere; }
+  #panel .tech-list .amount { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums;
+    white-space:nowrap; }
+  #panel .tech-list .per-unit { color:var(--muted); font-size:10px; white-space:nowrap; }
+  #panel .tech-list .recipe { color:var(--muted); font-size:10px; overflow-wrap:anywhere; }
+  #panel .tech-list .panel-tech { flex:1; min-width:0; border:0; padding:0; background:transparent;
+    color:var(--txt); font:inherit; text-align:left; cursor:pointer; }
+  #panel .tech-list .panel-tech:hover { color:#aeb0ff; text-decoration:underline; }
+  #panel .tech-list .tech-empty { display:block; color:var(--muted); font-size:12px; }
   #panel .rcp { display:flex; align-items:center; gap:6px; margin:2px 0 10px; padding:5px 9px;
     font-size:12px; color:var(--txt); background:rgba(255,255,255,.05); border:1px dashed var(--line);
     border-radius:6px; cursor:pointer; }
@@ -782,6 +900,7 @@ _HTML_TEMPLATE = """<!doctype html>
 const MAX_NODES = 1500;
 const INFO = __INFO__;
 const RECIPS = __RECIPS__;
+const TECHS = __TECHS__;
 const PALETTE = ['#ffd54f','#ff7043','#f06292','#ab47bc','#5c6bc0','#29b6f6','#26a69a','#9ccc65'];
 const viewer = document.getElementById('viewer');
 const svg = viewer.querySelector('svg');
@@ -796,7 +915,7 @@ const subcheck = document.getElementById('subcheck');
 const subonly = document.getElementById('subonly');
 const biggraph = document.getElementById('biggraph');
 const minigraph = document.getElementById('minigraph');
-let sortMode = 'science', lastSel = null, selBig = null, subOnly = false, ficheRecipeIndex = 0;
+let sortMode = 'science', lastSel = null, lastTech = null, selBig = null, subOnly = false, ficheRecipeIndex = 0;
 let rowEls = {}, lastNodes = [], lastEdges = [], lastRows = [], lastSub = [], lastDepth = null;
 /* ---- garde anti-performance ---- */
 const count = Object.keys(INFO).length;
@@ -1151,6 +1270,8 @@ function boot() {
       highlight(name);
     }
     lastSel = name;
+    lastTech = null;
+    updateTechSelection();
   }
   // clic sur un item du PANNEAU (liste, fiche) : si on est dans le sous-graphe,
   // on y reste (on navigue dedans) ; sinon on téléporte sur l'item dans le grand.
@@ -1170,6 +1291,177 @@ function boot() {
       }
     }
     selectPanel(r.p);
+  }
+  function renderTechFiche(tech) {
+    fiche.innerHTML = '';
+    const h = document.createElement('h3');
+    h.textContent = tech.name;
+    fiche.appendChild(h);
+    const id = document.createElement('div');
+    id.className = 'tech-id';
+    id.textContent = tech.id;
+    fiche.appendChild(id);
+
+    const count = Number(tech.count) || 1;
+    const trigger = tech.craft_trigger;
+    const summary = document.createElement('div');
+    summary.className = 'tech-summary';
+    const addStat = (label, value) => {
+      const stat = document.createElement('div');
+      stat.className = 'tech-stat';
+      const key = document.createElement('label');
+      key.textContent = label;
+      const val = document.createElement('strong');
+      val.textContent = value;
+      stat.appendChild(key);
+      stat.appendChild(val);
+      summary.appendChild(stat);
+    };
+    addStat('Position', tech.free ? 'Démarrage' : '#' + tech.num);
+    if (trigger) {
+      addStat('Type', 'Alternative');
+      addStat('Déblocage', 'Fabrication');
+    } else if (tech.free) {
+      addStat('Statut', 'Gratuite');
+      addStat('Coût', 'Aucun');
+    } else {
+      addStat('Unités de recherche', count + (count > 1 ? ' unités' : ' unité'));
+      const time = Number(tech.time);
+      if (Number.isFinite(time) && time > 0) {
+        addStat('Temps de base / unité', time + ' s');
+        addStat('Temps de base total', (time * count) + ' s');
+      }
+    }
+    fiche.appendChild(summary);
+
+    const makeList = (label) => {
+      const sep = document.createElement('div');
+      sep.className = 'sep';
+      sep.textContent = label;
+      fiche.appendChild(sep);
+      const list = document.createElement('ul');
+      list.className = 'tech-list';
+      return list;
+    };
+    const addItem = (list, label, amount, handler, recipe, icon, buttonLabel, perUnit) => {
+      const li = document.createElement('li');
+      if (icon) {
+        const img = document.createElement('img');
+        img.src = icon;
+        li.appendChild(img);
+      }
+      const name = document.createElement(buttonLabel ? 'button' : 'span');
+      if (buttonLabel) {
+        name.type = 'button';
+        name.className = 'panel-tech';
+      } else {
+        name.className = 'label';
+      }
+      name.textContent = label;
+      li.appendChild(name);
+      if (recipe) {
+        const recipeName = document.createElement('span');
+        recipeName.className = 'recipe';
+        recipeName.textContent = recipe;
+        li.appendChild(recipeName);
+      }
+      if (amount) {
+        const amountEl = document.createElement('span');
+        amountEl.className = 'amount';
+        amountEl.textContent = amount;
+        li.appendChild(amountEl);
+      }
+      if (perUnit) {
+        const perUnitEl = document.createElement('span');
+        perUnitEl.className = 'per-unit';
+        perUnitEl.textContent = perUnit;
+        li.appendChild(perUnitEl);
+      }
+      if (handler) li.addEventListener('click', handler);
+      list.appendChild(li);
+    };
+
+    if (trigger) {
+      const box = document.createElement('div');
+      box.className = 'tech-trigger';
+      const title = document.createElement('div');
+      title.className = 'tech-trigger-title';
+      title.textContent = 'Déclencheur de déblocage';
+      const note = document.createElement('div');
+      note.className = 'tech-trigger-note';
+      note.textContent = 'Cette alternative se débloque après avoir crafté :';
+      const list = document.createElement('ul');
+      list.className = 'tech-list';
+      const info = INFO[trigger.name] || {};
+      addItem(list, trigger.name, '× ' + trigger.count, () => {
+        selectPanel(trigger.name);
+      }, null, info.icon, false);
+      box.appendChild(title);
+      box.appendChild(note);
+      box.appendChild(list);
+      fiche.appendChild(box);
+    }
+
+    const prerequisites = tech.prerequisites || [];
+    if (prerequisites.length) {
+      const list = makeList('Prérequis (' + prerequisites.length + ')');
+      for (const prerequisite of prerequisites) {
+        addItem(list, prerequisite.name, prerequisite.num ? '#' + prerequisite.num : null, () => {
+          selectTech(prerequisite.id);
+        }, null, null, true);
+      }
+      fiche.appendChild(list);
+    }
+
+    const ingredients = tech.ingredients || [];
+    if (ingredients.length) {
+      const list = makeList('Coût de recherche (' + ingredients.length + ')');
+      for (const ingredient of ingredients) {
+        const info = INFO[ingredient.name] || {};
+        const perUnit = count > 1 ? '(' + (ingredient.amount / count) + '/u)' : null;
+        addItem(list, ingredient.name, '× ' + ingredient.amount, () => {
+          selectPanel(ingredient.name);
+        }, null, info.icon, false, perUnit);
+      }
+      fiche.appendChild(list);
+    } else if (!trigger) {
+      const list = makeList('Coût de recherche');
+      const empty = document.createElement('li');
+      empty.className = 'tech-empty';
+      empty.textContent = 'Aucun ingrédient requis.';
+      list.appendChild(empty);
+      fiche.appendChild(list);
+    }
+
+    const unlocks = tech.unlocks || [];
+    if (unlocks.length) {
+      const list = makeList('Débloque (' + unlocks.length + ')');
+      for (const unlock of unlocks) {
+        const recipe = RECIPS[unlock.recipe] || {};
+        const product = unlock.product || recipe.p || unlock.recipe;
+        addItem(list, product, null, () => {
+          selectRecipe(unlock.recipe);
+        }, unlock.recipe, recipe.icon, false);
+      }
+      fiche.appendChild(list);
+    }
+  }
+  function selectTech(id) {
+    const tech = TECHS[id];
+    if (!tech) return;
+    clearHigh();
+    if (subOnly) {
+      subOnly = false;
+      subcheck.checked = false;
+      removeMini();
+    }
+    lastSel = null;
+    lastTech = id;
+    updateTechSelection();
+    selBig = null;
+    hideSubOption();
+    renderTechFiche(tech);
+    panel.style.display = 'block';
   }
   function removeMini() {
     minigraph.style.display = 'none';
@@ -1289,7 +1581,8 @@ function boot() {
   });
   document.getElementById('close').addEventListener('click', () => {
     clearHigh(); removeMini(); panel.style.display = 'none';
-    lastSel = null; subcheck.checked = false; subOnly = false; hideSubOption();
+    lastSel = null; lastTech = null; subcheck.checked = false; subOnly = false; hideSubOption();
+    updateTechSelection();
   });
   subcheck.addEventListener('change', () => {
     if (subcheck.checked) {
@@ -1318,20 +1611,26 @@ function boot() {
     themeBtn.textContent = day ? 'Nuit' : 'Jour';
     themeBtn.title = day ? 'Mode nuit (fond noir, branches blanches) — cliquer pour passer en jour' : 'Mode jour (fond blanc, branches noires) — cliquer pour passer en nuit';
     try { localStorage.setItem('randputfTheme', day ? 'day' : 'night'); } catch (e) {}
-    if (lastSel) { if (subOnly) buildMini(lastSel); else highlight(lastSel); }
+    if (lastTech) renderTechFiche(TECHS[lastTech]);
+    else if (lastSel) { if (subOnly) buildMini(lastSel); else highlight(lastSel); }
   }
   themeBtn.addEventListener('click', () => setTheme(!document.body.classList.contains('day')));
   try { setTheme(localStorage.getItem('randputfTheme') === 'day'); } catch (e) { setTheme(false); }
   /* ---- panneau : recherche + tri + liste ---- */
   search.addEventListener('input', () => {
     clearHigh(); removeMini(); panel.style.display = 'none';
-    lastSel = null; subcheck.checked = false; subOnly = false; hideSubOption(); renderList();
+    lastSel = null; lastTech = null; subcheck.checked = false; subOnly = false; hideSubOption(); renderList();
   });
   addEventListener('keydown', e => { if (e.key === 'Escape') { search.value=''; search.dispatchEvent(new Event('input')); } });
   document.querySelectorAll('.sortbtn').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.sortbtn').forEach(x => x.classList.toggle('active', x === b));
     sortMode = b.dataset.sort; renderList();
   }));
+  function updateTechSelection() {
+    list.querySelectorAll('[data-tech-id]').forEach(el => {
+      el.classList.toggle('selected', !!lastTech && el.dataset.techId === lastTech);
+    });
+  }
   function renderList() {
     list.innerHTML = ''; rowEls = {};
     const q = search.value.trim().toLowerCase();
@@ -1349,10 +1648,29 @@ function boot() {
         const g0 = gkey(r);
         if (g0 !== grp) {
           grp = g0;
-          const hd = document.createElement('div'); hd.className = 'grp';
-          hd.textContent = g0 < 0 ? 'Ressources brutes (finies + infinies)'
-            : (g0 === 0 ? 'Starter' : (g0 - 1) + ' · ' + (r.name || r.tech));
-          list.appendChild(hd);
+          const techList = r.techs || [];
+          const firstTech = techList.find(t => r.num > 0 ? t.num === r.num : t.free) || techList[0];
+          if (g0 < 0) {
+            const hd = document.createElement('div');
+            hd.className = 'grp';
+            hd.textContent = 'Ressources brutes (finies + infinies)';
+            list.appendChild(hd);
+          } else if (firstTech) {
+            const hd = document.createElement('button');
+            hd.type = 'button';
+            hd.className = 'grp techgroup';
+            hd.dataset.techId = firstTech.id;
+            if (lastTech === firstTech.id) hd.classList.add('selected');
+            hd.textContent = g0 === 0 ? 'Starter' : (g0 - 1) + ' · ' + (r.name || r.tech);
+            hd.title = 'Voir le coût de ' + firstTech.name;
+            hd.addEventListener('click', () => selectTech(firstTech.id));
+            list.appendChild(hd);
+          } else {
+            const hd = document.createElement('div');
+            hd.className = 'grp';
+            hd.textContent = 'Starter';
+            list.appendChild(hd);
+          }
         }
       }
       const row = document.createElement('div'); row.className = 'row';
@@ -1367,9 +1685,6 @@ function boot() {
         col.appendChild(su);
       }
       row.appendChild(col);
-      if (r.tech && sortMode === 'science') {
-        const b = document.createElement('b'); b.className = 'sc'; b.textContent = r.tech; row.appendChild(b);
-      }
       row.addEventListener('click', () => selectRecipe(rid));
       rowEls[rid] = row; list.appendChild(row);
     }
@@ -1377,6 +1692,7 @@ function boot() {
       const e = document.createElement('div'); e.className = 'grp'; e.textContent = 'aucun résultat';
       list.appendChild(e);
     }
+    updateTechSelection();
   }
   renderList();
 }
