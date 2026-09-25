@@ -27,25 +27,27 @@ from tool.replay import player as rp
 DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_dump.json").read_text()))
 
 # Seeds « gagnables » avec la génération actuelle (vérifié par balayage
-# 0-200 : 201/201). seed 0 était bloquée au lab — rejouable depuis D4bis
-# (extracteurs du spawn gardés au starter) + extraction par capacité physique ;
-# seed 20 était bloquée (lab → pipe → stone-furnace → productivity-module-2,
-# gisement non minable pré-élec) — rejouable depuis D4ter (mineur non-électrique
-# dans le graphe + fin de l'auto-hébergement des recettes).
+# 0-200 sous joueur ensembliste : 201/201 ; sous joueur QUANTITATIF : 165/201).
+# seed 0 était bloquée au lab — rejouable depuis D4bis (extracteurs du spawn
+# gardés au starter) + extraction par capacité physique ; seed 20 était bloquée
+# (lab → pipe → stone-furnace → productivity-module-2, gisement non minable
+# pré-élec) — rejouable depuis D4ter (mineur non-électrique dans le graphe + fin
+# de l'auto-hébergement des recettes).
 # seed 255 (cycle d'hébergement mutuel AM-2 ⇄ steel-furnace) est rejouable
 # depuis D4quater (_hosting_cycle) ; seed 426 (fabrication d'atelier à fluides,
 # chemical-plant → oil-refinery unlock 45) est rejouable depuis le même chantier
 # (_is_building_item_recipe : bâtiments fabriqués items-only).
-# seed 1043 (cycle d'hébergement à 4 maillons AM2→AM3→rocket-silo→oil-refinery→AM2,
-# fermé par un rehome U1) est rejouable depuis D4quinquies (_hosting_cycle
-# parcourt le graphe FORWARD « ce que l'atelier exige »).
-WINNING = (0, 1, 5, 7, 17, 20, 255, 426, 1043)
+# seed 1043 (cycle d'hébergement à 4 maillons) est de nouveau BLOQUÉE depuis le
+# rejoueur quantitatif (D5) : la recette de fabrication de l'electric-mining-drill
+# est unlockée au tech idx 32 alors que la chaîne du military-science-pack (idx 4)
+# exige ≈32 EMD hors du kit (frappée en quantité, pas en présence).
+WINNING = (0, 1, 5, 17, 20, 255, 426)
 
 
 @pytest.fixture(scope="module")
 def seeds():
     out = {}
-    for seed_value in WINNING:
+    for seed_value in WINNING + (7, 1043):
         db = copy.deepcopy(DB)
         db.seed_value = seed_value
         out[seed_value] = generate_seed(db, {"seed": seed_value}, validate=False)
@@ -112,23 +114,6 @@ def test_seed426_rejouable_apres_d4quater(seeds):
     assert report.all_techs_researched
 
 
-def test_seed1043_rejouable_apres_d4quinquies(seeds):
-    """D4quinquies : seed 1043 bloquée par un cycle d'hébergement à QUATRE
-    maillons — randputf-assembling-machine-2 in assembling-machine-3,
-    randputf-assembling-machine-3 in rocket-silo, randputf-rocket-silo in
-    oil-refinery, randputf-oil-refinery in assembling-machine-2. Le rehome U1
-    (AM3→rocket-silo) refermait la boucle sans que l'ancienne garde transitive
-    (chemin PAYANT « consommateurs ») ne la voie ; `_hosting_cycle` parcourt
-    désormais le graphe FORWARD (« ce que l'atelier cible exige », up to P) →
-    seed gagnable. Le coût de tech 18 (utility-science-pack) exigeait un pistol
-    lui-même fabriqué dans AM-2 — atelier intraçable sur ce cycle."""
-    db = copy.deepcopy(DB)
-    db.seed_value = 1043
-    report = rp.play(db, seeds[1043])
-    assert report.victory, report.summary()
-    assert report.all_techs_researched
-
-
 def test_patches_item_ramassables_a_la_main(seeds):
     """Un patch ITEM est hand-pickable au spawn (stock fini façon épave) — le
     drill ne sert qu'à le rendre infini. Le rejoueur doit donc obtenir ces
@@ -143,6 +128,39 @@ def test_patches_item_ramassables_a_la_main(seeds):
     fp = rp.FakePlayer(db, seed)
     items, _fluids, _power, _gen = fp.closure()
     assert fp.item_patch_resources <= items
+
+
+def test_seed1043_bloquee_par_quantities_apres_d5(seeds):
+    """D5 (joueur forward quantitatif) : seed 1043 échoue en QUANTITÉ — le
+    military-science-pack (tech idx 4) requiert ≈32 electric-mining-drills
+    fabriqués via randputf-electric-mining-drill dont l'unlock n'arrive qu'au
+    tech idx 32 (randputf-content-steel-furnace). Softlock réel révélé par le
+    simulateur forward, pas un artefact de fermeture d'ensemble."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 1043
+    report = rp.play(db, seeds[1043])
+    assert not report.victory
+    assert report.blocker is not None
+    assert report.blocker.kind == "cost"
+
+
+def test_seed7_bloquee_par_quantities_apres_d5(seeds):
+    """D5 : seed 7 est frappée par un softlock de QUANTITÉ — l'ease-a (idx 3)
+    passe désormais (le pipe-to-ground n'exige que burner-mining-drill ×4 +
+    express-splitter, couverts par le jeu forward), mais le cost space-science-
+    pack du distribution-small-electric-pole (idx 5) exige ~20 pumpjacks hors
+    kit alors que randputf-pumpjack n'est unlockée qu'au tech idx 9. Le rejoueur
+    forward (inventaire + maîtrise) la détecte ; le rejoueur ensembliste
+    (présence seule) la déclarait gagnable à tort."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 7
+    report = rp.play(db, seeds[7])
+    assert not report.victory
+    assert report.blocker is not None
+    assert report.blocker.kind == "cost"
+    assert report.blocker.tech == "randputf-distribution-small-electric-pole"
+    assert report.blocker.item == "space-science-pack"
+    assert "pumpjack" in report.blocker.reason
 
 
 def test_victoire_donne_les_items_fusee(seeds):
