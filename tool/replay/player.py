@@ -26,6 +26,8 @@ victoire révèle un softlock réel (électricité, extraction, timing d'unlock�
 
 from __future__ import annotations
 
+import math
+from collections import Counter
 from dataclasses import dataclass, field
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_FLUID, SLOT_ITEM, VanillaDB
@@ -41,6 +43,7 @@ VICTORY_ITEMS = (
 
 MAX_DEPTH = 5          # profondeur de l'explication d'un blocage
 UNKNOWN, ENV, KIT = "unknown", "environment", "kit"
+MAX_QDEPTH = 6         # profondeur max de la recherche de faisabilité quantités
 
 
 @dataclass
@@ -158,6 +161,43 @@ class FakePlayer:
             for e in (self.seed.get("wreck") or {}).get("loot") or []
             if e in self.items_db
         }
+        # Quantités finies du kit (nécessaires à la faisabilité « combien de
+        # copies peut-on avoir ») — au-delà de la présence (ensemble).
+        self.kit_counts: Counter[str] = Counter()
+        for e in self.seed.get("starter_kit") or []:
+            if e.get("type") == SLOT_ITEM:
+                self.kit_counts[e["name"]] += e.get("count", 1)
+        for x in (self.seed.get("wreck") or {}).get("loot") or []:
+            if x in self.items_db:
+                self.kit_counts[x] += 1
+        # Patchs ITEM : ramassage à la main au spawn = stock FINI (count de la
+        # ressource) tant qu'aucune foreuse opérationnelle ne le rend infini.
+        self.item_patch_counts: Counter[str] = Counter()
+        map_ = self.seed.get("map") or {}
+        for p in map_.get("patches") or []:
+            if p.get("kind") == SLOT_ITEM:
+                self.item_patch_counts[p["resource"]] += p.get("count", 0)
+
+        # Simulation FORWARD « comme un joueur » : un inventaire réel, un compteur
+        # cumulé d'usinage, et une REGLE DE MAITRISE — dès qu'un item a été fabriqué
+        # 10 fois (had ≥ 10), son craft est « devenu sûr » : il devient INFINI, on
+        # n'a plus à le recrafter pour l'employer. Les ressources de base
+        # (environnement, patchs, lacs) sont infinies d'office.
+        self.inv: Counter[str] = Counter(self.kit_counts)
+        self.had: Counter[str] = Counter(self.kit_counts)
+        self.base_infinite: set[str] = set(ENVIRONMENTAL_ITEMS) & set(self.items_db)
+        self.base_infinite |= self.item_patch_resources
+        self.base_infinite |= self.patch_resources
+        self.base_infinite |= self.lake_resources
+        self.mastered: set[str] = {
+            n for n, c in self.had.items() if c >= 10
+        }
+        # Monde courant « obtenable » pour la garde d'énergie des ateliers
+        # (mis à jour à chaque tech dans play()).
+        self._world_items: set[str] = set()
+        self._world_fluids: set[str] = set()
+        self._world_power: bool = False
+        self.fluids_obtainable: set[str] = set()
 
     def _infer_extractors(self) -> list[tuple[str, list[dict]]]:
         """Fallback pour seeds SANS passe ``extractor_timing`` (branche de
@@ -327,6 +367,233 @@ class FakePlayer:
             return False
         return True
 
+    # ── Faisabilité QUANTITATIVE (le « combien » plutôt que le « quel ») ──
+    #
+    # La fermeture d'ensemble n'atteste qu'une OBTAINABILITÉ : si les ingrédients
+    # d'une recette sont dans le bucket, la recette « tourne ». Mais un item peut
+    # être obtenable et pourtant en quantité INSUFFISANTE à une recette (ex. le
+    # steel-furnace du prologue exige 4 offshore-pumps : si le kit ne fournit
+    # qu'1 pumpjack, les 3 offshore-pumps manquants sont infabriquables tant que
+    # la recette du pumpjack n'est pas débloquée → softlock de QUANTITÉ qui
+    # passe la fermeture d'ensemble).
+    #
+    # ``can_fund`` répond à « le joueur peut-il RÉUNIR ces quantités ? » :
+    #   - les ressources INFINIES (environnement, patch item une fois une
+    #     foreuse opérationnelle, fluides une fois l'extracteur opérationnel,
+    #     et toute recette dont tous les ingrédients sont infinis) sont libres ;
+    #   - le stock FINI (kit + patchs item ramassés à la main) est un budget
+    #     PARTAGÉ : chaque recette puise dans le même panier, jamais deux fois ;
+    #   - c'est une recherche en profondeur (peu de recettes par item, MAX_QDEPTH
+    #     règles de profondeur) : le premier plan de fabrication qui tient gagne.
+
+    def _infinite_items(
+        self, items: set[str], fluids: set[str], power: bool
+    ) -> tuple[set[str], set[str]]:
+        """Items/fluides en quantité INFINIE pour le state courant :
+        environnement, patch item miné par une foreuse opérationnelle, fluides
+        extraits (lacs/patchs), et toute recette débloquée dont les ingrédients
+        sont eux-mêmes infinis et l'atelier est disponible."""
+        inf_items: set[str] = set(ENVIRONMENTAL_ITEMS) & set(self.items_db)
+        inf_fluids: set[str] = set(fluids)
+        drill_works = any(
+            b.name in items
+            and getattr(b, "is_mining_drill", False)
+            and not getattr(b, "is_pumpjack", False)
+            and self._energy_ok(b, items, power)
+            for b in self.buildings_db.values()
+        )
+        if drill_works:
+            inf_items |= self.item_patch_resources
+        changed = True
+        while changed:
+            changed = False
+            for recipe in self.recipes:
+                if recipe["name"] not in self.unlocked:
+                    continue
+                if not self._recipe_runs(recipe, items, fluids, power):
+                    continue
+                ings = recipe.get("ingredients") or []
+                if any(ing.get("type") == SLOT_ITEM and ing["name"] not in inf_items for ing in ings):
+                    continue
+                if any(ing.get("type") == SLOT_FLUID and ing["name"] not in inf_fluids for ing in ings):
+                    continue
+                for res in recipe.get("results") or []:
+                    if res.get("type") == SLOT_ITEM and res["name"] not in inf_items:
+                        inf_items.add(res["name"])
+                        changed = True
+                    elif res.get("type") == SLOT_FLUID and res["name"] not in inf_fluids:
+                        inf_fluids.add(res["name"])
+                        changed = True
+        return inf_items, inf_fluids
+
+    def _recipe_result_amount(self, recipe: dict, target: str) -> int:
+        for res in recipe.get("results") or []:
+            if res.get("type") == SLOT_ITEM and res["name"] == target:
+                return int(res.get("amount", 1))
+        return 1
+
+    def _obtain_qty(
+        self,
+        item: str,
+        need: int,
+        budget: Counter[str],
+        inf: tuple[set[str], set[str]],
+        items: set[str],
+        fluids: set[str],
+        power: bool,
+        seen: frozenset[str] = frozenset(),
+        depth: int = 0,
+    ) -> bool:
+        """Peut-on réunir ``need`` copies de ``item`` en piochant dans le budget
+        fini (muté) et les recettes débloquées ? ``budget`` est partagé entre
+        tous les ingrédients d'une recette (jamais dépensé deux fois)."""
+        if need <= 0:
+            return True
+        if depth > MAX_QDEPTH:
+            return False
+        if item in inf[0] or item in inf[1]:
+            return True
+        if item in seen:
+            return False  # cycle : aucune recette ne crée de copies avec ça
+        have = budget.get(item, 0)
+        if have > 0:
+            take = min(have, need)
+            budget[item] -= take
+            need -= take
+            if need <= 0:
+                return True
+        for producer in self.items_by_name.get(item, []):
+            if producer not in self.unlocked:
+                continue
+            recipe = next(r for r in self.recipes if r["name"] == producer)
+            # Atelier disponible (même garde que la fermeture d'ensemble).
+            crafted_in = recipe.get("crafted_in")
+            if crafted_in and crafted_in not in items:
+                continue
+            if not self._recipe_runs(recipe, items, fluids, power):
+                continue
+            per_run = self._recipe_result_amount(recipe, item)
+            runs = math.ceil(need / per_run) if per_run else 1
+            branch = Counter(budget)
+            ok = True
+            for ing in recipe.get("ingredients") or []:
+                if ing.get("type") == SLOT_FLUID:
+                    if ing["name"] not in fluids:
+                        ok = False
+                        break
+                    continue
+                q = int(ing.get("amount", 1)) * runs
+                if not self._obtain_qty(
+                    ing["name"], q, branch, inf, items, fluids, power,
+                    seen | {item}, depth + 1,
+                ):
+                    ok = False
+                    break
+            if ok:
+                budget.clear()
+                budget.update(branch)
+                return True
+        return False
+
+    def can_fund(
+        self, needs: Counter[str], items: set[str], fluids: set[str], power: bool
+    ) -> bool:
+        """Le joueur peut-il réunir TOUTES les quantités de ``needs`` à la fois
+        (stock fini partagé) avec les recettes débloquées ?"""
+        inf = self._infinite_items(items, fluids, power)
+        budget: Counter[str] = Counter(self.kit_counts)
+        for patch, count in self.item_patch_counts.items():
+            if patch not in inf[0]:
+                budget[patch] += count
+        for item, need in needs.items():
+            if need <= 0:
+                continue
+            if not self._obtain_qty(
+                item, need, budget, inf, items, fluids, power
+            ):
+                return False
+        return True
+
+    # ── Simulation FORWARD (le « comme un joueur ») ──────────────────────
+    #
+    # Le joueur joue réellement : un inventaire `Counter` qu'il consomme et
+    # remplit, tech après tech, du spawn jusqu'à la fusée. Il joue « avec les
+    # recettes » :
+    #   - chaque craft prélève ses ingrédients ET son atelier (crafted_in) de
+    #     l'inventaire (« tout est consommé ») et y ajoute le résultat ;
+    #   - les ressources de base (environnement, patchs item/fluide, lacs) sont
+    #     INFINIES d'office (elles ne se consomment jamais) ;
+    #   - MAÎTRISE : dès qu'un item a été fabriqué au moins 10 fois (cumul
+    #     `had`), son craft est « devenu sûr » → l'item devient INFINI, plus
+    #     besoin de le recrafter pour l'employer. C'est l'accélération qui
+    #     remplace le décompte exhaustif par item.
+    #
+    # Les crafts d'une tech PAYENT PERSISTENT (le joueur garde son inventaire
+    # entre les techs) ; la victoire = toutes les techs recherchées + les items
+    # de la chaîne fusée fabriquables.
+
+    def _craft(
+        self,
+        item: str,
+        need: int,
+        depth: int = 0,
+        seen: frozenset[str] = frozenset(),
+    ) -> bool:
+        """Peut-on disposer de ``need`` copies de ``item`` en jouant vraiment ?
+        (base infinie / maîtrise → gratuit ; sinon inventaire puis recettes
+        débloquées, envergure et consommation comprises)."""
+        if need <= 0:
+            return True
+        if item in self.base_infinite or self.had[item] >= 10:
+            return True
+        if depth > MAX_QDEPTH:
+            return False
+        save = (Counter(self.inv), Counter(self.had))
+        take = min(need, self.inv[item])
+        self.inv[item] -= take
+        need -= take
+        if need <= 0:
+            return True
+        for producer in self.items_by_name.get(item, []):
+            if producer not in self.unlocked:
+                continue
+            recipe = next(r for r in self.recipes if r["name"] == producer)
+            per_run = self._recipe_result_amount(recipe, item)
+            if per_run <= 0:
+                continue
+            runs = math.ceil(need / per_run)
+            crafted_in = recipe.get("crafted_in")
+            ok = True
+            if crafted_in:
+                # L'atelier est CONSOMMÉ à chaque craft (« tout est consommé ») :
+                # le joueur doit en avoir `runs` exemplaires (base/maîtrise =
+                # gratuits, sinon fabriqués), ET être alimenté (élec/combustible).
+                b = self.buildings_db.get(crafted_in)
+                if b is not None and not self._energy_ok(
+                    b, self._world_items, self._world_power
+                ):
+                    continue
+                if not self._craft(crafted_in, runs, depth + 1, seen | {item}):
+                    continue
+            for ing in recipe.get("ingredients") or []:
+                if ing.get("type") == SLOT_FLUID:
+                    if ing["name"] not in self.fluids_obtainable:
+                        ok = False
+                        break
+                    continue
+                q = int(ing.get("amount", 1)) * runs
+                if not self._craft(ing["name"], q, depth + 1, seen | {item}):
+                    ok = False
+                    break
+            if not ok:
+                continue
+            produced = per_run * runs
+            self.inv[item] += produced
+            self.had[item] += produced
+            return True
+        self.inv, self.had = save
+        return False
+
     # ── Progression des techs (le « quand j'ai de quoi → je recherche ») ──
 
     def play(self) -> ReplayReport:
@@ -343,23 +610,25 @@ class FakePlayer:
                 report.blocker = Blocker(tech_id, "prereqs", ",".join(missing_prereqs))
                 break
             items, fluids, power, generator = self.closure()
+            self._world_items, self._world_fluids, self._world_power = items, fluids, power
+            self.fluids_obtainable = fluids
             report.power_available, report.power_generator = power, generator
             # Le lab reçoit les packs (garanti au starter, §8) — garde-fou.
             if "lab" not in items:
                 report.blocker = Blocker(tech_id, "lab", "lab")
                 break
-            # Déclencheur façon prologue (§7) : item crafté à la main.
-            trigger = tech.get("craft_trigger")
-            if trigger and trigger not in items:
-                reason = self.explain(trigger, items, fluids, power)
-                report.blocker = Blocker(tech_id, "trigger", trigger, reason)
-                break
-            # Coûts en science packs (§13).
-            costs = tech.get("unit", {}).get("ingredients") or []
-            stuck = next((c for c in costs if c["name"] not in items), None)
+            # Transaction façon joueur : on ne dépense que si TOUTE la tech est
+            # abordable (déclencheur + packs). En cas d'échec, on restaure
+            # l'inventaire (le joueur n'a pas usiné pour une tech ratée).
+            save = (Counter(self.inv), Counter(self.had))
+            ev = self._evaluate_tech(tech, items, fluids, power)
+            trigger, stuck = ev
             if stuck is not None:
-                reason = self.explain(stuck["name"], items, fluids, power)
-                report.blocker = Blocker(tech_id, "cost", stuck["name"], reason)
+                self.inv, self.had = save
+                if trigger:
+                    report.blocker = Blocker(tech_id, "trigger", trigger, self.explain_qty(trigger, items, fluids, power))
+                else:
+                    report.blocker = Blocker(tech_id, "cost", stuck[0], self.explain_qty(stuck[0], items, fluids, power))
                 break
             # Recherche : on débloque les effets de la tech.
             self.researched.add(tech_id)
@@ -369,11 +638,112 @@ class FakePlayer:
         report.all_techs_researched = report.researched == len(self.techs)
         # Victoire : chaîne fusée atteignable une fois l'arbre consommé.
         items, fluids, power, generator = self.closure()
+        self._world_items, self._world_fluids, self._world_power = items, fluids, power
+        self.fluids_obtainable = fluids
         report.power_available, report.power_generator = power, generator
         report.obtainable_items, report.obtainable_fluids = items, fluids
         report.satellite_obtainable = "satellite" in items
-        report.victory = all(v in items for v in VICTORY_ITEMS)
+        report.victory = (
+            report.all_techs_researched
+            and "satellite" in items
+            and all(self._craft(v, 1) for v in VICTORY_ITEMS)
+        )
         return report
+
+    def _evaluate_tech(
+        self,
+        tech: dict,
+        items: set[str],
+        fluids: set[str],
+        power: bool,
+    ) -> tuple[str | None, tuple[str, int] | None]:
+        """Usine les besoins de ``tech`` dans l'état courant (inventaire muté).
+        Retourne ``(trigger_raté, (pack_raté, quantité))`` : l'un des deux est
+        non-None en cas d'échec, sinon (None, None)."""
+        trigger = tech.get("craft_trigger")
+        if trigger and not self._craft(trigger, 1):
+            return trigger, None
+        costs = tech.get("unit", {}).get("ingredients") or []
+        count = tech.get("unit", {}).get("count") or 1
+        for c in costs:
+            need = int(c.get("amount", 1)) * int(count)
+            if need > 0 and not self._craft(c["name"], need):
+                return None, (c["name"], need)
+        return None, None
+
+    def explain_qty(
+        self,
+        target: str,
+        items: set[str],
+        fluids: set[str],
+        power: bool,
+        depth: int = 0,
+        need: int = 1,
+    ) -> str:
+        """Pourquoi ``target`` n'est pas disponible en quantité suffisante :
+        le plus court chemin de fabrication (min d'ingrédients) et le premier
+        ingrédient fini (kit/patch) qui manque, borné en profondeur."""
+        inf_items, inf_fluids = self._infinite_items(items, fluids, power)
+        budget: Counter[str] = Counter(self.kit_counts)
+        for patch, count in self.item_patch_counts.items():
+            if patch not in inf_items:
+                budget[patch] += count
+        return self._explain_qty(
+            target, need, budget, (inf_items, inf_fluids),
+            items, fluids, power, depth,
+        )
+
+    def _explain_qty(
+        self,
+        target: str,
+        need: int,
+        budget: Counter[str],
+        inf: tuple[set[str], set[str]],
+        items: set[str],
+        fluids: set[str],
+        power: bool,
+        depth: int,
+        seen: frozenset[str] = frozenset(),
+    ) -> str:
+        if depth >= MAX_QDEPTH:
+            return f"{target}×{need} → profondeur maximale atteinte"
+        have = budget.get(target, 0)
+        if have > 0 and need <= have:
+            return f"{target}×{need} ← kit/patch fini (×{have})"
+        rest = need - have
+        producers = [
+            r for r in self.recipes
+            if r["name"] in self.unlocked and any(
+                res.get("type") == SLOT_ITEM and res.get("name") == target
+                for res in r.get("results") or [])
+        ]
+        if not producers:
+            return (
+                f"{target}×{rest} ← kit fini insuffisant (×{budget.get(target, 0)})"
+            )
+        missing: list[tuple[dict, list[dict]]] = []
+        for r in producers:
+            ings = r.get("ingredients") or []
+            miss = [
+                ing for ing in ings
+                if (ing.get("type") == SLOT_ITEM and ing["name"] not in inf[0])
+                or (ing.get("type") == SLOT_FLUID and ing["name"] not in inf[1])
+            ]
+            missing.append((r, miss))
+        missing.sort(key=lambda t: len(t[1]))
+        recipe, miss = missing[0]
+        per_run = max(1, self._recipe_result_amount(recipe, target))
+        runs = math.ceil(rest / per_run)
+        bits: list[str] = []
+        for ing in miss[:2]:
+            q = int(ing.get("amount", 1)) * runs
+            bits.append(
+                f"{ing['name']}×{q} ← {self._explain_qty(ing['name'], q, budget, inf, items, fluids, power, depth + 1, seen | {target})}"
+            )
+        crafted_in = recipe.get("crafted_in")
+        if crafted_in and crafted_in not in items:
+            bits.append(f"atelier {crafted_in} absent")
+        return f"{target}×{need} ({recipe['name']}): " + (" ; ".join(bits) if bits else "ingrédients manquants")
 
     # ── Explication d'un blocage (bordereau joueur) ──────────────────────
 
