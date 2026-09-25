@@ -48,7 +48,7 @@ from __future__ import annotations
 import logging
 import random
 
-from tool.common.db import SLOT_FLUID, VanillaDB
+from tool.common.db import SLOT_FLUID, SLOT_ITEM, VanillaDB
 from tool.generator.recipes import _item_for_building
 
 log = logging.getLogger(__name__)
@@ -109,6 +109,30 @@ def _first_consumers(
                 continue
             if key not in first or i < first[key]:
                 first[key] = i
+    return first
+
+
+def _first_item_consumer(state, claim: dict[str, int], item_name: str) -> int | None:
+    """Premier index de claim d'une recette qui consomme ``item_name`` comme
+    ingrédient.
+
+    C3 mesure l'usage d'un extracteur par la ressource qu'il EXTRAIT. Mais le
+    bâtiment-extracteur lui-même est souvent un ingrédient d'autres recettes
+    (ex. pumpjack×4 dans offshore-pump, EMD×N dans les variantes) : si sa
+    recette de craft est différée au premier usage de la ressource extraite,
+    elle peut arriver APRÈS une recette qui le consomme en tant que bâtiment →
+    quantité intenable (rejoueur §15ter). La borne est donc le mini du premier
+    usage de la ressource ET du premier usage du bâtiment comme ingrédient.
+    """
+    first: int | None = None
+    for recipe in state.recipes:
+        i = claim.get(recipe["name"])
+        if i is None:
+            continue
+        for ing in recipe.get("ingredients", []):
+            if ing.get("type") == SLOT_ITEM and ing.get("name") == item_name:
+                if first is None or i < first:
+                    first = i
     return first
 
 
@@ -247,6 +271,14 @@ def apply_extractor_timing(
         atelier = _atelier_claim(starter.state, db, claim, kit, recipe)
         needy = [first[key] for key in rs if key in first]
         needed = min(needy) if needy else None
+        # Le bâtiment-extracteur est-il consommé comme ingrédient AVANT la tech
+        # gratuite ? (ex. pumpjack×4 dans offshore-pump). La ressource extraite
+        # n'étant utile qu'en profondeur, C3 pousserait le craft APRÈS ce
+        # consommateur → quantité intenable. On borne par le premier usage item.
+        item = recipe.removeprefix("randputf-")
+        item_first = _first_item_consumer(starter.state, claim, item)
+        if item_first is not None:
+            needed = item_first if needed is None else min(needed, item_first)
         startup = any(key in startup_raw for key in rs)
 
         if needed is None:

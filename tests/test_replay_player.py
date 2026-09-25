@@ -37,11 +37,16 @@ DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_
 # depuis D4quater (_hosting_cycle) ; seed 426 (fabrication d'atelier à fluides,
 # chemical-plant → oil-refinery unlock 45) est rejouable depuis le même chantier
 # (_is_building_item_recipe : bâtiments fabriqués items-only).
+# seed 7 était BLOQUÉE depuis le rejoueur quantitatif (D5) : cost space-science-pack
+# (idx 5) exigeant ~20 pumpjacks hors kit alors que randputf-pumpjack était unlockée
+# à idx 9 (C3 ne voyait que la consommation de la ressource extraite, jamais l'item
+# extracteur consommé comme ingrédient — offshore-pump en veut dès idx 0). Corrigé
+# par C3 (borne item-as-ingrédient) → seed 7 rejouable.
 # seed 1043 (cycle d'hébergement à 4 maillons) est de nouveau BLOQUÉE depuis le
 # rejoueur quantitatif (D5) : la recette de fabrication de l'electric-mining-drill
 # est unlockée au tech idx 32 alors que la chaîne du military-science-pack (idx 4)
 # exige ≈32 EMD hors du kit (frappée en quantité, pas en présence).
-WINNING = (0, 1, 5, 17, 20, 255, 426)
+WINNING = (0, 1, 5, 7, 17, 20, 255, 426)
 
 
 @pytest.fixture(scope="module")
@@ -144,23 +149,17 @@ def test_seed1043_bloquee_par_quantities_apres_d5(seeds):
     assert report.blocker.kind == "cost"
 
 
-def test_seed7_bloquee_par_quantities_apres_d5(seeds):
-    """D5 : seed 7 est frappée par un softlock de QUANTITÉ — l'ease-a (idx 3)
-    passe désormais (le pipe-to-ground n'exige que burner-mining-drill ×4 +
-    express-splitter, couverts par le jeu forward), mais le cost space-science-
-    pack du distribution-small-electric-pole (idx 5) exige ~20 pumpjacks hors
-    kit alors que randputf-pumpjack n'est unlockée qu'au tech idx 9. Le rejoueur
-    forward (inventaire + maîtrise) la détecte ; le rejoueur ensembliste
-    (présence seule) la déclarait gagnable à tort."""
+def test_seed7_rejouable_apres_c3_item_ingredient(seeds):
+    """C3 : seed 7 était bloquée en QUANTITÉ — l'item extracteur pumpjack,
+    consommé comme ingrédient par offshore-pump dès le starter, était unlocké
+    au tech idx 9 car sa ressource extraite (lubricant/heavy-oil) n'était
+    consommée qu'en profondeur. La borne « item consommé comme ingrédient »
+    ramène le craft à temps → seed 7 rejouable jusqu'à la victoire."""
     db = copy.deepcopy(DB)
     db.seed_value = 7
     report = rp.play(db, seeds[7])
-    assert not report.victory
-    assert report.blocker is not None
-    assert report.blocker.kind == "cost"
-    assert report.blocker.tech == "randputf-distribution-small-electric-pole"
-    assert report.blocker.item == "space-science-pack"
-    assert "pumpjack" in report.blocker.reason
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
 
 
 def test_victoire_donne_les_items_fusee(seeds):
