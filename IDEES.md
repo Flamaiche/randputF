@@ -1,85 +1,78 @@
 # Idées et chantiers à développer (randputF)
 
-Ce document répartit ce qui **reste à développer** en quatre grands chantiers
-logiques :
+Ce document ne contient que ce qui **reste à faire**. Tout ce qui est terminé
+(ou renoncé) est retiré : il est décrit dans le README et `docs/`.
 
-- **A. Ressources au sol** — ce qui concerne les matières premières et la carte ;
-- **B. Difficulté & monde** — biters, évolution, pollution, profils de difficulté ;
-- **C. Progression & recettes** — quantités de craft, arbre technologique, déblocages ;
-- **D. Écosystème & garanties** — cohérence et paires utiles du générateur.
+Quatre chantiers logiques :
 
-Chaque point peut être gardé, corrigé ou écarté. Les chantiers clôturés
-(forme des gisements ITEM `§A` — count = tuiles RÉELLES posées, cœur plein,
-anneau dilué, hash déterministe miroir Lua/Python ; bordure des lacs `§A`,
-vérifs bootstrap `C2`, bug `water_tile_type_names` `C4`,
-doc §7.5 `C5`, anti-duplication `C6`, fabricateurs à recette fixe `C7`, audit
-des tags `C8`, graphe de production `C9`, réseau de chaleur — triade
-source/transport/sink garantie à la volée par `_ensure_heat_prereq`,
-anciennes idées « déjà implémentées »)
-sont retirés de ce document — ils sont décrits dans le README et `docs/`.
+- **A. Ressources au sol** — matières premières, carte, ravitaillement ;
+- **B. Difficulté & monde** — knobs par seed, biters, évolution, pollution ;
+- **C. Progression & crafts** — déblocages, paliers, fin de partie ;
+- **D. Cohérence & garanties** — appariements utiles, invariants manquants.
 
-**Ordre conseillé** : A1 d'abord (il prépare les autres chantiers ressources et
-la solvabilité non-infinie), puis C (progression), puis B (difficulté).
+Règles de lecture :
+
+- une entrée **sans code** est un chantier à écrire ; une entrée marquée
+  *prototypé* a déjà du code mais n'est pas branchée au pipeline ;
+- une entrée **désactivée par défaut** (`enabled: false`) est écrite et testée
+  mais absente d'une partie normale — la basculer fait partie du chantier ;
+- **ne jamais supprimer un chantier non terminé** : c'est le contraire du tri
+  historique, on ne garde que l'avenir.
+
+**Ordre conseillé** : A1 et A2 (la carte conditionne B1, qui alimente ensuite les
+quantités de craft B3), puis C (progression), puis D (cohérence).
 
 ---
 
 ## A. Ressources au sol
 
-### A1. Randomiser les ressources non-infinies ? (idée)
+### A1. Randomiser les ressources non-infinies
 
-Idée (à trancher) : les ressources **non-infinies** (patches finis,
-environnement bois/pierre/poisson, fluides non infinis) restent telles quelles
-alors que les lacs/fluides infinis sont déjà randomisés. Deux voies possibles :
+Les ressources **non-infinies** (patches finis, environnement bois/pierre/poisson,
+fluides non infinis) restent telles quelles alors que les lacs/fluides infinis sont
+randomisés. Deux voies :
 
-**(a) Les randomiser** — comme le reste de la seed (identité, richesse/volume
-finis), sans casser la solvabilité du bootstrap. **Pilotage par une constante
-on/off (`true/false`)** pour activer ou désactiver la randomisation (défaut : à
-définir).
+**(a) Les randomiser** — identité, richesse et volume finis, sans casser le
+bootstrap. Facteurs multiplicatifs **aléatoires** (flux RNG dédié
+`randputF:nonfinite:`) par gisement, sur la richesse totale et le rayon.
 
-*FAIT — voie (a) branchée (branche `annexe`) : section `nonfinite:` dans
-`config/settings.yaml`, `enabled: false` par défaut ; facteurs multiplicatifs
-ALÉATOIRES (flux RNG dédié `randputF:nonfinite:`) par gisement sur la richesse
-totale et le rayon. Invariant runtime préservé : le `count` d'un ITEM est
-réévalué via `item_field_tiles(radius, well_seed)` — le champ posé par le mod
-reste exactement le disque bruité, seul ratio richesse/tuile varie. Score :
-`map_patches.apply_nonfinite_randomisation`, tests
-`tests/test_nonfinite_pipeline.py`.*
+- *Prototypé et branché* : section `nonfinite:` (`enabled: false`) →
+  `map_patches.apply_nonfinite_randomisation`. Invariant runtime préservé : le
+  `count` d'un ITEM est réévalué via `item_field_tiles(radius, well_seed)`, le
+  champ posé reste exactement le disque bruité.
+- *Reste* : décider le **défaut** (`enabled: true` ou non), vérifier que le
+  bootstrap tient avec les facteurs (0.4 → 2.5) sur le champ de ressources de
+  départ, et couvrir les fluides non-infinis — aujourd'hui seuls les gisements
+  sont factorisés.
+- Tests : `tests/test_nonfinite_randomisation.py`,
+  `tests/test_nonfinite_pipeline.py`.
 
-**(b) Les laisser telles quelles**, en remplaçant juste le charbon — les 3
-ressources non-infinies principales (poisson `raw-fish`, bois `wood`, roche
-`stone`) restent inchangées, et le charbon **n'apparaît plus en patch** : il est
-remplacé **par moitié de bois et moitié de roche** (le rôle de combustible se
-reporte sur le bois + la roche). Variante minimaliste qui change le bootstrap
-sans toucher aux quantités/identités des autres ressources.
+**(b) Variante minimaliste** — bois, pierre et poisson inchangés, et le charbon
+**n'apparaît plus en patch** : remplacé par moitié bois / moitié roche (le rôle de
+combustible se reporte sur les deux). Change le bootstrap sans toucher aux
+quantités ni aux identités des autres ressources.
 
-*Prototype (voie a) : `tool/prototypes/nonfinite_randomisation.py`
-(richesse/count/rayon, constante `enabled`) — non branché au pipeline. Dernier
-chantier « ressources » à faire avant ceux de difficulté (B) et de progression
-(C).*
+> Les deux voies sont exclusives : trancher une fois le reste fait.
 
 ### A2. Gisements profilés par la difficulté
 
-Les gisements de la carte sont réglés **en fonction du niveau de difficulté**
-de la seed (les knobs B1) : plus la difficulté est haute, plus les patches sont
-**petits**, **peu riches** et **éloignés les uns des autres** ; plus elle est
-basse, plus ils sont **grands**, **riches** et **proches** (l'inverse).
+Les gisements sont réglés **en fonction du niveau de difficulté** de la seed
+(les knobs B1) : difficulté haute → patches **petits**, **pauvres**,
+**éloignés** ; difficulté basse → **grands**, **riches**, **proches**. Le triplet
+(taille, richesse, espacement) dérive du profil de difficulté et s'applique à
+**tous** les gisements — patches items, patchs fluides et lacs — pour rester
+cohérent : pas de nappes riches sur une seed infernale, pas de désert minéral sur
+une seed tranquille.
 
-Le couple (taille, richesse, espacement) est dérivé du profil de difficulté de
-la seed (déterministe via le PRNG) et appliqué à **tous** les gisements —
-patches items, patchs fluides et lacs — pour rester cohérent avec la carte :
-pas de nappes riches sur une seed infernale, pas de désert minéral sur une seed
-tranquille.
+Attention solvabilité : même en difficulté maximale le bootstrap reste jouable —
+le starter garantit des gisements minimums pour les ressources de départ (iron,
+copper, coal, eau), assez grands, assez proches pour les premiers crafts. La
+« rareté » pousse à l'exploration, jamais à l'impasse.
 
-Attention solvabilité : même en difficulté maximale, le bootstrap reste jouable
-— le starter garantit des gisements minimums pour les ressources de départ
-(iron, copper, coal, eau), assez grands, assez riches et assez proches pour les
-premiers crafts ; la « rareté » pousse à l'exploration et à l'expansion, jamais
-à l'impasse.
-
-*Prototype : `tool/prototypes/rare_resources.py` pose une partie de la brique
-(facteurs richesse/count), mais son axe est la DISTANCE au spawn — à réorienter
-vers le profil de difficulté (B1), dont il dérivera chaque paramètre
-(petit/pauvre/éloigné vs grand/riche/proche) — non branché au pipeline.*
+- *Prototypé mais mal orienté* : `tool/prototypes/rare_resources.py` pose la
+  brique (facteurs richesse/count) mais son axe est la **distance au spawn** — à
+  réorienter vers le profil B1, **non branché**.
+- Dépend de B1 (knobs de difficulté).
 
 ---
 
@@ -90,316 +83,265 @@ vers le profil de difficulté (B1), dont il dérivera chaque paramètre
 Chantier **difficulté pure** (ce n'est pas du contenu) : la seed devient un
 profil de difficulté — `starting_area`, densité de nids/évolution, taux de
 pollution par bâtiment, densité de falaises, biomes de départ (forêt = bootstrap
-bois facile / désert = eau+bois durs). Ça colle au concept (« aléatoire
-contrôlé »).
+bois facile / désert = eau+bois durs). Ça colle au concept (« aléatoire contrôlé »).
 
 **Solvabilité 100 % garantie** : la difficulté ne touche **jamais** à
 l'atteignabilité — tout reste déblocable, aucune voie coupée. Elle se joue
 **principalement sur le nombre de ressources nécessaires** : les quantités
-requises par recette / tech / science pack (coûts plus ou moins lourds), pas
-sur des impasses. Attention quand même : pas de forêt trop pauvre en bois
-pendant le bootstrap environnemental.
+requises par recette / tech / science pack, pas sur des impasses. Pas de forêt
+trop pauvre en bois pendant le bootstrap environnemental.
 
-*Prototype : `tool/prototypes/difficulty_knobs.py`
-(`DifficultyProfile.to_map_settings`) — non branché au pipeline.*
+- *Prototypé* : `tool/prototypes/difficulty_knobs.py`
+  (`DifficultyProfile.to_map_settings`) ; mesures via
+  `tool/audit/difficulty.py` (`compute_difficulty`, `summarize_difficulty`, exposé
+  par la sous-commande `difficulty`), tests `tests/test_difficulty*.py` —
+  **non branché** au pipeline.
+- Reste : câbler `DifficultyProfile` → `map_patches` (patches, lac, rayons), puis
+  laisser A2 dériver ses facteurs dessus.
 
 ### B2. Biters / évolution / pollution
 
-Inchangés pour l'instant (assumé §11). À revisiter via B1 : les knobs de
-difficulté sont la brique naturelle pour les randomiser proprement (densité de
-nids, facteur d'évolution, diffusion de pollution).
+Inchangés (assumé §11). À revisiter **via B1** : les knobs de difficulté sont la
+brique naturelle pour les randomiser proprement (densité de nids, facteur
+d'évolution, diffusion de pollution).
+
+### B3. Quantités de craft (désactivé par défaut) — **un levier de difficulté**
+
+C'est le levier le plus direct de la difficulté : **tout le reste est tiré au
+hasard, lui se règle**. Aujourd'hui chaque recette garde ses quantités vanilla ;
+l'idée est d'y appliquer un facteur aléatoire — une science pack peut demander
+trois fois plus de plaques, une recette intermédiaire deux fois moins.
+
+- *Écrit, testé, branché mais **inert*** : passe post-assemblage
+  `tool/generator/craft_quantity.py`, flux RNG dédié, section `craft_quantity:`
+  (`enabled: false`), montants jamais < `amount_min`, structure et solvabilité
+  intactes (le validateur ne lit que la structure). Voir `docs/recettes.md §9.8`,
+  tests `tests/test_craft_quantity{,_pipeline}.py`.
+- *Reste* : c'est un **knob de difficulté**, donc à brancher sur le profil B1
+  plutôt que tiré seul au hasard — un facteur 0.5–3 par recette, puis 1.5–4 sur
+  une seed difficile, 0.7–1.5 sur une seed facile. Le mode `symmetric`
+  (un facteur par recette) / `asymmetric` (un facteur par ligne d'ingrédient)
+  existe déjà. Calibrer les bornes en mesurant le rejoueur avant de basculer :
+  un facteur 4 sur une science pack peut la rendre hors de portée.
 
 ---
 
-## C. Progression & recettes
+## C. Progression & crafts
 
-### C1. Craft quantity
+### C1. Listes blanches / noires de la graine
 
-Randomisation des **quantités** des recettes (plus du pur 1-pour-1 : un
-**facteur aléatoire** sur les volumes d'entrée/sortie), aujourd'hui non gérée.
+Contrôle direct du contenu, en symétrie autour de la seed.
 
-*Prototype : `tool/prototypes/craft_quantity.py` (mode symétrique/asymétrique,
-minimum 1 unité par ingrédient, déterminisme PRNG, constante `enabled`) — non
-branché au pipeline.*
+**Listes blanches du starter** — deux listes dans `config/settings.yaml`, à étendre
+à `StarterConfig` (qui ne lit aujourd'hui que `ammo_count` et `inserter_chance`) :
 
-*FAIT (branche `annexe`) : passe post-assemblage branchée —
-`tool/generator/craft_quantity.py`, flux RNG dédié, section `craft_quantity:`
-de la config (`enabled: false`), montants jamais < `amount_min`, structure et
-solvabilité intactes (le validateur ne lit que la structure). Voir
-`docs/recettes.md §9.8` et `tests/test_craft_quantity_pipeline.py`.*
+- **`starter.inventory`** — ce que le joueur reçoit **dans son inventaire** au
+  spawn, en plus du fabricateur / extracteur / combustible déduits par la chaîne.
+  Aujourd'hui `_roll_starter_kit` (`starter_chain.py:522`) pioche **n'importe
+  quelle** arme `is_handheld_gun` + ses munitions, et `_pick_spawn_fuel` (`:626`)
+  glisse **le combustible de plus forte `fuel_value` du pool obtenu** — donc
+  potentiellement `nuclear-fuel` / `uranium-fuel-cell` : des seeds au **départ
+  dégénéré**. La liste restreint le tirage ; hors liste ⇒ rien n'est tiré (filtre,
+  pas quota).
+- **`starter.craft_tags`** — les **items dont la recette doit être débloquée dès
+  le début**, parce que le joueur en a besoin avant toute automatisation.
+  Vocation typique : `is_chest` / `is_storage` (stocker l'épave), `is_logistics_chest`.
+  Aujourd'hui ces garanties sont des cas particuliers codés en dur —
+  `_ensure_chest_craftable` (`:493`, chest tirée au hasard) et `_ensure_landfill`
+  (`:480`) — le chantier est de les **fusionner en un seul parcours de liste**.
+- Contraintes : un item de la liste d'inventaire doit rester craftable
+  (`_ensure_kit_craftable`, `:547`), un item de la liste de craft doit avoir un
+  atelier jouable au spawn (U2). Liste non satisfaite = `warning`, jamais un
+  démarrage cassé. Tests visés : `tests/test_starter_chain.py`.
 
-### C2. Tags de déblocage de l'arbre tech / sciences par bâtiment
+**Listes noires de la graine** — le pendant négatif, aujourd'hui **déclaré mais
+mort** : `pools.exclude_items`, `pools.exclude_fluids`,
+`pools.exclude_building_types` et `weights.building_types` /
+`weights.science_packs` ne sont **lus par rien**. La seule exclusion réelle est
+`RecursiveConfig.excluded_buildings`, deux entrées en dur
+(`prototypes/recursive.py:36`).
 
-**État : pas fait.** Aujourd'hui la contrainte « bâtiment avant usage » est
-**implicite et pilotée par la recette** : le générateur ne pose jamais une
-recette dans un atelier pas encore débloqué (`state.unlocked_buildings` — au
-besoin il choisit un autre atelier obtenable ou le débloque sur le tas). C'est
-une garantie de fabricabilité, pas une règle de progression.
+- `pools.exclude_items` / `exclude_fluids` — l'item / le fluide listé n'entre
+  **jamais** dans le graphe : ni ingrédient (`recipes._eligible_ingredients`), ni
+  produit de récursion, ni couvert par le balayage §9.6, ni ressource de patch/lac
+  (§6). Un patch ne peut pas être tiré sur un fluide exclu.
+- `pools.exclude_building_types` — idem sur les bâtiments (nom ou type
+  fonctionnel).
+- `weights.building_types` — surcharge de `RecursiveConfig.category_weights` :
+  graine « sans électricité » = `generator: 0`, graine « logistique » =
+  `distribution` à 40.
+- `weights.science_packs` — biais sur le tirage des packs (early game =
+  `automation`/`logistics`, tardif = `military`/`chemical`) : aucun effet sur la
+  solvabilité, seulement sur la forme de l'arbre.
+- Contrainte : une liste noire ne doit **jamais** rendre le graphe insoluble (§15)
+  — si elle retire une ressource indispensable à la chaîne fusée / électricité /
+  chaleur, `warning` explicite plutôt qu'une seed cassée.
 
-Le chantier : introduire des **tags explicites** (comme `has_hidden_recipe`
-pour les bâtiments à recette fixe, ou les tags du lab) qui **conditionnent le
-déblocage de l'arbre technologique et des science packs au déblocage réel des
-bâtiments** :
+### C2. Objectif de fin de partie randomisé
 
-- un **science pack ne devient déblocable que si le bâtiment capable de le
-  fabriquer a été débloqué** dans l'arbre de récursion ;
-- des **branches entières de tech** se verrouillent/déverrouillent selon les
-  bâtiments obtenus (ex. pas de tech « chaleur » tant que le fabricateur à
-  recette fixe / la source de chaleur n'est pas débloqué).
+La victoire est **constante** : `endgame_phase.ensure_rocket_chain`
+(`tool/generator/endgame_phase.py:30`) garantit toujours `rocket-silo` +
+`rocket-part` + ses 3 ingrédients, dans **une seule** tech `randputf-endgame-rocket`
+; le rejoueur déclare la victoire sur
+`all_techs_researched and "satellite" in items and all(VICTORY_ITEMS)`
+(`tool/replay/player.py:878`). Le **contenu** est randomisé, le **but** ne l'est
+pas.
 
-Effet recherché : renforcer le « arbre de progression aléatoire » — le contenu
-ne se résume plus à « chaque item a une tech », le joueur doit réellement
-obtenir les machines pour débloquer ce qu'elles fabriquent. À concilier avec la
-solvabilité 100 % (voir B1) : il s'agit de **réordonner/verrouiller** des
-branches, jamais de les rendre inaccessibles.
+Tirer l'objectif dans une **liste blanche**, annoncée dès le début
+(`seed.graph.html` peut l'afficher) :
 
-### C3. Déblocage progressif des extracteurs — FAIT
+- `rocket` — lancer une fusée (défaut actuel, garantie inchangée) ;
+- `rocket_n` — en lancer `n` : le silo devient une boucle, pas une finish line ;
+- `research_pct` — atteindre `x` % de researched : l'arbre devient la course ;
+- `rank` — atteindre la tech de rang `k` : une branche profonde plutôt que la
+  fusée.
 
-**Implémentation** : `tool/generator/extractor_timing.py`, appelé dans
-`pipeline.generate_seed` juste avant la 2e passe `usage_pass` (D2). La tech
-gratuite `randputf-starter-extraction` ne garde que les extracteurs utiles dès
-le spawn (ressource consommée par la chaîne initiale) ; un extracteur dont la
-ressource n'est servie qu'en profondeur part avec le **premier consommateur**
-(`max(premier-usage, atelier)` — le claim n'est jamais avant l'atelier qui
-fabrique l'extracteur, contrainte U2 de D2) ; un extracteur jamais utilisé suit
-le balayage §9.6 sur une tech payante tirée sur un RNG dédié déterministe. Le
-rapport est stocké dans `seed["extractor_timing"]` et audité par
-`tools/audit_usage.py` (invariants EXT1/EXT2/EXT3).
+Contraintes : l'objectif ne doit **jamais** être plus strict que l'atteignabilité
+garantie (§15) — `research_pct` bas et `rank` modéré par défaut. La chaîne fusée
+reste **garantie même quand l'objectif n'est pas `rocket`**, sinon on perd la
+définition de victoire du rejoueur. Coût mod-side : exposer le statut de victoire
+au joueur dans `data-final-fixes.lua` + `control.lua`.
 
-**Décisions actées** : le kit **garde son amorce** (1 item par extracteur,
-même différé — l'œuf/poule du premier exemplaire reste brisé) ; le **choix de
-l'extracteur par ressource reste le RNG actuel** (pas de préférence de
-primitif).
+### C3. Paliers d'équipement militaire dissociés (armure / arme / véhicule)
 
-**Validation** : `tools/audit_usage.py 0 201` → **U1 = 0, U2 = 0,
-extracteurs = 0**, seeds violants = 0 ; pytest **672 passed** (dont
-`tests/test_extractor_timing.py`, 3 tests × 20 seeds, et
-`test_pipeline_invariants::test_extracteur_unlocke_avant_tout_consommateur`
-actualisé : l'extracteur n'est plus forcément @tech 0 mais jamais APRÈS son
-premier consommateur) ; seed 5 régénérée et réinstallée.
+L'axe militaire est tenu en **trois pièces sans doctrine commune** :
 
-**Idée ouverte (extracteur à entrée fluide)** : il est possible dans Factorio
-qu'un extracteur exige un **liquide en entrée** pour fonctionner (recette qui
-existe dans le jeu). Aujourd'hui §8 interdit tout fluide dans la **recette de
-craft** d'un extracteur — mais le cas serait l'inverse : le FONCTIONNEMENT
-demanderait un apport liquide (typiquement les **foreuses minières
-électriques**). À traiter en idée : il faudra un **nouveau tag** dans le dump
-vanilla (ex. `requires_liquid` / extracteur à input fluide) pour détecter ces
-entités et raisonner leur timing (un extracteur qui boit un liquide est un
-consommateur de la ressource-liquide : le déblocage juste-au-besoin doit tenir
-compte de sa propre source). Voir aussi la garantie « extracteur avant besoin »
-§7 et l'anti-boucle §8.
+- **arme de poing** (`is_handheld_gun`) : garantie d'une arme par tech, munition
+  calée sur elle (§11) — le mieux tenu des trois ;
+- **véhicule armé** (`recursive.armed_vehicles`, §12.1) : **purement décoratif** —
+  les armes montées sont exclues du pool et **clonées** par le mod (« AUCUNE
+  recette/unlock n'est généré pour ces armes »). Un tank peut entrer dans le graphe
+  sans qu'aucune de ses armes n'ait de place, et son armement n'est conditionné
+  par aucune tech ;
+- **armure** (`is_armor`) : **aucune garantie, aucun traitement** — « raffinage
+  usage en vue (audit) » seulement (`docs/tags.md:271`). Sa recette est randputée
+  comme celle d'un item ordinaire, mais sa **`protection` reste celle de vanilla**,
+  cumulative et jamais tirée : une graine peut offrir un `heavy-armor` à 80 % dès
+  la première tech, ou aucune armure jouable. C'est le dernier pan du jeu où la
+  **valeur vanilla** de l'objet compte encore et n'est pas randputée.
 
-### C4. Coûts de tech et rythme de déblocage (piloté par l'ardoise)
+Idée — **trois courbes de paliers indépendantes et espacées** :
 
-Deux axes à équilibrer une fois l'ardoise (B/tool difficulty) en place :
+1. chaque famille (armure / arme / véhicule) est une **timeline séparée**, qui
+   tire son propre ordre de paliers et son propre **espacement** : le palier N est
+   garanti unlocké **au moins K techs après** le palier N−1 (K configurable, ~3-5)
+   — sinon une famille entière déboule dans un seul bloc de techs ;
+2. les trois timelines sont **dissociées** : rien n'impose que l'armure et les
+   armes montées arrivent dans la même bande de techs. Un tirage par seed de
+   l'**orientation relative** des trois courbes (« run centré arme », « run centré
+   blindé », « run centré véhicules ») supprime la tech unique où tout le militaire
+   tombe d'un coup ;
+3. la **valeur** est randputée avec le calendrier : `protection` réécrite au
+   data-stage (`mod/data-updates.lua`) en valeurs tirées par seed mais **monotones**
+   sur la famille (le palier suivant protège toujours plus) — la progression reste
+   lisible, l'ordre ne l'est plus.
 
-1. **Coûts des techs** : aujourd'hui les science packs ne sont pas calibrés —
-   une tech peut coûter cher alors que son apport arrive tôt (et vice-versa).
-   Les coûts devraient refléter la valeur du déblocage (rang dans la
-   progression, utilité réelle via les tags C2, position dans l'ardoise).
-2. **Contrôle de QUAND une tech se débloque** : c'est le vrai levier de rythme.
-   Au lieu d'un simple ordre d'index (D2), conditionner le déblocage au
-   **progrès réel dans l'ardoise** : n'autoriser la tech T que lorsque le joueur
-   a obtenu (crafté/possédé) une fraction des items requis pour la run —
-   ex. « X % du total de l'ardoise déjà produits » ou « les N items précédents
-   du graphe maîtrisés ». Effet recherché : la progression se déroule « quand
-   c'est le moment » (on ne déboule pas une tech profonde au tout début parce
-   qu'on a eu sa clé par hasard), et chaque tech arrive alors que le joueur a
-   déjà eu le besoin pratique qu'elle couvre — plutôt que de choisir au hasard
-   dans un panier de déblocages.
+Généralisation naturelle de **D1 (pairing)** à l'axe militaire :
+`armure → protection`, `arme → munition`, `véhicule → arme montée` sont trois
+paires du même type.
 
-Approximation C4 s'appuie sur : idx tech + ardoise (C1/B), graphe primaire DAG
-(tests difficulty), et la garantie D2 (jamais de déblocage avant l'usage).
-À trancher : mesure « items obtenus / total à avoir » au sens cumulé (ardoise)
-ou au sens local (voisins du graphe).
+### C4. Extracteur à entrée fluide
+
+Un extracteur peut exiger un **liquide en entrée** pour fonctionner (recette qui
+existe dans le jeu ; typiquement les **foreuses minières électriques**). Aujourd'hui
+§8 interdit tout fluide dans la **recette de craft** d'un extracteur — mais le cas
+serait l'inverse : ce serait le **FONCTIONNEMENT** qui demanderait un apport
+liquide.
+
+- Besoin : un **nouveau tag** dans le dump vanilla (`requires_liquid` /
+  extracteur à input fluide) pour détecter ces entités.
+- Raisonnement : un extracteur qui boit un fluide est un **consommateur** de la
+  ressource-liquide — le déblocage juste-au-besoin doit tenir compte de sa propre
+  source (une source inexistante = extracteur mort).
+- Voir aussi la garantie « extracteur avant besoin » §7 et l'anti-boucle §8.
 
 ---
 
-## D. Écosystème & garanties
+## D. Cohérence & garanties
 
-### D1. Support pairing générique
+### D1. Détecter automatiquement les dépendances entre objets
 
-Les « paires utiles » ne sont garanties que pour les armes et les véhicules
-(§12.1). Étendre le pairing au-delà (bâtiment de production → recette associée,
-consommable → arme, etc.) : à préciser une fois les chantiers A/B/C avancés,
-c'est un renfort de cohérence, pas une brique de contenu.
+Certains objets n'ont aucun sens tout seuls : un roboport sans robot, une arme
+sans munition, un train sans rail. Si le joueur débloque l'un et pas l'autre,
+l'autre arrivera plus tard — le balayage de couverture (§9.6) donne une tech à
+**tout** item restant, donc rien n'est perdu : c'est **différé**, pas mort.
+L'objet devient un objectif, pas un déchet.
 
-## D2. Garantie d'usage « dure » (bâtiment avant usage, niveau SEED) — FAIT
+Le remède existe déjà, mais il est **écrit à la main** : quelques paires sont
+listées en dur (`RecursiveConfig.companions` : `roboport` + robots de logistique +
+robots de construction, `solar-panel` + `accumulator`), plus les armes (§11, une
+arme arrive toujours avec ses munitions) et les véhicules (§12.1). Tout objet qui
+n'est pas dans ces listes peut donc arriver seul.
 
-**Validation** : `tools/audit_usage.py 0 201` → U1 = 0, U2 = 0 ; pytest **669
-passed** (dont `tests/test_usage_pass.py`, 2 tests × 20 seeds) ; seed 5
-régénérée et réinstallée. Voir « Implémentation » (actualisée) en bas.
+**Le chantier : supprimer la liste et la remplacer par une détection.**
 
-**État ANCIEN — garantie MONTANTE, pilotée par la recette (mou)** : le
-générateur ne pose jamais une recette dans un atelier non débloqué
-(`state.unlocked_buildings`, `_pick_building`) — au besoin il *débloque sur le
-tas* (choisit un atelier quelconque et l'inscrit). C'est une garantie de
-FABRICABILITÉ (C2) : chaque recette a un bâtiment jouable au moment où elle
-existe. Mais rien ne garantit l'inverse sur la seed finale :
+1. **Trouver automatiquement, depuis le dump vanilla, quels objets sont
+   dépendants les uns des autres.** C'est le point dur : il faut un signal dans le
+   dump, donc le travail commence probablement dans **`exporter/control.lua`**,
+   qui est le seul endroit où le jeu peut nous dire ce qu'il sait. Pistes : une
+   entité qui ne sert qu'à étayer une autre, un objet dont la recette vanilla
+   ne consomme que le second, une catégorie de fabrication ou un tag commun.
+2. **Une fois la dépendance connue, garder l'aléatoire** : quand le joueur reçoit
+   un objet, **X % de chance** (50 % ?) que sa dépendance parte dans la **même
+   tech**. Pas de règle fixe — on garde le hasard du randomizer. Dans le cas
+   contraire, la dépendance n'est pas perdue (§9.6), elle arrive simplement plus
+   tard : on évite le « je l'ai eu, je sais pas à quoi ça sert » en le repoussant,
+   pas en le supprimant.
 
-1. **Un bâtiment débloqué peut n'avoir AUCUN usage** — aucune recette de la
-   seed `crafted_in`/`category` dessus → l'item débloqué est du contenu mort
-   (déblocage par une tech, jamais utile ensuite) ;
-2. **L'ordre des techs peut inverser l'usage** — une recette hébergée dans un
-   bâtiment B peut être unlockée par une tech d'index **strictement inférieur**
-   à celle qui débloque B lui-même (impossible à la création sur le tas, mais
-   le panache du bootstrap/kit crée des exceptions à documenter).
+Le résultat doit être **vérifiable** comme le reste : un audit qui liste, par
+partie, les objets débloqués et leurs dépendances manquantes.
 
-**Garantie désirée — DEScendante, vérifiable sur la seed assemblée** : une
-**passe post-récursion / avant relais** (`tool/generator/usage_pass.py`) analyse
-le graphe final et GARANTIT par correction (pas juste détection) :
+C'est un renfort de cohérence, pas une brique de contenu.
 
-- **(U1) usage non-nul** : tout bâtiment **unlocké** (recette `randputf-<b>`
-  présente) héberge ≥ 1 recette de la seed (par `crafted_in` ou une `category`
-  dans ses `crafting_categories`) — sauf bâtiments **terminaux** dont l'usage
-  est leur rôle moteur (lab, rocket-silo, générateurs : usage = produit qu'ils
-  consomment au lancement / leur électricité, vérifié via le graphe) et sauf
-  le kit du starter (bâtiments livrés par le kit, `starter.kit`).
-- **(U2) ordre strict** : pour chaque recette R hébergée dans B (`crafted_in`),
-  `index_tech(unlock(R)) ≥ index_tech(unlock(B))` — B est « la tech d'avant ».
-  Exception assumée et vérifiée : les bâtiments du **kit** de départ (four de
-  pierre, extracteur starter) et les bâtiments d'**auto-consommation** du
-  bootstrap (§7 œuf/poule, déjà gérés par l'amorce du kit) — un bâtiment dans
-  le kit est réputé débloqué en tech 0.
-- **Correction (U2)** — par ordre de préférence, déterministe :
-  1. **Bascule** : re-home R sur un atelier déjà débloqué `i_other ≤ i_recipe`
-     du même pool (jamais si la source se retrouverait sans recette — U1) ;
-  2. **Précéder R** : décaler le claim d'unlock de R sur le step qui débloque B
-     → l'invariant devient une égalité. Refusé (exempté) si l'item de R est
-     consommé par une recette débloquée AVANT B — c'est une
-     **auto-consommation du bootstrap** (§7) : décaler R casserait la recette
-     consommatrice, le déblocage précoce de R est voulu
-     (`_reorder_claim` → `"consumed:<recette>"` → exemption) ;
-  3. Sinon `warning` (jamais observé sur 0-200).
-- **Correction (U1)** : bâtiment unlocké sans usage → soit **retirer** son
-  déblocage (pas de contenu mort), soit lui **rattacher** une recette du même
-  produit-d'atelier quand un candidat existe. Jamais de seed livrée avec un
-  bâtiment mort.
+### D2. Garantie « bâtiment terminal réellement terminal »
 
-**Implémentation** (actualisée) :
-- prototype `tool/prototypes/usage.py` (dataclass `UsageConfig(PrototypeConfig)`,
-  constantes `enabled` (défaut **true**), `kit_exempt` (bâtiments livrés par le
-  kit, déduits de `StarterConfig`), `strict_order` (U2 on/off)) ;
-- section `usage:` dans `config/settings.yaml` ;
-- passe `tool/generator/usage_pass.py` appelée DEUX fois dans
-  `pipeline.generate_seed` :
-  - **passe primaire** après `ensure_rocket_chain`, AVANT `build_relay_recipes`
-    (relais peuvent ré-utiliser un bâtiment mort et le masquer ; U1/U2 doivent
-    être vérifiés sur le primaire avant leur création) ;
-  - **passe finale** juste avant `build_linear_tech_tree`, sur l'ordre COMPLET
-    `starter + welcome + ease + recursive + endgame` — les recettes relais et
-    ease-up sont créées après la passe primaire et leurs techs prologue sont
-    tôt alors que leur hôte peut être profond (cas seed 42, résolu par bascule
-    vers l'AM-1 du kit) ;
-  idempotente, déterministe (0 tirage RNG) ;
-- audit dans `tools/audit_usage.py` (source unique de vérité `audit()`, relue
-  par les tests) : lit les unlocks via `effects` `unlock-recipe` des techs
-  FINALES (les clés `unlocks_recipes`/`unlocks_buildings` sont absentes des
-  techs assemblées — toute lecture de ces clés est VACUÉE) ;
-- invariants : `tests/test_usage_pass.py::test_u1_batiments_hotes_non_morts`
-  (U1) et `test_u2_ordre_tech_avant_usage` (U2) — 20 seeds chacun, en plus du
-  fuzz existant (667 → 669) ;
-- stats sur 0-200 : passe primaire = 41 bascules U2 / 26 seeds, 71 rattachements
-  U1 / 65 seeds, 0 warning ; exemptions bootstrap (reorder bloqué par
-  consommation) sur seeds 36 (burner-generator→AM-2) et 83 (inserter→steel-furnace)
-  — ces recettes ne peuvent ni être basculées (aucun hôte assez tôt à 2 slots
-  item) ni être repoussées (leurs items sont consommés par le bootstrap :
-  burner-mining-drill / pipe) ;
-- tarring avec `progressive_extractors` (C3) : C3 échelonne le starter, la
-  garantie U2 assure que tout déblocage d'extracteur précède son premier usage.
+Les bâtiments terminaux (`lab`, `rocket-silo`, générateurs) sont **exemptés** de U1
+parce que leur usage est leur rôle moteur — vérifié « via le graphe ». Cette
+vérification est la partie la moins testée du dispositif.
 
-**Champs touchés** : `state.unlocked_buildings`, `state.steps`, ordre des
-`technologies` (claims d'unlock déplacés), recettes (`crafted_in`),
-`starter.kit`.
+- Reste : transformer la vérification en **invariant** (le lab du starter a bien sa
+  recette, le silo est atteignable), pas en commentaire.
 
-## D3. Prochain pas après D2 — SPEC
+### D3. Centraliser les tags et listes en dur
 
-Une fois D2 en place, les chantiers C2 (tags bâtiment→tech) et C3 (extracteurs
-progressifs) s'appuient dessus : C2 rend les tags explicites (déduits de la
-garantie, plus implicites), C3 échelonne le starter en se reposant sur
-« bâtiment avant usage » vérifié.
+La logique « ceci est un terminal / ceci est interdit au starter / ceci est une
+arme montée » est aujourd'hui dispersée sur une dizaine d'emplacements, sous
+forme de `frozenset` littéraux, de `default_factory` et de **constantes qui ne se
+parlent pas**. Trois notions d'exclusion cohabitent, avec trois valeurs
+différentes pour le même concept :
 
-## D4. Rejoueur « fake player » — FAIT (constat + outil)
+| ensemble | valeur | emplacement |
+|---|---|---|
+| interdits au starter | 8 noms | `starter_chain._EXCLUDED_BUILDINGS` (`:356`) |
+| exclus de la récursion | 2 noms | `RecursiveConfig.excluded_buildings` (`prototypes/recursive.py:36`) |
+| terminaux (usage moteur) | `lab`, `rocket-silo` | `usage.terminal_buildings` (config) |
+| terminaux, **audit** | + `steam-generator` | `TERMINALS` (`tools/audit_usage.py:18`) |
+| terminaux, **défaut du prototype** | `lab`, `rocket-silo` | `UsageConfig` (`prototypes/usage.py:37`) |
 
-Un simulateur de partie (`tool/replay/player.py`, testeur
-`tools/audit_playthrough.py -- <lo> <hi>`) rejoue chaque seed comme un joueur :
-extraction (patch/lac par extracteur opérationnel), électricité (générateur
-obtenable et alimenté + pylône), combustible/chaleur par bâtiment, ateliers,
-kit + loot d'épave, recherche dès que packs/trigger produisibles, victoire =
-chaîne fusée. Voir docs/solvabilite.md §15ter.
+L'audit et le générateur ne voient donc **pas le même** ensemble de terminaux :
+`steam-generator` est terminal pour l'audit, pas pour la passe. Même problème sur
+les autres listes en dur : `ENVIRONMENTAL_ITEMS` / `VALID_RECIPE_CATEGORIES` /
+`ROCKET_CHAIN` / `VEHICLE_GUNS` (`common/db.py`), `RAIL_TYPES` /
+`_VIRTUAL_ITEM_TYPES` (`parsers/vanilla.py`), `FLUID_RECIPE_CATEGORIES`
+(`recipes.py:45`), `_STARTER_TRANSFORMERS` et `_ENDGAME_EXCLUDED`
+(`easeup_phase.py:47`) — plus des littéraux isolés sans constante
+(`_SPAWN_FUEL_COUNT = 50`, `"landfill"`, `"wood"` dans `starter_chain.py`).
 
-## D4bis. Forêt starter + extraction par capacité — FAIT
+**Objectif à deux étages** :
 
-Deux corrections, côté rejoueur ET générateur, qui ramènent le balayage 0-200
-de 99/201 à **178/201** :
+1. **une source unique par ensemble** — un module dédié (`tool/common/tagsets.py`)
+   regroupant les ensembles nommés, référencés par `docs/tags.md §14` qui en
+   devient l'index (il les inventorie déjà) ;
+2. **ce qui est un knob de tuning part en config**, pas en constante de module :
+   quantité de spawn, terminaux U1, exclusions de bâtiments. C'est la condition
+   pour pouvoir les changer sans toucher au code — c'est le but du chantier.
 
-- **Rejoueur = capacité physique** (data-updates.lua) : tout patch item est en
-  `basic-solid` → mineable par TOUTE foreuse obtenable (la burner du kit suffit
-  pré-électricité) ; un patch fluide exige un pumpjack (électricité) ; un lac
-  se pompe par pompe offshore (void). L'ancien modèle liait chaque ressource à
-  SON extracteur mappé C3 → faux négatifs (le lab gratuit « exigeait » une
-  foreuse électrique, donc l'électricité, donc le lab — cercle artificiel).
-- **Générateur `extractor_timing` (D4bis)** : un extracteur consommé par la
-  « boîte du spawn » (recettes gratuites, trigger de la 1re tech payante,
-  fluide d'entrée de la turbine §10) reste À LA TECH GRATUITE. La deux branches
-  (annexe et C3) donnent désormais le même 178/201 : pas de chute C3.
+**Règle à adopter** : un ensemble en dur n'est acceptable que si **aucune
+capacité du dump** ne peut le dériver ; dans ce cas il porte un commentaire
+expliquant pourquoi (comme `VEHICLE_GUNS` aujourd'hui), sinon il devient un tag.
+Corollaire côté exporter : certains tags ne sont pas dérivables parce que le dump ne
+les expose pas — `is_mounted_gun` (« can be used by hand ») est déjà référencé
+comme **« gap IDEES »** dans `docs/tags.md` §3 et §14 sans entrée correspondante.
+Ajouter ce signal à `exporter/control.lua` ferme le gap et transforme
+`VEHICLE_GUNS` et la constante de test `ARMED_VEHICLES` en tags dérivés.
 
-**Reste (D4ter, passé en FAIT)** : trois corrections générateur portent le
-balayage 0-200 à **201/201 victoires** :
-
-- **mineur non-électrique au starter** : quand la seed tire
-  electric-mining-drill pour ses patchs item, la recette du foreuse burner
-  naît DANS LE GRAPHE (`starter_chain._ensure_prepower_item_miner`, flux RNG
-  dédié) — craft à la main, tech gratuite, AUCUN exemplaire gratuit au kit
-  (le graphe est entièrement le nôtre : pas de remplaçant). Son pool interdit
-  tout item dépendant (fixpoint, même transitivement) d'une mine — sinon cycle
-  (foreuse ← four-pierre ← plastic-bar <patch> ← foreuse) — et les recettes
-  gratuites consommant des patchs item (module en gisement…) restent jouables
-  avant le réseau ;
-- **fin de l'auto-hébergement** : une recette n'est plus jamais hébergée dans
-  un bâtiment dont l'item EST son produit (ex. `randputf-stone-furnace` dans
-  stone-furnace) — garde dans `recipes._pick_building` et `usage_pass` U1/U2
-  (seeds 36/41/65/125/129 : cycles stone/steel/electric-furnace) ;
-- **gardien pré-élec** : `usage_pass` n'est plus autorisé à re-héberger une
-  recette unlockée par une tech gratuite vers un atelier ÉLECTRIQUE (seed 42 :
-  splitter → assembling-machine-1 → trigger injouable pré-élec).
-
-Constat : c'est le rejoueur (§15ter) qui a isolé chaque classe ; les gardes
-sont posées là où le générateur POUVAIT créer le blocage, sans passe de
-rattrapage.
-
-### D4quater. Balayage élargi + catalogue des dérives — FAIT
-
-Deux corrections supplémentaires portent le balayage 0-200 → **0-500 (501/501)**,
-chacune causalement dérivée d'une seed isolée par le rejoueur (voir
-`docs/DEVIANCES.md`, le catalogue des écarts vs vanilla et des bugs rencontrés) :
-
-- **Cycle d'hébergement MUTUEL** (seed 255) : `_rehome` (U2) pouvait poser une
-  recette dans un bâtiment qui dépend déjà (transitivement) de son produit —
-  `randputf-assembling-machine-2` ← steel-furnace ⇄ `randputf-steel-furnace` ←
-  assembling-machine-2. Garde `_hosting_cycle` (fermeture transitive
-  ingrédients + crafted_in, arête atelier incluse) branchée dans les boucles de
-  candidats de U1 et U2 ;
-- **Fabrication d'atelier SANS fluide** (seed 426) : une recette de
-  **fabrication d'un item de bâtiment** pouvait consommer des fluides → hébergée
-  dans un atelier fluide (oil-refinery) unlocké APRÈS l'usage du bâtiment en
-  question (le chemical-plant servait aux science packs steps 11-12 mais sa
-  recette exigeait l'oil-refinery, unlock 45). La garde items-only des
-  extracteurs (§8) est étendue à TOUT bâtiment (atelier ou extracteur)
-  (`recipes._is_building_item_recipe`).
-
-**Récurrence** : chaque correction est posée à la racine (générateur ou
-rejoueur), le balayage est ensuite élargi de 500 en 500 et les nouveaux échecs
-deviennent de nouveaux chantiers DEVIANCES.
-
-### Idées ouvertes (à trancher au fil du travail)
-
-- **B1-style proche** : D2 pourrait être couplé à un audit `tool/audit/usage.py`
-  en aval du pipeline (comme `audit/tags.py`) — rapport par seed des bâtiments
-  morts au lieu d'une simple correction.
-- **Connexion B1 (difficulté)** : à haute difficulté, des bâtiments volontaire-
-  ment morts *pour la recette* mais utiles (cinglage, réacteurs) — la garantie
-  U1 doit différencier « pas de recette hébergée » et « aucun usage gameplay ».
-- **D1 pairing générique** : les paires utiles pourront réutiliser le même
-  analyseur de graphe (consommateurs d'un bâtiment) au-delà des armes/véhicules.
