@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Tests / outils qualité
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Factorio (archives exportées, sorties locales)
+*.zip
+output/
+
+# Artefacts générés (le tool les régénère à chaque build)
+mod/seed/seed.json
+mod/seed/seed.lua
+
+# IDE / éditeurs
+.idea/
+.vscode/
+*.swp
+mod-list.json

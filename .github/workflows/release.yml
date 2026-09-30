@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Determinisme seed 5
+        run: |
+          cd /tmp
+          randputf witness --seed 5
+      - name: Generer le mod
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('mod/info.json'))['version'])")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p /tmp/modrel
+          randputf generate --seed 5 --out /tmp/modrel
+          cd /tmp/modrel && zip -r "/tmp/randputF_${VERSION}.zip" "randputF_${VERSION}"
+      - name: Publier la release Github
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          ZIP="/tmp/randputF_${VERSION}.zip"
+          if gh release view "$TAG" --json tagName -q .tagName >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "randputF ${VERSION}" \
+              --generate-notes
+          fi
