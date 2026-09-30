@@ -126,13 +126,16 @@ def _check_dump_integrity(dump: dict) -> None:
     runtime) ; ce contrôle protège les dumps pollués déjà sur disque et rend
     l'erreur impossible à rater au chargement.
 
-    Limite assumée, et pourquoi elle est sans conséquence : le canal ENTITIES
-    (fuel_categories += "nuclear" sur les brûleurs, filtres boiler/heat-exchanger)
-    n'a pas d'invariant propre. Il n'en a pas besoin : la passe carburant mute
-    TOUJOURS des fluides (co-occurrence garantie) — un dump réellement pollué est
-    donc systématiquement attrapé par l'invariant fluides, y compris via les
-    internes parameter-*/fluid-unknown. La frontière de vérité reste le refus de
-    l'exporter ; ce garde est une défense en profondeur pour les dumps anciens.
+    Limite assumée, et pourquoi elle est sans conséquence : l'invariant ne
+    couvre QUE le canal fluides. Toute mutation seule d'un autre canal passe —
+    pas seulement le canal entities (fuel_categories += "nuclear" sur les
+    brûleurs, filtres boiler/heat-exchanger), aussi recipes/items/etc. Il n'en a
+    pas besoin : la passe carburant mute TOUJOURS des fluides (co-occurrence
+    structurelle garantie par ``mod/data-updates.lua`` : boucle non conditionnelle
+    ``for _, proto in pairs(data.raw.fluid)``) — un dump réellement pollué est
+    donc systématiquement attrapé par l'invariant fluides, SAUF s'il est la
+    seule mutation présente. La frontière de vérité reste le refus de l'exporter
+    ; ce garde est une défense en profondeur pour les dumps anciens.
     """
     for name in _VANILLA_NON_FUEL_FLUIDS:
         entry = (dump.get("fluids") or {}).get(name)
