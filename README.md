@@ -34,11 +34,14 @@ Ce README couvre l'installation et l'utilisation. La référence de conception
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/pip install .          # paquet + assets (mod/, data/, config/) embarqués
 ```
 
-Le tool s'appelle `randputf` (via `python -m tool`). Il consomme un **dump des
-prototypes vanilla** inclus dans le dépôt (`data/vanilla_dump.json`) — rien à
+L'install **classique** embarque les trois dossiers d'assets dans le wheel :
+`randputf` fonctionne depuis n'importe quel répertoire. En développement sur
+ce dépôt, `pip install -e .` marche aussi bien (les chemins retombent sur le
+checkout). Le tool s'appelle `randputf` (via `python -m tool`). Il consomme un
+**dump des prototypes vanilla** inclus (`data/vanilla_dump.json`) — rien à
 faire pour jouer. La régénération de ce dump est documentée dans la
 [section Système de dev](#système-de-dev-dump-vanilla).
 
@@ -177,7 +180,10 @@ pour re-générer ce dump (ajout de contenu, nouvelle version du jeu) :
 2. **désactive `randputF` pour cet export** (l'exporter refuse sinon) ; lance
    Factorio une partie quelques secondes — à l'init, il écrit
    `script-output/randputF/vanilla_dump.json` dans le dossier user-data ;
-3. copie ce fichier dans `data/vanilla_dump.json` du projet ;
+3. remplace `data/vanilla_dump.json` du dépôt par ce fichier. En install
+   classique, le dump voyage dans le wheel (`data/vanilla_dump.json` sous le
+   paquet) : sa régénération passe par un ré-install (`pip install .`) ou un
+   checkout du dépôt ;
 4. l'exporter reste un outil compagnon de développement, destiné à disparaître
    ou fusionner dans le mod principal.
 

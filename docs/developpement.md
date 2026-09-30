@@ -61,6 +61,11 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
+`pip install .` (classique) embarque les assets (`mod/`, `data/`,
+`config/settings.yaml`) dans le wheel — ``tool.common.assets.asset_path`` les
+résout avec repli dépôt ; c'est le chemin documenté pour un install sans
+checkout (voir le témoin de la release).
+
 ### 20.2 Récupérer la base vanilla (une fois par version du jeu)
 
 Le tool ne devine rien : il consomme un **dump JSON des prototypes** produit

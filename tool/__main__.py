@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from tool.common.assets import asset_path, repo_root
 from tool.common.db import VanillaDB
 from tool.common.demo import build_demo_db
 from tool.common.version import MOD_NAME_VERSIONED, VERSION
@@ -21,9 +22,12 @@ from tool.validator.solver import validate_seed
 from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 from tool.audit.difficulty import compute_difficulty, summarize_difficulty
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
-MOD_SOURCE = Path(__file__).resolve().parent.parent / "mod"
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+# Assets résolus en wheel (namespace packages embarqués) comme en dépôt.
+CONFIG_PATH = asset_path("config") / "settings.yaml"
+MOD_SOURCE = asset_path("mod")
+DUMP_PATH_DEFAULT = asset_path("data") / "vanilla_dump.json"
+_OUTPUT_REPO = (repo_root() / "mod" / "info.json").exists()
+OUTPUT_DIR = repo_root() / "output" if _OUTPUT_REPO else Path.cwd() / "output"
 
 
 def _load_config() -> dict:
@@ -39,8 +43,10 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
     if not dump_path.exists():
         print(
             f"Vanilla dump introuvable: {dump_path}\n"
-            "Genere-le avec le mod compagnon 'exporter' (voir README section Systeme de dev),\n"
-            "ou lance la pipeline en mode demo: randputf generate --demo"
+            "Le dump est embarque dans le paquet (data/vanilla_dump.json) : "
+            "reinstalle randputf (pip install .) ou passe --dump <fichier>.\n"
+            "Pour regenerer le dump depuis un checkout du depot, utilise le "
+            "mod compagnon 'exporter' (README, section Systeme de dev)."
         )
         sys.exit(1)
     try:
@@ -197,24 +203,24 @@ def main(argv: list[str] | None = None) -> None:
 
     p_parse = sub.add_parser("parse", help="Charge et resume la base vanilla")
     p_parse.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
-    p_parse.add_argument("--dump", default="data/vanilla_dump.json")
+    p_parse.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_parse.set_defaults(func=cmd_parse)
 
     p_audit = sub.add_parser("audit", help="Audite les tags de bâtiments (invariants C8)")
     p_audit.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
-    p_audit.add_argument("--dump", default="data/vanilla_dump.json")
+    p_audit.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_audit.set_defaults(func=cmd_audit)
 
     p_diff = sub.add_parser("difficulty", help="Ardoise de la seed : ressources brutes pour finir une run")
     p_diff.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
-    p_diff.add_argument("--dump", default="data/vanilla_dump.json")
+    p_diff.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_diff.add_argument("--seed", type=int, default=None,
                         help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_diff.set_defaults(func=cmd_difficulty)
 
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
-    p_gen.add_argument("--dump", default="data/vanilla_dump.json")
+    p_gen.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_gen.add_argument("--out", default=None, help="Dossier de sortie (defaut: output/randputF_<version>)")
     p_gen.add_argument("--seed", type=int, default=None, help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_gen.add_argument("--install", action="store_true", help="Installe le mod directement dans Factorio")
