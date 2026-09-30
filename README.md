@@ -86,6 +86,7 @@ Sections principales :
 | `paths` | Dossiers : mod source, dump vanilla, *factorio_mods* (installation) |
 | `map` | Nombre de gisements (3-8), richesse des items/fluides, blocs/puits par gisement (`wells_per_patch`), rayons des champs |
 | `starter` | Munitions du kit (`ammo_count`), bras optionnel (`inserter_chance`) |
+| `late_raws` *(optionnel)* | Jalonnement des ressources tardives : `enabled` (désactivé par défaut), `share`/`pick_chance` inertes (gating 100 %, déterminisme préservé) |
 | `recursive` | Phase récursive : poids par catégorie, armes montées (`armed_vehicles`, `vehicle_weapons`, slots, portée) |
 | `wreck` | Loot du site de crash : loi pondérée `t/a/b` (0 très fréquent … 3 très rare), pool de matériaux |
 | `lakes` | Lacs de fluide : nombre `min/max`, richesse (taille du lac) |
@@ -119,8 +120,12 @@ randputF_0.1.0/
 ```
 
 La sortie est **déterministe** : une même seed produit exactement le même mod
-(octet-pour-octet), vérifié par les tests. La seed s'injecte comme chaîne dans
-`random.Random` — les valeurs jusqu'à des dizaines de chiffres sont acceptées.
+(octet-pour-octet), vérifié par les tests **entre processus** (y compris pour
+le jalonnement late raws) **et indépendamment de l'ordre** : une seed générée
+après 1400 autres dans le même process reste byte-identique à celle d'un
+process vierge (régression gardée, seed 1269). La seed s'injecte comme chaîne
+dans `random.Random` — les valeurs jusqu'à des dizaines de chiffres sont
+acceptées.
 
 ## Le graphe interactif
 
@@ -181,13 +186,15 @@ randputF/
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
 │   ├── audit/           # audit des tags bâtiments/items
 │   ├── parsers/         # extraction des prototypes vanilla
-│   ├── generator/       # moteur de tirage & graphe (phases)
+│   ├── generator/       # moteur de tirage & graphe (phases, passe A/B)
 │   ├── prototypes/      # classes de configuration
 │   ├── exporters/       # écriture seed.json / seed.lua / graphe
+│   ├── replay/          # rejoueur de seed (audit externe)
 │   └── validator/       # vérification de solvabilité
+├── tools/               # scripts dev (classify_late_raws, audits par paquet)
 ├── mod/                 # source du mod Factorio 2.0
 ├── exporter/            # mod compagnon (dump JSON des prototypes)
-├── tests/               # tests unitaires (pytest) — 298 tests
+├── tests/               # tests unitaires (pytest) — 705 tests
 └── output/              # mods assemblés (généré)
 ```
 

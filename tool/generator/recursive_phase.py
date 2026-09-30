@@ -17,6 +17,7 @@ from tool.common.db import (
     is_fixed_fluid_crafter,
 )
 from tool.generator.heat import find_heat_roles
+from tool.generator.late_raws import LateRawsPlan
 from tool.generator.map_patches import Patch
 from tool.generator.recipes import (
     ProgressionState,
@@ -110,6 +111,7 @@ def expand_recursive(
     patches: list[Patch],
     starter: StarterChain,
     lake_resources: frozenset[str] = frozenset(),
+    late_plan: LateRawsPlan | None = None,
 ) -> None:
     global _tech_steps, _unlocked_science_packs, _raw_resources
     global _heat_prereq_emitted, _fluid_pity, _fluid_steps
@@ -123,7 +125,13 @@ def expand_recursive(
     # Les LACS sont des fluides obtenables dès le départ (pompe offshore,
     # volume infini), comme les patchs : à marquer dans ``obtained_fluids``,
     # sinon les fabricateurs à recette fixe choisiraient des inputs inobtenables.
+    # Exception §6.3 : un lac GATÉ reste sur la carte mais hors du pool de craft
+    # jusqu'à son jalon d'injection (la pompe offshore l'extrait toujours — le
+    # retrait ne touche que la disponibilité dans les recettes).
+    gated = late_plan.gated if late_plan is not None else frozenset()
     for fluid in lake_resources:
+        if ("fluid", fluid) in gated:
+            continue
         state.mark_obtained(SLOT_FLUID, fluid)
     buildings_unlocked = len(state.unlocked_buildings)
     iterations_since_new = 0
@@ -135,6 +143,10 @@ def expand_recursive(
     _seed_first_science(rng, db, state, starter)
 
     for _ in range(max_iterations):
+        # §6 révisé : jalon d'échelon — une raw gated redevient obtenable dès
+        # qu'on atteint son plancher (déterministe, pas de tirage 60 %).
+        _inject_milestone_rares(state, late_plan, len(_unlocked_science_packs) - 1)
+
         # Cadence des pylônes (§9.4) : 3 pôles à des jalons espacés (~20 steps) ;
         # au-delà ils sont randomisés comme de simples items/bâtiments.
         if _ensure_pole_cadence(rng, db, state, len(_tech_steps)):
@@ -167,6 +179,13 @@ def expand_recursive(
         if new_buildings > 0 or new_recipes > 0:
             buildings_unlocked = len(state.unlocked_buildings)
 
+    # §4 simplifié (sécurité) : aucun late raw perdu. Au dernier échelon (tous
+    # les packs débloqués), les atardés restants sont réinjectés en force avant
+    # le balayage — le pool est à nouveau complet pour la couverture, l'endgame
+    # et les prints.
+    if late_plan is not None:
+        _inject_remaining_rares(state, late_plan)
+
     # Balayage de couverture complète (§9.6, « randomisation complète ») : la
     # récursion pondérée ne touche que 4 catégories + combat + science ; ce
     # balayage garantit à chaque item restant un craft randputf-* + une tech
@@ -176,6 +195,41 @@ def expand_recursive(
     # Flush final (C7) : fabricateurs fixes jamais placés par le soft-pity →
     # collés aléatoirement sur une tech à fluide, avec leur recette fixe.
     _flush_leftover_fluid_crafters(rng, db, state)
+
+
+def _inject_milestone_rares(
+    state: ProgressionState,
+    plan: LateRawsPlan | None,
+    tier: int,
+) -> None:
+    """§6 révisé (jalon) : DÉTERMINISTE — dès que l'échelon atteint le plancher
+    d'une raw gated, elle redevient obtenable (le ré-bakage du pool fait le
+    reste ; plus de rollback ni de tirage 60 %). ``state.mark_obtained`` au
+    premier échelon ≥ plancher, jamais retiré ensuite."""
+    if plan is None:
+        return
+    for key in plan.eligible(tier):
+        kind, name = key
+        if kind == SLOT_ITEM:
+            if name not in state.obtained_items:
+                state.mark_obtained(SLOT_ITEM, name)
+        else:
+            if name not in state.obtained_fluids:
+                state.mark_obtained(SLOT_FLUID, name)
+
+
+def _inject_remaining_rares(state: ProgressionState, plan: LateRawsPlan | None) -> None:
+    """§6 révisé (sécurité) : force le retour des late raws non encore
+    injectés au dernier échelon — aucune ressource gated n'est perdue."""
+    if plan is None:
+        return
+    for key in plan.eligible(10**9):
+        kind, name = key
+        if kind == SLOT_ITEM and name in state.obtained_items:
+            continue
+        if kind != SLOT_ITEM and name in state.obtained_fluids:
+            continue
+        state.mark_obtained(kind, name)
 
 
 def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
@@ -797,7 +851,7 @@ def _generate_for_element(
     # Claim des ateliers débloqués « sur le tas » pendant cet élément : sans
     # quoi leur recette resterait orpheline (voir buildings_before). Dédup en
     # conservant l'ordre (bâtiment de l'élément d'abord, puis on-the-fly).
-    for name in state.unlocked_buildings - buildings_before:
+    for name in sorted(state.unlocked_buildings - buildings_before):
         if name not in step_buildings:
             step_buildings.append(name)
 
