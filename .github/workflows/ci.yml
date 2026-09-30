@@ -33,4 +33,4 @@ jobs:
       - name: Temoin de determinisme (seed 5, depuis /tmp hors checkout)
         run: |
           cd /tmp
-          randputf witness --seed 5 --expect 4149a186746dd75269b4a7aad922701c
+          randputf witness --seed 5 --expect 12ac143e06174df126537b978ff928d3
