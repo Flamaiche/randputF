@@ -12,10 +12,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = []
+dev = ["pytest>=8"]
 
 [project.scripts]
 randputf = "tool.__main__:main"
 
-[tool.setuptools]
-packages = ["tool", "tool.common", "tool.parsers", "tool.generator", "tool.validator", "tool.exporters"]
+[tool.setuptools.packages.find]
+include = ["tool*"]

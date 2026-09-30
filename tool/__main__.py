@@ -7,10 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    yaml = None  # type: ignore[assignment]
+import yaml
 
 from tool.common.db import VanillaDB
 from tool.common.demo import build_demo_db
@@ -32,24 +29,8 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 def _load_config() -> dict:
     if not CONFIG_PATH.exists():
         return {}
-    if yaml is not None:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    # Fallback: parse le YAML a la main (seule la ligne factorio_mods compte)
-    result = {}
-    for line in CONFIG_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if ":" in line and not line.startswith("#"):
-            key, _, val = line.partition(":")
-            key, val = key.strip(), val.strip().strip('"').strip("'")
-            if key == "factorio_mods":
-                result["factorio_mods"] = val
-            elif key == "seed":
-                try:
-                    result["seed"] = int(val)
-                except ValueError:
-                    pass
-    return result
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:

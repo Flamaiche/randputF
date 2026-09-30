@@ -1,10 +1,14 @@
-seed: 5
 factorio_version: "2.0"
 
 paths:
+  # Dossier des data du jeu (dump vanilla à partir du mod « exporter ») et du
+  # mod source. Chemins RELATIFS : depuis la racine du dépôt.
   mod_dir: mod
   vanilla_dump: data/vanilla_dump.json
-  factorio_mods: ~/.var/app/com.valvesoftware.Steam/.factorio/mods
+  # Dossier mods de Factorio, utilisé par `--install`. À RENSEIGNER pour ton
+  # install (ex. Linux Steam flatpak : ~/.var/app/com.valvesoftware.Steam/.factorio/mods).
+  # Vide : --install assemble le mod dans output/ et affiche le chemin.
+  factorio_mods: ""
 
 map:
   patches_min: 3

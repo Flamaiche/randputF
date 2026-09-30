@@ -47,7 +47,6 @@ def _find_icons_dir() -> Path | None:
     cherché dans les emplacements d'installation courants. None si absent."""
     home = Path.home()
     candidates = [
-        Path("/var/home/hrichard/.steam/steam/steamapps/common/Factorio/data/base/graphics/icons"),
         Path("/var/run/host/.steam/steam/steamapps/common/Factorio/data/base/graphics/icons"),
         home / ".steam/steam/steamapps/common/Factorio/data/base/graphics/icons",
         home / ".local/share/Steam/steamapps/common/Factorio/data/base/graphics/icons",
