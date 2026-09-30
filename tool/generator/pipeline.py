@@ -490,7 +490,7 @@ def _finalize_pipeline(
         lr_cfg = late_raws.LateRawsConfig.from_config(cfg)
         seed["late_raws"] = _export_late_raws(late_raws.plan_from_seed(seed, lr_cfg))
 
-    # Phase 6bis : C1 — quantités de craft (post-assemblage, §IDEES C1). Passe
+    # Phase 6bis : quantités de craft — randomisation post-assemblage. Passe
     # RNG dédié sur les montants (la solvabilité ne lit que la structure) ;
     # inerte si `craft_quantity.enabled` est faux.
     from tool.generator.craft_quantity import apply_craft_quantity

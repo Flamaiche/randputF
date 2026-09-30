@@ -90,10 +90,10 @@ contenu arbitraire.
 
 ### Notes de chantier
 
+Les documents d'atelier ne font **pas** partie de la release : le catalogue
+des dérives/bugs, les idées et corrections en attente, ainsi que les plans de
+redesign vivent sur la branche `dev` (voir `git branch -all`).
+
 | Document | Contenu |
 |---|---|
-| [IDEES.md](../IDEES.md) | Idées / corrections en attente (à développer) |
-| [DEVIANCES.md](DEVIANCES.md) | Dérives de gameplay assumées, bugs corrigés, avertissements résiduels |
-| [PLAN_bootstrap_inline.md](../PLAN_bootstrap_inline.md) | Plan du redesign du bootstrap sûr |
-| [plan-extracteurs-dispatche.md](plan-extracteurs-dispatche.md) | Plan v2 : jalons de ressources (« late raws ») — principe, mesure, mise en œuvre (§6.3) |
 | [developpement.md](developpement.md) | §19, §20 : roadmap, environnement de dev, génération et installation |
