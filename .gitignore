@@ -19,10 +19,9 @@ htmlcov/
 *.zip
 output/
 
-# Artefacts générés (le tool les régénère)
+# Artefacts générés (le tool les régénère à chaque build)
 mod/seed/seed.json
 mod/seed/seed.lua
-data/vanilla_dump.json
 
 # IDE / éditeurs
 .idea/
