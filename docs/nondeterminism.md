@@ -207,6 +207,24 @@ et chaque seed = une combinaison unique de choix.
 - **Garde** : `tests/test_determinism.py` régénère la seed en sous-processus
   sous `PYTHONHASHSEED` 0/1 et compare `seed.json` octet par octet.
 
+### 5d. Claim des ateliers débloqués « sur le tas » (claim anti-orpheline)
+- **Fichier** : `tool/generator/recursive_phase.py:854`
+- **Code** : `for name in state.unlocked_buildings - buildings_before:`
+  `step_buildings.append(name)` — itération d'un **set** qui alimente
+  `step["unlocks_buildings"]`.
+- **Impact** : l'ordre des effets `unlock-recipe` d'une tech varie entre
+  processus (`PYTHONHASHSEED`) → le `seed.json` diffère au byte près pour
+  certaines seeds.
+- **Découvert sur** : seed 1299 — tech `randputf-combat-submachine-gun`,
+  recettes de bâtiments `chemical-plant`/`oil-refinery`/`assembling-machine-1`/
+  `assembling-machine-3` en rotation selon le hash. **Pré-existant** : révélé
+  en baseline comme en gaté.
+- **Fix** : `sorted(state.unlocked_buildings - buildings_before)`.
+- **Preuve** : `seed.json` octet-pour-octet identique sous `PYTHONHASHSEED`
+  0/1/2 pour seeds 37/412/1299, baseline et gatées.
+- **Même motif ailleurs** : `_export_late_raws` (`pipeline.py`) itère déjà
+  trié (`sorted(late_plan.gated)`, `sorted(late_plan.startup)`).
+
 ---
 
 ## 6. Lacs (lakes.py)
@@ -281,6 +299,44 @@ mais d'une **itération de frozenset ordonnant des recettes** dans la chaîne fu
 **octet-pour-octet identiques** (vérifié sur les 10 fichiers du mod).
 71 tests passent toujours.
 
-Toutes les autres itérations de `set`/`frozenset` restantes (ex. `map_patches.py:101`
-`hero`, `recipes.py:522`, `recursive_phase.py`) ne servent QUE des tests d'appartenance
-(`in`/`not in`), déterministes — aucune autre ne trie une séquence.
+Après les correctifs (chaîne fusée, §5c, §5d), les itérations de
+`set`/`frozenset` restantes (ex. `map_patches.py:101` `hero`, `recipes.py:522`)
+ne servent QUE des tests d'appartenance (`in`/`not in`), déterministes —
+aucune ne trie une séquence exportée.
+
+**Régression** : `tests/test_determinism.py` régénère les seeds **1337 et 1299**
+en sous-processus sous `PYTHONHASHSEED` 0/1 et compare `seed.json` octet par
+octet — l'ordre des effets de la tech `randputf-combat-submachine-gun`
+(correctif §5d) est couvert par ce garde.
+
+---
+
+## 7. Dépendance à l'ordre d'un même processus (multi-seeds, sweeps) — corrigé
+
+Problème distinct du hash-order : enchaîner plusieurs seeds dans le **même
+processus** (sweeps, boucles de tests) produisait des seeds différentes selon
+leur position.
+
+- **Cause racine** : la passe B du jalonnement (§16 `late_raws`) faisait
+  `cfg.setdefault("starter", {})["deferred"] = sorted(map(list, plan.gated))`
+  — le config du caller est partagé par **copie superficielle** entre seeds
+  (`dict(config)` ne copie pas le sous-dict `starter`) → `deferred` était muté
+  **en place** dans la config partagée et n'était ré-écrasé que par les seeds
+  qui rejouent la passe B. Le retour anticipé « gating inerte » (§5 des
+  DEVIANCES) rendait alors une seed inerte dépendante du jalon `deferred` laissé
+  par la seed non-inerte précédente.
+- **Découvert sur** : seed 1269 — défaite en gaté (tech 21, `light-oil` du pack
+  `automation-science-pack`) quand on la générait après ~40 autres seeds dans le
+  même process, victoire 101/101 en process vierge. Pré-existant mais amplifié
+  par le shortcut inerte (avant, chaque seed rejouait la passe B et ré-écrasait
+  `deferred` avec SON plan).
+- **Fix** : copie défensive `cfg = dict(cfg); cfg["starter"] = dict(starter)` au
+  lieu de muter le dict partagé (`pipeline.py`, passe B).
+- **Preuve** : seed 1269 byte-identique (hash `c8c55ecf05e4`) en process vierge,
+  après 1 seed, et après **1400 seeds cumulées** — victoire 101/101 dans tous
+  les cas ; `BASE["starter"]` reste intact après génération. Sweep gaté **0-2000
+  re-joué sous le code corrigé : 2000 victoires / 0 défaite** (contigu).
+- **Garde** : `test_seed_1757_gating_inerte_victoire_comme_baseline` et le test
+  d'ordre (seed 1269 après cumul) couvrent ce mode ; les sweeps s'exécutent
+  maintenant dans des conditions équivalentes au process vierge appliqué une
+  fois par seed.

@@ -17,7 +17,14 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
   (sinon l'ordre de hachage Python varierait selon `PYTHONHASHSEED`) —
   régression gardée par `tests/test_determinism.py`, qui régénère la seed en
   sous-processus sous deux hashseeds et compare le résultat (inventaire
-  détaillé dans `docs/nondeterminism.md`).
+  détaillé dans `docs/nondeterminism.md`) ; paramétré sur les seeds 1337 et
+  1299 (cette dernière a révélé l'itération non triée de
+  `recursive_phase.py:854`) et vérifié à la main sous trois hashseeds (0/1/2)
+  sur seeds gatées 37/412/1299/1400. Le déterminisme **et l'indépendance à
+  l'ordre** (multi-seeds dans un même process, sweeps/tests) sont gardés : une
+  seed générée après 1400 autres reste byte-identique à celle d'un process
+  vierge (cause racine §7 de `nondeterminism.md` — mutation en place du config
+  partagé par la passe B ; garantie sur seed 1269).
 - **Pas de borne haute (« seed max »).** La seed est injectée comme *chaîne*
   dans `random.Random(f"randputF:{seed}")` (et `randputF:lakes:{seed}`), que
   Python hache déterministiquement. Aucune limite supérieure n'est imposée par
@@ -59,7 +66,14 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
     trop lourds §9.3.
   - `wreck` : `t`/`a`/`b` (loi pondérée du crash §7), `loot` (matériaux) ;
   - `lakes` : `min`/`max` (nombre de lacs §6), `richness_fluid` (taille) ;
-  - `tree` : `group_chances` (nombre d'objets par tech §13).
+  - `tree` : `group_chances` (nombre d'objets par tech §13) ;
+  - `late_raws` **(optionnel — désactivé par défaut)** : `enabled` active le
+    jalonnement des ressources tardives §6.3 ; `share`/`pick_chance` sont
+    conservés pour compatibilité mais **inutilisés** (l'injection est 100 % et
+    déterministe au premier échelon ≥ plancher). Architecture « plan des
+    jalons » en 2 passes sur la même seed : passe A = mesure de la dépendance,
+    passe B = starter rejoué depuis la même référence RNG avec le pool de
+    démarrage dégradé (état vierge porté par `StarterConfig.deferred`).
   Toute la config est passée via `pipeline.set_config()` → prototypes dataclass
   (`tool/prototypes/*.py`) : aucune valeur d'algorithme codée en dur dans le
   moteur.
@@ -72,6 +86,8 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
 - La seed exporte en plus des structures de documentation/jouabilité :
   `pools.vehicle_weapons` (items gun de la pool montée §12.1),
   `pools.vehicle_range_scaling` (`base_size` + `scale`, §12.1),
-  `vehicle_armament` (assignation véhicule → armes de la graine courante) et
+  `vehicle_armament` (assignation véhicule → armes de la graine courante),
   `pools.raw_resources` (ressources brutes de la graine, §3 — vérifiable sans
-  re-génération).
+  re-génération), `extractor_timing` (timing de déblocage C3, lu par le plan
+  des jalons) et, quand le gating est actif, `late_raws` (`startup` + `gated`
+  avec `kind` et `tier` = échelon science de retour — consommé par le rejoueur).

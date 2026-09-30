@@ -108,6 +108,76 @@ contrôlé, et ne ressemble pas au vanilla.
   les patchs item sur des foreuses.
 - **État** : ✓ corrigé.
 
+### 2.5. Jalon d'une raw gatée au 1er INGRÉDIENT alors qu'elle est requise comme ATELIER
+
+- **Seed** : 1299 (balayage gaté 1200-1600, échec unique).
+- **Symptôme** : en gaté, défaite au rejoueur (88/88 en baseline) — la tech 5
+  (`combat-combat-shotgun`) coûte `production-science-pack`, fabriqué du
+  `lab` (craft main) + `electric-mining-drill` (craft main, 3×), chacun exigeant
+  `stone-furnace`, une recette `crafted_in='steel-furnace'`. Or `steel-furnace`
+  était jalonnée au tier 4 (son 1er **ingrédient** dans la chaîne fusée), donc
+  introuvable au tier 0 pour fabriquer la machine → packs infondsables →
+  dead-lock (la tech est prérequis du reste de l'arbre).
+- **Cause racine** : le plancher d'une raw gatée n'était calculé que sur le
+  1er consommateur **ingrédient** ; il ignorait les usages comme **machine**
+  (`crafted_in`) et la fermeture des **coûts/déclencheurs** des techs (packs
+  de science → bâtiments → ateliers machines, etc.).
+- **Fix** : `tool/generator/late_raws.py` — `_usage_floors` scanne désormais
+  sur la partie refaite les consommations ingrédient + atelier + la fermeture
+  transitive coût/déclencheur de chaque tech (préfixe des recettes débloquées
+  ≤ index), avec défaut `max_tier` si jamais requis. `steel-furnace` est
+  rétrogradée au tier 0.
+- **État** : ✓ corrigé (1299 → victory, researched 84).
+
+### 2.6. Ordre des effets `unlock-recipe` d'une tech non déterministe (set non trié)
+
+- **Seed** : 1299 — révélé par le contrôle `PYTHONHASHSEED` 0/1 (pré-existant,
+  baseline comme gaté).
+- **Symptôme** : le `seed.json` diffère au byte près entre processus — les
+  recettes `chemical-plant`/`oil-refinery`/`assembling-machine-1`/`assembling-
+  machine-3` de la tech `randputf-combat-submachine-gun` tournaient selon
+  l'ordre de hachage.
+- **Cause racine** : `tool/generator/recursive_phase.py:854` construisait
+  `step["unlocks_buildings"]` en itérant `state.unlocked_buildings -
+  buildings_before` (**set**, ordre hash).
+- **Fix** : `sorted(state.unlocked_buildings - buildings_before)`.
+- **État** : ✓ corrigé — vérifié byte-à-byte sous hashseeds 0/1/2 sur seeds
+  37/412/1299 baseline + gatées ; garde élargi dans
+  `tests/test_determinism.py` (seeds 1337 et 1299).
+
+### 2.7. Gating « inerte » (jalons tous ≤ 0) rendant la passe B auto-cassante
+
+- **Seed** : 1757 (balayage gaté 1600-2000, échec unique).
+- **Symptôme** : en gaté, défaite au rejoueur à la tech 21
+  (`randputf-combat-submachine-gun` — `military-science-pack` exigeant
+  `assembling-machine-2`, unlock plus loin dans l'arbre) alors que la
+  disponibilité était **identique au baseline** (toutes les raws gatées au
+  tier 0 : jelly/petroleum/steel-chest…). Victoire 89/89 en baseline.
+- **Cause racine** : un gating au jalon 0 ne retient rien de terroir — rejouer
+  la passe B ne produisait qu'un **ARBRE différent** sans changer la dispo.
+- **Fix** : `tool/generator/pipeline.py` — quand tous les jalons du plan sont
+  ≤ 0, rendre la **passe A telle quelle** (byte-identique à l'historique, pas
+  d'export `late_raws`).
+- **État** : ✓ corrigé (1757 → victory 101/101, seed byte-identique à la
+  baseline ; garde `test_seed_1757_gating_inerte_victoire_comme_baseline`).
+
+### 2.8. Dépendance à l'ordre des seeds d'un même processus (mutation config)
+
+- **Seed** : 1269 — perte en gaté selon la position dans le processus (victoire
+  101/101 en process vierge). Pré-existant, amplifié par la déviance 2.7.
+- **Symptôme** : le balayage (toutes seeds dans un même process) montrait une
+  défaite qui ne se reproduisait pas isolément.
+- **Cause racine** : `cfg.setdefault("starter", {})["deferred"]` de la passe B
+  mutait le **sous-dict `starter` partagé** du config du caller (copie
+  superficielle entre seeds) — jamais réinitialisé par les seeds inertes (2.7)
+  qui ne repassent pas par là → une seed inerte héritait du `deferred` de la
+  seed non-inerte précédente.
+- **Fix** : copie défensive (`cfg = dict(cfg)`, `cfg["starter"] = dict(...)`)
+  — aucune mutation du config du caller.
+- **État** : ✓ corrigé — 1269 byte-identique (hash `c8c55ecf05e4`) en process
+  vierge, après 1 et après 1400 seeds ; sweep gaté 0-2000 rejoué : 2000 victoires
+  / 0 défaite ; voir §7 de `docs/nondeterminism.md`.
+
 ## 3. Avertissements résiduels (à surveiller, non bloquants)
 
 ### 3.1. `usage_pass warning: <four>: consommé mais aucun candidat à rattacher`
@@ -122,8 +192,8 @@ contrôlé, et ne ressemble pas au vanilla.
   (usage = être consommé et/ou recette d'atelier ailleurs), seulement pas
   hébergé sur CE four.
 - **Observation** : fréquent (plusieurs warnings par sweep de 100). Non bloquant.
-- **État** : balayages 0-1500 à **1501 victoires** — ce warning ne dégrade pas
-  la jouabilité.
+- **État** : balayages gatés 0-2000 à **2000/2000 victoires** — ce warning ne
+  dégrade pas la jouabilité.
 - **À trancher** : acceptable (usage consommation) ou chercher un rattachement
   quand même (pool plus large de candidats).
 

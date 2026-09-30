@@ -27,7 +27,7 @@ victoire révèle un softlock réel (électricité, extraction, timing d'unlock�
 from __future__ import annotations
 
 import math
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_FLUID, SLOT_ITEM, VanillaDB
@@ -62,6 +62,12 @@ class Blocker:
 
 @dataclass
 class ReplayReport:
+    """Verdict d'une partie rejouée. Vocabulaire aligné sur la seed (voir
+    docs/nomenclature-rejoueur.md) : ``mastered`` = item dont une recette
+    débloquée a atteint 10× sortie (→ infini) ; ``never_masterable`` = sorties
+    de recettes débloquées jamais prouvées ; ``blocker`` = première tech non
+    recherchée (``kind`` ∈ "prereqs"|"trigger"|"cost"|"lab")."""
+
     victory: bool = False
     all_techs_researched: bool = False
     researched: int = 0
@@ -73,6 +79,9 @@ class ReplayReport:
     obtainable_items: set[str] = field(default_factory=set)
     obtainable_fluids: set[str] = field(default_factory=set)
     researched_order: list[str] = field(default_factory=list)
+    mastered: list[str] = field(default_factory=list)
+    mastered_tier: dict[str, int] = field(default_factory=dict)
+    never_masterable: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         state = "VICTOIRE" if self.victory else ("BLOQUÉ" if self.blocker else "SANS FUSÉE")
@@ -97,6 +106,52 @@ class FakePlayer:
                 if res.get("type") != SLOT_ITEM:
                     continue
                 self.items_by_name.setdefault(res["name"], []).append(r["name"])
+
+        # Dépendances inverses de RECETTE (passe de maîtrise) : quel item un
+        # item consomme-t-il (ingrédient OU atelier) → quelles sorties re-tenter
+        # quand il devient sûr/infini (worklist au lieu du rescan exhaustif).
+        self._consumers: dict[str, set[str]] = {}
+        for r in self.recipes:
+            outs = {
+                res["name"] for res in (r.get("results") or [])
+                if res.get("type") == SLOT_ITEM
+            }
+            if not outs:
+                continue
+            for ing in r.get("ingredients") or []:
+                if ing.get("type") != SLOT_ITEM:
+                    continue
+                self._consumers.setdefault(ing["name"], set()).update(outs)
+            if r.get("crafted_in"):
+                self._consumers.setdefault(r["crafted_in"], set()).update(outs)
+
+        # §6 révisé (late raws) : disponibilité réelle des ressources par
+        # JALON. Une seed gatée exporte ``late_raws`` = {startup: [[kind,name]],
+        # gated: {name: {kind, tier}}} — la ressource n'est utilisable qu'une
+        # fois atteint son échelon science (`tier`, index de chaîne des packs).
+        # Seules les raws MINABLES À LA MAIN du starter (startup) restent
+        # libres dès le spawn (jamais listées dans ``gated``). Une seed SANS
+        # export garde le comportement historique (carte = infinie au spawn).
+        raw_info = seed.get("late_raws") or {}
+        self.late_tier: dict[tuple[str, str], int] = {}
+        for name, info in (raw_info.get("gated") or {}).items():
+            try:
+                self.late_tier[(info["kind"], name)] = int(info["tier"])
+            except (KeyError, TypeError, ValueError):
+                pass
+        # Échelon science atteint : index max de la chaîne des packs consommés
+        # par les techs déjà recherchées (miroir `late_raws._tech_tier`).
+        self._science_chain = self._build_science_chain()
+        self._tech_tier: dict[str, int] = {}
+        for tech in self.techs:
+            self._tech_tier[tech["id"]] = max(
+                (
+                    self._science_chain.index(i["name"])
+                    for i in (tech.get("unit") or {}).get("ingredients", [])
+                    if i.get("name") in self._science_chain
+                ),
+                default=-1,
+            )
 
         # Extraction : modèle de CAPACITÉ physique (data-updates.lua) — la mapping
         # C3 (`extractor_timing`) ne fixe que le DÉBLOCAGE au fil de l'arbre
@@ -141,12 +196,73 @@ class FakePlayer:
                 self.unlocked.update(self._unlocks_of(tech))
         self._prep_db()
         self._prep_kit()
+        self._invalidate_caches()
 
     # ── Préparation ───────────────────────────────────────────────────────
 
     def _prep_db(self) -> None:
         self.items_db = self.db.items
         self.buildings_db = self.db.buildings
+
+    # ── Disponibilité des raws par jalon (§6 révisé) ──────────────────────
+
+    def _build_science_chain(self) -> list[str]:
+        """Chaîne des science packs (miroir `late_raws._science_chain`) :
+        ordonnés par l'index de déblocage de leur recette de craft — chaque
+        pack coûte le précédent (§13)."""
+        claim: dict[str, int] = {}
+        for index, tech in enumerate(self.techs):
+            for effect in tech.get("effects", []):
+                if effect.get("type") == "unlock-recipe":
+                    claim.setdefault(effect["recipe"], index)
+        packs = {
+            r["results"][0]["name"]
+            for r in self.recipes
+            if r.get("results") and r["results"][0].get("type") == SLOT_ITEM
+            and str(r["results"][0]["name"]).endswith("-science-pack")
+        }
+        return sorted(
+            packs,
+            key=lambda p: (claim.get(f"randputf-{p}", 10**9), p),
+        )
+
+    def _current_tier(self) -> int:
+        """Échelon science atteint : index max (chaîne des packs) parmi (a) les
+        packs réellement produisibles dans le monde courant (le plus fiable :
+        miroir de ``len(_unlocked_science_packs)-1`` du générateur) et (b) les
+        techs déjà recherchées. Le max des deux signaux évite de sur-verrouiller
+        une raw quand un tech ne coûte qu'un sous-ensemble de packs."""
+        tiers = set()
+        idx = [self._tech_tier[t] for t in self.researched if t in self._tech_tier]
+        tiers.add(max(idx) if idx else -1)
+        packs = sum(1 for p in self._science_chain if p in self._world_items)
+        tiers.add(packs - 1)
+        return max(tiers)
+
+    def _raw_available(self, kind: str, name: str) -> bool:
+        """Une raw est-elle utilisable en l'état ?
+
+        Sans export ``late_raws`` (gating désactivé) tout reste disponible ;
+        avec gating : une raw non start-up n'est disponible que si son JALON
+        (tier) est atteint (les raws non gatées — startup — n'apparaissent
+        jamais dans ``late_tier`` et valent donc True)."""
+        if not self.late_tier:
+            return True
+        tier = self.late_tier.get((kind, name))
+        return tier is None or tier <= self._current_tier()
+
+    def _raw_infinite_now(self, item: str) -> bool:
+        """``base_infinite`` restreint au jalon : un item gated n'est infini
+        qu'à partir du moment où son jalon est atteint ; les raws non gatées
+        (startup/environnement) restent infinies d'office."""
+        if item not in self.base_infinite:
+            return False
+        if not self.late_tier:
+            return True
+        tier = self.late_tier.get((SLOT_ITEM, item))
+        if tier is None:
+            return True
+        return tier <= self._current_tier()
 
     def _prep_kit(self) -> None:
         self.kit: set[str] = {
@@ -179,19 +295,26 @@ class FakePlayer:
                 self.item_patch_counts[p["resource"]] += p.get("count", 0)
 
         # Simulation FORWARD « comme un joueur » : un inventaire réel, un compteur
-        # cumulé d'usinage, et une REGLE DE MAITRISE — dès qu'un item a été fabriqué
-        # 10 fois (had ≥ 10), son craft est « devenu sûr » : il devient INFINI, on
-        # n'a plus à le recrafter pour l'employer. Les ressources de base
-        # (environnement, patchs, lacs) sont infinies d'office.
+        # cumulé d'usinage, et une REGLE DE MAITRISE — dès qu'un item a été
+        # fabriqué en quantité égale à la SORTIE de sa recette ×10 (had ≥
+        # 10×sortie, ex. sortie 2 → maîtrise à 20), son craft est « devenu sûr » :
+        # il devient INFINI, on n'a plus à le recrafter pour l'employer (l'atelier
+        # est recrafé à chaque passe tant que la maîtrise n'est pas acquise). Les
+        # ressources de base (environnement, patchs, lacs) sont infinies d'office.
         self.inv: Counter[str] = Counter(self.kit_counts)
         self.had: Counter[str] = Counter(self.kit_counts)
         self.base_infinite: set[str] = set(ENVIRONMENTAL_ITEMS) & set(self.items_db)
         self.base_infinite |= self.item_patch_resources
         self.base_infinite |= self.patch_resources
         self.base_infinite |= self.lake_resources
-        self.mastered: set[str] = {
-            n for n, c in self.had.items() if c >= 10
-        }
+        self.mastered: set[str] = set()
+        self.mastered_tier: dict[str, int] = {}
+        # Caches (10×sortie, fermeture infinie par snapshot monde) — reconstruits
+        # à chaque tech dans play() quand le monde débloqué change.
+        self._mastery_goal: dict[str, int] = {}
+        self._inf_cache: dict[
+            tuple[frozenset[str], frozenset[str], bool], tuple[set[str], set[str]]
+        ] = {}
         # Monde courant « obtenable » pour la garde d'énergie des ateliers
         # (mis à jour à chaque tech dans play()).
         self._world_items: set[str] = set()
@@ -303,7 +426,10 @@ class FakePlayer:
         # Patches ITEM : ramassables à la main au spawn (resource finie, façon
         # épave/§7.4) — pas besoin de foreuse pour les obtenir au départ ; une
         # foreuse opérationnelle les rend infinis (capacity, data-updates.lua).
-        items |= self.item_patch_resources
+        # §6 révisé : un patch gated n'est pas ramassable avant son jalon.
+        items |= {
+            n for n in self.item_patch_resources if self._raw_available(SLOT_ITEM, n)
+        }
         fluids: set[str] = set()
         return items, fluids
 
@@ -328,6 +454,8 @@ class FakePlayer:
                 if b is not None and not self._energy_ok(b, items, power):
                     continue
                 for res in resources:
+                    if not self._raw_available(res.get("type"), res["name"]):
+                        continue
                     bucket = items if res.get("type") == SLOT_ITEM else fluids
                     if res["name"] not in bucket:
                         bucket.add(res["name"])
@@ -395,6 +523,10 @@ class FakePlayer:
         sont eux-mêmes infinis et l'atelier est disponible."""
         inf_items: set[str] = set(ENVIRONMENTAL_ITEMS) & set(self.items_db)
         inf_fluids: set[str] = set(fluids)
+        cache_key = (frozenset(items), frozenset(fluids), power)
+        hit = self._inf_cache.get(cache_key)
+        if hit is not None:
+            return hit[0], hit[1]
         drill_works = any(
             b.name in items
             and getattr(b, "is_mining_drill", False)
@@ -403,7 +535,10 @@ class FakePlayer:
             for b in self.buildings_db.values()
         )
         if drill_works:
-            inf_items |= self.item_patch_resources
+            inf_items |= {
+                n for n in self.item_patch_resources
+                if self._raw_available(SLOT_ITEM, n)
+            }
         changed = True
         while changed:
             changed = False
@@ -424,6 +559,7 @@ class FakePlayer:
                     elif res.get("type") == SLOT_FLUID and res["name"] not in inf_fluids:
                         inf_fluids.add(res["name"])
                         changed = True
+        self._inf_cache[cache_key] = (inf_items, inf_fluids)
         return inf_items, inf_fluids
 
     def _recipe_result_amount(self, recipe: dict, target: str) -> int:
@@ -503,8 +639,9 @@ class FakePlayer:
         inf = self._infinite_items(items, fluids, power)
         budget: Counter[str] = Counter(self.kit_counts)
         for patch, count in self.item_patch_counts.items():
-            if patch not in inf[0]:
-                budget[patch] += count
+            if patch in inf[0] or not self._raw_available(SLOT_ITEM, patch):
+                continue
+            budget[patch] += count
         for item, need in needs.items():
             if need <= 0:
                 continue
@@ -513,6 +650,93 @@ class FakePlayer:
             ):
                 return False
         return True
+
+    # ── Passe de MAÎTRISE (le « tester tout un par un » du joueur) ────────
+    #
+    # À chaque déblocage, le joueur ESSAIE réellement chaque recette nouvelle :
+    # il la fabrique jusqu'à 10× la sortie de la recette (sortie 2 → 20, l'atelier
+    # est recrafé à chaque passe — on ne le réutilise pas), et dès qu'un item
+    # atteint 10× sa sortie il devient sûr (infini, plus besoin de le refabriquer
+    # pour l'employer). Worklist inverse : quand un item passe sûr/infini, on ne
+    # reteste que les recettes qui le CONSOMMENT (ingrédient ou atelier) — point
+    # fixe identique de la boucle exhaustive (« un échec ne laisse aucune trace » :
+    # inv/had sont restaurés, seule une réussite mute l'état). C'est l'accumulation
+    # qui débloque les chaînes profondes (l'atelier de base se maîtrise d'abord,
+    # puis débloque la recette au dessus, etc.) au lieu de tout refaire à chaque
+    # demande en profondeur (cercle vicieux de l'ancien `_craft` à la demande).
+
+    def _invalidate_caches(self) -> None:
+        """Reconstruit les caches quand le monde débloqué change : ``_mastery_goal``
+        (sortie max ×10 de chaque item chez ses recettes débloquées) et
+        ``_inf_cache`` (fermeture « infinie » par snapshot du monde)."""
+        self._inf_cache.clear()
+        goal: dict[str, int] = {}
+        for r in self.recipes:
+            if r["name"] not in self.unlocked:
+                continue
+            for res in r.get("results") or []:
+                if res.get("type") != SLOT_ITEM:
+                    continue
+                amt = int(res.get("amount", 1))
+                if amt > goal.get(res["name"], 0):
+                    goal[res["name"]] = amt
+        self._mastery_goal = goal
+        self.mastered = {
+            n for n, c in self.had.items()
+            if c >= 10 * goal.get(n, 0) and goal.get(n, 0) > 0
+        }
+
+    def _is_mastered(self, item: str) -> bool:
+        """L'item est-il « sûr » ? (au moins 10× la sortie de sa recette.)"""
+        out = 10 * self._mastery_goal.get(item, 0)
+        return out > 0 and self.had.get(item, 0) >= out
+
+    def _mastery_sweep(self) -> None:
+        """Tente de porter chaque item (recette débloquée, non sûr, non infini)
+        à 10× la sortie de sa recette, par worklist des consommateurs. ``had`` ne
+        fait que croître et les échecs restaurent l'état — termine, et converge
+        vers le même point fixe qu'un rescan exhaustif."""
+        self._invalidate_caches()   # réflète le nouvel unlock dans `_mastery_goal`
+        pending: deque[str] = deque()
+        for r in self.recipes:
+            if r["name"] not in self.unlocked:
+                continue
+            for res in r.get("results") or []:
+                if res.get("type") != SLOT_ITEM:
+                    continue
+                name = res["name"]
+                if name in self.item_patch_resources:
+                    continue  # pas une recette de craft (raw ramassée)
+                if self._is_mastered(name) or self._raw_infinite_now(name):
+                    continue
+                pending.append(name)
+        forwarded: set[str] = set()
+        while pending:
+            name = pending.popleft()
+            if self._is_mastered(name) or self._raw_infinite_now(name):
+                continue
+            if name not in self.mastered:
+                if self._craft(name, 10 * self._mastery_goal.get(name, 0)):
+                    # Un item devient sûr → ses CONSOMMATEURS (ingrédient/atelier)
+                    # deviennent peut-être testables : on les re-tente.
+                    self.mastered.add(name)
+                    self.mastered_tier.setdefault(name, self._current_tier())
+                    for consumer in self._consumers.get(name, ()):
+                        if (not self._is_mastered(consumer)
+                                and not self._raw_infinite_now(consumer)):
+                            pending.append(consumer)
+                continue
+            # Déjà traité sans être « sûr » (sortie non requise : `_is_mastered`
+            # reste faux) : on relance seulement la propagation vers ses
+            # consommateurs (le matériel a pu s'améliorer), UNE fois — sinon les
+            # cycles de produits à sortie non requise re-filent à l'infini.
+            if name in forwarded:
+                continue
+            forwarded.add(name)
+            for consumer in self._consumers.get(name, ()):
+                if (not self._is_mastered(consumer)
+                        and not self._raw_infinite_now(consumer)):
+                    pending.append(consumer)
 
     # ── Simulation FORWARD (le « comme un joueur ») ──────────────────────
     #
@@ -523,10 +747,11 @@ class FakePlayer:
     #     l'inventaire (« tout est consommé ») et y ajoute le résultat ;
     #   - les ressources de base (environnement, patchs item/fluide, lacs) sont
     #     INFINIES d'office (elles ne se consomment jamais) ;
-    #   - MAÎTRISE : dès qu'un item a été fabriqué au moins 10 fois (cumul
-    #     `had`), son craft est « devenu sûr » → l'item devient INFINI, plus
-    #     besoin de le recrafter pour l'employer. C'est l'accélération qui
-    #     remplace le décompte exhaustif par item.
+    #   - MAÎTRISE : dès qu'un item a été fabriqué jusqu'à 10× la sortie de sa
+    #     recette (had ≥ 10×sortie), son craft est « devenu sûr » → l'item devient
+    #     INFINI, plus besoin de le recrafter pour l'employer. C'est l'accélération
+    #     qui remplace le décompte exhaustif par item (la passe `_mastery_sweep`
+    #     « essaie tout » à chaque déblocage).
     #
     # Les crafts d'une tech PAYENT PERSISTENT (le joueur garde son inventaire
     # entre les techs) ; la victoire = toutes les techs recherchées + les items
@@ -544,7 +769,7 @@ class FakePlayer:
         débloquées, envergure et consommation comprises)."""
         if need <= 0:
             return True
-        if item in self.base_infinite or self.had[item] >= 10:
+        if self._raw_infinite_now(item) or self._is_mastered(item):
             return True
         if depth > MAX_QDEPTH:
             return False
@@ -563,6 +788,10 @@ class FakePlayer:
                 continue
             runs = math.ceil(need / per_run)
             crafted_in = recipe.get("crafted_in")
+            # BACKTRACK « avant la consommation bloquante » : état rembobiné si ce
+            # producteur échoue (l'atelier déjà fabriqué et les ingrédients déjà
+            # consommés sont remis en place) avant de tenter le producteur suivant.
+            back = (Counter(self.inv), Counter(self.had))
             ok = True
             if crafted_in:
                 # L'atelier est CONSOMMÉ à chaque craft (« tout est consommé ») :
@@ -586,6 +815,7 @@ class FakePlayer:
                     ok = False
                     break
             if not ok:
+                self.inv, self.had = back
                 continue
             produced = per_run * runs
             self.inv[item] += produced
@@ -612,6 +842,7 @@ class FakePlayer:
             items, fluids, power, generator = self.closure()
             self._world_items, self._world_fluids, self._world_power = items, fluids, power
             self.fluids_obtainable = fluids
+            self._invalidate_caches()
             report.power_available, report.power_generator = power, generator
             # Le lab reçoit les packs (garanti au starter, §8) — garde-fou.
             if "lab" not in items:
@@ -630,9 +861,11 @@ class FakePlayer:
                 else:
                     report.blocker = Blocker(tech_id, "cost", stuck[0], self.explain_qty(stuck[0], items, fluids, power))
                 break
-            # Recherche : on débloque les effets de la tech.
+            # Recherche : on débloque les effets de la tech, puis le joueur
+            # « essaie tout » les nouvelles recettes (passe de maîtrise 10×).
             self.researched.add(tech_id)
             self.unlocked.update(self._unlocks_of(tech))
+            self._mastery_sweep()
             report.researched_order.append(tech_id)
         report.researched = len(self.researched)
         report.all_techs_researched = report.researched == len(self.techs)
@@ -643,6 +876,19 @@ class FakePlayer:
         report.power_available, report.power_generator = power, generator
         report.obtainable_items, report.obtainable_fluids = items, fluids
         report.satellite_obtainable = "satellite" in items
+        report.mastered = sorted(self.mastered)
+        report.mastered_tier = dict(self.mastered_tier)
+        report.never_masterable = sorted(
+            {
+                res["name"]
+                for r in self.recipes if r["name"] in self.unlocked
+                for res in (r.get("results") or [])
+                if res.get("type") == SLOT_ITEM
+                and res["name"] not in self.mastered
+                and res["name"] not in self.item_patch_resources
+                and not self._raw_infinite_now(res["name"])
+            }
+        )
         report.victory = (
             report.all_techs_researched
             and "satellite" in items
@@ -686,8 +932,9 @@ class FakePlayer:
         inf_items, inf_fluids = self._infinite_items(items, fluids, power)
         budget: Counter[str] = Counter(self.kit_counts)
         for patch, count in self.item_patch_counts.items():
-            if patch not in inf_items:
-                budget[patch] += count
+            if patch in inf_items or not self._raw_available(SLOT_ITEM, patch):
+                continue
+            budget[patch] += count
         return self._explain_qty(
             target, need, budget, (inf_items, inf_fluids),
             items, fluids, power, depth,
@@ -764,6 +1011,14 @@ class FakePlayer:
             return f"{target} → profondeur maximale atteinte"
         if target in seen:
             return f"{target} → cycle"
+
+        # Ressource brute gatée (jalon §6 révisé) : le jalon n'est pas atteint.
+        if not (self._raw_available(SLOT_ITEM, target)
+                and self._raw_available(SLOT_FLUID, target)):
+            return (
+                f"{target} ← jalon non atteint "
+                f"(tier {self._current_tier()})"
+            )
 
         # Ressource brute : passe par son extracteur (C3).
         for recipe_name, resources in self.extractors:

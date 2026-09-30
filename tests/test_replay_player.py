@@ -135,18 +135,19 @@ def test_patches_item_ramassables_a_la_main(seeds):
     assert fp.item_patch_resources <= items
 
 
-def test_seed1043_bloquee_par_quantities_apres_d5(seeds):
-    """D5 (joueur forward quantitatif) : seed 1043 échoue en QUANTITÉ — le
-    military-science-pack (tech idx 4) requiert ≈32 electric-mining-drills
-    fabriqués via randputf-electric-mining-drill dont l'unlock n'arrive qu'au
-    tech idx 32 (randputf-content-steel-furnace). Softlock réel révélé par le
-    simulateur forward, pas un artefact de fermeture d'ensemble."""
+def test_seed1043_gagnable_apres_regen_extracteur(seeds):
+    """C3 + régénération : la seed 1043 était bloquée en QUANTITÉ — le
+    military-science-pack (tech idx 4) requiert ≈32 electric-mining-drills dont
+    la recette était unlockée au tech idx 32 dans ``steel-furnace`` (elle-même
+    ingrédient de la recette : rien à faire avant). L'extracteur étant requis
+    au spawn, sa recette est RÉGÉNÉRÉE au jalon du besoin (§C3) : re-tirée
+    dans le watershed pré-électrique et rendue craftable à la main → seed
+    gagnable."""
     db = copy.deepcopy(DB)
     db.seed_value = 1043
     report = rp.play(db, seeds[1043])
-    assert not report.victory
-    assert report.blocker is not None
-    assert report.blocker.kind == "cost"
+    assert report.victory, report.summary()
+    assert report.all_techs_researched
 
 
 def test_seed7_rejouable_apres_c3_item_ingredient(seeds):
@@ -251,3 +252,26 @@ def test_extraction_par_capacite_physique(seeds):
     assert isinstance(power, bool)
     assert generator is None or isinstance(generator, str)
     rp.play(db, seed)                            # jouable sans crash, les deux formats
+
+
+def test_mastery_sweep_est_un_point_fixe_deterministe(seeds):
+    """Modèle « maîtrise » (faire chaque recette débloquée 10×, l'atelier étant
+    recrafé à chaque passe ; had>=10 → item sûr/infini) : la passe est un point
+    fixe déterministe et ne fabrique que via des recettes déjà débloquées."""
+    db = copy.deepcopy(DB)
+    db.seed_value = 5
+    fp = rp.FakePlayer(db, seeds[5])
+    items, fluids, power, _gen = fp.closure()
+    fp._world_items, fp._world_fluids, fp._world_power = items, fluids, power
+    unlocked0 = set(fp.unlocked)
+    had0 = dict(fp.had)
+    fp._mastery_sweep()
+    a = (dict(fp.had), dict(fp.inv))
+    fp._mastery_sweep()
+    assert (dict(fp.had), dict(fp.inv)) == a            # point fixe (2e passe no-op)
+    assert set(fp.unlocked) == unlocked0                # la passe ne débloque rien
+    grown = [it for it in fp.had if fp.had[it] > had0.get(it, 0)]
+    assert grown                                        # la passe a fabriqué quelque chose
+    results = {r["name"]: [q["name"] for q in (r.get("results") or [])]
+               for r in fp.recipes if r["name"] in unlocked0}
+    assert all(any(it in results[r] for r in results) for it in grown)  # recettes débloquées

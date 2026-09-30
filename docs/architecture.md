@@ -65,7 +65,11 @@ Chaîne complète, de l'écriture d'une seed à une partie jouable :
 2. Tool Python :
    1. parse les prototypes vanilla 2.0 (items beltables, fluides pipables,
       bâtiments avec leurs slots/directives par tier) ;
-   2. tire le graphe complet depuis la seed (phases §6 → §14) ;
+   2. tire le graphe complet depuis la seed (phases §6 → §14) — en 2 passes
+      sur la même référence RNG quand le jalonnement late raws est actif
+      (§6.3 : passe A = mesure de la dépendance, passe B = starter rejoué sur
+      le pool de démarrage dégradé, état vierge porté par
+      `StarterConfig.deferred`) ;
    3. vérifie les invariants de solvabilité (§15) ;
    4. écrit `seed.json` (+ données associées) dans le dossier du mod.
 3. Mod Factorio, data-stage : lecture YAML/JSON → construction des entités
@@ -99,7 +103,7 @@ randputF/
 │   ├── parsers/         # extraction des prototypes vanilla
 │   │   └── vanilla.py
 │   ├── generator/       # moteur de tirage & graphe
-│   │   ├── pipeline.py          # orchestrateur (generate_seed)
+│   │   ├── pipeline.py          # orchestrateur (generate_seed, passes A/B)
 │   │   ├── map_patches.py       # phase 1 : ressources au sol
 │   │   ├── lakes.py             # phase 1bis : lacs de fluide
 │   │   ├── starter_chain.py     # phase 2 : chaîne initiale
@@ -110,13 +114,15 @@ randputF/
 │   │   ├── relay_phase.py       # relais ressources non-infinies + prologue
 │   │   ├── easeup_phase.py      # recettes alternatives crafts lourds (§9.3)
 │   │   ├── recipes.py           # primitives recettes (make_recipe, ensure_obtainable)
+│   │   ├── extractor_timing.py  # timing de déblocage C3 (+ boîte D4bis)
+│   │   ├── late_raws.py         # jalons late raws (§6.3) : plan passe A + dégradation
 │   │   ├── tech_tree.py         # arbre technologique linéaire
 │   │   └── wreck_loot.py        # loot du site de crash
 │   ├── prototypes/      # classes de config (RecipeConfig, RecursiveConfig…)
 │   │   ├── base.py             # PrototypeConfig (base)
 │   │   ├── recipes.py          # RecipeConfig (§9.2 : énergie, équilibre)
 │   │   ├── recursive.py        # RecursiveConfig (§9 : poids, armes montées §12.1)
-│   │   ├── starter.py          # StarterConfig (§7/§8 : ammo_count, inserter_chance)
+│   │   ├── starter.py          # StarterConfig (§7/§8 : ammo_count, inserter_chance, deferred)
 │   │   ├── relay.py            # RelayConfig (§9.5)
 │   │   ├── easeup.py           # EaseupConfig (§9.3)
 │   │   ├── craft_quantity.py   # expérimental — testé, non branché à la pipeline
@@ -127,9 +133,11 @@ randputF/
 │   ├── exporters/       # écriture seed.json / seed.lua / locale / graphe
 │   │   ├── mod_seed.py         # seed.json + seed.lua
 │   │   └── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   ├── replay/          # audit externe : rejoueur de seed (player.py)
 │   └── validator/       # vérification de solvabilité
 │       ├── pipeline_validator.py  # 7 checks sur ProgressionState
 │       └── solver.py              # validation du seed dict assemblé
+├── tools/               # scripts dev : audit_playthrough, audit_usage, classify_late_raws
 ├── mod/                 # le mod Factorio 2.0
 │   ├── data.lua         # data-stage : lecture seed, construction
 │   ├── data-updates.lua # réarmement véhicules, lacs, fuel unifié

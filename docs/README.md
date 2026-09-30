@@ -86,6 +86,7 @@ contenu arbitraire.
 |---|---|
 | [tags.md](tags.md) | Référence complète des tags de bâtiments et d'items |
 | [nondeterminism.md](nondeterminism.md) | Inventaire des sources potentielles de non-déterminisme et leur résolution |
+| [nomenclature-rejoueur.md](nomenclature-rejoueur.md) | Vocabulaire seed ↔ rejoueur : table de correspondance exacte des champs consommés |
 
 ### Notes de chantier
 
@@ -93,4 +94,5 @@ contenu arbitraire.
 |---|---|
 | [IDEES.md](../IDEES.md) | Idées / corrections en attente (à développer) |
 | [PLAN_bootstrap_inline.md](../PLAN_bootstrap_inline.md) | Plan du redesign du bootstrap sûr |
+| [plan-extracteurs-dispatche.md](plan-extracteurs-dispatche.md) | Plan v2 : jalons de ressources (« late raws ») — principe, mesure, mise en œuvre (§6.3) |
 | [developpement.md](developpement.md) | §19, §20 : roadmap, environnement de dev, génération et installation |
