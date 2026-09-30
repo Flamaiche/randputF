@@ -152,17 +152,19 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
     if args.install:
         paths = cfg.get("paths", {})
-        raw_path = paths.get("factorio_mods", "") or cfg.get("factorio_mods", "")
-        mods_dir = Path(raw_path).expanduser() if raw_path else Path()
-        if mods_dir.exists() and mods_dir.is_dir():
+        raw_path = (paths.get("factorio_mods") or "").strip()
+        mods_dir = Path(raw_path).expanduser() if raw_path else None
+        if mods_dir is not None and mods_dir.is_dir():
             _install_mod(seed, mods_dir)
             print(f"Seed {db.seed_value} valide, mod installe dans {mods_dir}/")
         else:
-            out_dir = OUTPUT_DIR
-            mod_path = _build_mod(seed, out_dir)
-            print(f"Dossier Factorio mods introuvable ({raw_path})")
-            print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
-            print(f"Copie-le manuellement dans ton dossier mods Factorio.")
+            mod_path = _build_mod(seed, OUTPUT_DIR)
+            if not raw_path:
+                print("Aucun dossier mods configure (paths.factorio_mods vide dans config/settings.yaml).")
+            else:
+                print(f"Dossier Factorio mods introuvable ({raw_path})")
+            print(f"Seed {db.seed_value} valide, mod assemble dans {mod_path}")
+            print("Copie-le manuellement dans ton dossier mods Factorio.")
     else:
         out_dir = Path(args.out) if args.out else OUTPUT_DIR
         zip_path = _build_mod(seed, out_dir)
