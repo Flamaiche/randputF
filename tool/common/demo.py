@@ -13,6 +13,9 @@ from tool.common.db import (
 
 
 def build_demo_db() -> VanillaDB:
+    """Base vanilla SYNTHÉTIQUE pour développer et tester la pipeline sans le
+    jeu : quelques items bruts/intermédiaires, fluides, bâtiments taggés et
+    recettes de démo suffisants à un run complet."""
     db = VanillaDB(seed_value=0)
 
     raw_items = {
@@ -98,6 +101,8 @@ def build_demo_db() -> VanillaDB:
     db.fluids["lubricant"] = FluidDef(name="lubricant")
 
     def building(name, ftype, **kw):
+        """Ajoute un bâtiment de démo ``ftype`` (extractor/transformer/
+        generator/research/distribution/rocket_silo/other) avec ses tags."""
         etype = kw.pop("etype", name)
         tags = {
             "extractor": {"is_extractor": True},
@@ -159,6 +164,8 @@ def build_demo_db() -> VanillaDB:
     )
 
     def recipe(name, ingredients, products, category=""):
+        """Ajoute une recette de démo (ingrédients/produits en listes de
+        tuples (type, nom, montant))."""
         db.recipes[name] = RecipeRef(
             name=name,
             category=category,

@@ -13,10 +13,14 @@ import random
 from dataclasses import dataclass
 
 from tool.common.db import ROCKET_CHAIN, VanillaDB
+from tool.common.rng import make_seeded_rng
 
 
 @dataclass
 class Patch:
+    """Un gisement (item/fluide) posé au sol : ressource, richesse et, quand
+    le gisement a un centre (``center``), la géométrie runtime (§6.5) que le
+    mod dérive de façon déterministe (blocs/puits + graine locale)."""
     kind: str
     resource: str
     richness: int
@@ -29,6 +33,8 @@ class Patch:
     cluster_radius: int = 10
 
     def to_seed(self) -> dict:
+        """Forme sérialisée dans ``seed["patches"]`` — géométrie runtime
+        (center/count/well_seed/cluster_radius) seulement si posée."""
         seed = {
             "kind": self.kind,
             "resource": self.resource,
@@ -43,7 +49,8 @@ class Patch:
 
 
 def make_rng(seed_value: int) -> random.Random:
-    return random.Random(f"randputF:{seed_value}")
+    """Flux RNG principal de la seed (première phase)."""
+    return make_seeded_rng(seed_value, "randputF:")
 
 
 def generate_patches(
@@ -70,6 +77,7 @@ def generate_patches(
     used: set[str] = set(lake_resources or ())
 
     def available(pool: list[str]) -> list[str]:
+        """Ressources du pool pas encore posées sur la carte (C6)."""
         return [r for r in pool if r not in used]
 
     available_items = len(available(item_candidates))
@@ -232,7 +240,7 @@ def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) 
     ir_min, ir_max = map_cfg.get("item_patch_radius", [ITEM_RADIUS_MIN, ITEM_RADIUS_MAX])
     ir_min, ir_max = int(ir_min), int(ir_max)
 
-    wrng = random.Random(f"randputF:wells:{seed_value}")
+    wrng = make_seeded_rng(seed_value, "randputF:wells:")
     for k, p in enumerate(patches):
         well_seed = wrng.randint(1, 2**31 - 1)
         if p.kind == "fluid":
@@ -322,7 +330,7 @@ def apply_nonfinite_randomisation(
     from tool.prototypes.nonfinite_randomisation import NonfiniteConfig
 
     ncfg = NonfiniteConfig.from_config(config)
-    nrng = random.Random(f"randputF:nonfinite:{seed_value}")
+    nrng = make_seeded_rng(seed_value, "randputF:nonfinite:")
 
     for p in patches:
         rf = nrng.uniform(ncfg.richness_factor_min, ncfg.richness_factor_max)

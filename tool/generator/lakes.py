@@ -16,6 +16,7 @@ import random
 from dataclasses import dataclass
 
 from tool.common.db import VanillaDB
+from tool.common.rng import make_seeded_rng
 
 # Défauts config (settings.yaml section `lakes`).
 DEFAULT_MIN = 1
@@ -25,17 +26,20 @@ DEFAULT_RICHNESS = (100000, 600000)
 
 @dataclass
 class Lake:
+    """Un lac : ressource fluide (tuile aquatique, extractible à la pompe
+    offshore) et richesse (taille/densité ; volume infini)."""
     resource: str  # fluide
     richness: int  # taille/densité du lac (volume = infini)
 
     def to_seed(self) -> dict:
+        """Forme sérialisée dans ``seed["lakes"]``."""
         return {"resource": self.resource, "richness": self.richness}
 
 
 def make_rng(seed_value: int) -> random.Random:
-    # Flux indépendant des autres phases : ajouter des lacs ne change pas le
-    # tirage du reste de la seed.
-    return random.Random(f"randputF:lakes:{seed_value}")
+    """Flux RNG indépendant des lacs : ajouter des lacs ne change pas le
+    tirage du reste de la seed."""
+    return make_seeded_rng(seed_value, "randputF:lakes:")
 
 
 def pipable_lake_resources(db: VanillaDB) -> list[str]:
@@ -44,6 +48,9 @@ def pipable_lake_resources(db: VanillaDB) -> list[str]:
 
 
 def generate_lakes(rng: random.Random, db: VanillaDB, config: dict) -> list[Lake]:
+    """Tire les lacs de la seed : nombre (bornes config ``lakes.min/max``),
+    ressource (au plus un lac par fluide pipable, sans remise) et richesse
+    (bornes ``richness_fluid``)."""
     cfg = config.get("lakes", {})
     low = int(cfg.get("min", DEFAULT_MIN))
     high = int(cfg.get("max", DEFAULT_MAX))

@@ -57,7 +57,6 @@ Sûreté (vérifiée, pas une mécanique) :
 from __future__ import annotations
 
 import logging
-import random
 
 from tool.common.db import (
     SLOT_FLUID,
@@ -65,6 +64,7 @@ from tool.common.db import (
     VanillaDB,
     has_hidden_recipe,
 )
+from tool.common.rng import make_seeded_rng
 from tool.generator import recipes as _recipes_mod
 from tool.generator.early_oracle import build_early_sources, compute_early_reachable
 from tool.generator.recipes import (
@@ -454,7 +454,7 @@ def apply_extractor_timing(
         None,
     )
 
-    rng = random.Random(f"randputf:extractor-timing:{seed_value}")
+    rng = make_seeded_rng(seed_value, "randputf:extractor-timing:")
     free_count = len(starter.tech_steps)
     paid = list(range(free_count, len(all_tech_steps)))
     startup_raw = _startup_raw_resources(

@@ -13,6 +13,9 @@ from tool.common.db import ENVIRONMENTAL_ITEMS
 
 
 def validate_seed(seed: dict) -> list[str]:
+    """Valide la graine (anti-cycle, progressivité, complétude d'une tech
+    finale — le joueur a une voie vers le lancement) et renvoie la liste des
+    problèmes éventuels (vide si la seed est valide)."""
     issues: list[str] = []
     issues += _check_anti_cycle(seed)
     issues += _check_progressivity(seed)

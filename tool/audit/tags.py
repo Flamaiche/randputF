@@ -108,6 +108,8 @@ INVARIANTS = (
 
 @dataclass
 class AuditReport:
+    """Résultat de l'audit de tags : violations d'invariants bâtiments/items,
+    comptage par tag, entités sans rôle routé."""
     violations: list[str] = field(default_factory=list)
     tag_counts: dict[str, int] = field(default_factory=dict)
     untagged: list[str] = field(default_factory=list)
@@ -120,6 +122,7 @@ class AuditReport:
 
     @property
     def ok(self) -> bool:
+        """Vrai si l'audit ne relève aucune violation (bâtiments ni items)."""
         return not (self.violations or self.item_violations)
 
 
@@ -228,6 +231,7 @@ def audit_item_tags(db: VanillaDB) -> AuditReport:
 
 
 def summarize_tags(db: VanillaDB, report: AuditReport) -> str:
+    """Résumé textuel de l'audit de tags pour l'affichage CLI."""
     lines = [
         f"Bâtiments audités : {report.buildings_checked}",
         f"Tags distincts activés : {len(report.tag_counts)}",

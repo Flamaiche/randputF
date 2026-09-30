@@ -37,6 +37,8 @@ class ProgressiveExtractorsConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> ProgressiveExtractorsConfig:
+        """Construit la config progressive_extractors depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         cfg = config.get("progressive_extractors", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),

@@ -81,6 +81,8 @@ class RecursiveConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RecursiveConfig:
+        """Construit la config recursive depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         rec_cfg = config.get("recursive", {})
         return cls(
             category_weights={
@@ -134,12 +136,15 @@ class RecursiveConfig(PrototypeConfig):
         )
 
     def roll_tech_count(self, rng: random.Random) -> int:
+        """Nombre de technologies enfant tiré au sort (bornes config)."""
         return rng.randint(self.tech_count_min, self.tech_count_max)
 
     def roll_recipes_count(self, rng: random.Random) -> int:
+        """Nombre de recettes par bâtiment tiré au sort (bornes config)."""
         return rng.randint(self.recipes_per_building_min, self.recipes_per_building_max)
 
     def roll_science_cost(self, rng: random.Random) -> int:
+        """Coût en packs de science d'une tech tiré au sort (bornes config)."""
         return rng.randint(self.science_cost_min, self.science_cost_max)
 
     @property

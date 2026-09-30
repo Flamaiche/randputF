@@ -31,6 +31,8 @@ class DifficultyConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> DifficultyConfig:
+        """Construit la config difficulty depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         cfg = config.get("difficulty", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),

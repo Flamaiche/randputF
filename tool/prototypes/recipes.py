@@ -55,6 +55,8 @@ class RecipeConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RecipeConfig:
+        """Construit la config recipes depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         rec_cfg = config.get("recipes", {})
         return cls(
             ingredient_counts=[
@@ -94,12 +96,16 @@ class RecipeConfig(PrototypeConfig):
         )
 
     def roll_ingredient_count(self, rng: random.Random) -> int:
+        """Tire au sort le nombre d'ingrédients d'une recette (1-3 pondéré)."""
         return weighted_choice(rng, self.ingredient_counts)
 
     def roll_result_amount(self, rng: random.Random) -> int:
+        """Tire au sort le nombre de résultats d'une recette (1-2 pondéré)."""
         return weighted_choice(rng, self.result_amounts)
 
     def roll_energy(self, rng: random.Random, n_ingredients: int = 0) -> float:
+        """Tire au sort l'énergie d'une recette, majorée par le nombre
+        d'ingrédients (``energy_per_ingredient``)."""
         base = float(rng.choice(self.recipe_energies))
         return round(base * (1 + self.energy_per_ingredient * n_ingredients), 3)
 
@@ -116,7 +122,10 @@ class RecipeConfig(PrototypeConfig):
                    min(self.balance_max_factor, factor))
 
     def roll_ingredient_amount(self, rng: random.Random) -> int:
+        """Tire au sort le montant d'un ingrédient (bornes config)."""
         return rng.randint(self.ingredient_amount_min, self.ingredient_amount_max)
 
     def recipe_name(self, product_name: str) -> str:
+        """Nom canonique de la recette générée pour un produit donné
+        (``recipe_prefix`` + nom du produit)."""
         return f"{self.recipe_prefix}{product_name}"
