@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "randputf"
+version = "1.0.0"
+description = "randputF - generateur externe de seeds pour le randomizer total Factorio 2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+randputf = "tool.__main__:main"
+
+[tool.setuptools]
+include-package-data = true
+# Liste EXPLICITE (pas `packages.find`) : `find` + namespaces=true déborde
+# `include` et embarque TOUT dossier sans __init__ — mesuré en build pip réel :
+# `tools/` (scripts d'analyse hors paquet) arrivait dans site-packages.
+# ``mod``/``data``/``config`` sont des namespace packages (dépourvus
+# d'__init__.py), énumérés ici avec leurs sous-dossiers portant des assets.
+# HYGIÈNE : `bdist_wheel` zippe `build/lib` tel quel (builds incrémentaux) —
+# un build/lib pollué (ex. ancien paquet `tools`) réapparaît dans le wheel.
+# Toujours `rm -rf build` avant de reconstruire. CI = clone frais, sans risque.
+packages = [
+    "tool", "tool.audit", "tool.common", "tool.exporters", "tool.generator",
+    "tool.parsers", "tool.prototypes", "tool.replay", "tool.validator",
+    "mod", "mod.graphics", "mod.locale", "mod.locale.en", "mod.locale.fr",
+    "mod.seed", "data", "config",
+]
+
+# Assets embarqués dans le wheel : le tool doit pouvoir générer depuis un
+# install classique (pas seulement un checkout). ``mod``/``data``/``config``
+# deviennent des namespace packages (dépourvus d'__init__.py) dont les fichiers
+# voyagent ici ; ``tool.common.assets.asset_path`` les résout, avec repli dépôt.
+[tool.setuptools.package-data]
+mod = ["*.lua", "*.json", "graphics/*.png", "locale/en/*.cfg", "locale/fr/*.cfg"]
+data = ["*.json"]
+config = ["*.yaml"]
