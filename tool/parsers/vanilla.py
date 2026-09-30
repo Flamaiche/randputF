@@ -56,12 +56,17 @@ def is_junk(name: str) -> bool:
     )
 
 
+# Préfixe partagé avec le garde-fou Lua (exporter/control.lua, RANDPUTF_PREFIX).
+# Toute modification ici doit être répercutée là-bas et inversement.
 _RANDPUTF_PREFIX = "randputf-"
 _POLLUTABLE_SECTIONS = ("items", "fluids", "entities", "recipes")
 
 # Invariant vanilla 2.0 : ces fluides ne sont PAS des carburants (fuel_value 0).
 # La passe carburant de randputF les mute en place à 200 000 — un signal fiable
 # de dump pollué par le canal MUTATION (indétectable par le filtre de noms).
+# parameter-0..9 et fluid-unknown (internes 2.0, fuel_value 0 en base) sont
+# inclus : mesurés mutés dans un vrai dump pollué, ce sont aussi des cibles
+# possibles de la passe carburant.
 _VANILLA_NON_FUEL_FLUIDS = (
     "water",
     "crude-oil",
@@ -71,6 +76,17 @@ _VANILLA_NON_FUEL_FLUIDS = (
     "sulfuric-acid",
     "steam",
     "lubricant",
+    "parameter-0",
+    "parameter-1",
+    "parameter-2",
+    "parameter-3",
+    "parameter-4",
+    "parameter-5",
+    "parameter-6",
+    "parameter-7",
+    "parameter-8",
+    "parameter-9",
+    "fluid-unknown",
 )
 
 
@@ -109,6 +125,14 @@ def _check_dump_integrity(dump: dict) -> None:
     versionné les trahit. L'exporter REFUSE déjà un export pollué (garde-fou
     runtime) ; ce contrôle protège les dumps pollués déjà sur disque et rend
     l'erreur impossible à rater au chargement.
+
+    Limite assumée, et pourquoi elle est sans conséquence : le canal ENTITIES
+    (fuel_categories += "nuclear" sur les brûleurs, filtres boiler/heat-exchanger)
+    n'a pas d'invariant propre. Il n'en a pas besoin : la passe carburant mute
+    TOUJOURS des fluides (co-occurrence garantie) — un dump réellement pollué est
+    donc systématiquement attrapé par l'invariant fluides, y compris via les
+    internes parameter-*/fluid-unknown. La frontière de vérité reste le refus de
+    l'exporter ; ce garde est une défense en profondeur pour les dumps anciens.
     """
     for name in _VANILLA_NON_FUEL_FLUIDS:
         entry = (dump.get("fluids") or {}).get(name)
