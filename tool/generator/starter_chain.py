@@ -55,6 +55,13 @@ class StarterChain:
 
 
 def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch], *, has_lakes: bool = False, lake_resources: frozenset[str] = frozenset()) -> StarterChain:
+    """Les raws reportées à leur jalon (§6.2/§6.3 « late raws ») sont posées
+    dans la config (`StarterConfig.deferred`, settée avant la passe B de
+    ``pipeline.generate_seed``) — « tout est déjà setté » : AUCUNE recette du
+    starter (le lab, les transformateurs…) ne peut être tirée sur une raw
+    reportée, qui n'entre ni dans le pool initial ni dans le watershed early.
+    Dans la passe A (mesure), la config est sans ``deferred`` : rien n'est
+    exclu."""
     chain = StarterChain()
     chain.kit = _roll_starter_kit(rng, db)
 
@@ -65,14 +72,21 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
         if env_item in db.items:
             state.mark_obtained(SLOT_ITEM, env_item)
     for patch in patches:
+        if (patch.kind, patch.resource) in _config.deferred:
+            continue
         state.mark_obtained(patch.kind, patch.resource)
 
     # Bootstrap inline (§10ter) : activer le watershed pré-élec ici. Toutes
     # les recettes du starter (et de l'électricité, avant le gel pipeline.py)
     # tirent leurs ingrédients uniquement dans ce watershed, sans atelier
     # électrique : chaque produit promis est jouable pré-élec par construction.
-    patch_items = {p.resource for p in patches if p.kind == SLOT_ITEM}
+    patch_items = {
+        p.resource for p in patches
+        if p.kind == SLOT_ITEM and (p.kind, p.resource) not in _config.deferred
+    }
     early_items, early_fluids = build_early_sources(db, patch_items, set(lake_resources))
+    early_items -= {name for kind, name in _config.deferred if kind == SLOT_ITEM}
+    early_fluids -= {name for kind, name in _config.deferred if kind == SLOT_FLUID}
     state.early.activate(early_items, early_fluids)
 
     for resource_kind, resource_name in _unique_resources(patches):

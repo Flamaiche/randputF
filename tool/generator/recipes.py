@@ -20,6 +20,7 @@ chaudiere impossible).
 
 from __future__ import annotations
 
+import copy
 import random
 from collections import Counter
 from dataclasses import dataclass, field
@@ -94,6 +95,46 @@ class ProgressionState:
         return [(SLOT_ITEM, n) for n in sorted(self.obtained_items)] + [
             (SLOT_FLUID, n) for n in sorted(self.obtained_fluids)
         ]
+
+    def snapshot(self) -> "ProgressionState":
+        """Instantané PROFOND (rollback §4/§6.1) : aucun objet partagé avec
+        ``self`` — on peut continuer la construction puis revenir en arrière
+        sans fuite d'état (listes mutables, compteurs C2, early oracle).
+
+        Chaque champ est copié (sets/Counters dupliqués, recettes/steps/
+        assignations recopiées en profondeur). Les appels RNG déjà consommés
+        ne sont PAS remboursés : un rollback restaure l'état, pas le flux
+        aléatoire (le report du graphe rejoue les mêmes tirages puisqu'il
+        reparcourt les mêmes décisions)."""
+        return ProgressionState(
+            obtained_items=set(self.obtained_items),
+            obtained_fluids=set(self.obtained_fluids),
+            unlocked_buildings=set(self.unlocked_buildings),
+            recipes=copy.deepcopy(self.recipes),
+            steps=copy.deepcopy(self.steps),
+            pending=set(self.pending),
+            production=Counter(self.production),
+            consumption=Counter(self.consumption),
+            balance_target=self.balance_target,
+            building_fluid_assignments=copy.deepcopy(self.building_fluid_assignments),
+            early=copy.deepcopy(self.early),
+        )
+
+    def restore(self, snap: "ProgressionState") -> None:
+        """Restaure ``self`` EN PLACE depuis un instantané (rollback §4) :
+        tous les accumulateurs reprennent les valeurs de ``snap``, recopiés
+        en profondeur pour ne jamais partager d'objet avec l'instantané."""
+        self.obtained_items = set(snap.obtained_items)
+        self.obtained_fluids = set(snap.obtained_fluids)
+        self.unlocked_buildings = set(snap.unlocked_buildings)
+        self.recipes = copy.deepcopy(snap.recipes)
+        self.steps = copy.deepcopy(snap.steps)
+        self.pending = set(snap.pending)
+        self.production = Counter(snap.production)
+        self.consumption = Counter(snap.consumption)
+        self.balance_target = snap.balance_target
+        self.building_fluid_assignments = copy.deepcopy(snap.building_fluid_assignments)
+        self.early = copy.deepcopy(snap.early)
 
     def ensure_balance_target(self, rng: random.Random) -> None:
         """C2 : tire une fois la cible d'équilibre cons/prod de la seed,

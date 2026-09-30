@@ -23,38 +23,28 @@ from tool.generator import (
     tech_tree,
     wreck_loot,
 )
-from tool.generator import recipes
+from tool.generator import late_raws, recipes
+from tool.generator.late_raws import LateRawsPlan
 
 log = logging.getLogger(__name__)
 
 
-def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool = True) -> dict:
-    """Génère une seed complète à partir de la base vanilla."""
-    cfg = config or {}
+def _build_prefix(rng, db, cfg, patches, lake_list):
+    """Tout ce qui précède la passe finale : chaîne du starter, électricité,
+    gel des promesses, fluides de bâtiment, gisements, ``base`` gelée.
 
-    # Distribuer la config aux modules via set_config()
-    recipes.set_config(cfg)
-    starter_chain.set_config(cfg)
-    recursive_phase.set_config(cfg)
-    relay_phase.set_config(cfg)
-    tech_tree.set_config(cfg)
-    easeup_phase.set_config(cfg)
+    Facteurisé pour être REJOUABLE (§6.2/§6.3 « late raws ») : la passe B doit
+    repartir d'AVANT ``build_starter_chain`` — et non seulement d'avant la
+    récursion — sinon les recettes du starter (le lab) restent posées sur un
+    graphe non gaté, puisque ``degrade()`` ne déplace qu'un marker
+    ``obtained``. Déterministe pour un triplet (état RNG, patchs, lacs) donné :
+    c'est exactement ce qui rend le rejeu possible. Les raws reportées à leur
+    jalon sont portées par la CONFIG (``StarterConfig.deferred``), posée avant
+    la passe B : les deux passes exécutent le même code, seul le ``cfg`` diffère.
 
-    rng = map_patches.make_rng(db.seed_value)
-
-    # Phase 1bis : Lacs de fluide (§7.5). Flux RNG indépendant (make_rng dédié).
-    # 3e type de raw : count ∈ [min, max], chaque lac un fluide du pool pipable ;
-    # 0 lac = aucun lac (le mod supprime l'eau vanilla). Tirés AVANT les patchs
-    # pour que ceux-ci évitent de reposer en patch un fluide déjà en lac (C6).
-    lake_list = lakes.generate_lakes(lakes.make_rng(db.seed_value), db, cfg)
-    log.debug("lacs tirés: %s", [la.to_seed() for la in lake_list])
-
-    # Phase 1 : Ressources au sol. Un fluide déjà en lac n'est jamais re-tiré
-    # en patch (C6).
-    patches = map_patches.generate_patches(
-        rng, db, cfg, lake_resources={la.resource for la in lake_list}
-    )
-
+    ``patches``/``lake_list`` sont modifiés en place (réparations électricité) :
+    l'appelant doit passer des copies.
+    """
     # Phase 2 : Chaîne initiale (starter). ``has_lakes`` : si au moins un lac
     # est tiré, le landfill est craftable dès le bootstrap (C4). ``lake_resources``
     # : fluides des lacs extraits par la pompe du starter — le kit contient une
@@ -137,9 +127,163 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     # INSTANTANÉ GELÉ du pool de début de run : après starter + électricité,
     # avant le récursif. Source exclusive des recettes relais (§9.3).
     base = copy.deepcopy(starter.state)
+    return starter, base, patches, lake_list, lake_res, building_fluid_assignments
 
-    # Phase 4 : Récursion pondérée
-    recursive_phase.expand_recursive(rng, db, patches, starter, lake_res)
+
+def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool = True) -> dict:
+    """Génère une seed complète à partir de la base vanilla."""
+    cfg = config or {}
+
+    # Distribuer la config aux modules via set_config()
+    recipes.set_config(cfg)
+    starter_chain.set_config(cfg)
+    recursive_phase.set_config(cfg)
+    relay_phase.set_config(cfg)
+    tech_tree.set_config(cfg)
+    easeup_phase.set_config(cfg)
+
+    rng = map_patches.make_rng(db.seed_value)
+
+    # Phase 1bis : Lacs de fluide (§7.5). Flux RNG indépendant (make_rng dédié).
+    # 3e type de raw : count ∈ [min, max], chaque lac un fluide du pool pipable ;
+    # 0 lac = aucun lac (le mod supprime l'eau vanilla). Tirés AVANT les patchs
+    # pour que ceux-ci évitent de reposer en patch un fluide déjà en lac (C6).
+    lake_list = lakes.generate_lakes(lakes.make_rng(db.seed_value), db, cfg)
+    log.debug("lacs tirés: %s", [la.to_seed() for la in lake_list])
+
+    # Phase 1 : Ressources au sol. Un fluide déjà en lac n'est jamais re-tiré
+    # en patch (C6).
+    patches = map_patches.generate_patches(
+        rng, db, cfg, lake_resources={la.resource for la in lake_list}
+    )
+
+    # §6.2/§6.3 « late raw resources » : deux passes (même carte, même flux RNG) :
+    #   - passe A : pipeline complet (graphe non gaté) → MESURE de la dépendance
+    #     et décision des jalons (TOUTES les raws non-startup, échelon = tier du
+    #     1er consommateur) ;
+    #   - passe B : rejeu du PRÉFIXE complet (starter inclus) avec les raws
+    #     gâtées retirées des sources early, puis récursion avec injections
+    #     d'échelon (déterministe : au premier échelon ≥ plancher).
+    # Rejouer le starter — et pas seulement la récursion — est nécessaire : les
+    # recettes du starter (le lab) sont tirées sur le graphe complet, et
+    # ``degrade()`` seul ne déplace qu'un marker ``obtained``, ce qui laissait
+    # une recette du starter dépendre d'une raw verrouillée à son jalon.
+    lr_cfg = late_raws.LateRawsConfig.from_config(cfg)
+    if not lr_cfg.enabled:
+        starter, base, patches, lake_list, lake_res, bfa = _build_prefix(
+            rng, db, cfg, patches, lake_list
+        )
+        return _finalize_pipeline(
+            rng, db, cfg, starter, base, patches, lake_list, lake_res, bfa,
+            validate=validate,
+        )
+
+    pre_patches = list(patches)
+    pre_lake_list = list(lake_list)
+    pre_rng_state = rng.getstate()
+    a_starter, a_base, a_patches, a_lake_list, a_lake_res, a_bfa = _build_prefix(
+        rng, db, cfg, list(pre_patches), list(pre_lake_list)
+    )
+    seed_a = _finalize_pipeline(
+        rng, db, cfg, a_starter, a_base, a_patches, a_lake_list,
+        a_lake_res, a_bfa, validate=False,
+    )
+    plan = late_raws.plan_from_seed(seed_a, lr_cfg)
+    if not plan.gated or all((plan.floor_tier.get(k, 0) or 0) <= 0 for k in plan.gated):
+        # Gating « inerte » : aucune raw gatée n'est réellement retenue (tous
+        # les jalons ≤ 0 → disponibles dès le 1er échelon). Rejouer la passe B
+        # ne ferait que produire un ARBRE différent sans changer la
+        # disponibilité — régression seed 1757 (défaite en gaté à la tech 21
+        # alors que la disponibilité était identique au baseline, victoire
+        # 89/89). On rend la seed de la passe A telle quelle, byte-identique à
+        # la seed historique : victoire garantie comme en baseline. La
+        # validation est rejouée par `_finalize_pipeline` quand elle est
+        # demandée (côté CLI) ; `validate=False` (sweeps/tests) renvoie
+        # directement la seed déjà assemblée.
+        if not validate:
+            return seed_a
+        rng.setstate(pre_rng_state)
+        starter, base, patches, lake_list, lake_res, bfa = _build_prefix(
+            rng, db, cfg, list(pre_patches), list(pre_lake_list)
+        )
+        return _finalize_pipeline(
+            rng, db, cfg, starter, base, patches, lake_list, lake_res, bfa,
+            validate=True,
+        )
+    # Passe B : on repart du MÊME point que dans la passe A, mais les jalons du
+    # plan sont posés « dans le vide » avant le run — ``StarterConfig.deferred``
+    # (lue par build_starter_chain) — : les raws verrouillées n'apparaissent
+    # nulle part, sans paramètre à faire transiter dans le code. Copie le config
+    # au lieu de le muter : la config du caller est partagée par copie
+    # superficielle entre seeds (un seed par process c'est isolé, mais les
+    # sweeps/tests enchaînent les seeds) — muter ``cfg["starter"]["deferred"]``
+    # en place laisserait une seed INERTE (qui ne passe pas par ce code)
+    # hériter du jalon de la seed non-inerte précédente (régression seed 1269).
+    starter_cfg = dict(cfg.get("starter") or {})
+    starter_cfg["deferred"] = sorted(map(list, plan.gated))
+    cfg = dict(cfg)
+    cfg["starter"] = starter_cfg
+    starter_chain.set_config(cfg)
+    rng.setstate(pre_rng_state)
+    starter, base, patches, lake_list, lake_res, bfa = _build_prefix(
+        rng, db, cfg, list(pre_patches), list(pre_lake_list)
+    )
+    late_raws.degrade(starter.state, base, plan)
+    return _finalize_pipeline(
+        rng, db, cfg, starter, base, patches, lake_list, lake_res, bfa,
+        late_plan=plan, validate=validate,
+    )
+
+
+def _export_late_raws(late_plan: LateRawsPlan | None) -> dict | None:
+    """§6 révisé — disponibilité réelle des raws pour le rejoueur.
+
+    Chaque raw gated exporte son JALON = échelon science (index de chaîne des
+    packs) où elle redevient utilisable — le rejoueur la débloque dès qu'il
+    atteint ce tier (déterministe, aucun alignement d'index de tech).
+    Les raws startup sont listées comme libres dès le spawn (jamais dans
+    ``gated``). ``None`` quand le gating est désactivé → le rejoueur garde
+    l'historique (carte = infinie d'office). Quand le gating est activé mais
+    que la boîte du spawn (D4bis) consomme toutes les raws, ``gated`` est vide
+    mais la clé est quand même présente (``startup`` complet) : c'est la forme
+    dégénérée et réversible d'une seed mesurée."""
+    if late_plan is None:
+        return None
+    gated: dict[str, dict] = {}
+    for kind, name in sorted(late_plan.gated):
+        gated[name] = {"kind": kind, "tier": late_plan.floor_tier.get((kind, name), 0)}
+    return {
+        "startup": sorted((list(k) for k in late_plan.startup)),
+        "gated": gated,
+    }
+
+
+def _finalize_pipeline(
+    rng,
+    db,
+    cfg: dict,
+    starter,
+    base,
+    patches,
+    lake_list,
+    lake_res: frozenset[str],
+    building_fluid_assignments: dict,
+    *,
+    late_plan: LateRawsPlan | None = None,
+    validate: bool = True,
+) -> dict:
+    """Suffixe de génération : récursion → relais → techs → assemblage.
+
+    Factorisée pour le gating §6.3 (passe A de mesure puis passe B dégradée) ;
+    le chemin sans ``late_plan`` est strictement le comportement historique.
+    ``lake_res`` : fluides des lacs, vus du pool de craft (un lac GATÉ reste
+    dans ``lake_res`` — la carte le garde et ``_raw_resources`` le couvre
+    encore, seul son marquage obtained est reporté, cf. recursive_phase).
+    """
+    # Phase 4 : Récursion pondérée (avec jalons de late raws si plan).
+    recursive_phase.expand_recursive(
+        rng, db, patches, starter, lake_res, late_plan=late_plan
+    )
 
     # Phase 4ter : chaîne fusée intable (victoire possible, §14). Consomme le
     # pool profond ; passe AVANT les relais pour qu'aucun ingrédient
@@ -229,7 +373,12 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
     from tool.generator.extractor_timing import apply_extractor_timing
 
     extractor_report = apply_extractor_timing(
-        db, starter, all_tech_steps, seed_value=db.seed_value
+        db,
+        starter,
+        all_tech_steps,
+        seed_value=db.seed_value,
+        patch_resources={p.resource for p in patches},
+        lake_resources={la.resource for la in lake_list},
     )
 
     # Ré-applique la garantie d'usage dure sur l'ORDRE FINAL (recettes relais et
@@ -303,6 +452,13 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
         # l'audit et les tests comme source de vérité de l'« unlock juste-au
         # -besoin » ; ignoré par le mod.
         "extractor_timing": extractor_report,
+        # §6 révisé (late raws) : DISPONIBILITÉ réelle des ressources pour le
+        # rejoueur — les raws non-startup ne sont utilisables qu'une fois leur
+        # jalon atteint (`tier` = échelon science d'injection) ; les raws
+        # startup sont libres dès le spawn. Un seed SANS cette clé garde le
+        # comportement historique (carte = infinie d'office) ; un seed gaté
+        # l'emporte pour chaque raw listée.
+        "late_raws": _export_late_raws(late_plan),
         # Loot du site de crash (§7) : pool de matériaux + loi pondérée 0..3 par slot
         # (seed.wreck.counts = [c0, c1, c2, c3], somme des valeurs = 100).
         "wreck": wreck_loot.build_wreck_config(cfg, db),
@@ -319,6 +475,19 @@ def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool =
             **starter.state.building_fluid_assignments,
         },
     }
+
+    # §6.3 : le plan exporté est REMESURÉ sur la seed finale (celle servie au
+    # rejoueur), pas sur la seed de mesure A. Le trigger de la 1re tech payante,
+    # les recettes du récursif et le rapport C3 de B peuvent différer de A
+    # (drift de structure) — exporter le plan de A rendrait alors la
+    # disponibilité du rejoueur contradictoire avec l'analyse D4bis/C3 de la
+    # seed rejouée (ex. turbine dont le fluide d'entrée est « gated » en A mais
+    # « startup » en B). Le replan sur B ne modifie pas la construction (déjà
+    # cuite sous le plan A) : il aligne la GARANTIE de disponibilité sur la
+    # structure réellement servie.
+    if late_plan is not None:
+        lr_cfg = late_raws.LateRawsConfig.from_config(cfg)
+        seed["late_raws"] = _export_late_raws(late_raws.plan_from_seed(seed, lr_cfg))
 
     # Phase 6bis : C1 — quantités de craft (post-assemblage, §IDEES C1). Passe
     # RNG dédié sur les montants (la solvabilité ne lit que la structure) ;
