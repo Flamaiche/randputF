@@ -34,6 +34,7 @@ from collections import Counter, defaultdict
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, SLOT_ITEM, VanillaDB
 from tool.common.rng import make_seeded_rng
+from tool.common.tagsets import ENDGAME_EXCLUDED
 from tool.generator.recipes import ProgressionState, _make_recipe
 from tool.prototypes.easeup import EaseupConfig
 
@@ -42,10 +43,6 @@ _config = EaseupConfig()
 # Suffixes des techs ease-up (jamais un chiffre : un nom de tech en `-N`
 # force des niveaux contigus dans Factorio).
 _BASE_LABELS = "abcdefghijklmnopqrstuvwxyz"
-
-# Items de la chaîne de LANÇage (§14) : jamais ease-up. Un raccourci vers le
-# produit lancé ou le silo trivialiserait la victoire.
-_ENDGAME_EXCLUDED = frozenset({"rocket", "satellite", "rocket-silo", "rocket-part"})
 
 
 def set_config(config: dict) -> None:
@@ -299,7 +296,7 @@ def _detect_heavy(
         item = db.items.get(name)
         if item is not None and item.is_science_pack:
             continue
-        if name in ROCKET_CHAIN or name in _ENDGAME_EXCLUDED:
+        if name in ROCKET_CHAIN or name in ENDGAME_EXCLUDED:
             continue
         circular = _is_circular((kind, name), by_product, state)
         if not circular and depth < _config.depth_threshold:

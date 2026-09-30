@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tool.common.db import BuildingDef, FluidDef, ItemDef, RecipeRef, VanillaDB, has_hidden_recipe, ENVIRONMENTAL_ITEMS
+from tool.common.tagsets import RAIL_TYPES, VIRTUAL_ITEM_TYPES
 
 
 JUNK_PREFIXES = ("parameter-",)
@@ -43,23 +44,6 @@ JUNK_NAMES = {
     "coin",
     "copper-wire",
 }
-
-
-# Rails POLLABLES (vrai tracé de voie) : droits/courbes/half-diagonal, legacy
-# et surélevés. Les ``-remnants``, ``rail-ramp``/``rail-support`` (dummies) et
-# ``loader``/``linked-belt`` sont exclus. Jeu de TYPES d'entités API 2.0.
-RAIL_TYPES = frozenset({
-    "straight-rail",
-    "curved-rail-a",
-    "curved-rail-b",
-    "half-diagonal-rail",
-    "legacy-straight-rail",
-    "legacy-curved-rail",
-    "elevated-straight-rail",
-    "elevated-curved-rail-a",
-    "elevated-curved-rail-b",
-    "elevated-half-diagonal-rail",
-})
 
 
 def is_junk(name: str) -> bool:
@@ -175,17 +159,11 @@ def _is_environmental_item(name: str, subgroup: str, itype: str) -> bool:
     return name in ENVIRONMENTAL_ITEMS
 
 
-_VIRTUAL_ITEM_TYPES = frozenset({
-    "blueprint", "blueprint-book", "deconstruction-item", "upgrade-item",
-    "selection-tool", "copy-paste-tool", "rail-planner", "spidertron-remote",
-})
-
-
 def _is_virtual_item(name: str, itype: str, place_result: str) -> bool:
     """Items « contrôle » non fabricables / non empilables (blueprint, planners,
     remotes) : détectés par type ET par absence d'objet posé. Le rail vanilla
     (``rail-planner`` 2.0) n'est PAS virtuel : il se fabrique et se pose."""
-    return itype in _VIRTUAL_ITEM_TYPES and not place_result
+    return itype in VIRTUAL_ITEM_TYPES and not place_result
 
 
 def equivalent_functional_type(b: BuildingDef) -> str:
