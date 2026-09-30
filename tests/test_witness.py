@@ -72,3 +72,19 @@ def test_witness_reproductible_sur_deux_assemblages(tmp_path):
         digests.append(witness_md5(dirname))
 
     assert digests[0] == digests[1]
+
+
+def test_witness_independant_du_nom_du_dossier(tmp_path):
+    """Le préfixe racine est MOD_NAME_VERSIONED, PAS mod_dir.name : deux
+    dossiers nommés différemment mais avec le même contenu doivent donner le
+    même digest. (Point relevé en review : mod_dir.name fuitait dans le md5.)"""
+    src = _make_mod_dir(tmp_path / "src", ["locale/fr/randputf.cfg", "locale/en/randputf.cfg"])
+    renamed_dir = _make_mod_dir(tmp_path / "copie", ["locale/fr/randputf.cfg", "locale/en/randputf.cfg"])
+    renamed = renamed_dir.with_name("mon_dossier_renomme")
+    renamed_dir.rename(renamed)
+
+    assert src.name != renamed.name
+    assert witness_md5(src) == witness_md5(renamed)
+    # et la racine est bien randputF_<version>, quel que soit le dossier
+    ref = witness_md5(src)
+    assert ref == witness_md5(renamed, prefix="randputF_1.0.0")

@@ -33,6 +33,8 @@ import os
 import zipfile
 from pathlib import Path
 
+from tool.common.version import MOD_NAME_VERSIONED
+
 # Entrées exclues du témoin (voir docstring).
 WITNESS_EXCLUDED = {"seed.graph.html"}
 
@@ -57,16 +59,21 @@ def canonical_entries(mod_dir: Path, excluded: set[str] = WITNESS_EXCLUDED):
     return entries
 
 
-def witness_md5(mod_dir: Path) -> str:
+def witness_md5(mod_dir: Path, prefix: str | None = None) -> str:
     """md5 du mod assemblé, canonisé en zip déterministe.
 
-    ``mod_dir`` doit être le dossier du mod ``randputF_<version>/``. L'entrée
-    racine est préfixée ``randputF_<version>/`` (le nom du mod installé).
+    ``mod_dir`` est le dossier du mod assemblé. L'entrée racine est préfixée
+    par ``prefix``, fixé à ``MOD_NAME_VERSIONED`` (ex. ``randputF_1.0.0``) —
+    PAS au nom du dossier : un appel sur un dossier renommé doit donner le
+    même digest pour le même contenu. Le mod installé PORTERA toujours ce
+    nom (``_build_mod``) : le témoin publié ne dépend pas de l'endroit où on
+    a assemblé.
     """
+    root_prefix = prefix or MOD_NAME_VERSIONED
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:  # entrées STOCKÉES : zlib build-indépendant
         for rel, path in canonical_entries(mod_dir):
-            zi = zipfile.ZipInfo(f"{mod_dir.name}/{rel}", _ZIP_DATE)
+            zi = zipfile.ZipInfo(f"{root_prefix}/{rel}", _ZIP_DATE)
             zi.compress_type = zipfile.ZIP_STORED
             zi.external_attr = _ZIP_MODE
             zf.writestr(zi, path.read_bytes())
