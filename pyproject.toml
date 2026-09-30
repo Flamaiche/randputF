@@ -17,5 +17,19 @@ dev = ["pytest>=8"]
 [project.scripts]
 randputf = "tool.__main__:main"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
-include = ["tool*"]
+where = ["."]
+include = ["tool*", "mod", "data", "config"]
+namespaces = true
+
+# Assets embarqués dans le wheel : le tool doit pouvoir générer depuis un
+# install classique (pas seulement un checkout). ``mod``/``data``/``config``
+# deviennent des namespace packages (dépourvus d'__init__.py) dont les fichiers
+# voyagent ici ; ``tool.common.assets.asset_path`` les résout, avec repli dépôt.
+[tool.setuptools.package-data]
+mod = ["*.lua", "*.json", "graphics/*.png", "locale/en/*.cfg", "locale/fr/*.cfg"]
+data = ["*.json"]
+config = ["*.yaml"]

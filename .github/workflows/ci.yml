@@ -18,3 +18,42 @@ jobs:
           pip install -e .[dev]
       - name: Tester
         run: pytest -q
+
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer le wheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Generer la seed 5 depuis /tmp (hors du checkout)
+        run: |
+          cd /tmp
+          randputf generate --seed 5 --out witness
+          python - <<'PY'
+          import hashlib, io, os, zipfile
+          out = "/tmp/witness/randputF_1.0.0"
+          buf = io.BytesIO()
+          z = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9)
+          for root, _, fs in sorted(os.walk(out)):
+              for f in sorted(fs):
+                  if f == "seed.graph.html":  # dépend de la version Graphviz : hors témoin
+                      continue
+                  p = os.path.join(root, f)
+                  rel = "randputF_1.0.0/" + os.path.relpath(p, out)
+                  zi = zipfile.ZipInfo(rel, (1980, 1, 1, 0, 0, 0))
+                  zi.compress_type = zipfile.ZIP_DEFLATED
+                  zi.external_attr = 0o100644 << 16
+                  z.writestr(zi, open(p, "rb").read())
+          z.close()
+          digest = hashlib.md5(buf.getvalue()).hexdigest()
+          # Témoin publié dans les notes de la release v1.0.0 : le wheel doit
+          # produire à l'octet près le même mod que le checkout du tag.
+          expected = "6f1a8c4dfe4fe1686193ea6ee248852c"
+          print("seed 5 ->", digest)
+          assert digest == expected, f"digest divergent: {digest}"
+          PY
