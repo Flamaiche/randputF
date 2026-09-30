@@ -222,12 +222,18 @@ randputF/
 ├── tools/               # scripts dev (classify_late_raws, audits par paquet)
 ├── mod/                 # source du mod Factorio 2.0
 ├── exporter/            # mod compagnon (dump JSON des prototypes)
-├── tests/               # tests unitaires (pytest) — 705 tests
+├── tests/               # tests unitaires (pytest)
 └── output/              # mods assemblés (généré)
 ```
 
 Le détail par fichier est décrit dans
 [`docs/architecture.md`](docs/architecture.md#18-structure-du-projet).
+
+---
+
+## Licence
+
+MIT — voir [`LICENSE`](LICENSE).
 
 ---
 

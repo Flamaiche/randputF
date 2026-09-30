@@ -19,11 +19,20 @@ randputf = "tool.__main__:main"
 
 [tool.setuptools]
 include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["tool*", "mod", "data", "config"]
-namespaces = true
+# Liste EXPLICITE (pas `packages.find`) : `find` + namespaces=true déborde
+# `include` et embarque TOUT dossier sans __init__ — mesuré en build pip réel :
+# `tools/` (scripts d'analyse hors paquet) arrivait dans site-packages.
+# ``mod``/``data``/``config`` sont des namespace packages (dépourvus
+# d'__init__.py), énumérés ici avec leurs sous-dossiers portant des assets.
+# HYGIÈNE : `bdist_wheel` zippe `build/lib` tel quel (builds incrémentaux) —
+# un build/lib pollué (ex. ancien paquet `tools`) réapparaît dans le wheel.
+# Toujours `rm -rf build` avant de reconstruire. CI = clone frais, sans risque.
+packages = [
+    "tool", "tool.audit", "tool.common", "tool.exporters", "tool.generator",
+    "tool.parsers", "tool.prototypes", "tool.replay", "tool.validator",
+    "mod", "mod.graphics", "mod.locale", "mod.locale.en", "mod.locale.fr",
+    "mod.seed", "data", "config",
+]
 
 # Assets embarqués dans le wheel : le tool doit pouvoir générer depuis un
 # install classique (pas seulement un checkout). ``mod``/``data``/``config``
