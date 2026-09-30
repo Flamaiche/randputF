@@ -27,7 +27,12 @@ from tool.common.witness import witness_md5
 CONFIG_PATH = asset_path("config") / "settings.yaml"
 MOD_SOURCE = asset_path("mod")
 DUMP_PATH_DEFAULT = asset_path("data") / "vanilla_dump.json"
-_OUTPUT_REPO = (repo_root() / "mod" / "info.json").exists()
+# Marqueur de checkout : ``pyproject.toml`` n'est jamais livré dans le wheel
+# (il vit dans le ``.dist-info``), alors que ``mod/info.json`` existe dans les
+# deux cas. Sans ce test, un install classique écrivait le mod généré dans
+# ``site-packages/output`` — sale, et fatal si site-packages est en lecture
+# seule (install système / PEP 668). Depuis un checkout on garde ``<repo>/output``.
+_OUTPUT_REPO = (repo_root() / "pyproject.toml").exists()
 OUTPUT_DIR = repo_root() / "output" if _OUTPUT_REPO else Path.cwd() / "output"
 
 
@@ -151,15 +156,20 @@ def cmd_generate(args: argparse.Namespace) -> None:
     seed = generate_seed(db, config=cfg)
 
     # Une seed peut être non solvable : régénérer avec une graine dérivée.
+    # Avec ``--seed N`` la dérivation reste déterministe (N+1, N+2…) pour ne
+    # jamais remplacer silencieusement la valeur demandée par l'horloge.
+    base = args.seed if args.seed is not None else int(time.time() * 1000)
     attempts = 0
-    while validate_seed(seed):
+    issues = validate_seed(seed)
+    while issues:
         attempts += 1
         if attempts >= 10:
-            for issue in validate_seed(seed)[:10]:
+            for issue in issues[:10]:
                 print(f"[INVALIDE] {issue}")
             sys.exit(2)
-        db.seed_value = int(time.time() * 1000) + attempts
+        db.seed_value = base + attempts
         seed = generate_seed(db, config=cfg)
+        issues = validate_seed(seed)
 
     if args.install:
         paths = cfg.get("paths", {})
@@ -178,19 +188,23 @@ def cmd_generate(args: argparse.Namespace) -> None:
             print("Copie-le manuellement dans ton dossier mods Factorio.")
     else:
         out_dir = Path(args.out) if args.out else OUTPUT_DIR
-        zip_path = _build_mod(seed, out_dir)
-        html_path = zip_path / "seed.graph.html"
+        mod_path = _build_mod(seed, out_dir)
+        html_path = mod_path / "seed.graph.html"
         write_seed_graph_html(seed, html_path)
-        print(f"Seed {db.seed_value} valide, mod assemblé dans {zip_path}")
-        print(f"Graphe interactif (cliquable) exporté dans {html_path}")
+        print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
+        if html_path.exists():
+            print(f"Graphe interactif (cliquable) exporté dans {html_path}")
+        else:
+            print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
 
 
 def cmd_difficulty(args: argparse.Namespace) -> None:
     """Génère une seed et affiche son ardoise de difficulté (recettes
     primaires, DAG)."""
     db = _load_db(args.demo, Path(args.dump))
+    cfg = _load_config()
     db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
-    seed = generate_seed(db)
+    seed = generate_seed(db, config=cfg)
     report = compute_difficulty(seed)
     print(f"Ardoise de la seed {db.seed_value} (recettes primaires, DAG)")
     print(summarize_difficulty(report))

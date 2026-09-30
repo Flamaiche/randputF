@@ -159,7 +159,10 @@ def test_graph_html_embeds_technology_info(tmp_path: Path, monkeypatch) -> None:
     assert '"amount": 6' in html
 
 
-def test_graph_format_mini() -> None:
+def test_graph_format_mini(monkeypatch) -> None:
+    # Icônes neutralisées : les assertions de shape dépendent du dossier
+    # d'icônes Factorio — présent sur la machine du dev, absent en CI.
+    monkeypatch.setattr("tool.exporters.seed_graph._ICONS_DIR", None)
     dot = build_seed_graph_dot(_tiny_seed())
     assert "digraph seed {" in dot
     assert '"iron-stick" -> "wood" [label="2"];' in dot
