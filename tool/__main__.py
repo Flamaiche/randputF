@@ -14,6 +14,7 @@ except ImportError:
 
 from tool.common.db import VanillaDB
 from tool.common.demo import build_demo_db
+from tool.common.version import MOD_NAME_VERSIONED, VERSION
 from tool.exporters.mod_seed import write_seed_files
 from tool.exporters.seed_graph import write_seed_graph_html
 from tool.generator.pipeline import generate_seed
@@ -66,7 +67,7 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
 
 def _build_mod(seed: dict, dest: Path) -> Path:
     """Assemble le mod complet dans dest. Retourne le chemin du dossier."""
-    mod_name = "randputF_0.1.0"
+    mod_name = MOD_NAME_VERSIONED
     mod_dir = dest / mod_name
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -89,7 +90,7 @@ def _build_mod(seed: dict, dest: Path) -> Path:
 
 def _install_mod(seed: dict, mods_dir: Path) -> None:
     """Copie le mod dans le dossier Factorio mods + met a jour mod-list.json."""
-    mod_name = "randputF_0.1.0"
+    mod_name = MOD_NAME_VERSIONED
     dest = mods_dir / mod_name
 
     if dest.is_symlink():
@@ -227,7 +228,7 @@ def main(argv: list[str] | None = None) -> None:
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
     p_gen.add_argument("--dump", default="data/vanilla_dump.json")
-    p_gen.add_argument("--out", default=None, help="Dossier de sortie (defaut: output/randputF_0.1.0)")
+    p_gen.add_argument("--out", default=None, help="Dossier de sortie (defaut: output/randputF_<version>)")
     p_gen.add_argument("--seed", type=int, default=None, help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_gen.add_argument("--install", action="store_true", help="Installe le mod directement dans Factorio")
     p_gen.set_defaults(func=cmd_generate)

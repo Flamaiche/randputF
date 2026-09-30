@@ -100,7 +100,8 @@ flatpak). Ensuite :
 .venv/bin/python -m tool generate --seed 5 --install
 ```
 
-`--install` assemble le mod et le copie dans `factorio_mods/randputF_0.1.0/`
+`--install` assemble le mod et le copie dans `factorio_mods/randputF_<version>/`
+(version lue dans `mod/info.json`)
 en mettant à jour `mod-list.json`. Si `factorio_mods` est absent ou
 introuvable, le mod est assemblé dans `output/` et son chemin est affiché
 pour copie manuelle. Au lancement de Factorio : les patchs tirés remplacent
