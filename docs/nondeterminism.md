@@ -322,8 +322,8 @@ leur position.
   — le config du caller est partagé par **copie superficielle** entre seeds
   (`dict(config)` ne copie pas le sous-dict `starter`) → `deferred` était muté
   **en place** dans la config partagée et n'était ré-écrasé que par les seeds
-  qui rejouent la passe B. Le retour anticipé « gating inerte » (§5 des
-  DEVIANCES) rendait alors une seed inerte dépendante du jalon `deferred` laissé
+  qui rejouent la passe B. Le retour anticipé « gating inerte » (§5 du catalogue des dérives, branche
+`dev`) rendait alors une seed inerte dépendante du jalon `deferred` laissé
   par la seed non-inerte précédente.
 - **Découvert sur** : seed 1269 — défaite en gaté (tech 21, `light-oil` du pack
   `automation-science-pack`) quand on la générait après ~40 autres seeds dans le
