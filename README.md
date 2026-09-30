@@ -174,13 +174,23 @@ pour re-générer ce dump (ajout de contenu, nouvelle version du jeu) :
 
 1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.0/` ;
    si le symlink n'est pas détecté (sandbox Flatpak), utilise une copie du dossier ;
-2. lance Factorio une partie quelques secondes — à l'init, il écrit
-   `script-output/randputF/vanilla_dump.json` dans le dossier user-data
-   (sans `randputF` monté, sinon c'est sa data-stage qui bloque l'export) ;
+2. **désactive `randputF` pour cet export** (l'exporter refuse sinon) ; lance
+   Factorio une partie quelques secondes — à l'init, il écrit
+   `script-output/randputF/vanilla_dump.json` dans le dossier user-data ;
 3. copie ce fichier dans `data/vanilla_dump.json` du projet ;
-4. **désactive `randputf-exporter` avant toute partie avec le mod principal** :
-   les deux ne cohabitent pas pour l'instant (l'exporter est un outil compagnon
-   de développement, destiné à disparaître ou fusionner dans le mod principal).
+4. l'exporter reste un outil compagnon de développement, destiné à disparaître
+   ou fusionner dans le mod principal.
+
+> **Pourquoi désactiver `randputF` pour l'export** : exporter depuis une partie
+> où randputF est actif écrirait un dump « pollué ». La pollution n'est pas que
+> des recettes `randputf-*` ajoutées — surtout, des prototypes vanilla sont
+> MUTÉS en place (ex. `fuel_value` 0 → 200 000 sur `crude-oil`), des valeurs qui
+> ressemblent à du contenu légitime et qui changent la seed sans rien casser.
+> Trois barrières s'en protègent : l'exporter **refuse** un export pollué (log
+> explicite, aucun fichier écrit), le tool **rejette** un dump déjà muté au
+> chargement (invariant vanilla 2.0 `fuel_value == 0`), et le filtre `randputf-`
+> couvre le canal additif des dumps anciens. Pendant une partie normale, les
+> deux mods peuvent rester actifs.
 
 ## Structure du projet
 
