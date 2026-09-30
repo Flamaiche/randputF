@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+from tool.common.version import MOD_NAME_VERSIONED
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -41,7 +43,7 @@ def _generate(seed: int, hash_seed: str, out: Path) -> Path:
         capture_output=True,
         timeout=120,
     )
-    return out / "randputF_0.1.0" / "seed" / "seed.json"
+    return out / MOD_NAME_VERSIONED / "seed" / "seed.json"
 
 
 @pytest.mark.parametrize("seed", [1337, 1299])

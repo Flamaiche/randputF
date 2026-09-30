@@ -10,6 +10,7 @@ import copy
 import logging
 
 from tool.common.db import SLOT_ITEM, VanillaDB
+from tool.common.version import FACTORIO_VERSION, VERSION
 from tool.generator import (
     building_fluids,
     easeup_phase,
@@ -422,8 +423,8 @@ def _finalize_pipeline(
     seed = {
         "meta": {
             "seed": db.seed_value,
-            "generator_version": "0.1.0",
-            "factorio_version": "2.0",
+            "generator_version": VERSION,
+            "factorio_version": FACTORIO_VERSION,
         },
         "pools": {
             "item_resources": sorted(i.name for i in db.beltable_items()),

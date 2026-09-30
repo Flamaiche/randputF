@@ -65,7 +65,8 @@ pour un install Steam flatpak).
 ```
 
 `--install` assemble le mod complet et le copie dans
-`<factorio_mods>/randputF_0.1.0/`, puis active le mod dans `mod-list.json`. Si
+`<factorio_mods>/randputF_<version>/` (la version est lue dans `mod/info.json`),
+puis active le mod dans `mod-list.json`. Si
 le dossier mods est introuvable, le mod est assemblé dans `output/` et le
 chemin est affiché : il reste à le copier manuellement dans le dossier mods.
 Desactivez le mod à tout moment via le menu Mods de Factorio.
@@ -83,6 +84,7 @@ Sections principales :
 | Section | Rôle |
 |---|---|
 | `seed` | Valeur de seed par défaut (un `--seed` passé en ligne de commande la surclasse) |
+| `factorio_version` | Version du jeu cible (2.0), reportée dans `info.json` et la méta de la seed |
 | `paths` | Dossiers : mod source, dump vanilla, *factorio_mods* (installation) |
 | `map` | Nombre de gisements (3-8), richesse des items/fluides, blocs/puits par gisement (`wells_per_patch`), rayons des champs |
 | `starter` | Munitions du kit (`ammo_count`), bras optionnel (`inserter_chance`) |
@@ -94,6 +96,9 @@ Sections principales :
 | `easeup` | Recettes alternatives pour les crafts trop lourds (`max_recipes`, `depth_threshold`...) |
 | `recipes` *(optionnel)* | Temps de craft (`energies`, `energy_per_ingredient`), équilibre production/consommation (`balance_min/max`) — absente : défauts du prototype |
 | `relay` *(optionnel)* | Recettes relais des ressources non-infinies (`prefix`, `max_dispatch_steps`) — absente : défauts du prototype |
+| `usage` | Garantie d'usage (D2) : bâtiments terminaux exemptés de U1 (`terminal_buildings`), bâtiments du kit réputés tech 0 (`kit_exempt`) |
+| `nonfinite` *(inerte)* | Ressources non-infinies randomisées (A1) : `enabled: false` — écrite, non activée |
+| `craft_quantity` *(inerte)* | Facteurs de quantité par recette (B3) : `enabled: false` — écrite, non activée |
 | `pools`, `weights` *(inertes)* | Sections présentes par défaut mais **non lues** par le moteur à ce jour |
 
 La signification détaillée de chaque clé est décrite dans
@@ -101,11 +106,11 @@ La signification détaillée de chaque clé est décrite dans
 
 ## Ce que produit une génération
 
-Dans `output/randputF_0.1.0/` (ou directement dans `<factorio_mods>/` avec
+Dans `output/randputF_<version>/` (ou directement dans `<factorio_mods>/` avec
 `--install`) :
 
 ```
-randputF_0.1.0/
+randputF_<version>/
 ├── control.lua            # runtime : placement des gisements, kit départ, déblocages
 ├── data.lua               # data-stage : lecture de la seed, construction recettes/techs
 ├── data-updates.lua       # tuiles de lacs, réarmement des véhicules, fuel unifié
@@ -182,7 +187,7 @@ randputF/
 ├── data/
 │   └── vanilla_dump.json # dump des prototypes vanilla
 ├── tool/                # générateur externe Python (python -m tool)
-│   ├── __main__.py      # CLI : parse, audit, generate
+│   ├── __main__.py      # CLI : parse, audit, difficulty, generate
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
 │   ├── audit/           # audit des tags bâtiments/items
 │   ├── parsers/         # extraction des prototypes vanilla
