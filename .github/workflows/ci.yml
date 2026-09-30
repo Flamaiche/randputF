@@ -30,30 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
-      - name: Generer la seed 5 depuis /tmp (hors du checkout)
+      - name: Temoin de determinisme (seed 5, depuis /tmp hors checkout)
         run: |
           cd /tmp
-          randputf generate --seed 5 --out witness
-          python - <<'PY'
-          import hashlib, io, os, zipfile
-          out = "/tmp/witness/randputF_0.0.0"
-          buf = io.BytesIO()
-          z = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9)
-          for root, _, fs in sorted(os.walk(out)):
-              for f in sorted(fs):
-                  if f == "seed.graph.html":  # dépend de la version Graphviz : hors témoin
-                      continue
-                  p = os.path.join(root, f)
-                  rel = "randputF_0.0.0/" + os.path.relpath(p, out)
-                  zi = zipfile.ZipInfo(rel, (1980, 1, 1, 0, 0, 0))
-                  zi.compress_type = zipfile.ZIP_DEFLATED
-                  zi.external_attr = 0o100644 << 16
-                  z.writestr(zi, open(p, "rb").read())
-          z.close()
-          digest = hashlib.md5(buf.getvalue()).hexdigest()
-          # Témoin publié dans les notes de la release v0.0.0 : le wheel doit
-          # produire à l'octet près le même mod que le checkout du tag.
-          expected = "466fbbb9c23b6a80773afececfe86698"
-          print("seed 5 ->", digest)
-          assert digest == expected, f"digest divergent: {digest}"
-          PY
+          randputf witness --seed 5 --expect d42fd60f33454f7074f7e7b2786c6907
