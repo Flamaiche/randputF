@@ -83,6 +83,7 @@ Chaîne complète, de l'écriture d'une seed à une partie jouable :
 ```
 randputF/
 ├── README.md            # utilisateur : installation / jouer
+├── IDEES.md             # idées / corrections workshop
 ├── docs/                # conception : ce dossier + tags.md, nondeterminism.md
 ├── .gitignore
 ├── pyproject.toml       # package Python (randputf, ≥3.11)

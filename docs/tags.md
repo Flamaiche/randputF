@@ -83,7 +83,7 @@ Tags **usage en vue** : le pool d'armement des véhicules (§12.1) et la
 constante de test `ARMED_VEHICLES` restent pilotés par config tant que
 `is_mounted_gun` n'est pas exportable (le dump ne distingue pas une arme montée
 d'une arme de poing). Ces tags alimenteront ce pool dès que l'exporter
-exposera « can be used by hand » (gap à traiter — branche `dev`).
+exposera « can be used by hand » (gap IDEES).
 
 | Tag | Déterminé par |
 |-----|---------------|
@@ -182,7 +182,7 @@ Détection **par capacités** (aucune liste de noms), voir `tool/common/db.py`.
 | `has_hidden_recipe` (champ) | Production codée en dur = une VRAIE recette non accessible avant la transformation du mod | estampillé post-parse dans `load_db_from_dump` (dépend des résidus de combustible) | `recipes` (`_is_atelier`), `recursive_phase` |
 | `has_hidden_recipe(b)` (fonction) | Prédicat : tag producteur (`PRODUCING_TAGS`) + entrée (item/fluide/combustible) + sortie item/fluide/residu + **aucune** catégorie de craft valide | — | calcule le champ |
 | `is_fixed_crafter(b)` | Sous-ensemble `has_hidden_recipe` + `is_crafter` + sortie fluide OU item **ou** `fuel_residues` non vide (combusteur à résidu) : reçoit réellement une recette randomisée ; en vanilla boiler/heat-exchanger (item→item → fluide→fluide item) ET **nuclear-reactor** (item→item via `fuel_residues` = depleted-uranium-fuel-cell) | — | `recursive_phase` (`_make_fixed_recipe_for_crafter` / `_make_fixed_residue_recipe`), `recipes`, `mod/data.lua` (catégorie de craft accordée au bâtiment `crafted_in`) |
-| `is_fixed_fluid_crafter(b)` | `is_fixed_crafter` restreint au « fluide → fluide » (boiler, heat-exchanger) | — | `recursive_phase` (pairing C7 — branche `dev`), `building_fluids`, `recipes` |
+| `is_fixed_fluid_crafter(b)` | `is_fixed_crafter` restreint au « fluide → fluide » (boiler, heat-exchanger) | — | `recursive_phase` (pairing IDEES C7), `building_fluids`, `recipes` |
 | `fuel_residues` (champ) | Sorties item issues de la combustion (`burnt_result` des combustibles du bâtiment) | estampillé post-parse | alimente `has_hidden_recipe` et `fuel_item_flow` |
 
 Les générateurs/extracteurs/lab restants (champ → ressource, combustible →

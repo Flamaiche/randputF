@@ -131,7 +131,7 @@ D4ter :
   JAMAIS d'atelier pour un bâtiment électrique (usage_pass) — la promesse
   §10ter (recettes du starter jouables pré-électricité) est préservée.
 
-Corrections ajoutées sur 0-500 (catalogue des dérives/bugs, branche `dev`) :
+Corrections ajoutées sur 0-500 (détail dans `docs/DEVIANCES.md`) :
 
 - **cycle d'hébergement MUTUEL** (seed 255) : U2 ne ré-héberge plus une recette
   vers un bâtiment qui dépend déjà (fermeture transitive) de son produit
