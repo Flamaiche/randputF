@@ -404,10 +404,14 @@ script.on_init(function()
   local ok_recipes, recipes = pcall(function()
     return prototypes.recipe
   end)
+  -- Préfixe partagé avec le tool Python (tool/parsers/vanilla.py,
+  -- _RANDPUTF_PREFIX). Toute modification ici doit être répercutée là-bas et
+  -- inversement.
+  local RANDPUTF_PREFIX = "randputf-"
   local artefact = nil
   if ok_recipes and recipes then
     for name in pairs(recipes) do
-      if type(name) == "string" and name:sub(1, 9) == "randputf-" then
+      if type(name) == "string" and name:sub(1, #RANDPUTF_PREFIX) == RANDPUTF_PREFIX then
         artefact = name
         break
       end

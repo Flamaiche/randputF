@@ -85,3 +85,21 @@ def test_dump_avec_les_deux_canaux_rejete():
     mutated["fluids"]["light-oil"]["fuel_value"] = 200000
     with pytest.raises(ValueError, match="Dump pollue"):
         load_db_from_dump(mutated)
+
+
+def test_mutation_entities_seule_acceptee_frontiere_documentee():
+    """Canal entities seul (fuel_categories += "nuclear", filtres boiler) : PAS
+    d'invariant dédié — décision assumée. La passe carburant mute toujours des
+    fluides (co-occurrence), donc un dump réellement pollué est attrapé par
+    l'invariant fluides ; cet entonnoir documente la frontière pour qu'elle ne
+    soit pas un oubli, et la vérité reste le refus de l'exporter."""
+    mutated = copy.deepcopy(CLEAN)
+    entity = mutated["entities"]["burner-inserter"]
+    entity.setdefault("energy_source", {})["fuel_categories"] = ["chemical", "nuclear"]
+    boiler = mutated["entities"]["boiler"]
+    for box in boiler.get("fluidbox_info", {}).get("detail", {}).values():
+        if box.get("filter") == "water":
+            box["filter"] = "sulfuric-acid"
+
+    db = load_db_from_dump(mutated)
+    assert db is not None
