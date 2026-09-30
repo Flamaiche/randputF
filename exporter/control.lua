@@ -395,6 +395,29 @@ local function dump_recipes()
 end
 
 script.on_init(function()
+  -- Garde-fou : un export depuis une partie où randputF est actif écrirait un
+  -- dump pollué — recettes randputf-* ajoutées, mais surtout des valeurs
+  -- vanilla MUTÉES en place (fuel_value 0 → 200 000 sur les fluides, filtres,
+  -- fuel_categories) qui ressemblent à du contenu légitime. La présence d'une
+  -- seule recette préfixée suffit à détecter la data-stage randomisée. Refus
+  -- net : aucun fichier écrit, log explicite.
+  local ok_recipes, recipes = pcall(function()
+    return prototypes.recipe
+  end)
+  local artefact = nil
+  if ok_recipes and recipes then
+    for name in pairs(recipes) do
+      if type(name) == "string" and name:sub(1, 9) == "randputf-" then
+        artefact = name
+        break
+      end
+    end
+  end
+  if artefact then
+    log("randputF exporter: EXPORT REFUSE — data-stage randomisee par randputF (recette «" .. artefact .. " »). Desactive randputF puis relance une partie pour un dump vanilla propre.")
+    return
+  end
+
   local payload = {
     meta = {game_version = script.active_mods["base"]},
     items = dump_all_items(),

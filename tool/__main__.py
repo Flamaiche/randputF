@@ -43,7 +43,11 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
             "ou lance la pipeline en mode demo: randputf generate --demo"
         )
         sys.exit(1)
-    return load_db_from_dump(json.loads(dump_path.read_text(encoding="utf-8")))
+    try:
+        return load_db_from_dump(json.loads(dump_path.read_text(encoding="utf-8")))
+    except ValueError as err:
+        print(f"[DUMP INVALIDE] {err}")
+        sys.exit(1)
 
 
 def _build_mod(seed: dict, dest: Path) -> Path:
