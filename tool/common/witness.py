@@ -5,17 +5,24 @@ sur exactement le même mod. C'est une méthode de MESURE : elle doit être
 reproductible à l'octet près sur n'importe quelle machine, indépendamment de
 l'ordre de lecture du système de fichiers.
 
-Pitfalls évités ici (les deux ont déjà fuité en production) :
+Pitfalls évités ici (tous mesurés en réel, pas supposés) :
 - ``sorted(os.walk(dir))`` trie les tuples APRÈS que le générateur a déjà
   parcouru l'arborescence : l'ordre d'émission reste celui d'``os.scandir``,
-  qui varie selon la machine (vu en réel : locale/en vs locale/fr) → on
-  collecte d'abord les chemins, puis on trie par chemin relatif canonique ;
+  qui varie selon la machine → on collecte d'abord les chemins, puis on trie
+  par chemin relatif canonique ;
 - ``seed.graph.html`` embarque un commentaire de version Graphviz dans son
-  ``<svg>`` → exclu du témoin (régénérable, il ne porte pas la garantie).
+  ``<svg>`` → exclu du témoin (régénérable, il ne porte pas la garantie) ;
+- la DÉFLATION n'est PAS stable d'une machine/version à l'autre : mesuré,
+  zlib 1.3.1.zlib-ng (Python 3.14) et 1.3.2 (Python 3.12) compressent le même
+  octet en deux blocs différents → le témoin n'utilise que des entrées
+  STOCKÉES, pour que le md5 dépende du contenu, pas de l'encodage de sa
+  compression.
 
-Le zip de référence est construit en mode déterministe : entrées triées par
-chemin relatif, dates et modes fixés, déflation de niveau 9. Le résultat ne
-dépend plus que du CONTENU des fichiers.
+Le zip de référence est construit en mode déterministe : entrées stockées
+(non compressées), triées par chemin relatif, dates et modes fixés. Le
+résultat ne dépend que du CONTENU des fichiers — le md5 est donc reproductible
+à l'octet près sur n'importe quelle machine, quelle que soit la version de
+Python/zlib.
 """
 
 from __future__ import annotations
@@ -57,10 +64,10 @@ def witness_md5(mod_dir: Path) -> str:
     racine est préfixée ``randputF_<version>/`` (le nom du mod installé).
     """
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    with zipfile.ZipFile(buf, "w") as zf:  # entrées STOCKÉES : zlib build-indépendant
         for rel, path in canonical_entries(mod_dir):
             zi = zipfile.ZipInfo(f"{mod_dir.name}/{rel}", _ZIP_DATE)
-            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.compress_type = zipfile.ZIP_STORED
             zi.external_attr = _ZIP_MODE
             zf.writestr(zi, path.read_bytes())
     return hashlib.md5(buf.getvalue()).hexdigest()
