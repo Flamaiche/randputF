@@ -826,7 +826,6 @@ script.on_event(defines.events.on_tick, function()
       storage.randputf.water_purge = { ring = 0, x = 0, y = 0 }
     end
   end
-  end
 
   -- Balayage crash containers pendant la fenêtre de démarrage (idempotent).
   local stop = storage.randputf.wreck_stop
