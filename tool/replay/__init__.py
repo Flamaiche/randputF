@@ -1,0 +1,1 @@
+"""Rejoueur « fake player » — simulation de partie sur la seed finale."""

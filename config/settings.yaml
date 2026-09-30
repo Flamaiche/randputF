@@ -1,0 +1,163 @@
+# NOTE — clés documentées mais INERTES (résolues par le tool, pas lues ici) :
+#   factorio_version   : lu depuis mod/info.json (tool.common.version), source unique.
+#   paths.mod_dir      : le mod source est résolu par tool.common.assets (wheel ou dépôt).
+#   paths.vanilla_dump : idem (data/vanilla_dump.json embarqué dans le wheel).
+# Seule `paths.factorio_mods` est lue par le CLI (`randputf generate --install`).
+factorio_version: "2.0"
+
+paths:
+  # Dossier des data du jeu (dump vanilla à partir du mod « exporter ») et du
+  # mod source. Chemins RELATIFS : depuis la racine du dépôt.
+  # (inertes : voir note en tête de fichier)
+  mod_dir: mod
+  vanilla_dump: data/vanilla_dump.json
+  # Dossier mods de Factorio, utilisé par `--install`. À RENSEIGNER pour ton
+  # install (ex. Linux Steam flatpak : ~/.var/app/com.valvesoftware.Steam/.factorio/mods).
+  # Vide : --install assemble le mod dans output/ et affiche le chemin.
+  factorio_mods: ""
+
+map:
+  patches_min: 3
+  patches_max: 8
+  richness_item: [400000, 1500000]
+  richness_fluid: [100000, 600000]
+  # Nombre aléatoire de blocs/puits par gisement (pose explicite au runtime,
+  # §6.5). Chaque bloc/puits est une entité-resource — minable par foreuse pour
+  # un item, pompeable par pumpjack pour un fluide — dispersée autour du centre
+  # du gisement (cluster serré au spawn).
+  # FLUIDES : puits éparpillés (pumpjack n'importe où dans le champ).
+  wells_per_patch: [3, 8]
+  # ITEMS : champ plein « comme le mapgen vanilla » — un disque bruité dense
+  # (rayon = taille du champ, ~ champ d'ore classique de Factorio). La richesse
+  # TOTALE du champ (richness_item) est répartie par tuile ; count est dérivé
+  # (aire du disque), pas configurable.
+  item_patch_radius: [9, 17]
+
+nonfinite:
+  # Randomisation des ressources NON-finies : facteurs
+  # multiplicatifs ALÉATOIRES, tirés par gisement avec un flux RNG dédié, sur la
+  # richesse totale et le rayon. `count` des ITEM est réévalué (item_field_tiles)
+  # pour rester miroir exact du mod — seule la richesse/la taille varient, pas le
+  # nombre de tuiles effectives d'un champ posé. Inerte (désactivé) par défaut.
+  enabled: false
+  richness_factor_min: 0.4
+  richness_factor_max: 2.5
+  radius_factor_min: 0.6
+  radius_factor_max: 1.8
+
+pools:
+  exclude_items: []
+  exclude_fluids: []
+  exclude_building_types: []
+
+weights:
+  building_types: {}
+  science_packs: {}
+
+recursive:
+  # Randomisation des armes montées (§7/§12.1) : pool d'ITEMS GUN réels
+  # (DÉFAUT du prototype, aucun pool autre que celui-ci). Chaque véhicule armé
+  # reçoit vehicle_slots_min..max armes tirées dans la pool (avec remise
+  # configurable), puis le mod CLONE chaque arme pour le véhicule (« arme dans
+  # arme ») et remplace l'armement vanilla. AUCUNE recette/unlock n'est généré
+  # pour ces armes — la pool ne sert qu'à l'assignation. La portée du clone
+  # croît avec la taille de l'entité : facteur = 1 + max(taille - base_size, 0)
+  # * scale (ex. tank 2.6 → x1.24, artillery-wagon 6 → x2.6).
+  armed_vehicles: [tank, spidertron, artillery-wagon]
+  vehicle_weapons:
+    - tank-cannon
+    - vehicle-machine-gun
+    - tank-flamethrower
+    - artillery-wagon-cannon
+    - spidertron-rocket-launcher-1
+    - pistol
+    - submachine-gun
+    - shotgun
+    - combat-shotgun
+    - rocket-launcher
+    - flamethrower
+  vehicle_slots_min: 1
+  vehicle_slots_max: 4
+  vehicle_slots_with_replacement: true
+  vehicle_range_base_size: 2.0
+  vehicle_range_scale: 0.4
+
+starter:
+  free_researches_count: [1, 2]
+
+wreck:
+  # Site de crash (§7) : chaque slot est rempli de n ∈ {0,1,2,3} items d'un
+  # matériau aléatoire. Loi pondérée STRICTEMENT décroissante via la formule
+  # c3=t, c2=t+a, c1=100-5t-2a, c0=c1+b (contraintes 6t+3a<100, b>=1) → somme
+  # des valeurs 0*c0+1*c1+2*c2+3*c3 = 100, 0 le plus fréquent, 3 le plus rare.
+  # Défaut t=15,a=1,b=1 → [24,23,16,15], P(0)≈31% : le crash est riche (un
+  # vaisseau à 5 slots ≈ 6 items en moyenne) et ne sort jamais entièrement vide
+  # (garantie runtime).
+  t: 15
+  a: 1
+  b: 1
+  loot:
+    # Ressources NON-infinies uniquement (bois, pierre, poisson) : les seules
+    # que le joueur ne pourra jamais miner/automatiser — le crash sert de
+    # bootstrap à ces matières, pas à redonner des plaques/fours dont les
+    # recettes ne sont pas forcément débloquées par l'arbre randomisé.
+    - wood
+    - stone
+    - raw-fish
+
+lakes:
+  # Lacs de fluide (§7.5) : nappes d'eau teintées de la couleur du fluide,
+  # pompées à la POMPE OFFSHORE vanilla (le fluide sorti = `fluid` de la tuile,
+  # infini comme l'eau). 1 lac GARANTI, la seed peut en tirer jusqu'à `max` ;
+  # chaque lac reçoit un fluide aléatoire du pool des patchs fluides (tout
+  # fluide pipable) ; un fluide non tiré n'a simplement AUCUN lac. La richesse
+  # ne règle que la TAILLE/densité du lac (le volume est infini).
+  min: 1
+  max: 3
+  richness_fluid: [100000, 600000]
+
+tree:
+  # Nombre d'objets (unlocks) par tech (§13) : 1 objet de base, puis tirage
+  # en chaîne d'extensions — 75 % de chance d'un 2e, 65 % d'un 3e, 35 % d'un
+  # 4e, 15 % d'un 5e. Le premier tirage raté stoppe le groupe (max 5).
+  group_chances: [0.75, 0.65, 0.35, 0.15]
+
+easeup:
+  # Recettes alternatives « ease-up » pour les crafts trop lourds : quand un
+  # produit a un graphe de production profond (≥ depth_threshold sauts) ou
+  # contient une boucle, la seed génère une recette alternative tirée du pool
+  # GELÉ de début de run, débloquée par une tech de type prologue (hand-craft).
+  # max_recipes = nb max de recettes ease-up par seed ; unlocks_per_tech = nb
+  # max d'unlocks par tech de déblocage (plafond §13).
+  max_recipes: 8
+  depth_threshold: 5
+  unlocks_per_tech: 5
+
+craft_quantity:
+  # Randomisation des quantités de craft : un facteur
+  # multiplicatif aléatoire (flux RNG dédié `randputF:craft_quantity:`) est
+  # appliqué aux montants d'entrée/sortie de chaque recette, après assemblage
+  # de la seed (la solvabilité §15 ne lit que la structure). mode "symmetric"
+  # = un facteur par recette, "asymmetric" = un facteur par ligne. amount_min
+  # garantit minimum 1 unité. Inerte (désactivé) par défaut.
+  enabled: false
+  mode: symmetric
+  factor_min: 0.5
+  factor_max: 3.0
+  amount_min: 1
+
+usage:
+  # D2 — garantie d'usage dure (bâtiment avant usage, niveau seed) : passe
+  # post-récursion/avant relais qui garantit que tout bâtiment unlocké héberge
+  # ≥ 1 recette de la seed (U1, sauf bâtiments terminaux) et que la tech qui
+  # unlock une recette hébergée dans B vient à un index ≥ celle de B (U2, sauf
+  # bâtiments du kit réputés tech 0). invariant de solvabilité, activé par défaut.
+  enabled: true
+  strict_order: true
+  terminal_buildings: [lab, rocket-silo]
+  kit_exempt: []
+
+# late_raws:
+#   # §6.3 — jalonnement des ressources tardives. Désactivé par défaut
+#   # (gating 100 %, déterminisme préservé). Pour activer, décommenter :
+#   enabled: true
