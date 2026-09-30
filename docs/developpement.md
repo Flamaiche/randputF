@@ -135,6 +135,8 @@ les recherches gratuites déblocées.
 | `mod/data-updates.lua` | Réarmement véhicules (clonage armes §12.1), tuiles lacs + couleurs pastel, fuel unifié, pompe offshore extra-fluid |
 | `mod/control.lua` | Runtime : destruction ressources vanilles, flood-fill lacs, placement patchs déterministe, kit départ, recherches gratuites |
 
-La génération valide une seed complète sur la base vanilla réelle (`data/vanilla_dump.json`), seed figure d'exemple : `seed: 5` dans
-`config/settings.yaml`. Le mode demo (`parse --demo`) reste utile pour tester
-le moteur sur une base synthétique légère.
+La génération valide une seed complète sur la base vanilla réelle
+(`data/vanilla_dump.json`, committée dans le dépôt). La graine est donnée via
+`--seed N` (absente : tirée du temps courant) — le yaml de config ne porte
+**aucune seed** par défaut. Le mode demo (`parse --demo`) reste utile pour
+tester le moteur sur une base synthétique légère.
