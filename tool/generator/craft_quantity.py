@@ -12,7 +12,7 @@ Inerte si la section ``craft_quantity`` est absente ou ``enabled: false``.
 
 from __future__ import annotations
 
-import random
+from tool.common.rng import make_seeded_rng
 
 
 def apply_craft_quantity(seed: dict, config: dict) -> None:
@@ -30,7 +30,7 @@ def apply_craft_quantity(seed: dict, config: dict) -> None:
 
     cqcfg = CraftQuantityConfig.from_config(config)
     seed_value = int(seed["meta"]["seed"])
-    crng = random.Random(f"randputF:craft_quantity:{seed_value}")
+    crng = make_seeded_rng(seed_value, "randputF:craft_quantity:")
 
     def _scale(amount: int, factor: float) -> int:
         return max(cqcfg.amount_min, int(round(amount * factor)))

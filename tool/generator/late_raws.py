@@ -35,12 +35,15 @@ _DEFAULTS = {"enabled": False, "pick_chance": 0.6}
 
 @dataclass
 class LateRawsConfig:
+    """Config de la section ``late_raws`` : activation et probabilité de pick
+    (conservée pour compat ; l'injection est à 100 %, cf. LateRawsPlan)."""
     enabled: bool = False
     share: float = 0.25  # conservé pour compat config ; inutilisé (gating 100 %)
     pick_chance: float = 0.6
 
     @classmethod
     def from_config(cls, cfg: dict | None) -> "LateRawsConfig":
+        """Construit la config depuis ``config["late_raws"]`` — défauts yaml."""
         raw = (cfg or {}).get("late_raws") or {}
         return cls(
             enabled=bool(raw.get("enabled", _DEFAULTS["enabled"])),
@@ -73,9 +76,11 @@ class LateRawsPlan:
 
     @property
     def gated_fluids(self) -> frozenset[str]:
+        """Noms des fluides gatés (raws non-item du plan)."""
         return frozenset(n for k, n in self.gated if k != SLOT_ITEM)
 
     def eligible(self, tier: int) -> list[tuple[str, str]]:
+        """Raws (kind, nom) dont le jalon est débloqué à l'échelon ``tier``."""
         return [key for key, floor in self.floor_tier.items() if floor <= tier]
 
 

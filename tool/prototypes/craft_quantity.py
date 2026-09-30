@@ -31,6 +31,8 @@ class CraftQuantityConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> CraftQuantityConfig:
+        """Construit la config craft_quantity depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         cfg = config.get("craft_quantity", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),
@@ -77,6 +79,7 @@ def randomise_recipe_quantities(
         )
 
     def _scale(amount: int, factor: float, amount_min: int) -> int:
+        """Mise à l'échelle d'un montant (arrondi), plancher ``amount_min``."""
         return max(amount_min, int(round(amount * factor)))
 
     if config.mode == "symmetric":

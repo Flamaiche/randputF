@@ -123,11 +123,13 @@ def _install_mod(seed: dict, mods_dir: Path) -> None:
 
 
 def cmd_parse(args: argparse.Namespace) -> None:
+    """Chargement + résumé CLI de la base vanilla (dump ou demo)."""
     db = _load_db(args.demo, Path(args.dump))
     print(summarize_db(db))
 
 
 def cmd_audit(args: argparse.Namespace) -> None:
+    """Audit CLI des tags (bâtiments + items) ; exit 1 si violations."""
     db = _load_db(args.demo, Path(args.dump))
     report = audit_building_tags(db)
     item_report = audit_item_tags(db)
@@ -141,6 +143,9 @@ def cmd_audit(args: argparse.Namespace) -> None:
 
 
 def cmd_generate(args: argparse.Namespace) -> None:
+    """Génère une seed (démonstrateur) puis l'assemble en mod : seed.json/
+    .lua + graphe HTML. Retente avec une graine dérivée tant que la seed est
+    invalide (≤10 tentatives, sinon exit 2)."""
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
 
@@ -186,6 +191,8 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
 
 def cmd_difficulty(args: argparse.Namespace) -> None:
+    """Génère une seed et affiche son ardoise de difficulté (recettes
+    primaires, DAG)."""
     db = _load_db(args.demo, Path(args.dump))
     db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
     seed = generate_seed(db)
@@ -195,6 +202,8 @@ def cmd_difficulty(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Point d'entrée CLI ``randputf`` (parse / audit / generate /
+    difficulty)."""
     parser = argparse.ArgumentParser(prog="randputf", description="Generateur de seeds randputF")
     sub = parser.add_subparsers(dest="command", required=True)
 

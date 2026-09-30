@@ -104,10 +104,12 @@ class WeightedPicker:
 
     @property
     def total_weight(self) -> float:
+        """Somme des poids des candidats restants."""
         return sum(item.weight for item in self.items)
 
     @property
     def is_empty(self) -> bool:
+        """Vrai si plus aucun candidat (sélection sans remise épuisée)."""
         return len(self.items) == 0
 
     def __len__(self) -> int:

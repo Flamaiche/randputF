@@ -428,6 +428,8 @@ def _detect_recipe_cycles(state: ProgressionState, external: set[str] = frozense
     cycles: list[list[str]] = []
 
     def visit(node: str) -> None:
+        """DFS 3-colorations : détecte et enregistre chaque cycle atteignable
+        depuis ``node`` (arc gris = retour dans la pile en cours)."""
         color[node] = GRAY
         stack.append(node)
         for nb in graph.get(node, []):

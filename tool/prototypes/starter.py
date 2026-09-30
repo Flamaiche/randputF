@@ -28,6 +28,8 @@ class StarterConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> StarterConfig:
+        """Construit la config starter depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         starter_cfg = config.get("starter", {})
         return cls(
             ammo_count=int(starter_cfg.get("ammo_count", 50)),

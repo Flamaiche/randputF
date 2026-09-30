@@ -84,6 +84,8 @@ class ReplayReport:
     never_masterable: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
+        """Ligne de résumé : état, techs maîtrisées, électricité, blocker
+        éventuel — ex. `VICTOIRE techs=101/101 élec=OUI`."""
         state = "VICTOIRE" if self.victory else ("BLOQUÉ" if self.blocker else "SANS FUSÉE")
         n = f"{self.researched}/{self.total_techs}"
         details = f" ({self.blocker})" if self.blocker else ""
@@ -827,6 +829,10 @@ class FakePlayer:
     # ── Progression des techs (le « quand j'ai de quoi → je recherche ») ──
 
     def play(self) -> ReplayReport:
+        """Rejoue la seed de bout en bout : pour chaque tech non maîtrisée, on
+        calcule la fermeture craftable, on évalue le coût (packs + déclencheur)
+        et on dépense si la tech est entièrement abordable — sinon ça bloque.
+        Retourne un ReplayReport (techs, étape de blocage, électricité)."""
         report = ReplayReport(total_techs=len(self.techs))
         for tech in self.techs:
             tech_id = tech["id"]

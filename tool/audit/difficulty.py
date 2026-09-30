@@ -45,12 +45,15 @@ _PREFIX = "randputf-"
 
 @dataclass
 class DifficultyReport:
+    """Ardoise de difficulté d'une seed : coûts bruts par ressource, dépenses
+    par tech et coûts unitaires — agrégés pour le total affiché au spawn."""
     raw_totals: Counter[str] = field(default_factory=Counter)
     spent_per_tech: dict = field(default_factory=dict)
     unit_costs: dict = field(default_factory=dict)
 
     @property
     def total(self) -> float:
+        """Total de l'ardoise : somme des coûts bruts de toutes ressources."""
         return sum(self.raw_totals.values())
 
 
@@ -90,6 +93,8 @@ def unit_costs(
     memo: dict[str, Counter[str]] = {}
 
     def cost(product: str) -> Counter[str]:
+        """Coût unitaire brut de ``product`` (mémoïsé) : lui-même si brut,
+        sinon la décomposition de sa recette primaire."""
         if product in raw:
             if product not in memo:
                 memo[product] = Counter({product: 1.0})

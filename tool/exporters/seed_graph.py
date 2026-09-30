@@ -230,6 +230,7 @@ def _recipe_tech_info(seed: dict) -> dict[str, dict]:
     tmap, order, free, _ = _tech_order(seed)
 
     def local(tid: str) -> str:
+        """Nom localisé d'une tech (ou son id en repli)."""
         return tmap[tid].get("localised_name") or tid
 
     unlocks: dict[str, list[tuple[int, str]]] = {}
@@ -359,9 +360,11 @@ def _item_tech_info(seed: dict) -> dict[str, dict]:
                 tech_by_item.setdefault(prod, set()).add((num, tid))
 
     def local(tid: str) -> str:
+        """Nom localisé d'une tech (ou son id en repli)."""
         return tmap[tid].get("localised_name") or tid
 
     def packs_of(tid: str) -> set[str]:
+        """Science packs exigés par le coût de la tech ``tid``."""
         return {
             ing.get("name")
             for ing in (tmap[tid].get("unit") or {}).get("ingredients") or []
@@ -633,6 +636,8 @@ def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     icons: dict[str, str | None] = {}
 
     def icon_uri(name: str) -> str | None:
+        """URI data (icône PNG recadrée, en base64) de l'item/tech ``name``,
+        mise en cache — None si introuvable."""
         if name not in icons:
             icon = _icon_path(name)
             if icon is None:

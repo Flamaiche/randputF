@@ -33,6 +33,7 @@ import random
 from collections import Counter, defaultdict
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, SLOT_ITEM, VanillaDB
+from tool.common.rng import make_seeded_rng
 from tool.generator.recipes import ProgressionState, _make_recipe
 from tool.prototypes.easeup import EaseupConfig
 
@@ -48,14 +49,15 @@ _ENDGAME_EXCLUDED = frozenset({"rocket", "satellite", "rocket-silo", "rocket-par
 
 
 def set_config(config: dict) -> None:
+    """Branche la config ``easeup`` (proto) sur le module, en cache global."""
     global _config
     _config = EaseupConfig.from_config(config)
 
 
 def make_rng(seed_value: int) -> random.Random:
-    # Flux indépendant des autres phases (comme les lacs) : la phase ease-up
-    # ne change pas le tirage du reste de la seed.
-    return random.Random(f"randputF:easeup:{seed_value}")
+    """Flux RNG indépendant de la phase ease-up (comme les lacs) : elle ne
+    change pas le tirage du reste de la seed."""
+    return make_seeded_rng(seed_value, "randputF:easeup:")
 
 
 def build_ease_up_recipes(
@@ -210,6 +212,8 @@ def _compute_depths(state: ProgressionState) -> dict[tuple[str, str], int]:
     by_product = _producers(state)
 
     def rec_depth(ridx: int) -> int:
+        """Profondeur (au sens graphe) de la recette ``ridx`` : 1 au sol, sinon
+        1 + le max des profondeurs de ses ingrédients."""
         ings = state.recipes[ridx].get("ingredients", [])
         if not ings:
             return 1

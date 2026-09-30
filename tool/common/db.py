@@ -166,6 +166,9 @@ NON_STACKABLE_ITEM_TYPES = frozenset(
 
 @dataclass(frozen=True)
 class ItemDef:
+    """Item solide du dump (objet craftable ou brut), avec les TAGS
+    de classification cumulables (munitions, arme, armure, pack de science,
+    outil…) et le type brut du dump comme source de vérité."""
     name: str
     subgroup: str = ""
     place_result: str | None = None
@@ -350,6 +353,8 @@ class BuildingDef:
 
 @dataclass
 class RecipeRef:
+    """Recette brute du dump : nom, catégorie, ingrédients, produits et
+    temps d'énergie — lue directement depuis ``vanilla_dump.json``."""
     name: str
     category: str = ""
     ingredients: tuple = ()
@@ -359,6 +364,10 @@ class RecipeRef:
 
 @dataclass
 class VanillaDB:
+    """Base vanilla parsée : items/fluides/bâtiments/recettes du dump, plus
+    les pools dérivées (beltable, pipable, combustibles, extracteurs…). C'est
+    la source de vérité en lecture pour toutes les phases du générateur.
+    ``seed_value`` porte la seed courante associée à cette base."""
     seed_value: int = 0
     items: dict[str, ItemDef] = field(default_factory=dict)
     fluids: dict[str, FluidDef] = field(default_factory=dict)
@@ -370,12 +379,14 @@ class VanillaDB:
     excluded_fluids: dict[str, dict] = field(default_factory=dict)
 
     def beltable_items(self) -> list[ItemDef]:
+        """Items solides posables sur tapis (hors outils), triés par nom."""
         return sorted(
             (i for i in self.items.values() if not i.is_tool),
             key=lambda i: i.name,
         )
 
     def pipable_fluids(self) -> list[FluidDef]:
+        """Fluides pipables du dump, triés par nom."""
         return sorted(self.fluids.values(), key=lambda f: f.name)
 
     @property
@@ -401,6 +412,7 @@ class VanillaDB:
         return frozenset(patch_resources) | set(ENVIRONMENTAL_ITEMS) | self.extraction_only_fluids
 
     def fuel_items(self) -> list[ItemDef]:
+        """Items à valeur combustible, triés par nom."""
         return sorted(
             (i for i in self.items.values() if i.fuel_value),
             key=lambda i: i.name,
@@ -446,6 +458,7 @@ class VanillaDB:
         return flow["input"] is not None and bool(flow["outputs"])
 
     def fuel_fluids(self) -> list[FluidDef]:
+        """Fluides à valeur combustible, triés par nom."""
         return sorted(
             (f for f in self.fluids.values() if f.fuel_value),
             key=lambda f: f.name,
@@ -460,6 +473,8 @@ class VanillaDB:
         )
 
     def extractors_for_medium(self, medium: str) -> list[BuildingDef]:
+        """Extracteurs du dump pour un milieu donné ('item'/'fluid'), triés
+        par nom — ou tous les extracteurs si ``medium`` est vide."""
         return sorted(
             (
                 b

@@ -30,6 +30,8 @@ class NonfiniteConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> NonfiniteConfig:
+        """Construit la config nonfinite depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         cfg = config.get("nonfinite", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),

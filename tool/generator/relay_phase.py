@@ -36,6 +36,7 @@ _DISPATCH_LABELS = ("a", "b", "c")
 
 
 def set_config(config: dict) -> None:
+    """Branche la config ``relay`` (proto) sur le module, en cache global."""
     global _config
     _config = RelayConfig.from_config(config)
 

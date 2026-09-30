@@ -161,6 +161,9 @@ def build_linear_tech_tree(
     cur_has_gun = False
 
     def flush_paid() -> bool:
+        """Ferme le groupe de steps payants courant : l'ajoute à ``groups``
+        et réinitialise ses accumulateurs. Retourne False si aucun groupe
+        (rien à vider)."""
         nonlocal cur_paid, cur_objs, cur_target, cur_has_pole, cur_has_gun
         if not cur_paid:
             return False

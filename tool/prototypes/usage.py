@@ -41,6 +41,8 @@ class UsageConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> UsageConfig:
+        """Construit la config usage depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         cfg = config.get("usage", {})
         return cls(
             enabled=bool(cfg.get("enabled", True)),

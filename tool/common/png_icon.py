@@ -110,6 +110,7 @@ def _encode(cw: int, ch: int, out_rows) -> bytes:
     out_raw = b"".join(b"\x00" + r for r in out_rows)
 
     def chunk(typ, data):
+        """Emboîte un bloc PNG (type + données) avec sa longueur et son CRC."""
         c = struct.pack(">I", len(data)) + typ + data
         return c + struct.pack(">I", zlib.crc32(typ + data) & 0xFFFFFFFF)
 
@@ -144,6 +145,7 @@ def crop_mip(png: bytes) -> bytes:
         xmax, ymax = w, h
 
     def alpha(x, y):
+        """Canal alpha (0-255) du pixel (x, y) de l'image décodée."""
         return _pix4(ct, chans, plte, trns, rows[y], x * chans)[3]
 
     x0, y0, x1, y1 = xmax, ymax, -1, -1

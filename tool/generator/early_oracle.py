@@ -72,11 +72,14 @@ class EarlyOracle:
     active: bool = False
 
     def activate(self, items: set[str], fluids: set[str]) -> None:
+        """Active le watershed pré-électricité avec les sources de départ
+        (items et fluides)."""
         self.items = set(items)
         self.fluids = set(fluids)
         self.active = True
 
     def deactivate(self) -> None:
+        """Désactive le watershed (fin du bootstrap pré-électricité)."""
         self.active = False
 
     def add_sources(self, items: set[str] | None = None, fluids: set[str] | None = None) -> None:
@@ -96,11 +99,13 @@ class EarlyOracle:
             bucket.add(res["name"])
 
     def pool(self) -> list[tuple[str, str]]:
+        """Vue triée du watershed : (type, nom) des items puis des fluides."""
         return [(SLOT_ITEM, n) for n in sorted(self.items)] + [
             (SLOT_FLUID, n) for n in sorted(self.fluids)
         ]
 
     def in_watershed(self, kind: str, name: str) -> bool:
+        """Vrai si la ressource est dans le watershed (buckétée par type)."""
         return name in (self.items if kind == SLOT_ITEM else self.fluids)
 
 

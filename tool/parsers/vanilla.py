@@ -63,6 +63,8 @@ RAIL_TYPES = frozenset({
 
 
 def is_junk(name: str) -> bool:
+    """Vrai si l'item est écarté du pool (noms, préfixes ou suffixes « junk »
+    balistiques/équipements/supports sans capacité reconnue)."""
     return (
         name in JUNK_NAMES
         or any(name.startswith(p) for p in JUNK_PREFIXES)
@@ -71,6 +73,9 @@ def is_junk(name: str) -> bool:
 
 
 def load_db_from_dump(dump: dict) -> VanillaDB:
+    """Construit la VanillaDB depuis le dump du mod compagnon : items/fluides
+    post-filtre junk, bâtiments taggés (§9), recettes. ``seed_value`` hérite
+    de la version du jeu (meta du dump)."""
     meta = dump.get("meta", {})
     db = VanillaDB(seed_value=int(meta.get("game_version_numeric", 0)))
 
@@ -507,6 +512,8 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
 
 
 def summarize_db(db: VanillaDB) -> str:
+    """Résumé textuel de la base (items/fluides/bâtiments par tag, recettes)
+    pour l'audit de parse — ex. `randputf parse`."""
     mediums = sorted({b.medium for b in db.buildings.values() if b.is_extractor and b.medium})
     others = sum(1 for b in db.buildings.values() if b.is_other)
     lines = [
