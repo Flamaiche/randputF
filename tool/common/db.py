@@ -9,30 +9,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Ensembles de noms figés : définis UNIQUEMENT dans tool/common/tagsets.py
+# (source unique, docs/tags.md §14). Re-exportés ici pour ne rien casser chez
+# les consommateurs historiques (``from tool.common.db import ...``).
+from tool.common.tagsets import (
+    ENVIRONMENTAL_ITEMS,          # noqa: F401
+    NON_STACKABLE_ITEM_TYPES,     # noqa: F401
+    ROCKET_CHAIN,                 # noqa: F401
+    VALID_RECIPE_CATEGORIES,      # noqa: F401
+    VEHICLE_GUNS,                 # noqa: F401
+)
+
 SLOT_ITEM = "item"
 SLOT_FLUID = "fluid"
 SLOT_FUEL = "fuel"
 SLOT_ENERGY = "energy"
-
-# Ressources non automatisables : récoltées à la main depuis des entités du
-# monde (arbres → wood, rochers → stone, poissons → raw-fish). Jamais un patch,
-# disponibles dès le départ, ingrédients possibles des recettes randomisées.
-ENVIRONMENTAL_ITEMS = frozenset({"wood", "stone", "raw-fish"})
-
-# Catégories de crafting valides : un bâtiment qui en possède une est un atelier
-# général multi-recettes, pas un fabricateur à recette fixe. Partagée ici pour
-# éviter tout cycle d'import avec les parsers.
-VALID_RECIPE_CATEGORIES = frozenset({
-    "crafting",
-    "basic-crafting",
-    "advanced-crafting",
-    "smelting",
-    "chemistry",
-    "crafting-with-fluid",
-    "oil-processing",
-    "rocket-building",
-    "centrifuging",
-})
 
 
 # TAGS de bâtiment qui possèdent une production propre (« ont une recette ») :
@@ -112,56 +103,10 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
         )
     )
 
-# La chaîne fusée (ingrédients de ``rocket-part``, recette exempte) : réservée
-# à la fin de partie, aucune autre phase ne doit la débloquer en avance.
-# Partagée ici pour éviter tout cycle d'import entre generators.
-ROCKET_CHAIN = frozenset({"processing-unit", "low-density-structure", "rocket-fuel"})
-
 # Les VRAIS pylônes (poteaux électriques) sont désormais taggés
 # ``BuildingDef.is_power_pole`` (vanilla.py) — le beacon est une distribution
 # mais PAS un pylône (il ne transporte pas le courant, §9.1/§10). La cadence
 # garantie et le starter ne débloquent que ceux-ci.
-
-# Armes MONTÉES sur des entités : de type « gun » dans le dump mais PAS
-# utilisables à pied — les randomiser comme armes de poing produit du contenu
-# mort. Exclues du pool « de poing ». La pool RecursiveConfig.vehicle_weapons
-# peut les inclure comme source d'un clone monté sur véhicule.
-VEHICLE_GUNS = frozenset(
-    {
-        "tank-cannon",
-        "tank-machine-gun",
-        "tank-flamethrower",
-        "vehicle-machine-gun",
-        "artillery-wagon-cannon",
-        "spidertron-rocket-launcher-1",
-        "spidertron-rocket-launcher-2",
-        "spidertron-rocket-launcher-3",
-        "spidertron-rocket-launcher-4",
-    }
-)
-
-# Types d'items non-empilables (stack_size = 1) : une recette ne peut en
-# produire/consommer que 1 exemplaire. Fallback quand le dump n'emporte pas
-# stack_size (type conservateur). "tool" (science packs !) et "module"/"ammo"
-# sont stackables et volontairement absents.
-NON_STACKABLE_ITEM_TYPES = frozenset(
-    {
-        "gun",
-        "armor",
-        "item-with-entity-data",  # véhicules, wagons, locomotive
-        "capsule",  # grenades, remotes, raw-fish — certains sont stack 1
-        "repair-tool",
-        "mining-tool",
-        "selection-tool",
-        "copy-paste-tool",
-        "blueprint",
-        "blueprint-book",
-        "deconstruction-item",
-        "upgrade-item",
-        "rail-planner",
-        "spidertron-remote",
-    }
-)
 
 
 @dataclass(frozen=True)

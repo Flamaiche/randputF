@@ -38,15 +38,9 @@ from tool.common.db import (
 )
 from tool.generator.early_oracle import EarlyOracle
 from tool.prototypes.recipes import RecipeConfig
+from tool.common.tagsets import FLUID_RECIPE_CATEGORIES
 
 _config = RecipeConfig()
-
-# Seules ces catégories acceptent des fluides en ingrédients.
-FLUID_RECIPE_CATEGORIES = frozenset({
-    "crafting-with-fluid",
-    "chemistry",
-    "oil-processing",
-})
 
 
 def set_config(config: dict) -> None:

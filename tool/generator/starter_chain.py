@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from tool.common.db import SLOT_FLUID, SLOT_ITEM, ENVIRONMENTAL_ITEMS, ItemDef, VanillaDB
 from tool.common.rng import make_seeded_rng
+from tool.common.tagsets import EXCLUDED_BUILDINGS, STARTER_TRANSFORMERS
 from tool.generator.early_oracle import build_early_sources
 from tool.generator.map_patches import Patch
 from tool.generator.recipes import (
@@ -241,7 +242,7 @@ def _ensure_prepower_item_miner(
         ensure_obtainable(
             rng, db, state, SLOT_ITEM, item.name,
             forbidden=frozenset(mine_dependent),
-            exclude_buildings=_EXCLUDED_BUILDINGS, handcraft=True, force=True,
+            exclude_buildings=EXCLUDED_BUILDINGS, handcraft=True, force=True,
         )
     except ValueError:
         pass
@@ -325,7 +326,7 @@ def _ensure_extraction(
         # de seed. La recette forcée reste dans un atelier starter.
         ensure_obtainable(
             rng, db, state, SLOT_ITEM, item.name,
-            exclude_buildings=_EXCLUDED_BUILDINGS, force=True,
+            exclude_buildings=EXCLUDED_BUILDINGS, force=True,
         )
         state.unlocked_buildings.add(extractor.name)
     if extractor.name not in chain.extractors:
@@ -366,27 +367,17 @@ def _extractors_for_resource(db: VanillaDB, kind: str, name: str, *, is_lake: bo
     return [b for b in db.extractors_for_medium("ground") if b.fluid_outputs == 0]
 
 
-_STARTER_TRANSFORMERS = frozenset({
-    "stone-furnace",
-    "steel-furnace",
-    "assembling-machine-1",
-    "assembling-machine-2",
-})
-
-_EXCLUDED_BUILDINGS = frozenset({"character", "lab", "rocket-silo", "centrifuge", "nuclear-reactor", "oil-refinery", "chemical-plant", "assembling-machine-3"})
-
-
 def _ensure_transformer(rng: random.Random, db: VanillaDB, state: ProgressionState, chain: StarterChain) -> None:
     transformers = [
         b for b in db.buildings_with_tag("is_crafter")
-        if b.name in _STARTER_TRANSFORMERS and b.name not in _EXCLUDED_BUILDINGS
+        if b.name in STARTER_TRANSFORMERS and b.name not in EXCLUDED_BUILDINGS
     ]
     if not transformers:
         return
     chosen = rng.choice(transformers)
     item = _item_for_building(db, chosen.name)
     if item is not None:
-        ensure_obtainable(rng, db, state, SLOT_ITEM, item.name, exclude_buildings=_EXCLUDED_BUILDINGS)
+        ensure_obtainable(rng, db, state, SLOT_ITEM, item.name, exclude_buildings=EXCLUDED_BUILDINGS)
         state.unlocked_buildings.add(chosen.name)
     chain.fabricator = chosen.name
 
@@ -409,7 +400,7 @@ def _ensure_research(rng: random.Random, db: VanillaDB, state: ProgressionState)
     if not candidates:
         return
     item = rng.choice(candidates)
-    ensure_obtainable(rng, db, state, SLOT_ITEM, item.name, exclude_buildings=_EXCLUDED_BUILDINGS)
+    ensure_obtainable(rng, db, state, SLOT_ITEM, item.name, exclude_buildings=EXCLUDED_BUILDINGS)
     state.unlocked_buildings.add(item.place_result)
 
 
@@ -436,7 +427,7 @@ def _ensure_first_science_pack(
     item = rng.choice(packs)
     ensure_obtainable(
         rng, db, state, SLOT_ITEM, item.name,
-        exclude_buildings=_EXCLUDED_BUILDINGS,
+        exclude_buildings=EXCLUDED_BUILDINGS,
         forbidden=raw_resources,
     )
     chain.first_science_pack = item.name
@@ -494,7 +485,7 @@ def _ensure_transport_item(
     if not candidates:
         return
     chosen = rng.choice(candidates)
-    ensure_obtainable(rng, db, state, SLOT_ITEM, chosen.name, exclude_buildings=_EXCLUDED_BUILDINGS)
+    ensure_obtainable(rng, db, state, SLOT_ITEM, chosen.name, exclude_buildings=EXCLUDED_BUILDINGS)
 
 
 def _ensure_landfill(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
@@ -506,7 +497,7 @@ def _ensure_landfill(rng: random.Random, db: VanillaDB, state: ProgressionState)
     if state.is_obtained(SLOT_ITEM, "landfill"):
         return
     ensure_obtainable(
-        rng, db, state, SLOT_ITEM, "landfill", exclude_buildings=_EXCLUDED_BUILDINGS
+        rng, db, state, SLOT_ITEM, "landfill", exclude_buildings=EXCLUDED_BUILDINGS
     )
 
 
@@ -532,7 +523,7 @@ def _ensure_chest_craftable(
     try:
         ensure_obtainable(
             rng, db, state, SLOT_ITEM, chest_name,
-            exclude_buildings=_EXCLUDED_BUILDINGS,
+            exclude_buildings=EXCLUDED_BUILDINGS,
             finite_materials=True,
         )
     except ValueError:

@@ -296,8 +296,12 @@ ou virtuel n'est produit par AUCUNE recette (cycle/erreur Factorio).
 
 ## 14. Ensembles dérivés en dur (résiduels)
 
-Certaines listes figées dans `tool/common/db.py` restent nécessaires en
-attendant des tags plus fins / un signal exporté :
+Depuis le chantier D3, les listes figées sont centralisées dans
+`tool/common/tagsets.py` (UNE source par ensemble ; les modules consommateurs
+l'importent — `tool.common.db` re-exporte pour compatibilité). Ce module et
+cette section font référence : nulle part ailleurs ne doit définir l'un de ces
+ensembles. Certaines listes restent nécessaires en attendant des tags plus fins
+/ un signal exporté :
 
 - `ENVIRONMENTAL_ITEMS` — items récoltés à la main ; **source de vérité** du
   tag `is_environmental` (`_is_environmental_item`) et consommée en plus par
@@ -313,6 +317,10 @@ attendant des tags plus fins / un signal exporté :
 - `ARMED_VEHICLES` (tests) — constante de TEST nominale (tank/spidertron/
   artillery-wagon) : subsiste comme assertion, remplacée par `is_vehicle` dès
   `is_mounted_gun`.
+- Autres ensembles regroupés (`VALID_RECIPE_CATEGORIES`, `RAIL_TYPES`,
+  `VIRTUAL_ITEM_TYPES`, `FLUID_RECIPE_CATEGORIES`, `STARTER_TRANSFORMERS`,
+  `EXCLUDED_BUILDINGS`, `ENDGAME_EXCLUDED`) — ex-constantes privées migrées
+  sans changement de valeur.
 
 Migrés / supprimés : `POWER_POLES` (→ `is_power_pole`), `TOOL_LIKE_ITEMS`
 (→ `is_virtual_item`, constante supprimée), `transport_patterns` du kit de
