@@ -279,55 +279,6 @@ local function kit_plan()
   return KIT_PLAN
 end
 
--- DIAG : journalise les compteurs des items du kit.
-local function log_kit_state(label, player)
-  local parts = {}
-  for _, entry in ipairs(seed.starter_kit or {}) do
-    local c = player.get_item_count(entry.name)
-    if c > 0 then parts[#parts + 1] = entry.name .. "=" .. c end
-  end
-  local p = player.get_item_count("pistol")
-  if p > 0 then parts[#parts + 1] = "pistol=" .. p end
-  local fm = player.get_item_count("firearm-magazine")
-  if fm > 0 then parts[#parts + 1] = "firearm-magazine=" .. fm end
-  table.sort(parts)
-  log("[randputF][KIT] " .. label .. " {" .. table.concat(parts, ", ") .. "}")
-end
-
--- DIAG : dump de chaque slot des inventaires du personnage.
-local function dump_character_inventories(player, label)
-  local character = get_character(player)
-  if not character then
-    log("[randputF][KIT] " .. label .. ": aucun personnage")
-    return
-  end
-  local main_inv = player.get_main_inventory()
-  if main_inv then
-    local parts = {}
-    for i = 1, #main_inv do
-      local s = main_inv[i]
-      if s and s.valid_for_read then
-        parts[#parts + 1] = i .. ":" .. s.name .. "x" .. s.count
-      end
-    end
-    log("[randputF][KIT] " .. label .. " main [" .. table.concat(parts, ", ") .. "]")
-  end
-  for _, spec in ipairs{
-    { name = "guns", inv = character.get_inventory(defines.inventory.character_guns) },
-    { name = "ammo", inv = character.get_inventory(defines.inventory.character_ammo) },
-  } do
-    local parts = {}
-    if spec.inv then
-      for i = 1, #spec.inv do
-        local s = spec.inv[i]
-        if s and s.valid_for_read then
-          parts[#parts + 1] = i .. ":" .. s.name .. "x" .. s.count
-        end
-      end
-    end
-    log("[randputF][KIT] " .. label .. " " .. spec.name .. " [" .. table.concat(parts, ", ") .. "]")
-  end
-end
 
 -- Dépôt exact du kit seed (guns/munitions dans les bons inventaires). Idempotent.
 local function give_starter_kit(player)
@@ -776,7 +727,6 @@ script.on_event(defines.events.on_player_created, function(event)
   if apply_spawn_kit(player) then
     KIT_APPLIED[idx] = true
   end
-  log_kit_state("created", player)
   set_armed(idx)
   -- Enforcement : normaliseur à 300/900/1800 ticks active.
   KIT_ENFORCE[idx] = 1
@@ -794,7 +744,6 @@ script.on_event(defines.events.on_player_respawned, function(event)
     return
   end
   apply_respawn_kit(player)
-  log_kit_state("respawn", player)
 end)
 
 -- Pas de on_player_joined : réarmer purgerait l'inventaire existant.
@@ -821,11 +770,7 @@ script.on_event(defines.events.on_tick, function()
     if target and game.tick >= target then
       local p = game.get_player(idx)
       if p and p.valid and p.character and p.character.valid then
-        if stage == 1 then
-          dump_character_inventories(p, "settle1")
-        end
         normalize_kit(p)
-        log_kit_state("settle" .. stage, p)
         KIT_APPLIED[idx] = true
         log("[randputF][KIT] enforcement stage " .. stage .. " (tick=" .. game.tick .. ")")
       end
@@ -881,31 +826,6 @@ script.on_event(defines.events.on_tick, function()
       storage.randputf.water_purge = { ring = 0, x = 0, y = 0 }
     end
   end
-
-  -- DIAG : scan une fois la composition des tuiles-lac autour du spawn.
-  if storage.randputf.__diag_lakes_done == nil and game.tick > 30 then
-    storage.randputf.__diag_lakes_done = true
-    local s = game.surfaces[1]
-    if s then
-      local counts = {}
-      local phantom = 0
-      for dy = -256, 256, 2 do
-        for dx = -256, 256, 2 do
-          local t = s.get_tile(dx, dy)
-          if t and t.valid then
-            if t.name == PHANTOM_TILE then
-              phantom = phantom + 1
-            elseif LAKE_FLUID_LOOKUP[t.name] then
-              counts[t.name] = (counts[t.name] or 0) + 1
-            end
-          end
-        end
-      end
-      local parts = {}
-      for k, v in pairs(counts) do parts[#parts + 1] = k .. "=" .. v end
-      table.sort(parts)
-      log("[randputF][DIAG] phantom=" .. phantom .. " fluids={" .. table.concat(parts, ", ") .. "}")
-    end
   end
 
   -- Balayage crash containers pendant la fenêtre de démarrage (idempotent).

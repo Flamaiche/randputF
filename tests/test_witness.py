@@ -57,7 +57,9 @@ def test_witness_reproductible_sur_deux_assemblages(tmp_path):
     from tool.parsers.vanilla import load_db_from_dump
     import json
 
-    db = load_db_from_dump(json.loads(open("data/vanilla_dump.json", encoding="utf-8").read()))
+    db = load_db_from_dump(
+        json.loads((Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json").read_text(encoding="utf-8"))
+    )
     db.seed_value = 5
     seed = generate_seed(db, validate=False)
 

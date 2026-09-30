@@ -1,8 +1,14 @@
+# NOTE — clés documentées mais INERTES (résolues par le tool, pas lues ici) :
+#   factorio_version   : lu depuis mod/info.json (tool.common.version), source unique.
+#   paths.mod_dir      : le mod source est résolu par tool.common.assets (wheel ou dépôt).
+#   paths.vanilla_dump : idem (data/vanilla_dump.json embarqué dans le wheel).
+# Seule `paths.factorio_mods` est lue par le CLI (`randputf generate --install`).
 factorio_version: "2.0"
 
 paths:
   # Dossier des data du jeu (dump vanilla à partir du mod « exporter ») et du
   # mod source. Chemins RELATIFS : depuis la racine du dépôt.
+  # (inertes : voir note en tête de fichier)
   mod_dir: mod
   vanilla_dump: data/vanilla_dump.json
   # Dossier mods de Factorio, utilisé par `--install`. À RENSEIGNER pour ton
@@ -150,3 +156,8 @@ usage:
   strict_order: true
   terminal_buildings: [lab, rocket-silo]
   kit_exempt: []
+
+# late_raws:
+#   # §6.3 — jalonnement des ressources tardives. Désactivé par défaut
+#   # (gating 100 %, déterminisme préservé). Pour activer, décommenter :
+#   enabled: true

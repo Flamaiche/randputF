@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from tool.common.db import SLOT_FLUID, SLOT_ITEM
 from tool.generator.pipeline import generate_seed
 
 DUMP = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json"
-OUT = Path(sys.argv[3]) if len(sys.argv) > 3 else Path("/tmp/opencode/late_raws_classification.csv")
+OUT = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(tempfile.gettempdir()) / "late_raws_classification.csv"
 
 
 def _claim_indexes(tech_order: list[str], tech_by_id: dict) -> dict[str, int]:

@@ -75,6 +75,12 @@ def witness_md5(mod_dir: Path, prefix: str | None = None) -> str:
         for rel, path in canonical_entries(mod_dir):
             zi = zipfile.ZipInfo(f"{root_prefix}/{rel}", _ZIP_DATE)
             zi.compress_type = zipfile.ZIP_STORED
+            # Field « version made by » figé : par défaut, zipfile dérive
+            # create_system de sys.platform (0 sur win32, 3 ailleurs) et ce
+            # champ entre dans le md5. Forcé à POSIX pour que le témoin soit
+            # identique sur n'importe quelle machine.
+            zi.create_system = 3
+            zi.create_version = 20
             zi.external_attr = _ZIP_MODE
             zf.writestr(zi, path.read_bytes())
     return hashlib.md5(buf.getvalue()).hexdigest()
