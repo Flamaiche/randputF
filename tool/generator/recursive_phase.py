@@ -101,6 +101,7 @@ def _tech_id(category: str, element_name: str) -> str:
 
 
 def set_config(config: dict) -> None:
+    """Branche la config ``recursive`` (proto) sur le module, en cache global."""
     global _config
     _config = RecursiveConfig.from_config(config)
 
@@ -113,6 +114,10 @@ def expand_recursive(
     lake_resources: frozenset[str] = frozenset(),
     late_plan: LateRawsPlan | None = None,
 ) -> None:
+    """Construit le graphe récursif complet depuis l'état du starter (patchs,
+    lacs, raws gatées…) : techs en chaîne (§13), itérations bornées par
+    ``max_iterations``. Renseigne les accumulateurs globaux du module (_tech_*
+    etc.) réutilisés côté arbre et seed."""
     global _tech_steps, _unlocked_science_packs, _raw_resources
     global _heat_prereq_emitted, _fluid_pity, _fluid_steps
     _tech_steps = []
@@ -578,10 +583,14 @@ def _seed_first_science(
 
 
 def steps() -> list[dict]:
+    """Les steps de techs collectés par la phase récursive (en tête de
+    ``expand_recursive``) — consommés par le générateur d'arbre."""
     return _tech_steps
 
 
 def recipes_to_seed() -> list[dict]:
+    """Aucune recette supplémentaire : la phase récursive ne produit que des
+    steps/techs (les recettes viennent de recipes.py / relais / easeup)."""
     return []
 
 

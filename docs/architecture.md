@@ -97,6 +97,7 @@ randputF/
 │   │   ├── db.py
 │   │   ├── demo.py
 │   │   ├── png_icon.py        # génération d'icônes PNG (seed_graph)
+│   │   ├── rng.py             # make_seeded_rng : flux RNG déterministe par phase
 │   │   └── weighted_picker.py
 │   ├── audit/           # audit des tags bâtiments/items (invariants C8)
 │   │   └── tags.py

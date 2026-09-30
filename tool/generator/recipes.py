@@ -50,6 +50,7 @@ FLUID_RECIPE_CATEGORIES = frozenset({
 
 
 def set_config(config: dict) -> None:
+    """Branche la config ``recipes`` (proto) sur le module, en cache global."""
     global _config
     _config = RecipeConfig.from_config(config)
 
@@ -81,17 +82,20 @@ class ProgressionState:
     early: EarlyOracle = field(default_factory=EarlyOracle)
 
     def is_obtained(self, kind: str, name: str) -> bool:
+        """Vrai si la ressource (item/fluide) est obtenable à ce stade."""
         if kind == SLOT_ITEM:
             return name in self.obtained_items
         return name in self.obtained_fluids
 
     def mark_obtained(self, kind: str, name: str) -> None:
+        """Ajoute la ressource (item/fluide) au pool des obtenables."""
         if kind == SLOT_ITEM:
             self.obtained_items.add(name)
         else:
             self.obtained_fluids.add(name)
 
     def pool(self) -> list[tuple[str, str]]:
+        """Vue triée du pool obtenable : items puis fluides."""
         return [(SLOT_ITEM, n) for n in sorted(self.obtained_items)] + [
             (SLOT_FLUID, n) for n in sorted(self.obtained_fluids)
         ]
@@ -573,9 +577,11 @@ def _available_fluid_inputs(db, state, exclude_buildings: frozenset[str],
     """Nombre max d'entrées fluides parmi les bâtiments réellement utilisables
     à ce moment : débloqués prioritairement, sinon déblocables sans cycle."""
     def fluid_of(b) -> int:
+        """Nombre d'entrées fluides du bâtiment ``b``."""
         return b.fluid_inputs
 
     def usable(b) -> bool:
+        """Vrai si ``b`` est dans la whitelist (ou débloqué) et atelier."""
         if whitelist is not None:
             return b.name in whitelist and _is_atelier(b)
         return b.name in state.unlocked_buildings and _is_atelier(b)
@@ -656,9 +662,9 @@ def _pick_building(
     force_building=None,
 ):
     def fits(b) -> bool:
-        # D4ter : jamais héberger une recette dans un bâtiment dont l'item EST
-        # le produit (randputf-stone-furnace dans stone-furnace) : cercle
-        # atelier=produit — la recette exige le bâtiment qu'elle fabrique.
+        """Bâtiment candidat comme atelier pour la recette en cours :
+        capacités slots/fluides suffisantes, pas de recette cachée, atelier,
+        jamais self-hosting du produit, et non-électrique en mode « early »."""
         self_item = _item_for_building(db, b.name)
         if self_item is not None and self_item.name == product_name:
             return False
@@ -677,6 +683,7 @@ def _pick_building(
         )
 
     def blocked(b) -> bool:
+        """Vrai si le bâtiment (artefact) est objectivement indisponible ici."""
         return _blocked_building(db, state, b.name)
 
     if force_building is not None:

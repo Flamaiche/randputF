@@ -37,6 +37,8 @@ class RareResourcesConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RareResourcesConfig:
+        """Construit la config rare_resources depuis ``config`` — défauts du
+yaml, jamais codés en dur par le moteur."""
         cfg = config.get("rare_resources", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),

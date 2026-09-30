@@ -17,6 +17,7 @@ import random
 from dataclasses import dataclass, field
 
 from tool.common.db import SLOT_FLUID, SLOT_ITEM, ENVIRONMENTAL_ITEMS, ItemDef, VanillaDB
+from tool.common.rng import make_seeded_rng
 from tool.generator.early_oracle import build_early_sources
 from tool.generator.map_patches import Patch
 from tool.generator.recipes import (
@@ -32,12 +33,17 @@ _config = StarterConfig()
 
 
 def set_config(config: dict) -> None:
+    """Branche la config ``starter`` (proto) sur le module, en cache global."""
     global _config
     _config = StarterConfig.from_config(config)
 
 
 @dataclass
 class StarterChain:
+    """Résultat de la phase starter : kit, recettes de démarrage, techs
+    gratuites, étapes de progression — l'état terminal du starter (inclus
+    ``state``) est repris tel quel par les phases suivantes. ``promises``
+    gèle (après l'électricité) les produits promis par les techs gratuites."""
     kit: list[dict] = field(default_factory=list)
     free_researches: list[str] = field(default_factory=list)
     steps: list[dict] = field(default_factory=list)
@@ -102,7 +108,7 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     # Flux RNG DÉDIÉ (artefact, comme le chest) pour ne pas perturber la carte
     # rechangée par l'électricité.
     _ensure_prepower_item_miner(
-        random.Random(f"randputf:bootstrap-miner:{db.seed_value}"), db, state, chain
+        make_seeded_rng(db.seed_value, "randputf:bootstrap-miner:"), db, state, chain
     )
 
     # Les LACS (§7.5) sont des TUILES fluides : leur extracteur est une pompe sans
@@ -133,7 +139,7 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     # finis (produits). Flux RNG INDÉPENDANT pour ne pas perturber celui du
     # starter (et donc la carte, re-tirée par `resolve_electricity`).
     _ensure_chest_craftable(
-        random.Random(f"randputf:chest:{db.seed_value}"), db, state
+        make_seeded_rng(db.seed_value, "randputf:chest:"), db, state
     )
 
     # Spawn cohérent avec la seed : inventaire de départ = fabricateur +

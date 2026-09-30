@@ -43,6 +43,10 @@ LUA_HEADER = "-- Généré par randputF tool. Ne pas éditer à la main.\n"
 
 
 def write_seed_files(seed: dict, out_dir: Path) -> None:
+    """Exporte la seed en ``seed.json`` + ``seed.lua`` (plus labels locale)
+    dans ``out_dir``. Injecte au passage ``seed["difficulty"]`` : le total de
+    l'ardoise, affiché par le mod au spawn (calculé à l'export, jamais
+    pendant la pipeline)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     # Difficulté injectée à l'export (jamais dans le pipeline) : le mod
     # l'affiche en chat au spawn. ``difficulty`` = total de l'ardoise.
