@@ -139,8 +139,8 @@ dans `random.Random` — les valeurs jusqu'à des dizaines de chiffres sont
 acceptées.
 
 > Warning runtime « fours » : si une console de partie affiche un message de
-> recette four non satisfaite, sache qu'il est **assumé** (2000/2000 parties
-> rejouées gagnées le prouvent — catalogue des dérives sur la branche `dev`).
+> recette four non satisfaite, sache qu'il est **documenté et assumé** —
+> `docs/DEVIANCES.md` §3.1 (2000/2000 parties rejouées gagnées le prouvent).
 
 ## Le graphe interactif
 
@@ -204,6 +204,7 @@ pour re-générer ce dump (ajout de contenu, nouvelle version du jeu) :
 randputF/
 ├── README.md            # ce document (installation, utilisation)
 ├── docs/                # documentation de conception (voir docs/README.md)
+├── IDEES.md             # idées / corrections en attente
 ├── config/
 │   └── settings.yaml    # configuration complète de la génération
 ├── data/
