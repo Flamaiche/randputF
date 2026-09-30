@@ -137,9 +137,9 @@ Contrôle direct du contenu, en symétrie autour de la seed.
 
 - **`starter.inventory`** — ce que le joueur reçoit **dans son inventaire** au
   spawn, en plus du fabricateur / extracteur / combustible déduits par la chaîne.
-  Aujourd'hui `_roll_starter_kit` (`starter_chain.py:522`) pioche **n'importe
-  quelle** arme `is_handheld_gun` + ses munitions, et `_pick_spawn_fuel` (`:626`)
-  glisse **le combustible de plus forte `fuel_value` du pool obtenu** — donc
+Aujourd'hui `_roll_starter_kit` (`starter_chain.py:533`) pioche **n'importe
+   quelle** arme `is_handheld_gun` + ses munitions, et `_pick_spawn_fuel` (`:637`)
+   glisse **le combustible de plus forte `fuel_value` du pool obtenu** — donc
   potentiellement `nuclear-fuel` / `uranium-fuel-cell` : des seeds au **départ
   dégénéré**. La liste restreint le tirage ; hors liste ⇒ rien n'est tiré (filtre,
   pas quota).
@@ -147,10 +147,10 @@ Contrôle direct du contenu, en symétrie autour de la seed.
   le début**, parce que le joueur en a besoin avant toute automatisation.
   Vocation typique : `is_chest` / `is_storage` (stocker l'épave), `is_logistics_chest`.
   Aujourd'hui ces garanties sont des cas particuliers codés en dur —
-  `_ensure_chest_craftable` (`:493`, chest tirée au hasard) et `_ensure_landfill`
-  (`:480`) — le chantier est de les **fusionner en un seul parcours de liste**.
+`_ensure_chest_craftable` (`:504`, chest tirée au hasard) et `_ensure_landfill`
+   (`:491`) — le chantier est de les **fusionner en un seul parcours de liste**.
 - Contraintes : un item de la liste d'inventaire doit rester craftable
-  (`_ensure_kit_craftable`, `:547`), un item de la liste de craft doit avoir un
+   (`_ensure_kit_craftable`, `:558`), un item de la liste de craft doit avoir un
   atelier jouable au spawn (U2). Liste non satisfaite = `warning`, jamais un
   démarrage cassé. Tests visés : `tests/test_starter_chain.py`.
 
@@ -184,7 +184,7 @@ La victoire est **constante** : `endgame_phase.ensure_rocket_chain`
 `rocket-part` + ses 3 ingrédients, dans **une seule** tech `randputf-endgame-rocket`
 ; le rejoueur déclare la victoire sur
 `all_techs_researched and "satellite" in items and all(VICTORY_ITEMS)`
-(`tool/replay/player.py:878`). Le **contenu** est randomisé, le **but** ne l'est
+(`tool/replay/player.py:901`). Le **contenu** est randomisé, le **but** ne l'est
 pas.
 
 Tirer l'objectif dans une **liste blanche**, annoncée dès le début
@@ -305,36 +305,40 @@ vérification est la partie la moins testée du dispositif.
 ### D3. Centraliser les tags et listes en dur
 
 La logique « ceci est un terminal / ceci est interdit au starter / ceci est une
-arme montée » est aujourd'hui dispersée sur une dizaine d'emplacements, sous
-forme de `frozenset` littéraux, de `default_factory` et de **constantes qui ne se
-parlent pas**. Trois notions d'exclusion cohabitent, avec trois valeurs
+arme montée » était dispersée sur une dizaine d'emplacements, sous forme de
+`frozenset` littéraux, de `default_factory` et de **constantes qui ne se
+parlaient pas**. Trois notions d'exclusion cohabitent, avec des valeurs
 différentes pour le même concept :
 
 | ensemble | valeur | emplacement |
 |---|---|---|
-| interdits au starter | 8 noms | `starter_chain._EXCLUDED_BUILDINGS` (`:356`) |
+| interdits au starter | 8 noms | `tagsets.EXCLUDED_BUILDINGS` |
 | exclus de la récursion | 2 noms | `RecursiveConfig.excluded_buildings` (`prototypes/recursive.py:36`) |
 | terminaux (usage moteur) | `lab`, `rocket-silo` | `usage.terminal_buildings` (config) |
-| terminaux, **audit** | + `steam-generator` | `TERMINALS` (`tools/audit_usage.py:18`) |
+| terminaux, **audit** | + `steam-generator` (nom mort) | `TERMINALS` (`tools/audit_usage.py:18`) |
 | terminaux, **défaut du prototype** | `lab`, `rocket-silo` | `UsageConfig` (`prototypes/usage.py:37`) |
 
-L'audit et le générateur ne voient donc **pas le même** ensemble de terminaux :
-`steam-generator` est terminal pour l'audit, pas pour la passe. Même problème sur
-les autres listes en dur : `ENVIRONMENTAL_ITEMS` / `VALID_RECIPE_CATEGORIES` /
-`ROCKET_CHAIN` / `VEHICLE_GUNS` (`common/db.py`), `RAIL_TYPES` /
-`_VIRTUAL_ITEM_TYPES` (`parsers/vanilla.py`), `FLUID_RECIPE_CATEGORIES`
-(`recipes.py:45`), `_STARTER_TRANSFORMERS` et `_ENDGAME_EXCLUDED`
-(`easeup_phase.py:47`) — plus des littéraux isolés sans constante
-(`_SPAWN_FUEL_COUNT = 50`, `"landfill"`, `"wood"` dans `starter_chain.py`).
+**D3a — fait** : les ensembles nommés sont regroupés dans
+`tool/common/tagsets.py` (source unique, `docs/tags.md §14` en index) —
+`ENVIRONMENTAL_ITEMS`, `VALID_RECIPE_CATEGORIES`, `ROCKET_CHAIN`,
+`VEHICLE_GUNS`, `NON_STACKABLE_ITEM_TYPES`, `RAIL_TYPES`,
+`VIRTUAL_ITEM_TYPES`, `FLUID_RECIPE_CATEGORIES`, `STARTER_TRANSFORMERS`,
+`EXCLUDED_BUILDINGS`, `ENDGAME_EXCLUDED`. Les consommateurs importent du
+module ; `tool.common.db` re-exporte pour compatibilité.
 
-**Objectif à deux étages** :
+**Reste (étage 2 — knobs en config)** :
 
-1. **une source unique par ensemble** — un module dédié (`tool/common/tagsets.py`)
-   regroupant les ensembles nommés, référencés par `docs/tags.md §14` qui en
-   devient l'index (il les inventorie déjà) ;
-2. **ce qui est un knob de tuning part en config**, pas en constante de module :
-   quantité de spawn, terminaux U1, exclusions de bâtiments. C'est la condition
-   pour pouvoir les changer sans toucher au code — c'est le but du chantier.
+1. **terminaux U1** : l'audit et la passe ne voient **pas le même** ensemble —
+   `steam-generator` est terminal pour l'audit alors qu'il n'existe même pas
+   (`steam-engine`/`steam-turbine` oui). Aligner `tools/audit_usage.py` sur
+   `usage.terminal_buildings` (config) et retirer `TERMINALS`.
+2. **quantité de spawn** : `_SPAWN_FUEL_COUNT = 50` (`starter_chain.py:30`)
+   devient `starter.spawn_fuel_count` (config).
+3. **exclusions** : rapprocher `EXCLUDED_BUILDINGS` (starter) et
+   `RecursiveConfig.excluded_buildings` ; l'exclusion réelle de la récursion
+   (`character`, `lab`) doit venir de la config, pas d'un défaut de prototype.
+4. Les littéraux isolés `"landfill"`, `"wood"` (`starter_chain.py`) restent des
+   identités de design (pas des knobs) — documentés, pas centralisés.
 
 **Règle à adopter** : un ensemble en dur n'est acceptable que si **aucune
 capacité du dump** ne peut le dériver ; dans ce cas il porte un commentaire
