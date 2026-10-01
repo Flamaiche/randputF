@@ -30,7 +30,8 @@ paths:
 
 # ── Gisements au sol (map) ────────────────────────────────────────────────────
 map:
-  # Nombre de gisements tiré pour chaque ressource (items + fluides).
+  # Nombre TOTAL de gisements posés au sol (items + fluides), tiré une fois.
+  # Le tirage est sans remise : une ressource n'apparaît qu'une fois sur la carte.
   patches_min: 3
   patches_max: 8
   # Richesse totale d'un champ d'item, répartie par tuile [min, max].
