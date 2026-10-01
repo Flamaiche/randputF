@@ -21,7 +21,7 @@ de production complet** et **cassait** les cycles inaccessibles sans électricit
 (ou de rendement net ≤ 0) en réécrivant / ajoutant des recettes de secours.
 
 **Ce n'est plus le mécanisme actuel** : le redesign « bootstrap inline »
-(`PLAN_bootstrap_inline.md`) a remplacé la passe de rattrapage par une
+(plan de conception, non publié) a remplacé la passe de rattrapage par une
 contrainte **à la création**. L'**oracle early**
 (`tool/generator/early_oracle.py`) maintient le **watershed « obtenable avant
 le réseau »** pendant les phases starter + électricité :

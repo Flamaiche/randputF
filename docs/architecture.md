@@ -86,9 +86,6 @@ randputF/
 ├── README.md            # utilisateur : installation / jouer
 ├── README_EN.md         # version anglophone du README
 ├── CHANGELOG.md         # résumé des versions (hautes lumières par version)
-├── RELEASE.md           # source unique : notes de release + procédure
-├── IDEES.md             # idées / corrections workshop
-├── PLAN_bootstrap_inline.md # plan du redesign du bootstrap sûr
 ├── docs/                # conception : ce dossier + tags.md, nondeterminism.md
 ├── .gitignore
 ├── pyproject.toml       # package Python (randputf, ≥3.11)

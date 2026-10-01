@@ -51,8 +51,8 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   volontairement retirée du pool d'une seed pour ne pas être disponible trop
   tôt dans le run. C'est le vocabulaire du projet, emprunté à l'anglais
   *gating*, pas une faute d'orthographe. Le terme apparaît dans `seed.md`,
-  `DEVIANCES.md`, `nondeterminism.md` et `plan-extracteurs-dispatche.md` ; le
-  `CHANGELOG.md` le déclare explicitement.
+  `DEVIANCES.md` et `nondeterminism.md` ; le `CHANGELOG.md` le déclare
+  explicitement.
 
 ## 5. Le modèle randput : classification des bâtiments
 
