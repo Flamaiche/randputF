@@ -23,6 +23,12 @@ Le témoin v1.0.0 (tag `v1.0.0`) est :
 12ac143e06174df126537b978ff928d3
 ```
 
+> Le hash ci-dessus est celui de la **v1.0.0**, la version courante du dépôt.
+> Il **change à chaque bump de version** (le préfixe racine du zip contient
+> `randputF_<version>`, cf. §3.4), même si le contenu du mod ne change pas.
+> Pour la version que vous testez, lisez le hash dans `.github/workflows/ci.yml`,
+> qui est toujours à jour.
+
 `witness --seed 5` assemble le mod pour la seed 5 puis calcule son md5
 canonique. `--expect <hash>` compare et sort en erreur si le résultat diffère.
 Sans `--expect`, la commande se contente de générer et d'afficher le témoin.
@@ -39,7 +45,9 @@ proche de ce que fait un visiteur.
   Python 3.12) installe le paquet depuis un checkout frais et recalcule le
   témoin **depuis `/tmp`, hors checkout**, puis le compare au hash attendu.
 - **Le même depuis les tags** : n'importe qui peut refaire la commande ci-dessus
-  depuis le tag `v1.0.0` et retomber sur le même hash.
+  depuis le tag correspondant à la version testée et retomber sur le même hash.
+  Comme le témoin dépend de la version (§3.4), le hash attendu est celui de
+  cette version, celui écrit dans `ci.yml`.
 
 Ce que le témoin ne couvre pas : il prouve la reproductibilité **à contenu
 égal**, pas la solubilité d'une seed (ça, ce sont les invariants §15 et le
