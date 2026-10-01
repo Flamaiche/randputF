@@ -66,7 +66,7 @@ surchargé pour installer dans Factorio.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `patches_min` / `patches_max` | 3 / 8 | Nombre de gisements par ressource (§6) |
+| `patches_min` / `patches_max` | 3 / 8 | Nombre **total** de gisements posés au sol, items + fluides confondus, tiré une fois dans la fourchette (§6). Le tirage est sans remise : une ressource n'apparaît qu'une fois sur la carte |
 | `richness_item` / `richness_fluid` | [400000, 1500000] / [100000, 600000] | Richesse d'un champ |
 | `wells_per_patch` | [3, 8] | Blocs / puits par gisement (§6.5) |
 | `item_patch_radius` | [9, 17] | Rayon du champ item type mapgen |
@@ -78,7 +78,7 @@ surchargé pour installer dans Factorio.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `free_researches_count` | [1, 2] | Recherches gratuites du départ |
+| `free_researches_count` | [1, 2] | **Inerte** — déclarée et validée, jamais lue. Le nombre de recherches gratuites est fixé par le build (`starter_chain.build_tech_steps`, §7), pas par la config |
 | `ammo_count` | 50 | Munitions du kit |
 | `inserter_chance` | 0.5 | Probabilité d'un inserter dans le kit |
 | `spawn_fuel_count` | 50 | Combustible du starter en burner |

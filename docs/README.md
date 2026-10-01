@@ -62,6 +62,9 @@ contenu arbitraire.
    [14. Fin de partie](tech.md#14-fin-de-partie).
 9. [15. Règles de solvabilité](solvabilite.md#15-règles-de-solvabilité) — les
    invariants garantis pour toute seed acceptée.
+10. [15ter. Le rejoueur « fake player »](solvabilite.md#15ter-rejoueur-fake-player-vérification-par-simulation)
+    — la preuve par simulation : une partie rejouée de bout en bout
+    (1501/1501 victoires mesurées).
 
 ## Index des documents
 
@@ -76,7 +79,7 @@ contenu arbitraire.
 | [energie.md](energie.md) | §10, §10bis | Électricité (déclenchement, générateurs, ruptures) et chaleur (triade source/transport/sink) |
 | [combat.md](combat.md) | §11, §12 | Armes, munitions, transports avancés, armes montées randomisées |
 | [tech.md](tech.md) | §13, §14 | Arbre technologique linéaire, fin de partie (fusée) |
-| [solvabilite.md](solvabilite.md) | §10ter, §15 | Bootstrap sûr (graphe initial correct par construction), vérificateur de bootstrap, invariants de solvabilité |
+| [solvabilite.md](solvabilite.md) | §10ter, §15, §15ter | Bootstrap sûr (graphe initial correct par construction), invariants de solvabilité, rejoueur « fake player » (1501/1501) |
 | [seed.md](seed.md) | §16 | Seed, déterminisme, configuration consommée |
 | [architecture.md](architecture.md) | §4, §17, §18 | Architecture générale, pipeline technique, structure du projet |
 
