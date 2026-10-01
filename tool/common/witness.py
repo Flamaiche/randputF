@@ -63,7 +63,7 @@ def witness_md5(mod_dir: Path, prefix: str | None = None) -> str:
     """md5 du mod assemblé, canonisé en zip déterministe.
 
     ``mod_dir`` est le dossier du mod assemblé. L'entrée racine est préfixée
-    par ``prefix``, fixé à ``MOD_NAME_VERSIONED`` (ex. ``randputF_1.0.0``) —
+    par ``prefix``, fixé à ``MOD_NAME_VERSIONED`` (ex. ``randputF_1.0.1``) —
     PAS au nom du dossier : un appel sur un dossier renommé doit donner le
     même digest pour le même contenu. Le mod installé PORTERA toujours ce
     nom (``_build_mod``) : le témoin publié ne dépend pas de l'endroit où on

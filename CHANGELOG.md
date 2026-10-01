@@ -11,7 +11,52 @@ vocabulaire du projet (gating, §16 de `seed.md`), pas une faute.
 
 ---
 
-## v1.0.0
+## v1.0.1
+
+Release de documentation et de configuration.
+
+### Configuration à deux YAML
+
+- **`config/settings.yaml` est remplacé** par `config/defaults.yaml` (tous les
+  réglages par défaut, source unique, non modifiable) + `config/user.yaml`
+  (surcharges facultatives). La génération lit la config fusionnée et la
+  **valide** : type, plage, `min <= max`, contraintes croisées. Une clé inconnue
+  ou une valeur impossible est une erreur explicite, jamais un défaut muet.
+- **Migration** : si vous aviez modifié `settings.yaml`, recopiez vos surcharges
+  dans `user.yaml` (mêmes clés, mêmes sections). Le format est identique ;
+  `settings.yaml` n'est plus lu.
+- **Plus aucune valeur de réglage en dur dans le moteur** : prototypes,
+  générateurs, CLI et pipeline lisent tous leurs valeurs depuis le YAML.
+- Référence complète des sections dans `docs/config.md`.
+
+### Documentation
+
+- **Refonte documentaire complète** (revue du 30 septembre 2026, lots A à I) :
+  README, index `docs/`, `docs/config.md`, `docs/witness.md`,
+  `docs/graphe-interactif.md`, `docs/solvabilite.md`, découpage de la densité
+  (`starter.md`, `recettes.md`), `CHANGELOG.md`, `README_EN.md` pour les
+  lecteurs anglophones.
+- **Arbre de structure `docs/architecture.md` §18** remis à jour contre le code
+  réel (vérifié par script : tous les `.py` des sept sous-dossires de `tool/`).
+- **Témoin de déterminisme documenté** dans `docs/witness.md` : canonisation,
+  exclusions, et pourquoi le hash change à chaque bump de version.
+- Terme « gaté » (gating) déclaré comme vocabulaire du projet : ce n'est pas
+  une faute de frappe.
+
+### Notes de chantier
+
+Les plans et notes de révision sont regroupés dans `atelier/`, **dossier absent
+des tags**. Aucun tag ne contient de document de chantier.
+
+### Garanties mesurées
+
+- **722 tests** verts.
+- **Témoin seed 5** : `ce428c2140ec7031f9604637ecf70cbc`. Le contenu du mod est
+  inchangé depuis la v1.0.0 ; le hash change car le préfixe racine du zip porte
+  `randputF_<version>`.
+
+[v1.0.1]: https://github.com/Flamaiche/randputF/releases/tag/v1.0.1
+[v1.0.0]: https://github.com/Flamaiche/randputF/releases/tag/v1.0.0
 
 Première release publique. Randomizer total déterministe pour Factorio 2.0
 (base, sans Space Age).
