@@ -89,13 +89,13 @@ La quantité à hand-crafter n'est jamais un singleton trivial : chaque prologue
 demande un **nombre d'items** (`research_trigger` `craft-item` avec `count`)
 égal à **2^(n + indice_science/4)**, où `n` est tiré au hasard dans (1, 6]
 (1 exclu, 6 inclu) et `indice_science` est la position de la science dans
-l'ordre du tech tree (le prologue précède la chaîne des sciences : indice 1 ;
-les bornes donnent donc 2^2.25 ≈ 5 à 2^6.25 ≈ 76 items). L'indice de science
-rend le mécanisme directement réutilisable pour un tirage aléatoire parmi les
-techs plus profondes : plus la science est avancée dans l'arbre, plus le
-nombre d'items à fabriquer est grand.
-Pour un tirage aléatoire parmi les techs en profondeur d'arbre, la même
-contrainte s'applique : restreindre le pool aux items de recettes déjà
+l'ordre du tech tree. Le prologue précède la chaîne des sciences (indice 1) :
+les bornes donnent donc 2^2.25 ≈ 5 à 2^6.25 ≈ 76 items.
+
+L'indice de science rend le mécanisme directement réutilisable pour un tirage
+aléatoire parmi les techs plus profondes : plus la science est avancée dans
+l'arbre, plus le nombre d'items à fabriquer est grand. Pour ce tirage, la
+même contrainte s'applique : restreindre le pool aux items de recettes déjà
 unlockées, jamais aux produits de recettes futures.
 
 ### 9.4 Cadence garantie des pylônes
@@ -149,13 +149,14 @@ recettes**, garantit leur remplacement :
    hand-craftable.
 4. **Consolidation en prologue** : les recettes relais sont regroupées en
    **techs de prologue** (`randputf-prologue-*`, §7, **≤ 5 unlocks chacune**,
-   plafond §13), placées
-   **immédiatement après les techs gratuites du starter** (une seule si peu de
-   recettes, aucune si rien). Elles ne sont pas des free_researches et se
-   débloquent par **hand-craft** d'un item du bootstrap (§9.3) : le bootstrap
-   reste la route de départ, et le
+   plafond §13), placées **immédiatement après les techs gratuites du starter**
+   (une seule si peu de recettes, aucune si rien).
+
+   Elles ne sont pas des free_researches et se débloquent par **hand-craft** d'un
+   item du bootstrap (§9.3) : le bootstrap reste la route de départ, et le
    joueur bascule sur les versions propres + l'entrée en sciences dès qu'il
-   fabrique le déclencheur — sans compter sur le bois/pierre/poisson sur la durée.
+   fabrique le déclencheur, sans compter sur le bois/pierre/poisson sur la
+   durée.
 
 Règles d'anti-cycle spécifiques au relais :
 
@@ -186,8 +187,8 @@ recette**. Une phase **3bis**, exécutée **après** la récursion pondérée et
 **après** la chaîne fusée (§14), garantit à **chaque item restant** sa recette
 `randputf-<item>` et sa tech `randputf-content-<item>` :
 
-- **Cibles** : tout item beltable sans recette produit, dans un ordre
-  déterminé par la seed.
+- **Cibles** : tout item beltable sans recette produit, dans un ordre déterminé
+  par la seed.
 - **Coûts** : la récursion précédente a déjà unlocké **tous** les science packs,
   donc le coût de chaque tech de balayage est toujours un pack déjà disponible
   (payable production → consommation, §13).

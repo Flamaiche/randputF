@@ -14,6 +14,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
+from tool.common import config as _cfg
 from tool.prototypes.base import PrototypeConfig
 
 
@@ -86,52 +87,37 @@ yaml, jamais codés en dur par le moteur."""
         rec_cfg = config.get("recursive", {})
         return cls(
             category_weights={
-                "transformer": float(rec_cfg.get("weight_transformer", 30)),
-                "extractor": float(rec_cfg.get("weight_extractor", 15)),
-                "generator": float(rec_cfg.get("weight_generator", 10)),
-                "distribution": float(rec_cfg.get("weight_distribution", 10)),
-                "combat": float(rec_cfg.get("weight_combat", 15)),
-                "science": float(rec_cfg.get("weight_science", 20)),
+                "transformer": float(rec_cfg.get("weight_transformer", _cfg.default_value("recursive", "weight_transformer"))),
+                "extractor": float(rec_cfg.get("weight_extractor", _cfg.default_value("recursive", "weight_extractor"))),
+                "generator": float(rec_cfg.get("weight_generator", _cfg.default_value("recursive", "weight_generator"))),
+                "distribution": float(rec_cfg.get("weight_distribution", _cfg.default_value("recursive", "weight_distribution"))),
+                "combat": float(rec_cfg.get("weight_combat", _cfg.default_value("recursive", "weight_combat"))),
+                "science": float(rec_cfg.get("weight_science", _cfg.default_value("recursive", "weight_science"))),
             },
-            progressive_factor=float(rec_cfg.get("progressive_factor", 0.15)),
-            max_iterations=int(rec_cfg.get("max_iterations", 120)),
-            stall_threshold=int(rec_cfg.get("stall_threshold", 10)),
-            dist_marks=tuple(int(m) for m in rec_cfg.get("dist_marks", (8, 28, 48))),
-            dist_guaranteed=int(rec_cfg.get("dist_guaranteed", 3)),
-            recipes_per_building_min=int(rec_cfg.get("recipes_per_building_min", 1)),
-            recipes_per_building_max=int(rec_cfg.get("recipes_per_building_max", 3)),
-            tech_count_min=int(rec_cfg.get("tech_count_min", 10)),
-            tech_count_max=int(rec_cfg.get("tech_count_max", 30)),
-            science_cost_min=int(rec_cfg.get("science_cost_min", 5)),
-            science_cost_max=int(rec_cfg.get("science_cost_max", 15)),
-            armed_vehicles=[str(v) for v in rec_cfg.get("armed_vehicles", ["tank", "spidertron", "artillery-wagon"])],
-            vehicle_weapons=[str(v) for v in rec_cfg.get("vehicle_weapons", [
-                "tank-cannon",
-                "vehicle-machine-gun",
-                "tank-flamethrower",
-                "artillery-wagon-cannon",
-                "spidertron-rocket-launcher-1",
-                "pistol",
-                "submachine-gun",
-                "shotgun",
-                "combat-shotgun",
-                "rocket-launcher",
-                "flamethrower",
-            ])],
-            vehicle_slots_min=int(rec_cfg.get("vehicle_slots_min", 1)),
-            vehicle_slots_max=int(rec_cfg.get("vehicle_slots_max", 4)),
-            vehicle_slots_with_replacement=bool(rec_cfg.get("vehicle_slots_with_replacement", True)),
-            vehicle_range_base_size=float(rec_cfg.get("vehicle_range_base_size", 2.0)),
-            vehicle_range_scale=float(rec_cfg.get("vehicle_range_scale", 0.4)),
+            progressive_factor=float(rec_cfg.get("progressive_factor", _cfg.default_value("recursive", "progressive_factor"))),
+            excluded_buildings=set(
+                rec_cfg.get("excluded_buildings", _cfg.default_value("recursive", "excluded_buildings"))
+            ),
+            max_iterations=int(rec_cfg.get("max_iterations", _cfg.default_value("recursive", "max_iterations"))),
+            stall_threshold=int(rec_cfg.get("stall_threshold", _cfg.default_value("recursive", "stall_threshold"))),
+            dist_marks=tuple(int(m) for m in rec_cfg.get("dist_marks", _cfg.default_value("recursive", "dist_marks"))),
+            dist_guaranteed=int(rec_cfg.get("dist_guaranteed", _cfg.default_value("recursive", "dist_guaranteed"))),
+            recipes_per_building_min=int(rec_cfg.get("recipes_per_building_min", _cfg.default_value("recursive", "recipes_per_building_min"))),
+            recipes_per_building_max=int(rec_cfg.get("recipes_per_building_max", _cfg.default_value("recursive", "recipes_per_building_max"))),
+            tech_count_min=int(rec_cfg.get("tech_count_min", _cfg.default_value("recursive", "tech_count_min"))),
+            tech_count_max=int(rec_cfg.get("tech_count_max", _cfg.default_value("recursive", "tech_count_max"))),
+            science_cost_min=int(rec_cfg.get("science_cost_min", _cfg.default_value("recursive", "science_cost_min"))),
+            science_cost_max=int(rec_cfg.get("science_cost_max", _cfg.default_value("recursive", "science_cost_max"))),
+            armed_vehicles=[str(v) for v in rec_cfg.get("armed_vehicles", _cfg.default_value("recursive", "armed_vehicles"))],
+            vehicle_weapons=[str(v) for v in rec_cfg.get("vehicle_weapons", _cfg.default_value("recursive", "vehicle_weapons"))],
+            vehicle_slots_min=int(rec_cfg.get("vehicle_slots_min", _cfg.default_value("recursive", "vehicle_slots_min"))),
+            vehicle_slots_max=int(rec_cfg.get("vehicle_slots_max", _cfg.default_value("recursive", "vehicle_slots_max"))),
+            vehicle_slots_with_replacement=bool(rec_cfg.get("vehicle_slots_with_replacement", _cfg.default_value("recursive", "vehicle_slots_with_replacement"))),
+            vehicle_range_base_size=float(rec_cfg.get("vehicle_range_base_size", _cfg.default_value("recursive", "vehicle_range_base_size"))),
+            vehicle_range_scale=float(rec_cfg.get("vehicle_range_scale", _cfg.default_value("recursive", "vehicle_range_scale"))),
             companions=[
                 [str(m) for m in group]
-                for group in rec_cfg.get(
-                    "companions",
-                    [
-                        ["roboport", "logistic-robot", "construction-robot"],
-                        ["solar-panel", "accumulator"],
-                    ],
-                )
+                for group in rec_cfg.get("companions", _cfg.default_value("recursive", "companions"))
             ],
         )
 

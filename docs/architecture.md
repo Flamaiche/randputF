@@ -60,8 +60,9 @@ Au runtime (*control.lua*), le mod :
 
 Chaîne complète, de l'écriture d'une seed à une partie jouable :
 
-1. `config/settings.yaml` — paramètres généraux (fourchettes, pondérations,
-   pools, récursion/armes montées, loot du site de crash §7).
+1. `config/defaults.yaml` — paramètres généraux (fourchettes, pondérations,
+   pools, récursion/armes montées, loot du site de crash §7) ; surcharges
+   utilisateur dans `config/user.yaml`, fusionnées puis validées (§Note config).
 2. Tool Python :
    1. parse les prototypes vanilla 2.0 (items beltables, fluides pipables,
       bâtiments avec leurs slots/directives par tier) ;
@@ -83,24 +84,32 @@ Chaîne complète, de l'écriture d'une seed à une partie jouable :
 ```
 randputF/
 ├── README.md            # utilisateur : installation / jouer
+├── README_EN.md         # version anglophone du README
+├── CHANGELOG.md         # résumé des versions (hautes lumières par version)
 ├── docs/                # conception : ce dossier + tags.md, nondeterminism.md
 ├── .gitignore
 ├── pyproject.toml       # package Python (randputf, ≥3.11)
 ├── config/              # configurations YAML
-│   └── settings.yaml
+│   ├── defaults.yaml    # réglages par défaut (source unique, non modifiable)
+│   └── user.yaml        # surcharges utilisateur (facultatives, validées)
 ├── data/                # dump des prototypes vanilla
 │   └── vanilla_dump.json
 ├── tool/                # générateur externe Python
 │   ├── __main__.py      # CLI : parse, audit, generate
-│   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
+│   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker, config
 │   │   ├── db.py
 │   │   ├── demo.py
 │   │   ├── png_icon.py        # génération d'icônes PNG (seed_graph)
 │   │   ├── rng.py             # make_seeded_rng : flux RNG déterministe par phase
 │   │   ├── tagsets.py         # ensembles de noms figés (source unique, tags.md §14)
-│   │   └── weighted_picker.py
-│   ├── audit/           # audit des tags bâtiments/items (invariants C8)
-│   │   └── tags.py
+│   │   ├── weighted_picker.py
+│   │   ├── config.py          # les deux YAML : fusion profonde + validation stricte
+│   │   ├── assets.py          # résolution des assets (prototypes, icônes)
+│   │   ├── version.py         # version unique (source : mod/info.json)
+│   │   └── witness.py         # témoin de déterminisme (docs/witness.md)
+│   ├── audit/           # audits : tags (invariants C8), difficulté
+│   │   ├── tags.py
+│   │   └── difficulty.py      # ardoise des ressources brutes pour finir une run
 │   ├── parsers/         # extraction des prototypes vanilla
 │   │   └── vanilla.py
 │   ├── generator/       # moteur de tirage & graphe
@@ -117,6 +126,11 @@ randputF/
 │   │   ├── recipes.py           # primitives recettes (make_recipe, ensure_obtainable)
 │   │   ├── extractor_timing.py  # timing de déblocage C3 (+ boîte D4bis)
 │   │   ├── late_raws.py         # jalons late raws (§6.3) : plan passe A + dégradation
+│   │   ├── early_oracle.py      # watershed « obtenable avant le réseau » (§10ter)
+│   │   ├── bootstrap_guard.py   # DIAGNOSTIC seul (tests) — plus une passe pipeline
+│   │   ├── usage_pass.py        # U1/U2 : rattachement d'usage, gardes anti-cycle
+│   │   ├── heat.py              # phase chaleur (triade source/transport/sink, §10bis)
+│   │   ├── craft_quantity.py    # C1 : facteur multiplicatif sur les quantités
 │   │   ├── tech_tree.py         # arbre technologique linéaire
 │   │   └── wreck_loot.py        # loot du site de crash
 │   ├── prototypes/      # classes de config (RecipeConfig, RecursiveConfig…)
@@ -126,7 +140,8 @@ randputF/
 │   │   ├── starter.py          # StarterConfig (§7/§8 : ammo_count, inserter_chance, deferred)
 │   │   ├── relay.py            # RelayConfig (§9.5)
 │   │   ├── easeup.py           # EaseupConfig (§9.3)
-│   │   ├── craft_quantity.py   # expérimental — testé, non branché à la pipeline
+│   │   ├── craft_quantity.py   # CraftQuantityConfig (miroir du module generator)
+│   │   ├── usage.py            # UsageConfig (D2 : garantie d'usage dure)
 │   │   ├── difficulty_knobs.py # expérimental — testé, non branché
 │   │   ├── nonfinite_randomisation.py # A1 — BRANCHÉ (map_patches.apply_nonfinite_randomisation)
 │   │   ├── rare_resources.py   # expérimental — testé, non branché
@@ -151,8 +166,11 @@ randputF/
 ```
 
 Le graphe interactif (`seed.graph.html`, exporté par `tool/exporters/seed_graph.py`)
-est documenté pour l'utilisateur dans le README racine (section « Le graphe
-interactif ») — c'est une sortie joueur, pas une pièce de conception.
+est décrit pour l'utilisateur dans le README racine (section « Le graphe
+interactif ») et pour sa **construction** dans
+[graphe-interactif.md](graphe-interactif.md) : c'est à la fois une sortie
+joueur et une pièce du système (lecture produit → ingrédient de la seed,
+icônes fidèles au jeu, autonomie du fichier).
 
 (La structure fine pourra évoluer pendant l'implémentation ; les rôles de
 haut niveau restent ceux décrits en §4.)

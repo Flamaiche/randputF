@@ -16,12 +16,11 @@ import random
 from dataclasses import dataclass
 
 from tool.common.db import VanillaDB
+from tool.common import config as _cfg
 from tool.common.rng import make_seeded_rng
 
-# Défauts config (settings.yaml section `lakes`).
-DEFAULT_MIN = 1
-DEFAULT_MAX = 3
-DEFAULT_RICHNESS = (100000, 600000)
+# Valeurs dans ``config/defaults.yaml`` (section ``lakes``) : min=1, max=3,
+# richness_fluid=[100000, 600000].
 
 
 @dataclass
@@ -52,15 +51,15 @@ def generate_lakes(rng: random.Random, db: VanillaDB, config: dict) -> list[Lake
     ressource (au plus un lac par fluide pipable, sans remise) et richesse
     (bornes ``richness_fluid``)."""
     cfg = config.get("lakes", {})
-    low = int(cfg.get("min", DEFAULT_MIN))
-    high = int(cfg.get("max", DEFAULT_MAX))
+    low = int(cfg.get("min", _cfg.default_value("lakes", "min")))
+    high = int(cfg.get("max", _cfg.default_value("lakes", "max")))
     if low < 0:
         low = 0
     if high < low:
         high = low
     count = rng.randint(low, high)
 
-    lo, hi = tuple(cfg.get("richness_fluid", list(DEFAULT_RICHNESS)))
+    lo, hi = tuple(cfg.get("richness_fluid", _cfg.default_value("lakes", "richness_fluid")))
     lo, hi = int(lo), int(hi)
 
     candidates = [(f.name, (lo, hi)) for f in db.pipable_fluids()]

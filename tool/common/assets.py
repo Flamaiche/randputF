@@ -19,7 +19,7 @@ from pathlib import Path
 _ASSET_MARKERS = {
     "mod": "info.json",
     "data": "vanilla_dump.json",
-    "config": "settings.yaml",
+    "config": "defaults.yaml",
 }
 
 

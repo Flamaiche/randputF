@@ -1,6 +1,7 @@
 """Régression CLI : ``generate --install`` avec ``paths.factorio_mods`` vide.
 
-Le template ``config/settings.yaml`` laisse ``factorio_mods: ""``. Bug corrigé :
+Le défaut de ``config/defaults.yaml`` (``paths.factorio_mods: ""``) laisse le
+champ vide sauf surcharge dans ``config/user.yaml``. Bug corrigé :
 la chaîne vide (falsy) faisait retomber sur ``Path()`` = ``.``, un dossier
 TOUJOURS valide — le mod était alors déposé à la racine du dépôt (plus un
 ``mod-list.json``) au lieu du fallback ``output/``. Ce test verrouille qu'aucun
@@ -12,6 +13,8 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+
+from tool.common.version import MOD_NAME_VERSIONED
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,11 +34,11 @@ def test_install_factorio_mods_vide_retombe_sur_output():
 
     # Le bug déposait le mod à la racine : ces deux artefacts ne doivent JAMAIS
     # exister ici (le fallback va dans output/).
-    assert not (ROOT / "randputF_1.0.0").exists()
+    assert not (ROOT / MOD_NAME_VERSIONED).exists()
     assert not (ROOT / "mod-list.json").exists()
 
     # Le fallback atteint bien output/ : le mod y est assemblé tel quel.
-    asm = ROOT / "output" / "randputF_1.0.0"
+    asm = ROOT / "output" / MOD_NAME_VERSIONED
     assert asm.is_dir()
     assert (asm / "info.json").is_file()
     assert (asm / "data.lua").is_file()

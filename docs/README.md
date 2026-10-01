@@ -62,6 +62,9 @@ contenu arbitraire.
    [14. Fin de partie](tech.md#14-fin-de-partie).
 9. [15. Règles de solvabilité](solvabilite.md#15-règles-de-solvabilité) — les
    invariants garantis pour toute seed acceptée.
+10. [15ter. Le rejoueur « fake player »](solvabilite.md#15ter-rejoueur-fake-player-vérification-par-simulation)
+    — la preuve par simulation : une partie rejouée de bout en bout
+    (1501/1501 victoires mesurées).
 
 ## Index des documents
 
@@ -76,7 +79,7 @@ contenu arbitraire.
 | [energie.md](energie.md) | §10, §10bis | Électricité (déclenchement, générateurs, ruptures) et chaleur (triade source/transport/sink) |
 | [combat.md](combat.md) | §11, §12 | Armes, munitions, transports avancés, armes montées randomisées |
 | [tech.md](tech.md) | §13, §14 | Arbre technologique linéaire, fin de partie (fusée) |
-| [solvabilite.md](solvabilite.md) | §10ter, §15 | Vérificateur de bootstrap, invariants de solvabilité |
+| [solvabilite.md](solvabilite.md) | §10ter, §15, §15ter | Bootstrap sûr (graphe initial correct par construction), invariants de solvabilité, rejoueur « fake player » (1501/1501) |
 | [seed.md](seed.md) | §16 | Seed, déterminisme, configuration consommée |
 | [architecture.md](architecture.md) | §4, §17, §18 | Architecture générale, pipeline technique, structure du projet |
 
@@ -87,13 +90,14 @@ contenu arbitraire.
 | [tags.md](tags.md) | Référence complète des tags de bâtiments et d'items |
 | [nondeterminism.md](nondeterminism.md) | Inventaire des sources potentielles de non-déterminisme et leur résolution |
 | [nomenclature-rejoueur.md](nomenclature-rejoueur.md) | Vocabulaire seed ↔ rejoueur : table de correspondance exacte des champs consommés |
+| [config.md](config.md) | Les deux fichiers de configuration, chaque clé et section, et les règles de validation |
+| [witness.md](witness.md) | Le témoin de déterminisme : ce qu'il couvre, ses exclusions assumées, sa mise à jour au bump de version |
+| [graphe-interactif.md](graphe-interactif.md) | Construction de `seed.graph.html` : nœuds, arêtes, icônes fidèles au jeu, autonomie du fichier |
 
 ### Notes de chantier
 
-Les documents d'atelier ne font **pas** partie de la release : le catalogue
-des dérives/bugs, les idées et corrections en attente, ainsi que les plans de
-redesign vivent sur la branche `dev` (voir `git branch -all`).
-
 | Document | Contenu |
 |---|---|
+| [DEVIANCES.md](DEVIANCES.md) | Dérives de gameplay assumées, bugs corrigés, avertissements résiduels |
+| [CHANGELOG.md](../CHANGELOG.md) | Historique des versions, garanties mesurées et corrections seed par seed |
 | [developpement.md](developpement.md) | §19, §20 : roadmap, environnement de dev, génération et installation |

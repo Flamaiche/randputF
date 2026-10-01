@@ -28,7 +28,7 @@ from pathlib import Path
 from tool.common.db import ENVIRONMENTAL_ITEMS
 from tool.common.png_icon import crop_mip
 
-DOT_HEADER = """// randputF seed {seed} - graphe de production randomisée
+DOT_HEADER = """// randputF seed {seed} - graphe de production (IDEES C9)
 digraph seed {{
   bgcolor="#141419";
   rankdir=LR;

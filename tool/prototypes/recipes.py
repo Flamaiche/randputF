@@ -11,6 +11,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
+from tool.common import config as _cfg
 from tool.common.weighted_picker import weighted_choice
 from tool.prototypes.base import PrototypeConfig
 
@@ -60,38 +61,51 @@ yaml, jamais codés en dur par le moteur."""
         rec_cfg = config.get("recipes", {})
         return cls(
             ingredient_counts=[
-                (1, int(rec_cfg.get("weight_1_ingredient", 3))),
-                (2, int(rec_cfg.get("weight_2_ingredients", 5))),
-                (3, int(rec_cfg.get("weight_3_ingredients", 2))),
+                (1, int(rec_cfg.get("weight_1_ingredient", _cfg.default_value("recipes", "weight_1_ingredient")))),
+                (2, int(rec_cfg.get("weight_2_ingredients", _cfg.default_value("recipes", "weight_2_ingredients")))),
+                (3, int(rec_cfg.get("weight_3_ingredients", _cfg.default_value("recipes", "weight_3_ingredients")))),
             ],
             result_amounts=[
-                (1, int(rec_cfg.get("weight_1_result", 7))),
-                (2, int(rec_cfg.get("weight_2_results", 3))),
+                (1, int(rec_cfg.get("weight_1_result", _cfg.default_value("recipes", "weight_1_result")))),
+                (2, int(rec_cfg.get("weight_2_results", _cfg.default_value("recipes", "weight_2_results")))),
             ],
             recipe_energies=[
-                float(e) for e in rec_cfg.get("energies", [0.5, 1.0, 2.0])
+                float(e) for e in rec_cfg.get("energies", _cfg.default_value("recipes", "energies"))
             ],
             energy_per_ingredient=float(
-                rec_cfg.get("energy_per_ingredient", 0.25)
+                rec_cfg.get("energy_per_ingredient", _cfg.default_value("recipes", "energy_per_ingredient"))
             ),
-            balance_min=float(rec_cfg.get("balance_min", 3.0 / 16.0)),
-            balance_max=float(rec_cfg.get("balance_max", 2.0 / 3.0)),
-            balance_steepness=float(rec_cfg.get("balance_steepness", 1.0)),
-            balance_max_factor=float(rec_cfg.get("balance_max_factor", 4.0)),
+            balance_min=float(rec_cfg.get("balance_min", _cfg.default_value("recipes", "balance_min"))),
+            balance_max=float(rec_cfg.get("balance_max", _cfg.default_value("recipes", "balance_max"))),
+            balance_steepness=float(
+                rec_cfg.get("balance_steepness", _cfg.default_value("recipes", "balance_steepness"))
+            ),
+            balance_max_factor=float(
+                rec_cfg.get("balance_max_factor", _cfg.default_value("recipes", "balance_max_factor"))
+            ),
             max_overproduced_ratio=float(
-                rec_cfg.get("max_overproduced_ratio", 1.0 / 3.0)
+                rec_cfg.get("max_overproduced_ratio", _cfg.default_value("recipes", "max_overproduced_ratio"))
             ),
-            balance_iterations=int(rec_cfg.get("balance_iterations", 2)),
-            ingredient_amount_min=int(rec_cfg.get("ingredient_amount_min", 1)),
-            ingredient_amount_max=int(rec_cfg.get("ingredient_amount_max", 4)),
+            balance_iterations=int(
+                rec_cfg.get("balance_iterations", _cfg.default_value("recipes", "balance_iterations"))
+            ),
+            ingredient_amount_min=int(
+                rec_cfg.get("ingredient_amount_min", _cfg.default_value("recipes", "ingredient_amount_min"))
+            ),
+            ingredient_amount_max=int(
+                rec_cfg.get("ingredient_amount_max", _cfg.default_value("recipes", "ingredient_amount_max"))
+            ),
+            recipe_prefix=str(
+                rec_cfg.get("recipe_prefix", _cfg.default_value("recipes", "recipe_prefix"))
+            ),
             environmental_weight_rich=float(
-                rec_cfg.get("environmental_weight_rich", 0.02)
+                rec_cfg.get("environmental_weight_rich", _cfg.default_value("recipes", "environmental_weight_rich"))
             ),
             environmental_weight_starved=float(
-                rec_cfg.get("environmental_weight_starved", 2.0)
+                rec_cfg.get("environmental_weight_starved", _cfg.default_value("recipes", "environmental_weight_starved"))
             ),
             environmental_amount_max=int(
-                rec_cfg.get("environmental_amount_max", 2)
+                rec_cfg.get("environmental_amount_max", _cfg.default_value("recipes", "environmental_amount_max"))
             ),
         )
 

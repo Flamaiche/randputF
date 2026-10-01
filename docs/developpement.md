@@ -34,23 +34,12 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
       `POWER_POLES` et `TOOL_LIKE_ITEMS` supprimés, migrés vers
       `is_power_pole` / `is_virtual_item`) à celles qui sont du *choix de
       conception* du randomizer et non une *donnée moteur*.
-   Le Python garde son rôle réel : trier, générer la seed, vérifier la
-   solvabilité §15 — il ne re-découvre plus le contenu à la main.
-    **Lacs : pose runtime déterministe** (remplace l'autoplace resource, cf.
-    §7.5). Le scatter `resource-autoplace` sur des TUILES fait chevaucher les
-    nappes de départ et laisse un seul liquide (le dernier, d'ordre le plus
-    élevé) dominer — vérifié headless, un rework `autoplace tile` seul ne
-    garantissait pas non plus un équilibre. La pose a donc été migrée vers un
-    **creusage `control.lua`** (`on_chunk_generated`) : une nappe discrète de
-    rayon fixe par fluide choisi, positionnée sur un anneau équiréparti autour
-    du spawn — aucune superposition, surface maîtrisée, tous les liquides
-    pompables. Le mapgen pose **0** tuile de lac (override
-    `property_expression_names["tile:<lac>:probability"]` = `randputf-no-water`,
-    comme l'eau vanilla §7.5) ; la tuile reste créée/inscrite pour
-    `set_tiles`, la palette et la liste du menu de génération. On conserve du
-    système antérieur : la couleur/copie de tuile, la berge (tous les lacs
-    bordés, redessinée au runtime par `set_tiles(..., correct_tiles = true)`,
-    §7.5), la compatibilité pompe offshore (lien §7.5/§16).
+Le Python garde son rôle réel : trier, générer la seed, vérifier la
+    solvabilité §15 — il ne re-découvre plus le contenu à la main.
+
+> **Lacs : pose runtime déterministe** (fait, remplace l'autoplace resource,
+> cf. §7.5). Le détail du choix (creusage `control.lua`, pourquoi l'autoplace
+> a été abandonné) est dans [DEVIANCES.md](DEVIANCES.md) §1.
 
 ## 20. Mise en route
 
@@ -62,8 +51,8 @@ python3 -m venv .venv
 ```
 
 `pip install .` (classique) embarque les assets (`mod/`, `data/`,
-`config/settings.yaml`) dans le wheel — ``tool.common.assets.asset_path`` les
-résout avec repli dépôt ; c'est le chemin documenté pour un install sans
+`config/` avec `defaults.yaml`) dans le wheel — ``tool.common.assets.asset_path``
+les résout avec repli dépôt ; c'est le chemin documenté pour un install sans
 checkout (voir le témoin de la release).
 
 ### 20.2 Récupérer la base vanilla (une fois par version du jeu)
@@ -100,10 +89,10 @@ par ton propre jeu, via le mod compagnon `exporter/` :
 Sans `--seed`, la seed est tirée de l'instant présent (millisecondes, §16) ;
 avec `--seed <n>`, la même valeur reproduit exactement le même mod.
 
-**Installation dans Factorio** — le chemin du dossier mods est lu dans
-`config/settings.yaml`, clé `factorio_mods` (dossier complet, ex.
+**Installation dans Factorio** — le chemin du dossier mods se surcharge dans
+`config/user.yaml`, clé `paths.factorio_mods` (dossier complet, ex.
 `~/.var/app/com.valvesoftware.Steam/.factorio/mods` pour un install Steam
-flatpak). Ensuite :
+flatpak ; le défaut `""` vit dans `config/defaults.yaml`). Ensuite :
 
 ```bash
 .venv/bin/python -m tool generate --seed 5 --install
