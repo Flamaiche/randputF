@@ -94,6 +94,7 @@ contenu arbitraire.
 |---|---|
 | [IDEES.md](../IDEES.md) | Idées / corrections en attente (à développer) |
 | [DEVIANCES.md](DEVIANCES.md) | Dérives de gameplay assumées, bugs corrigés, avertissements résiduels |
+| [roadmap-redressement.md](roadmap-redressement.md) | Plan d'action issu de la revue documentaire du 30 septembre 2026 (lots A à K) |
 | [PLAN_bootstrap_inline.md](../PLAN_bootstrap_inline.md) | Plan du redesign du bootstrap sûr |
 | [plan-extracteurs-dispatche.md](plan-extracteurs-dispatche.md) | Plan v2 : jalons de ressources (« late raws ») — principe, mesure, mise en œuvre (§6.3) |
 | [developpement.md](developpement.md) | §19, §20 : roadmap, environnement de dev, génération et installation |
