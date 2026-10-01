@@ -151,9 +151,14 @@ MIT — see [`LICENSE`](LICENSE).
 
 ## Development
 
-- **Full history**: `master` holds a single commit (the release, by packaging
-  choice). The full work history and workshop notes live on the
-  [`dev`](https://github.com/Flamaiche/randputF/tree/dev) branch.
+- **Full history**: `master` carries the whole development history. Versions are
+  tags on top ([`v1.0.0`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.0),
+  [`v1.0.1`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.1)): a tag
+  is the published state, nothing is rewritten afterwards.
+- **Work branch**: [`dev`](https://github.com/Flamaiche/randputF/tree/dev) takes
+  the changes in progress. `master` is never pushed directly: everything goes
+  through `dev`, then merge. Workshop notes (plans, ideas, review notes) are
+  grouped in `atelier/`, which no tag contains.
 - **Changelog**: [`CHANGELOG.md`](CHANGELOG.md).
 - **AI assistant**: parts of the documentation and code were written or
   reviewed with the help of an AI assistant. All design, decisions and fixes
