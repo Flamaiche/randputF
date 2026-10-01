@@ -154,8 +154,11 @@ randputF/
 ```
 
 Le graphe interactif (`seed.graph.html`, exporté par `tool/exporters/seed_graph.py`)
-est documenté pour l'utilisateur dans le README racine (section « Le graphe
-interactif ») — c'est une sortie joueur, pas une pièce de conception.
+est décrit pour l'utilisateur dans le README racine (section « Le graphe
+interactif ») et pour sa **construction** dans
+[graphe-interactif.md](graphe-interactif.md) : c'est à la fois une sortie
+joueur et une pièce du système (lecture produit → ingrédient de la seed,
+icônes fidèles au jeu, autonomie du fichier).
 
 (La structure fine pourra évoluer pendant l'implémentation ; les rôles de
 haut niveau restent ceux décrits en §4.)
