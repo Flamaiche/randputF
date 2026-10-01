@@ -47,6 +47,12 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 - **Graine / seed** : valeur déterministe pilotant tous les tirages du
   randomizer. Par défaut tirée de l'instant présent (millisecondes) à chaque
   génération, donc unique ; on peut imposer une valeur via `--seed` (§16).
+- **Gaté / gating** (à ne pas corriger en « gâté ») : ressource **mise de côté**,
+  volontairement retirée du pool d'une seed pour ne pas être disponible trop
+  tôt dans le run. C'est le vocabulaire du projet, emprunté à l'anglais
+  *gating*, pas une faute d'orthographe. Le terme apparaît dans `seed.md`,
+  `DEVIANCES.md`, `nondeterminism.md` et `plan-extracteurs-dispatche.md` ; le
+  `CHANGELOG.md` le déclare explicitement.
 
 ## 5. Le modèle randput : classification des bâtiments
 

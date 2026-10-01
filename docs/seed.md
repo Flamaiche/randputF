@@ -6,7 +6,7 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
 
 - **Défaut : seed temporelle.** Sans `--seed`, la commande génère une seed
   depuis l'instant présent — `int(time.time() * 1000)` = millisecondes écoulées
-  depuis l'époque (Soit *aaaa-mm-jj hh:mm:ss.mmm*). Deux générations
+  depuis l'époque (soit *aaaa-mm-jj hh:mm:ss.mmm*). Deux générations
   successives obtiennent donc presque toujours des seeds (et des mods)
   différents. La seed choisie est affichée en sortie pour reproductibilité.
 - **Imposer une valeur.** `tool generate --seed <n>` fige une seed : relancer
@@ -39,15 +39,19 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
 - La config est **réellement consommée** par la génération :
   `config/defaults.yaml` est la source unique des réglages (non modifiable) ;
   `config/user.yaml` fusionne tes surcharges ; le tout est VALIDÉ (schéma
-  strict) avant génération. Sections actives (lues à chaque génération) :
-  - `seed`, `paths` ;
-  - `map` : `patches_min/max` (nombre de gisements §6), `richness_item/fluid`
-    (richesse §6), `wells_per_patch` (blocs/puits par gisement §6.5),
-    `item_patch_radius` (rayon des champs items §6.5) ;
+  strict) avant génération. Sections actives (lues à chaque génération) — la
+  racine `factorio_version` plus 16 sections, détail dans
+  [`config.md`](config.md) :
+  - `paths` ;
+  - `map` : `patches_min/max` (nombre **total** de gisements §6),
+    `richness_item/fluid` (richesse §6), `wells_per_patch` (blocs/puits par
+    gisement §6.5), `item_patch_radius` (rayon des champs items §6.5) ;
   - `starter` : `ammo_count` (munitions du kit, défaut 50 §11),
     `inserter_chance` (bras optionnel de la chaîne §8, défaut 0.5) —
-    (la clé `free_researches_count` du yaml par défaut est **inerte** : le
-    nombre de recherches gratuites est piloté par le build, §7) ;
+    (la clé `free_researches_count` est **inerte**, comme `nonfinite`,
+    `craft_quantity`, `pools` et `weights` : déclarée et validée, jamais lue.
+    Le nombre de recherches gratuites est fixé par le build
+    (`starter_chain.build_tech_steps`), §7) ;
   - `recursive` : poids des catégories (`weight_transformer/extractor/generator/
     distribution/combat/science`), `progressive_factor`, `max_iterations`,
     `stall_threshold`, `dist_marks` + `dist_guaranteed` (garantie de
