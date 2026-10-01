@@ -4,7 +4,7 @@ Document de travail retracé : gestation de l'idée, mesures, puis **mise en
 œuvre réelle (v3, implémentée)** — voir §8. Le rollback (§4) et la règle
 50 % (§2) n'ont **pas** été retenus.
 
-Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](../docs/README.md).
 
 ---
 

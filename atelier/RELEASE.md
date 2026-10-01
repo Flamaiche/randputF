@@ -4,7 +4,7 @@ Fichier de travail de la release randputF. C'est **la** source de vérité pour
 la note de release et pour la procédure de publication ; les brouillons
 éparpillés (`/tmp/opencode/RELEASE_*.md`, notes de la revue) sont périmés.
 
-Retour : [README.md](README.md).
+Retour : [README.md](../README.md).
 
 ---
 
