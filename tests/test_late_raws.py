@@ -110,11 +110,12 @@ def test_plan_invariants_sur_seed_reelle():
 def test_export_late_raws_present_seulement_si_gating():
     """La seed gatée exporte ``late_raws`` (startup disjointe, chaque raw gated
     avec un jalon ``tier`` entier ≥ 0) ; la seed historique n'exporte pas la
-    clé (comportement rejoueur inchangé). Seed choisie non-inerte (jalon > 0)."""
-    base = generate_seed(db_for(10), {}, validate=False)
+    clé (comportement rejoueur inchangé). Seed choisie non-inerte (jalon > 0)
+    SOUS la config par défaut de la pipeline (defaults.yaml)."""
+    base = generate_seed(db_for(5), {}, validate=False)
     assert not base.get("late_raws")
 
-    gated = generate_seed(db_for(10), GATING, validate=False)
+    gated = generate_seed(db_for(5), GATING, validate=False)
     lr = gated.get("late_raws")
     assert lr is not None
     assert lr.get("gated")
@@ -181,12 +182,13 @@ def test_gating_change_effectivement_le_graphe_quand_active():
     """Une seed NON-inerte (jalons > 0) diffère de la seed historique : le
     ré-bakage de la passe B déplace la première consommation des raws gatées
     vers leur jalon. (Inverse : gating inerte = seed historique, cf.
-    test_gating_inerte_rend_la_seed_historique.)"""
-    db = db_for(10)
+    test_gating_inerte_rend_la_seed_historique.) Seed 5 NON-inerte sous la
+    config par défaut (defaults.yaml = richesse effective)."""
+    db = db_for(5)
     base = generate_seed(db, {}, validate=False)
     gated = generate_seed(db, GATING, validate=False)
     lr = gated.get("late_raws") or {}
-    assert lr.get("gated"), "seed 10 sans raw gatée"
+    assert lr.get("gated"), "seed 5 sans raw gatée"
     assert any(info["tier"] >= 1 for info in lr["gated"].values())
     assert base != gated
 
@@ -205,7 +207,7 @@ def test_gating_inerte_rend_la_seed_historique():
 
 
 def test_seed_1757_gating_inerte_victoire_comme_baseline():
-    """Régression 1757 (config réelle du jeu) : sous `config/settings.yaml` +
+    """Régression 1757 (config réelle du jeu) : sous `config/defaults.yaml` +
     gating, toutes les raws gatées ont un jalon ≤ 0 → la seed sert la même
     seed de la passe A ; le rejoueur gagne comme en baseline (89/89), là où la
     passe B re-générée perdait à la tech 21 (atelier assembling-machine-2)."""

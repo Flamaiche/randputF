@@ -11,6 +11,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+from tool.common import config as _cfg
 from tool.prototypes.base import PrototypeConfig
 
 
@@ -34,13 +35,13 @@ class NonfiniteConfig(PrototypeConfig):
 yaml, jamais codés en dur par le moteur."""
         cfg = config.get("nonfinite", {})
         return cls(
-            enabled=bool(cfg.get("enabled", False)),
-            richness_factor_min=float(cfg.get("richness_factor_min", 0.4)),
-            richness_factor_max=float(cfg.get("richness_factor_max", 2.5)),
-            count_factor_min=float(cfg.get("count_factor_min", 0.5)),
-            count_factor_max=float(cfg.get("count_factor_max", 2.0)),
-            radius_factor_min=float(cfg.get("radius_factor_min", 0.6)),
-            radius_factor_max=float(cfg.get("radius_factor_max", 1.8)),
+            enabled=bool(cfg.get("enabled", _cfg.default_value("nonfinite", "enabled"))),
+            richness_factor_min=float(cfg.get("richness_factor_min", _cfg.default_value("nonfinite", "richness_factor_min"))),
+            richness_factor_max=float(cfg.get("richness_factor_max", _cfg.default_value("nonfinite", "richness_factor_max"))),
+            count_factor_min=float(cfg.get("count_factor_min", _cfg.default_value("nonfinite", "count_factor_min"))),
+            count_factor_max=float(cfg.get("count_factor_max", _cfg.default_value("nonfinite", "count_factor_max"))),
+            radius_factor_min=float(cfg.get("radius_factor_min", _cfg.default_value("nonfinite", "radius_factor_min"))),
+            radius_factor_max=float(cfg.get("radius_factor_max", _cfg.default_value("nonfinite", "radius_factor_max"))),
         )
 
 

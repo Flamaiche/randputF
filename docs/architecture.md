@@ -60,8 +60,9 @@ Au runtime (*control.lua*), le mod :
 
 Chaîne complète, de l'écriture d'une seed à une partie jouable :
 
-1. `config/settings.yaml` — paramètres généraux (fourchettes, pondérations,
-   pools, récursion/armes montées, loot du site de crash §7).
+1. `config/defaults.yaml` — paramètres généraux (fourchettes, pondérations,
+   pools, récursion/armes montées, loot du site de crash §7) ; surcharges
+   utilisateur dans `config/user.yaml`, fusionnées puis validées (§Note config).
 2. Tool Python :
    1. parse les prototypes vanilla 2.0 (items beltables, fluides pipables,
       bâtiments avec leurs slots/directives par tier) ;
@@ -88,7 +89,8 @@ randputF/
 ├── .gitignore
 ├── pyproject.toml       # package Python (randputf, ≥3.11)
 ├── config/              # configurations YAML
-│   └── settings.yaml
+│   ├── defaults.yaml    # réglages par défaut (source unique, non modifiable)
+│   └── user.yaml        # surcharges utilisateur (facultatives, validées)
 ├── data/                # dump des prototypes vanilla
 │   └── vanilla_dump.json
 ├── tool/                # générateur externe Python

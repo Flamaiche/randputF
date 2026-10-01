@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import logging
 
+from tool.common import config as _cfg
 from tool.common.db import SLOT_ITEM, VanillaDB
 from tool.common.version import FACTORIO_VERSION, VERSION
 from tool.generator import (
@@ -133,7 +134,13 @@ def _build_prefix(rng, db, cfg, patches, lake_list):
 
 def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool = True) -> dict:
     """Génère une seed complète à partir de la base vanilla."""
-    cfg = config or {}
+    # Normalisation : defaults.yaml (source UNIQUE) + surcharges partielles,
+    # validés. ``strict_sections=False`` : des appelants (sweeps, tests) passent
+    # des clés racine hors schéma (``seed``…) — le contenu de toutes les
+    # sections connues reste validé strictement. La config est une copie
+    # profonde : les mutations locales (starter.deferred) ne fuient jamais vers
+    # l'appelant.
+    cfg = _cfg.full_config(config, strict_sections=False)
 
     # Distribuer la config aux modules via set_config()
     recipes.set_config(cfg)

@@ -12,24 +12,18 @@ from __future__ import annotations
 import hashlib
 import random
 
+from tool.common import config as _cfg
 from tool.common.db import VanillaDB
 
 # Durée de recherche par unité (secondes). Avec `amount = 1` par pack, la
 # jauge compte exactement le nombre de cycles (packs) à fournir (§13).
-_DEFAULT_RESEARCH_TIME = 60
+# Valeurs dans ``config/defaults.yaml`` (section ``tree``) :
+# research_time=60, max_cost_packs=4, max_per_tech=5 (1 + 4 extensions).
 
-# Nombre max de science packs DIFFÉRENTS par tech (les techs avancées
-# combinent typiquement jusqu'à 4 packs, façon vanilla).
-_MAX_COST_PACKS = 4
-
-# Plafond d'objets (unlocks) par tech : 1 de base + 4 extensions (§13).
-_MAX_PER_TECH = 1 + 4
-
-# Probabilités d'extension du groupe (§13) : chance d'un 2e objet puis 3e, 4e,
-# 5e ; tirage en chaîne (arrêt au premier échec). Défauts in config/settings.yaml.
-_DEFAULT_GROUP_CHANCES = (0.75, 0.65, 0.35, 0.15)
-
-_config_group_chances = _DEFAULT_GROUP_CHANCES
+_config_group_chances = tuple(_cfg.default_value("tree", "group_chances"))
+_config_research_time = int(_cfg.default_value("tree", "research_time"))
+_config_max_cost_packs = max(1, int(_cfg.default_value("tree", "max_cost_packs")))
+_config_max_per_tech = max(1, int(_cfg.default_value("tree", "max_per_tech")))
 
 
 def _count_objects(step: dict) -> int:
@@ -100,16 +94,30 @@ def _per_pack_count(depth: int, total: int) -> int:
 
 
 def set_config(config: dict) -> None:
-    """§13 : probabilités d'extension du nombre d'objets par tech (chaîne de
-    1..5), lues dans ``tree.group_chances``."""
-    global _config_group_chances
-    chances = (config.get("tree") or {}).get("group_chances", None)
+    """§13 : réglages de l'arbre lus dans la section ``tree`` — probabilités
+    d'extension du nombre d'objets par tech (chaîne de 1..5,
+    ``group_chances``), durée de recherche par unité, nombre max de packs
+    différents par tech et plafond d'unlocks par tech. Défauts dans
+    ``config/defaults.yaml``."""
+    global _config_group_chances, _config_research_time
+    global _config_max_cost_packs, _config_max_per_tech
+    tree_cfg = config.get("tree") or {}
+    chances = tree_cfg.get("group_chances", None)
     if chances is None:
-        _config_group_chances = _DEFAULT_GROUP_CHANCES
+        _config_group_chances = tuple(_cfg.default_value("tree", "group_chances"))
     else:
         values = tuple(max(0.0, min(float(c), 1.0)) for c in chances)
         if 1 <= len(values) <= 4:
             _config_group_chances = values
+    _config_research_time = int(
+        tree_cfg.get("research_time", _cfg.default_value("tree", "research_time"))
+    )
+    _config_max_cost_packs = int(
+        tree_cfg.get("max_cost_packs", _cfg.default_value("tree", "max_cost_packs"))
+    )
+    _config_max_per_tech = int(
+        tree_cfg.get("max_per_tech", _cfg.default_value("tree", "max_per_tech"))
+    )
 
 
 def _roll_group_size(rng: random.Random) -> int:
@@ -124,15 +132,18 @@ def _roll_group_size(rng: random.Random) -> int:
     return size
 
 
-def _collect_packs(steps: list[dict], limit: int = _MAX_COST_PACKS) -> list[str]:
-    """Packs distincts demandés par un ensemble de steps, ordre d'apparition."""
+def _collect_packs(steps: list[dict], limit: int | None = None) -> list[str]:
+    """Packs distincts demandés par un ensemble de steps, ordre d'apparition.
+
+    ``limit=None`` = AUCUNE coupure (liste complète) ; ``limit`` entier borne
+    le nombre de packs distincts (max par tech, §13 — cf. set_config)."""
     packs: list[str] = []
     for step in steps:
         for ing in step.get("cost", []):
             name = ing.get("name")
             if name and name not in packs:
                 packs.append(name)
-    return packs[:limit]
+    return packs if limit is None else packs[:limit]
 
 
 def build_linear_tech_tree(
@@ -210,7 +221,7 @@ def build_linear_tech_tree(
             or is_isolated
             or (cur_has_pole and step_has_pole)
             or (cur_has_gun and step_has_gun)
-            or (cur_objs + objs > _MAX_PER_TECH)
+            or (cur_objs + objs > _config_max_per_tech)
             or (cur_objs + objs > cur_target)
         )
         if flush_before and flush_paid():
@@ -233,7 +244,7 @@ def build_linear_tech_tree(
 
     # Coût multi-packs de la tech endgame (packs les plus avancés).
     all_packs = _collect_packs(steps, limit=None)
-    endgame_packs = all_packs[-_MAX_COST_PACKS:] if all_packs else []
+    endgame_packs = all_packs[-_config_max_cost_packs:] if all_packs else []
 
     n_paid = sum(1 for g in groups if g["kind"] == "paid")
     paid_index = 0
@@ -264,7 +275,7 @@ def build_linear_tech_tree(
                 q = _per_pack_count(max(n_paid, 1), max(n_paid, 1))
                 unit = {
                     "count": q,
-                    "time": _DEFAULT_RESEARCH_TIME,
+                    "time": _config_research_time,
                     "ingredients": [
                         {"type": "item", "name": p, "amount": 1} for p in endgame_packs
                     ],
@@ -272,7 +283,7 @@ def build_linear_tech_tree(
             else:
                 unit = {"count": 1, "time": 1, "ingredients": []}
         else:  # paid
-            packs = _collect_packs(gsteps)
+            packs = _collect_packs(gsteps, limit=_config_max_cost_packs)
             if not packs:
                 # Fallback : aucune source de coût (cas limite) -> gratuit.
                 unit = {"count": 1, "time": 1, "ingredients": []}
@@ -280,7 +291,7 @@ def build_linear_tech_tree(
                 q = _per_pack_count(paid_index, max(n_paid, 1))
                 unit = {
                     "count": q,
-                    "time": _DEFAULT_RESEARCH_TIME,
+                    "time": _config_research_time,
                     "ingredients": [
                         {"type": "item", "name": p, "amount": 1} for p in packs
                     ],

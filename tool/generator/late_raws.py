@@ -28,9 +28,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from tool.common import config as _cfg
 from tool.common.db import SLOT_ITEM
-
-_DEFAULTS = {"enabled": False, "pick_chance": 0.6}
 
 
 @dataclass
@@ -46,9 +45,9 @@ class LateRawsConfig:
         """Construit la config depuis ``config["late_raws"]`` — défauts yaml."""
         raw = (cfg or {}).get("late_raws") or {}
         return cls(
-            enabled=bool(raw.get("enabled", _DEFAULTS["enabled"])),
-            share=float(raw.get("share", _DEFAULTS.get("share", 0.25))),
-            pick_chance=float(raw.get("pick_chance", _DEFAULTS["pick_chance"])),
+            enabled=bool(raw.get("enabled", _cfg.default_value("late_raws", "enabled"))),
+            share=float(raw.get("share", _cfg.default_value("late_raws", "share"))),
+            pick_chance=float(raw.get("pick_chance", _cfg.default_value("late_raws", "pick_chance"))),
         )
 
 

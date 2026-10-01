@@ -9,9 +9,8 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
   depuis l'époque (Soit *aaaa-mm-jj hh:mm:ss.mmm*). Deux générations
   successives obtiennent donc presque toujours des seeds (et des mods)
   différents. La seed choisie est affichée en sortie pour reproductibilité.
-- **Imposer une valeur.** `tool generate --seed <n>` (ou la key `seed` de
-  `config/settings.yaml`, désormais réservée à un défaut explicite) fige une
-  seed : relancer avec la même valeur reproduit exactement le même mod
+- **Imposer une valeur.** `tool generate --seed <n>` fige une seed : relancer
+  avec la même valeur reproduit exactement le même mod
   (déterminisme vérifié, octet-pour-octet). Le déterminisme tient **entre
   processus** : aucune itération de `set`/`frozenset` n'alimente un `rng`
   (sinon l'ordre de hachage Python varierait selon `PYTHONHASHSEED`) —
@@ -37,8 +36,10 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
   (boucle bornée à 10 essais) avant de rendre la main.
 - **Diversité / unicité.** Sur 61 seeds consécutives + 8 aléatoires testées,
   aucune collision : chaque seed → un `seed.lua` unique (sha256 distinct).
-- La config est **réellement consommée** par la génération. Sections actives
-  (lues à chaque génération, dans `config/settings.yaml`) :
+- La config est **réellement consommée** par la génération :
+  `config/defaults.yaml` est la source unique des réglages (non modifiable) ;
+  `config/user.yaml` fusionne tes surcharges ; le tout est VALIDÉ (schéma
+  strict) avant génération. Sections actives (lues à chaque génération) :
   - `seed`, `paths` ;
   - `map` : `patches_min/max` (nombre de gisements §6), `richness_item/fluid`
     (richesse §6), `wells_per_patch` (blocs/puits par gisement §6.5),
@@ -56,11 +57,9 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
     `vehicle_range_base_size`, `vehicle_range_scale`) ;
   - `recipes` : poids du nb d'ingrédients/résultats (`weight_1_ingredient`…),
     `energies` + `energy_per_ingredient` (§9.2 temps de craft), équilibre
-    cons/prod `balance_min/max`, `balance_max_factor` (§9.2) —
-    **section optionnelle** : absente, le moteur utilise les défauts du
-    prototype `tool/prototypes/recipes.py` ;
-  - `relay` (optionnel, défauts `tool/prototypes/relay.py`) : `prefix`,
-    `max_dispatch_steps` (recettes relais §9.5) ;
+    cons/prod `balance_min/max`, `balance_max_factor` (§9.2), `recipe_prefix` —
+    clés toujours présentes via defaults.yaml (aucune valeur de secours en dur) ;
+  - `relay` : `prefix`, `max_dispatch_steps` (recettes relais §9.5) ;
   - `easeup` : `max_recipes` (nb max de recettes ease-up), `depth_threshold`
     (profondeur déclencheuse), `unlocks_per_tech` (plafond §13) — crafts
     trop lourds §9.3.

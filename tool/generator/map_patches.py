@@ -13,6 +13,7 @@ import random
 from dataclasses import dataclass
 
 from tool.common.db import ROCKET_CHAIN, VanillaDB
+from tool.common import config as _cfg
 from tool.common.rng import make_seeded_rng
 
 
@@ -65,8 +66,8 @@ def generate_patches(
     la ressource est déjà posée via ``used``. ``lake_resources`` : fluides déjà
     en lac, à éviter."""
     map_cfg = config.get("map", {})
-    low = int(map_cfg.get("patches_min", 3))
-    high = int(map_cfg.get("patches_max", 8))
+    low = int(map_cfg.get("patches_min", _cfg.default_value("map", "patches_min")))
+    high = int(map_cfg.get("patches_max", _cfg.default_value("map", "patches_max")))
     count = rng.randint(max(1, low), max(1, high))
 
     item_candidates = [i.name for i in _excludable_items(db)]
@@ -112,8 +113,8 @@ def generate_patches(
         n_items = 0
         n_fluids = min(count, available_fluids)
 
-    item_rich = tuple(int(x) for x in map_cfg.get("richness_item", [50000, 300000]))
-    fluid_rich = tuple(int(x) for x in map_cfg.get("richness_fluid", [100000, 600000]))
+    item_rich = tuple(int(x) for x in map_cfg.get("richness_item", _cfg.default_value("map", "richness_item")))
+    fluid_rich = tuple(int(x) for x in map_cfg.get("richness_fluid", _cfg.default_value("map", "richness_fluid")))
 
     patches: list[Patch] = []
 
@@ -138,21 +139,14 @@ def generate_patches(
 
 
 # ── Gisements posés au runtime (§6.5) ──
-# Nombre de blocs/puits par gisement et dispersion autour du centre (item ET
-# fluide).
-WELLS_MIN = 3
-WELLS_MAX = 8
-# Rayon (tuiles) de dispersion des blocs/puits d'un gisement.
-CLUSTER_MIN = 9
-CLUSTER_MAX = 16
-# Gisements ITEM = champ plein « comme le mapgen vanilla » (disque dense posé
-# au runtime, count = nombre RÉEL de tuiles posées — l'aire du disque narquait
-# la richesse par tuile : seules ~55..65 % des tuiles théoriques étaient posées,
-# le champ produisait donc bien moins que ``richness``). Les puits FLUIDES, eux,
-# restent éparpillés (un pumpjack se branche sur une tuile quelconque, la
-# densité n'apporte rien).
-ITEM_RADIUS_MIN = 9
-ITEM_RADIUS_MAX = 17
+# Valeurs MIRROIR dans ``config/defaults.yaml`` (section ``map``) — source
+# unique des réglages : wells_per_patch = [3, 8], cluster_radius = [9, 16],
+# item_patch_radius = [9, 17]. Gisements ITEM = champ plein « comme le mapgen
+# vanilla » (disque dense posé au runtime, count = nombre RÉEL de tuiles posées
+# — l'aire du disque narquait la richesse par tuile : seules ~55..65 % des
+# tuiles théoriques étaient posées, le champ produisait donc bien moins que
+# ``richness``). Les puits FLUIDES, eux, restent éparpillés (un pumpjack se
+# branche sur une tuile quelconque, la densité n'apporte rien).
 
 # ── Forme du champ ITEM (§6.5) — miroir EXACT de ``block_positions_in_area``
 # dans mod/control.lua ──
@@ -210,9 +204,8 @@ def item_field_tiles(radius: int, well_seed: int) -> set[tuple[int, int]]:
     return out
 # Distance (tuiles) du premier gisement au spawn, puis anneaux croissants :
 # « cluster serré au spawn » (~25..193 tuiles selon le nombre de patchs),
-# léger gradient d'exploration sans long voyage au départ.
-FIRST_CENTER_DIST = 25
-RING_STEP = 24
+# léger gradient d'exploration sans long voyage au départ. Valeurs dans
+# ``config/defaults.yaml`` (map.first_center_dist, map.center_ring_step).
 
 
 def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) -> None:
@@ -233,12 +226,14 @@ def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) 
         return
 
     map_cfg = config.get("map", {})
-    wells_lo, wells_hi = map_cfg.get("wells_per_patch", [WELLS_MIN, WELLS_MAX])
+    wells_lo, wells_hi = map_cfg.get("wells_per_patch", _cfg.default_value("map", "wells_per_patch"))
     wells_lo, wells_hi = int(wells_lo), int(wells_hi)
-    cl_min = int(CLUSTER_MIN)
-    cl_max = int(CLUSTER_MAX)
-    ir_min, ir_max = map_cfg.get("item_patch_radius", [ITEM_RADIUS_MIN, ITEM_RADIUS_MAX])
+    cl_min, cl_max = map_cfg.get("cluster_radius", _cfg.default_value("map", "cluster_radius"))
+    cl_min, cl_max = int(cl_min), int(cl_max)
+    ir_min, ir_max = map_cfg.get("item_patch_radius", _cfg.default_value("map", "item_patch_radius"))
     ir_min, ir_max = int(ir_min), int(ir_max)
+    first_dist = int(map_cfg.get("first_center_dist", _cfg.default_value("map", "first_center_dist")))
+    ring_step = int(map_cfg.get("center_ring_step", _cfg.default_value("map", "center_ring_step")))
 
     wrng = make_seeded_rng(seed_value, "randputF:wells:")
     for k, p in enumerate(patches):
@@ -257,7 +252,7 @@ def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) 
             radius = wrng.randint(ir_min, ir_max)
             count = len(item_field_tiles(radius, well_seed))
         # Centre : anneau croissant + angle éparpillé (déterministe).
-        dist = FIRST_CENTER_DIST + k * RING_STEP
+        dist = first_dist + k * ring_step
         angle = wrng.random() * 2 * math.pi
         cx = round(dist * math.cos(angle))
         cy = round(dist * math.sin(angle))
@@ -325,7 +320,7 @@ def apply_nonfinite_randomisation(
     fluides (puits) inchangé (déjà éparpillés).
     """
     nonfinite = config.get("nonfinite") or {}
-    if not nonfinite.get("enabled", False):
+    if not nonfinite.get("enabled", _cfg.default_value("nonfinite", "enabled")):
         return
     from tool.prototypes.nonfinite_randomisation import NonfiniteConfig
 

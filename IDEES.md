@@ -132,8 +132,9 @@ trois fois plus de plaques, une recette intermédiaire deux fois moins.
 
 Contrôle direct du contenu, en symétrie autour de la seed.
 
-**Listes blanches du starter** — deux listes dans `config/settings.yaml`, à étendre
-à `StarterConfig` (qui ne lit aujourd'hui que `ammo_count` et `inserter_chance`) :
+**Listes blanches du starter** — deux listes dans `config/defaults.yaml` (à
+étendre à `StarterConfig`, qui ne lit aujourd'hui que `ammo_count`,
+`inserter_chance`, `spawn_fuel_count`, `deferred`) :
 
 - **`starter.inventory`** — ce que le joueur reçoit **dans son inventaire** au
   spawn, en plus du fabricateur / extracteur / combustible déduits par la chaîne.

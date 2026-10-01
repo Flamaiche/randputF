@@ -16,20 +16,12 @@ exportés dans la seed sous `wreck.counts = [c0, c1, c2, c3]`.
 from __future__ import annotations
 
 from tool.common.db import VanillaDB
+from tool.common import config as _cfg
 
 # Butins de base : ressources NON-infinies uniquement (bois, pierre, poisson).
 # Pas d'item crafté (plaques, fours...) dont la recette n'est pas garantie.
-DEFAULT_LOOT = [
-    "wood",
-    "stone",
-    "raw-fish",
-]
-
-# Paramètres par défaut de la formule : c0=24, c1=23, c2=16, c3=15 — P(0) ≈
-# 31 %, vaisseau (5 slots) ≈ 6,4 items en moyenne.
-DEFAULT_T = 15
-DEFAULT_A = 1
-DEFAULT_B = 1
+# Valeurs MIRROIR dans ``config/defaults.yaml`` (section ``wreck``) :
+# t=15, a=1, b=1, loot=[wood, stone, raw-fish].
 
 
 def counts_from_formula(t: int, a: int, b: int) -> list[int]:
@@ -59,11 +51,15 @@ def build_wreck_config(config: dict | None, db: VanillaDB) -> dict:
     """Assemble la section `wreck` de la seed depuis la config."""
     cfg = (config or {}).get("wreck") or {}
     counts = counts_from_formula(
-        int(cfg.get("t", DEFAULT_T)),
-        int(cfg.get("a", DEFAULT_A)),
-        int(cfg.get("b", DEFAULT_B)),
+        int(cfg.get("t", _cfg.default_value("wreck", "t"))),
+        int(cfg.get("a", _cfg.default_value("wreck", "a"))),
+        int(cfg.get("b", _cfg.default_value("wreck", "b"))),
     )
-    loot = [name for name in (cfg.get("loot") or DEFAULT_LOOT) if name in db.items]
+    loot = [
+        name
+        for name in (cfg.get("loot") or _cfg.default_value("wreck", "loot"))
+        if name in db.items
+    ]
     if not loot:
         raise ValueError("wreck: pool de loot vide après filtrage (items absents de la base)")
     return {"loot": loot, "counts": counts}

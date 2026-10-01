@@ -1,6 +1,7 @@
 """Régression CLI : ``generate --install`` avec ``paths.factorio_mods`` vide.
 
-Le template ``config/settings.yaml`` laisse ``factorio_mods: ""``. Bug corrigé :
+Le défaut de ``config/defaults.yaml`` (``paths.factorio_mods: ""``) laisse le
+champ vide sauf surcharge dans ``config/user.yaml``. Bug corrigé :
 la chaîne vide (falsy) faisait retomber sur ``Path()`` = ``.``, un dossier
 TOUJOURS valide — le mod était alors déposé à la racine du dépôt (plus un
 ``mod-list.json``) au lieu du fallback ``output/``. Ce test verrouille qu'aucun

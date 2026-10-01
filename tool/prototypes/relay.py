@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from tool.common import config as _cfg
 from tool.prototypes.base import PrototypeConfig
 
 
@@ -27,6 +28,6 @@ class RelayConfig(PrototypeConfig):
 yaml, jamais codés en dur par le moteur."""
         cfg = config.get("relay", {})
         return cls(
-            prefix=str(cfg.get("prefix", "randputf-relay-")),
-            max_dispatch_steps=int(cfg.get("max_dispatch_steps", 3)),
+            prefix=str(cfg.get("prefix", _cfg.default_value("relay", "prefix"))),
+            max_dispatch_steps=int(cfg.get("max_dispatch_steps", _cfg.default_value("relay", "max_dispatch_steps"))),
         )
