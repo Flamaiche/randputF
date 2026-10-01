@@ -15,69 +15,44 @@ exige `pipe`, craftée dans un **assembling-machine-2 électrique** (et plus
 profondément un fluide de patch pompé par pumpjack électrique) → pour avoir
 l'électricité il fallait … déjà l'électricité.
 
-Une phase de clôture (`bootstrap_guard`, AFTER toutes les phases productrices
-de recettes, AVANT l'arbre technologique) construit le **graphe de production
-complet**, repère **TOUS les cycles** (composantes fortement connexes produit →
-ingrédients produits, self-loops compris) et **CALSE** un cycle ssi :
+Une passe de clôture historique (`bootstrap_guard`, après toutes les phases
+productrices de recettes, avant l'arbre technologique) construisait le **graphe
+de production complet** et **cassait** les cycles inaccessibles sans électricité
+(ou de rendement net ≤ 0) en réécrivant / ajoutant des recettes de secours.
 
-- **il est inaccessible sans électricité** : tu n'y entres jamais — aucun
-  membre du cycle n'est dans le **watershed « obtenable avant le réseau »**
-  (récolte à la main, patchs **items** minables par foreuse non-électrique,
-  lacs pompés par pompe offshore void, crafts main / ateliers burner/void/heat).
-  C'est le cas quand la sortie fuit vers **un item que l'on n'a pas** ou **une
-  électricité que l'on ne peut pas avoir** (turbine → landfill → pipe →
-  atelier électrique) : un craft starter dont le graphe exige de l'électricité
-  pour produire … l'électricité est un cycle où l'on ne peut pas entrer, il
-  faut le casser ;
-- **son rendement net ≤ 0** : rendement = Σ quantités **produites** des
-  membres du cycle − Σ quantités **consommées** des mêmes membres par les
-  recettes du cycle. Un cycle qui s'auto-consomme autant qu'il ne produit ne
-  peut jamais exporter le moindre surplus → négatif, à casser.
+**Ce n'est plus le mécanisme actuel** : le redesign « bootstrap inline »
+(`PLAN_bootstrap_inline.md`) a remplacé la passe de rattrapage par une
+contrainte **à la création**. L'**oracle early**
+(`tool/generator/early_oracle.py`) maintient le **watershed « obtenable avant
+le réseau »** pendant les phases starter + électricité :
 
-Les cycles **accessibles** (au moins un membre dans le watershed) **et** de
-rendement **strictement positif** sont **bénins** (§8) : le joueur peut y
-entrer et en tirer du net, on n'y touche pas.
+- initialisé depuis les sources dès le départ : environnement (bois/pierre/
+  poisson), patchs items (minables par foreuse non-électrique) et lacs
+  (fluides pompés par pompe offshore, sans électricité) ;
+- le kit du spawn est **exclu** : stock fini de crash, pas une matière première
+  re-fabriquable ;
+- chaque recette créée pendant le mode « early » étend le watershed si son
+  atelier est non-électrique (handcraft / burner).
 
-**Correction = remplacement d'abord, ajout sinon** : toute recette d'une tech
-**gratuite** produisant un membre d'un cycle cassé reçoit un **craft de
-secours** :
+Quand le mode « early » est actif, `recipes._make_recipe` tire les ingrédients
+**uniquement dans ce watershed** et n'accepte que des ateliers non-électriques
+→ toute recette promise du starter est jouable pré-électricité **par
+construction**. Le cas seed 13 (turbine → landfill → pipe → atelier
+électrique) ne peut plus se produire. L'atteignabilité pré-élec est garantie ;
+seul le critère historique « rendement net ≤ 0 » n'est plus qu'un diagnostic.
 
-- **craft à la main** (aucun atelier), ingrédients **uniquement dans le pool
-  atteignable sans électricité** ; jamais le produit lui-même ni (pour un cycle
-  **négatif**) un membre de sa boucle (anti-cycle propagé aux secours, avec
-  repli sur le produit seul si le pool s'écrase) ;
-- **même sémantique que le premier générateur (§10)** : coût **doublé** pour
-  les ressources non infinies (`x2_environmental`) ; **science packs (§13)** :
-  jamais de ressource brute (patches/environnement) dans leur recette ;
-- **remplacement** (défaut, `replace_first`): on tente d'abord de **RÉÉCRIRE la
-  recette primaire `randputf-<produit>` SUR PLACE** — même nom, même position,
-  quantité produite conservée, zéro recette ajoutée — à condition que le rejeu
-  du validateur (§15, pool vide rejoué dans l'ordre liste) reste valide :
-  chaque ingrédient doit être déjà « mentionné » (produit ou ingrédient d'une
-  recette antérieure, ou patch/lac/environnement) avant la position de la
-  recette ;
-- **ajout** (repli) : si le remplacement casserait le rejeu, une recette
-  alternative `randputf-bootsafe-<produit>` est APPENDÉE en fin de liste
-  (validateur garanti : le pool d'alors contient tout), débloquée par **UNE
-  tech gratuite** `randputf-starter-bootsafe` JOINTE aux techs du starter
-  (façon prologue relais §9.3, créée seulement si au moins une recette a été
-  ajoutée) — la recette primaire profonde (`randputf-<produit>`) reste alors
-  inchangée ;
-- **point fixe** : un tour ré-inclut les produits secourus au watershed et
-  referme les gaps en aval (généralement 1 à 2 tours) ; chaque produit n'est
-  secouru **qu'une fois** ;
-- les recettes **alternatives** (ease-up §9.3, relais) du même produit restent
-  inchangées ; les **générateurs de courant** sont secourus en premier
-  (débloquer le réseau avant le reste).
-
-Flux RNG **indépendant** (`make_rng`) : une seed se régénère à l'identique
-hormis les recettes de secours ajoutées. Config : section `bootstrap_guard`
-(`enabled`, `prefix`, `ingredient_min/max`, `max_iterations`, `replace_first`).
+**Ce qui reste de `bootstrap_guard`** : le **diagnostic** `find_cycles`
+(`tool/generator/bootstrap_guard.py`), qui repère les composantes fortement
+connexes (cycles produit → ingrédients produits, self-loops compris) et classe
+chacune (atteignable sans électricité ? rendement net ?). Il est consommé par
+les tests (`tests/test_bootstrap_guard.py`,
+`tests/test_pipeline_invariants.py`) pour auditer des seeds, **pas par le
+pipeline de génération**.
 
 ## 15ter. Rejoueur « fake player » (vérification par simulation)
 
 Les invariants §15 raisonnent sur l'ORDRE (unlock avant usage) et les CYCLES —
-ils ne disent rien d'un playlist réel : « cette recette est unlockée avant
+ils ne disent rien d'un parcours réel : « cette recette est unlockée avant
 celle-là » n'implique pas « le joueur peut la fabriquer à ce moment-là ».
 Le rejoueur (`tool/replay/player.py`, balayage `tools/audit_playthrough.py`)
 **simule une partie** sur la seed finale, comme un joueur qui la découvre :
@@ -161,16 +136,18 @@ Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifi
 par le tool externe avant validation d'une seed (`pipeline_validator.py`) :
 
 1. **Anti-cycle** : aucun maillon ne peut dépendre de sa propre production.
+
    Toute entrée auxiliaire d'un bâtiment provient d'une branche déjà valide ;
    les tuyaux d'un fluide requis peuvent être faits de ce fluide ou d'une
    autre ressource, jamais de la ressource qui en a besoin (règle des tuyaux,
-   §8). La vérification se fait au niveau **item** par point fixe
+   §8).
+
+   La vérification se fait au niveau **item** par point fixe
    (`_detect_unreachable_products`) : un item est solvable dès que **l'une**
-   de ses recettes l'est — les recettes relais
-   (§9.5) sont des routes alternatives, pas des doubles-arêtes cycliques ;
-   un aller-retour `relais-A → bootstrap-B → relais-A` n'est pas une boucle
-   bloquante tant que chaque item de la paire reste solvable par une autre
-   route.
+   de ses recettes l'est. Les recettes relais (§9.5) sont des routes
+   alternatives, pas des doubles-arêtes cycliques : un aller-retour
+   `relais-A → bootstrap-B → relais-A` n'est pas une boucle bloquante tant
+   que chaque item de la paire reste solvable par une autre route.
 2. **Progressivité** : chaque nouveau maillon (recette, bâtiment, combustible,
    ressource) n'est ajouté que si ses prérequis sont satisfaits par le pool
    atteignable — ou rendus satisfaits immédiatement par déblocage sur le tas

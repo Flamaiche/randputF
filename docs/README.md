@@ -87,6 +87,9 @@ contenu arbitraire.
 | [tags.md](tags.md) | Référence complète des tags de bâtiments et d'items |
 | [nondeterminism.md](nondeterminism.md) | Inventaire des sources potentielles de non-déterminisme et leur résolution |
 | [nomenclature-rejoueur.md](nomenclature-rejoueur.md) | Vocabulaire seed ↔ rejoueur : table de correspondance exacte des champs consommés |
+| [config.md](config.md) | Les deux fichiers de configuration, chaque clé et section, et les règles de validation |
+| [witness.md](witness.md) | Le témoin de déterminisme : ce qu'il couvre, ses exclusions assumées, sa mise à jour au bump de version |
+| [graphe-interactif.md](graphe-interactif.md) | Construction de `seed.graph.html` : nœuds, arêtes, icônes fidèles au jeu, autonomie du fichier |
 
 ### Notes de chantier
 
@@ -95,7 +98,8 @@ contenu arbitraire.
 | [IDEES.md](../IDEES.md) | Idées / corrections en attente (à développer) |
 | [DEVIANCES.md](DEVIANCES.md) | Dérives de gameplay assumées, bugs corrigés, avertissements résiduels |
 | [roadmap-redressement.md](roadmap-redressement.md) | Plan d'action issu de la revue documentaire du 30 septembre 2026 (lots A à K) |
-| [RELEASE.md](../RELEASE.md) | Notes de release (source unique) et procedure de publication |
+| [RELEASE.md](../RELEASE.md) | Notes de release (source unique) et procédure de publication |
+| [CHANGELOG.md](../CHANGELOG.md) | Historique des versions, garanties mesurées et corrections seed par seed |
 | [PLAN_bootstrap_inline.md](../PLAN_bootstrap_inline.md) | Plan du redesign du bootstrap sûr |
 | [plan-extracteurs-dispatche.md](plan-extracteurs-dispatche.md) | Plan v2 : jalons de ressources (« late raws ») — principe, mesure, mise en œuvre (§6.3) |
 | [developpement.md](developpement.md) | §19, §20 : roadmap, environnement de dev, génération et installation |

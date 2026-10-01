@@ -9,28 +9,32 @@ logique, §10) :
 
 1. **Kit de départ randomisé** : le joueur ne commence pas forcément avec le
    même équipement. Son arme de départ est tirée au hasard, et **les munitions
-   se calent sur l'arme** (`starter.ammo_count` exemplaires, défaut 50 —
+   se calent sur l'arme** (`starter.ammo_count` exemplaires, défaut 50,
    plafonnées au stack du munition, configurable §16) pour qu'il puisse
-   effectivement l'utiliser. Le kit
-   fournit aussi le fabricateur, l'extracteur URPLS de la seed et un
-   combustible si besoin — à raison d'**UNE amorce par type d'extracteur**
-   (une foreuse par type de sol ; et côté fluides : **une pumpjack** pour les
-   patchs, **une pompe offshore** pour les lacs — §7.5, deux milieux
-   distincts). Ce n'est PAS la dotation qui rend la suite faisable : c'est
-   l'**unlock**.
+   effectivement l'utiliser. Le kit fournit aussi le fabricateur, l'extracteur
+   URPLS de la seed et un combustible si besoin, à raison d'**UNE amorce par
+   type d'extracteur** : une foreuse par type de sol ; côté fluides, une
+   pumpjack pour les patchs et une pompe offshore pour les lacs (§7.5, deux
+   milieux distincts).
+
+   Ce n'est PAS la dotation qui rend la suite faisable : c'est l'**unlock**.
+   L'amorce du kit ne fait que briser l'œuf/poule du premier exemplaire. Même
+   pour un extracteur différé, le kit fournit toujours son item.
+
    **Chaque ressource du run (patchs ou lacs, §7.5) a la recette de son
-   extracteur débloquée « juste-au-besoin » (§C3)** : la tech gratuite
-   `starter-extraction` ne garde que les extracteurs utiles dès le spawn (leur
-   ressource est consommée par la chaîne initiale) ; un extracteur dont la
-   ressource n'est servie qu'en profondeur part avec le **premier consommateur**
-   (tech d'usage, au plus tard — jamais après) ; un extracteur jamais utilisé
-   suit le balayage de contenu (§9.6), sur une tech payante tirée
-   aléatoirement. Contrainte de fabrication : l'extracteur n'est jamais
-   débloqué avant l'atelier qui le fabrique (U2). Quand on a besoin d'une
-   ressource, son extracteur est donc déjà craftable : on en refabrique autant
-   qu'il faut (le poisson se pêche dans les lacs, §7.5). L'amorce du kit ne
-   fait que briser l'œuf/poule du premier exemplaire — même pour un extracteur
-   différé, le kit fournit toujours son item.
+   extracteur débloquée « juste-au-besoin » (§C3)** :
+
+   - la tech gratuite `starter-extraction` ne garde que les extracteurs utiles
+     dès le spawn (leur ressource est consommée par la chaîne initiale) ;
+   - un extracteur dont la ressource n'est servie qu'en profondeur part avec le
+     **premier consommateur** (tech d'usage, au plus tard, jamais après) ;
+   - un extracteur jamais utilisé suit le balayage de contenu (§9.6), sur une
+     tech payante tirée aléatoirement.
+
+   Contrainte de fabrication : l'extracteur n'est jamais débloqué avant
+   l'atelier qui le fabrique (U2). Quand on a besoin d'une ressource, son
+   extracteur est donc déjà craftable, et on en refabrique autant qu'il faut
+   (le poisson se pêche dans les lacs, §7.5).
 2. **Techs gratuites du starter** : les premières recettes (la chaîne
    initiale, §8) sont débloquées par les techs du starter
    (`randputf-starter-*`), **gratuites** — coût nul, auto-complétées au
@@ -155,6 +159,13 @@ logique, §10) :
    joueur peut toujours franchir/combler l'eau de la carte dès le départ.
    Sans lac, inutile d'imposer le landfill — sa recette tombe alors au hasard
    dans le balayage de couverture (§9.6).
+
+### 7.1 Kit et extracteurs en un coup d'œil
+
+Le kit fournit une amorce par type d'extracteur (foreuse, pumpjack, pompe
+offshore). Ce qui rend la suite faisable n'est pas cette dotation mais
+l'**unlock** : chaque ressource a son extracteur débloqué « juste-au-besoin »
+(§C3, détaillé en §7 point 1).
 
 ## 8. La chaîne initiale (starter)
 
