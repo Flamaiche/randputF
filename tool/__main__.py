@@ -7,8 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
-
+from tool.common import config as _cfg
 from tool.common.assets import asset_path, repo_root
 from tool.common.db import VanillaDB
 from tool.common.demo import build_demo_db
@@ -24,7 +23,6 @@ from tool.audit.difficulty import compute_difficulty, summarize_difficulty
 from tool.common.witness import witness_md5
 
 # Assets résolus en wheel (namespace packages embarqués) comme en dépôt.
-CONFIG_PATH = asset_path("config") / "settings.yaml"
 MOD_SOURCE = asset_path("mod")
 DUMP_PATH_DEFAULT = asset_path("data") / "vanilla_dump.json"
 # Marqueur de checkout : ``pyproject.toml`` n'est jamais livré dans le wheel
@@ -37,10 +35,9 @@ OUTPUT_DIR = repo_root() / "output" if _OUTPUT_REPO else Path.cwd() / "output"
 
 
 def _load_config() -> dict:
-    if not CONFIG_PATH.exists():
-        return {}
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    """Config de la run : defaults.yaml (source unique) + surcharges du fichier
+    ``user.yaml`` (facultatif), VALIDÉS avant génération."""
+    return _cfg.runtime_config()
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
@@ -181,7 +178,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
         else:
             mod_path = _build_mod(seed, OUTPUT_DIR)
             if not raw_path:
-                print("Aucun dossier mods configure (paths.factorio_mods vide dans config/settings.yaml).")
+                print("Aucun dossier mods configure (paths.factorio_mods vide dans config/user.yaml).")
             else:
                 print(f"Dossier Factorio mods introuvable ({raw_path})")
             print(f"Seed {db.seed_value} valide, mod assemble dans {mod_path}")

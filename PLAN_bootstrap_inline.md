@@ -56,7 +56,8 @@ re-baker — d'où le traçage empirique prévu (lequel appels produisent
    pool insatisfaisable → conserver la recette safe existante (1 seule).
 5. **Suppression du réparateur** : retirer `run_bootstrap_guard`,
    `find_cycles`, `find_bootstrap_gaps`, `_make_safe_recipe`…
-   (garder les diagnostics si utile), `replace_first` dans settings.yaml,
+   (garder les diagnostics si utile), `recursive.replace_first` dans
+   `config/defaults.yaml` (et sa surcharge éventuelle dans `config/user.yaml`),
    prototypes `bootstrap_guard`.
 6. **Tests** : adapter `tests/test_bootstrap_guard.py` — asserter 0 recette
    `randputf-bootsafe-*` et 0 tech `randputf-starter-bootsafe` sur 20 seeds ;

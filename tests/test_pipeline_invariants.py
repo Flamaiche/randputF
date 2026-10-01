@@ -124,7 +124,7 @@ def test_aucun_produit_inaccessible(seeds):
 
 
 # Randomisation des armes montées (§7/§12.1) : pool de VRAIS items gun (défaut
-# config settings.yaml / RecursiveConfig) — armes MONTÉES-UNIQUEMENT (jamais
+# config defaults.yaml / RecursiveConfig) — armes MONTÉES-UNIQUEMENT (jamais
 # craftées : la seed les clone à la volée pour les monter) et armes de poing
 # adoptables (pompe etc. : craftables, ET clonables sur un véhicule).
 ARMED_VEHICLES = ("tank", "spidertron", "artillery-wagon")

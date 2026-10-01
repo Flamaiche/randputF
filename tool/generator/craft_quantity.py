@@ -12,6 +12,7 @@ Inerte si la section ``craft_quantity`` est absente ou ``enabled: false``.
 
 from __future__ import annotations
 
+from tool.common import config as _cfg
 from tool.common.rng import make_seeded_rng
 
 
@@ -25,7 +26,7 @@ def apply_craft_quantity(seed: dict, config: dict) -> None:
     from tool.prototypes.craft_quantity import CraftQuantityConfig
 
     cq = config.get("craft_quantity") or {}
-    if not cq.get("enabled", False):
+    if not cq.get("enabled", _cfg.default_value("craft_quantity", "enabled")):
         return
 
     cqcfg = CraftQuantityConfig.from_config(config)

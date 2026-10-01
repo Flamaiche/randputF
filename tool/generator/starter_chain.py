@@ -28,8 +28,6 @@ from tool.generator.recipes import (
 )
 from tool.prototypes.starter import StarterConfig
 
-_SPAWN_FUEL_COUNT = 50
-
 _config = StarterConfig()
 
 
@@ -610,9 +608,9 @@ def _extend_spawn_kit(
         if fuel is not None:
             # Compte borné par la stackabilité réelle : un nuclear-fuel
             # (stack_size 1) ne remplit qu'un slot — en donner 50 inonderait.
-            count = _SPAWN_FUEL_COUNT
+            count = _config.spawn_fuel_count
             if fuel.stack_size:
-                count = min(_SPAWN_FUEL_COUNT, fuel.stack_size)
+                count = min(_config.spawn_fuel_count, fuel.stack_size)
             to_add.append({"type": SLOT_ITEM, "name": fuel.name, "count": count})
 
     for entry in to_add:

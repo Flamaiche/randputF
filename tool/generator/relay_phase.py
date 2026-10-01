@@ -24,8 +24,8 @@ from __future__ import annotations
 import random
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_ITEM, VanillaDB
+from tool.generator import tech_tree as _tech
 from tool.generator.recipes import ProgressionState, _ancestor_products, _make_recipe
-from tool.generator.tech_tree import _MAX_PER_TECH
 from tool.prototypes.relay import RelayConfig
 
 _config = RelayConfig()
@@ -175,8 +175,9 @@ def consolidate_intro_steps(
     # tech géante regroupant toutes les recettes relais).
     used_triggers: set[str] = set()
     steps: list[dict] = []
-    for i, start in enumerate(range(0, len(unique), _MAX_PER_TECH)):
-        chunk = unique[start : start + _MAX_PER_TECH]
+    cap = _tech._config_max_per_tech
+    for i, start in enumerate(range(0, len(unique), cap)):
+        chunk = unique[start : start + cap]
         # Nombre de crafts de l'item déclencheur (§9.3) : 2^(n + 1/4) avec
         # n ∈ {2..6} — jamais un singleton (crafter 1 item = tech triviale, le
         # moindre craft du bootstrap l'auto-compléterait). L'exposant se cale

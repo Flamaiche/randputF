@@ -176,8 +176,8 @@ première boucle de production :
    existe plusieurs tiers — ainsi que les périphériques associés : splitters,
    tunnels/undergrounds côté tapis, équivalents côté tuyaux.
 4. **Logistique** : des bras robotisés sont ajoutés — avec probabilité
-   `starter.inserter_chance` (défaut 0.5, configurable dans
-   `config/settings.yaml` §16).
+   `starter.inserter_chance` (défaut 0.5, défini dans
+   `config/defaults.yaml` §16).
 
 **Contrainte anti-cycle fondamentale** : si un bâtiment de cette phase exige
 une entrée supplémentaire (le cas d'école : une perceuse électrique qui boit
