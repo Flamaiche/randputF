@@ -15,8 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from tool.common import config as _cfg
 from tool.common.db import VanillaDB
-from tool.generator.lakes import DEFAULT_MAX, DEFAULT_MIN, Lake, generate_lakes, make_rng
+from tool.generator.lakes import Lake, generate_lakes, make_rng
 from tool.generator.map_patches import make_rng as patches_make_rng
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump
@@ -31,9 +32,10 @@ def _db(seed: int) -> VanillaDB:
 
 
 def test_comptage_min_max_par_defaut():
+    lo, hi = _cfg.default_value("lakes", "min"), _cfg.default_value("lakes", "max")
     for seed_value in range(1, 25):
         lakes = generate_lakes(make_rng(seed_value), _db(seed_value), {})
-        assert DEFAULT_MIN <= len(lakes) <= DEFAULT_MAX, (seed_value, len(lakes))
+        assert lo <= len(lakes) <= hi, (seed_value, len(lakes))
 
 
 def test_zero_possible_si_min_zero():
@@ -44,7 +46,7 @@ def test_zero_possible_si_min_zero():
 
 def test_fluides_et_richesse_valides():
     fluids = {f.name for f in DB.pipable_fluids()}
-    lo, hi = 100000, 600000
+    lo, hi = tuple(_cfg.default_value("lakes", "richness_fluid"))
     for seed_value in [1, 5, 9, 42]:
         for lake in generate_lakes(make_rng(seed_value), _db(seed_value), {}):
             assert lake.resource in fluids, lake

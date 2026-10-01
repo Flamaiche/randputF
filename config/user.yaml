@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# randputF : USER CONFIG (surcharges utilisateur)
+#
+# Ce fichier FUSIONNE avec `config/defaults.yaml` (la configuration par défaut,
+# non modifiable) puis l'ensemble est validé avant chaque génération.
+#  - Écris uniquement les clés que tu veux surcharger ; le reste vient des
+#    defaults.
+#  - Une clé inconnue, un mauvais type ou une valeur impossible (min > max,
+#    plage hors bornes, contrainte croisée) → erreur explicite au chargement.
+#  - Ne jamais modifier `config/defaults.yaml`.
+#
+# Exemple :
+#
+#   map:
+#     patches_min: 4
+#     patches_max: 10
+#   starter:
+#     ammo_count: 75
+#   paths:
+#     factorio_mods: ~/.var/app/com.valvesoftware.Steam/.factorio/mods
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (fichier vide : 100 % defaults tant que rien n'est renseigné)

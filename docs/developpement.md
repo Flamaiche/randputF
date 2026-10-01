@@ -62,8 +62,8 @@ python3 -m venv .venv
 ```
 
 `pip install .` (classique) embarque les assets (`mod/`, `data/`,
-`config/settings.yaml`) dans le wheel — ``tool.common.assets.asset_path`` les
-résout avec repli dépôt ; c'est le chemin documenté pour un install sans
+`config/` avec `defaults.yaml`) dans le wheel — ``tool.common.assets.asset_path``
+les résout avec repli dépôt ; c'est le chemin documenté pour un install sans
 checkout (voir le témoin de la release).
 
 ### 20.2 Récupérer la base vanilla (une fois par version du jeu)
@@ -100,10 +100,10 @@ par ton propre jeu, via le mod compagnon `exporter/` :
 Sans `--seed`, la seed est tirée de l'instant présent (millisecondes, §16) ;
 avec `--seed <n>`, la même valeur reproduit exactement le même mod.
 
-**Installation dans Factorio** — le chemin du dossier mods est lu dans
-`config/settings.yaml`, clé `factorio_mods` (dossier complet, ex.
+**Installation dans Factorio** — le chemin du dossier mods se surcharge dans
+`config/user.yaml`, clé `paths.factorio_mods` (dossier complet, ex.
 `~/.var/app/com.valvesoftware.Steam/.factorio/mods` pour un install Steam
-flatpak). Ensuite :
+flatpak ; le défaut `""` vit dans `config/defaults.yaml`). Ensuite :
 
 ```bash
 .venv/bin/python -m tool generate --seed 5 --install

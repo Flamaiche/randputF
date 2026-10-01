@@ -15,7 +15,7 @@ Ce README couvre l'installation et l'utilisation. La référence de conception
 ## Table des matières
 
 1. [Installation](#installation)
-2. [Configuration : `config/settings.yaml`](#configuration--configsettingsyaml)
+2. [Configuration : `config/defaults.yaml`](#configuration--configdefaultsyaml)
 3. [Ce que produit une génération](#ce-que-produit-une-génération)
 4. [Le graphe interactif](#le-graphe-interactif)
 5. [Système de dev (dump vanilla)](#système-de-dev-dump-vanilla)
@@ -59,9 +59,11 @@ exactement le même monde.
 
 ### 3. Installer le mod dans Factorio
 
-Le chemin du dossier mods se configure dans `config/settings.yaml`, clé
-`paths.factorio_mods` (ex. `~/.var/app/com.valvesoftware.Steam/.factorio/mods`
-pour un install Steam flatpak).
+Le chemin du dossier mods se configure en surcharge dans `config/user.yaml`,
+clé `paths.factorio_mods` (ex. `~/.var/app/com.valvesoftware.Steam/.factorio/mods`
+pour un install Steam flatpak). Le défaut (`""`) vit dans `config/defaults.yaml`
+(source unique) ; `config/user.yaml` ne porte que tes surcharges (template
+déjà fourni dans le dépôt).
 
 ```bash
 .venv/bin/python -m tool generate --seed 5 --install
@@ -78,11 +80,15 @@ Au lancement d'une partie : les gisements tirés remplacent les ressources
 vanilles autour du spawn, le kit de départ est injecté, les recherches
 gratuites débloquées. L'objectif reste classique — **lancer la fusée**.
 
-## Configuration : `config/settings.yaml`
+## Configuration : `config/defaults.yaml`
 
-La génération consomme réellement ce fichier ; les sections absentes du yaml
-sont prises avec les défauts d'implémentation (documentés dans docs/).
-Sections principales :
+`config/defaults.yaml` est la source UNIQUE des réglages (non modifiable à
+l'usage) ; tes surcharges passent par `config/user.yaml`, fusionnées puis
+VALIDÉES contre un schéma strict (type, plage, bornes `min <= max`,
+contraintes croisées) : une clé inconnue ou une valeur impossible est une
+erreur explicite, jamais une génération à l'aveugle. Un config fusionné est
+toujours complet (toutes les sections/clés existent), donc aucune valeur de
+secours n'est codée dans le moteur. Sections principales :
 
 | Section | Rôle |
 |---|---|
@@ -206,7 +212,8 @@ randputF/
 ├── docs/                # documentation de conception (voir docs/README.md)
 ├── IDEES.md             # idées / corrections en attente
 ├── config/
-│   └── settings.yaml    # configuration complète de la génération
+│   ├── defaults.yaml     # réglages par défaut (source unique, non modifiable)
+│   └── user.yaml         # surcharges utilisateur (facultatives, validées)
 ├── data/
 │   └── vanilla_dump.json # dump des prototypes vanilla
 ├── tool/                # générateur externe Python (python -m tool)

@@ -1,0 +1,285 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# randputF : DEFAULTS (non modifiable)
+#
+# Ce fichier est la source UNIQUE de toutes les valeurs de configuration du jeu.
+# Il est livré avec le tool et ne doit PAS être édité : il est fusionné avec
+# `config/user.yaml` (les surcharges utilisateur) puis validé avant toute
+# génération. Une valeur manquante ici est une erreur (jamais un défaut codé
+# dans le code) ; une valeur incohérente (type, plage, min > max, contrainte
+# croisée) est rejetée avec un message explicite.
+#
+# Facteurs de déterminisme : changer une valeur ICI change l'espace des seeds.
+# Les constantes STRUCTURELLES (formes de gisements miroir de mod/control.lua,
+# invariants de solvabilité) ne vivent pas ici : modifier le miroir Lua/Python
+# casserait le déterminisme (voir docs/nondeterminism.md). Elles restent dans
+# le code, à dessein.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Version Factorio cible. Inerte : lue depuis mod/info.json (source unique).
+factorio_version: "2.0"
+
+paths:
+  # Dossier du mod source (inerte pour la génération : résolu par l'asset).
+  mod_dir: mod
+  # Dump vanilla (inerte : embarqué avec le tool).
+  vanilla_dump: data/vanilla_dump.json
+  # Dossier mods de Factorio, utilisé par `randputf generate --install`.
+  # À surcharger dans config/user.yaml (ex. install Steam flatpak :
+  # ~/.var/app/com.valvesoftware.Steam/.factorio/mods).
+  factorio_mods: ""
+
+# ── Gisements au sol (map) ────────────────────────────────────────────────────
+map:
+  # Nombre de gisements tiré pour chaque ressource (items + fluides).
+  patches_min: 3
+  patches_max: 8
+  # Richesse totale d'un champ d'item, répartie par tuile [min, max].
+  richness_item: [400000, 1500000]
+  # Richesse totale d'un champ de fluide [min, max].
+  richness_fluid: [100000, 600000]
+  # Nombre de blocs / puits par gisement posé au runtime (§6.5) [min, max].
+  wells_per_patch: [3, 8]
+  # Rayon (tuiles) du champ ITEM « plein » type mapgen vanilla [min, max].
+  item_patch_radius: [9, 17]
+  # Rayon (tuiles) de dispersion des puits FLUIDES autour du centre [min, max].
+  cluster_radius: [9, 16]
+  # Géométrie des centres : distance du 1er gisement au spawn puis anneaux.
+  first_center_dist: 25
+  center_ring_step: 24
+
+# ── Randomisation des ressources NON-finies (inactivée par défaut) ────────────
+nonfinite:
+  # Facteurs multiplicatifs tirés par gisement (flux RNG dédié) : richesse
+  # totale, nombre de blocs/puits (count), rayon du champ. `count` des ITEM est
+  # réévalué (miroir exact du runtime) : seule richesse/taille varient.
+  enabled: false
+  richness_factor_min: 0.4
+  richness_factor_max: 2.5
+  count_factor_min: 0.5
+  count_factor_max: 2.0
+  radius_factor_min: 0.6
+  radius_factor_max: 1.8
+
+# ── Exclusions (pools) ────────────────────────────────────────────────────────
+# Réservé : listes d'items / fluides / types de bâtiments exclus des pools.
+# (Aucun consommateur dans le code à cette version : exposé pour la doc.)
+pools:
+  exclude_items: []
+  exclude_fluids: []
+  exclude_building_types: []
+
+# ── Pondérations (weights) ────────────────────────────────────────────────────
+# Réservé : pondérations {nom: poids} par catégorie de bâtiment et par science
+# pack. (Aucun consommateur dans le code à cette version : exposé pour la doc.)
+weights:
+  building_types: {}
+  science_packs: {}
+
+# ── Récursion pondérée (recursive) ────────────────────────────────────────────
+recursive:
+  # Poids de base par catégorie de bâtiment (pioche pondérée).
+  weight_transformer: 30
+  weight_extractor: 15
+  weight_generator: 10
+  weight_distribution: 10
+  weight_combat: 15
+  weight_science: 20
+  # Accélération progressive : poids effectif = base × (1 + nb_bâtiments × facteur).
+  progressive_factor: 0.15
+  # Bâtiments toujours exclus de la récursion (jamais déposés comme unlock).
+  excluded_buildings: [character, lab]
+  # Nombre max d'itérations de la récursion, et seuil de stall (itérations
+  # sans nouveauté → arrêt).
+  max_iterations: 120
+  stall_threshold: 10
+  # Cadence garantie des pylônes : positions d'arbre où un pylône est garanti
+  # (types distincts), puis nombre garanti.
+  dist_marks: [8, 28, 48]
+  dist_guaranteed: 3
+  # Bornes du nombre de recettes par bâtiment.
+  recipes_per_building_min: 1
+  recipes_per_building_max: 3
+  # Bornes du nombre de tech children et du coût en science packs.
+  tech_count_min: 10
+  tech_count_max: 30
+  science_cost_min: 5
+  science_cost_max: 15
+  # Paires d'items dépendants jamais diffusés loin l'un de l'autre (C3).
+  companions:
+    - [roboport, logistic-robot, construction-robot]
+    - [solar-panel, accumulator]
+  # Randomisation des armes MONTÉES (§7/§12.1).
+  armed_vehicles: [tank, spidertron, artillery-wagon]
+  vehicle_weapons:
+    - tank-cannon
+    - vehicle-machine-gun
+    - tank-flamethrower
+    - artillery-wagon-cannon
+    - spidertron-rocket-launcher-1
+    - pistol
+    - submachine-gun
+    - shotgun
+    - combat-shotgun
+    - rocket-launcher
+    - flamethrower
+  # Hauteur d'armement par véhicule : slots_min..max armes tirées (avec remise
+  # configurable), portée clonée × (1 + max(taille − base_size, 0) × scale).
+  vehicle_slots_min: 1
+  vehicle_slots_max: 4
+  vehicle_slots_with_replacement: true
+  vehicle_range_base_size: 2.0
+  vehicle_range_scale: 0.4
+
+# ── Kit de départ / chaîne initiale (starter) ─────────────────────────────────
+starter:
+  # Nombre de recherches gratuites du départ [min, max].
+  free_researches_count: [1, 2]
+  # Nombre de munitions du kit de départ.
+  ammo_count: 50
+  # Probabilité d'inclure un inserter dans le kit.
+  inserter_chance: 0.5
+  # Quantité de combustible du kit quand le fabricateur/extracteur est à burner
+  # (bornée par la stackabilité réelle de l'item).
+  spawn_fuel_count: 50
+  # Interne (rempli par le pipeline pour les raws late verrouillées) : paires
+  # [type, nom] reportées à leur jalon. Ne pas renseigner.
+  deferred: []
+
+# ── Loot du site de crash (wreck) ─────────────────────────────────────────────
+wreck:
+  # Formule paramétrique des poids 0..3 par slot (c3=t, c2=t+a, c1=100−5t−2a,
+  # c0=c1+b), contrainte 6t + 3a < 100 et b >= 1. P(0)≈31 % par défaut.
+  t: 15
+  a: 1
+  b: 1
+  # Ressources NON-infinies uniquement (le crash sert de bootstrap à ces
+  # matières). Non vide : garantie runtime de loot.
+  loot: [wood, stone, raw-fish]
+
+# ── Lacs de fluide (lakes) ────────────────────────────────────────────────────
+lakes:
+  # Nombre de lacs tiré [min, max] ; 0 = carte sans eau (le mod supprime l'eau
+  # vanilla). Chaque lac reçoit un fluide pipable (volume infini).
+  min: 1
+  max: 3
+  # Richesse (taille/densité) du lac.
+  richness_fluid: [100000, 600000]
+
+# ── Arbre technologique (tree) ────────────────────────────────────────────────
+tree:
+  # Probabilités d'extension du groupe d'objets d'une tech (2e, 3e, 4e, 5e
+  # objet), tirage en chaîne, arrêt au premier échec. 1 à 4 valeurs ∈ [0, 1].
+  group_chances: [0.75, 0.65, 0.35, 0.15]
+  # Durée (secondes) de recherche par unité de coût.
+  research_time: 60
+  # Nombre max de science packs DIFFÉRENTS par tech.
+  max_cost_packs: 4
+  # Plafond d'objets (unlocks) par tech : 1 de base + (max_per_tech − 1).
+  max_per_tech: 5
+
+# ── Recettes (recipes) ────────────────────────────────────────────────────────
+recipes:
+  # Poids du tirage du NOMBRE d'ingrédients d'une recette (1, 2 ou 3).
+  weight_1_ingredient: 3
+  weight_2_ingredients: 5
+  weight_3_ingredients: 2
+  # Poids du tirage du NOMBRE de résultats (1 ou 2).
+  weight_1_result: 7
+  weight_2_results: 3
+  # Énergies candidates (secondes) d'une recette de base.
+  energies: [0.5, 1.0, 2.0]
+  # Majoration par ingrédient : énergie = base × (1 + facteur × nb_ingrédients).
+  energy_per_ingredient: 0.25
+  # Équilibre production/consommation : cible cons/prod tirée entre ces bornes.
+  balance_min: 0.1875
+  balance_max: 0.6666666666666666
+  # Pente du facteur de correction et bornes du multiplicateur d'équilibre.
+  balance_steepness: 1.0
+  balance_max_factor: 4.0
+  # Quota plafond « pléthore » : production ramenée à ce quota max.
+  max_overproduced_ratio: 0.3333333333333333
+  balance_iterations: 2
+  # Bornes du montant des ingrédients (1 seul résultat, montant 1 par défaut).
+  ingredient_amount_min: 1
+  ingredient_amount_max: 4
+  # Préfixe canonique des recettes générées.
+  recipe_prefix: randputf-
+  # Ressources environnementales (arbres/rochers/poissons) : poids faible quand
+  # des patchs existent, poids fort quand la seed n'a aucun patch item, quantité
+  # plafonnée.
+  environmental_weight_rich: 0.02
+  environmental_weight_starved: 2.0
+  environmental_amount_max: 2
+
+# ── Relais des ressources non-infinies (relay) ────────────────────────────────
+relay:
+  prefix: randputf-relay-
+  # Nombre max de techs de dispatch des recettes relais.
+  max_dispatch_steps: 3
+
+# ── Recettes ease-up (easeup) ─────────────────────────────────────────────────
+easeup:
+  prefix: randputf-ease-
+  # Nombre max de recettes alternatives par seed.
+  max_recipes: 8
+  # Profondeur (nombre de sauts de recettes) au-delà de laquelle un craft est
+  # jugé trop lourd.
+  depth_threshold: 5
+  # Nombre max de recettes ease-up par tech de déblocage.
+  unlocks_per_tech: 5
+
+# ── Garantie d'usage dure (usage, D2) ─────────────────────────────────────────
+usage:
+  # La passe est un invariant de solvabilité : activée par défaut.
+  enabled: true
+  # Applique U2 (réordonnancement tech) ou seulement U1 (rattachement).
+  strict_order: true
+  # Bâtiments terminaux : leur usage est leur rôle moteur (jamais exigées d'une
+  # recette hébergée).
+  terminal_buildings: [lab, rocket-silo]
+  # Bâtiments livrés par le kit → réputés débloqués dès la tech 0.
+  kit_exempt: []
+
+# ── Randomisation des quantités de craft (inactivée par défaut) ───────────────
+craft_quantity:
+  enabled: false
+  # "symmetric" = un facteur par recette ; "asymmetric" = un par ligne.
+  mode: symmetric
+  factor_min: 0.5
+  factor_max: 3.0
+  # Minimum absolu par ingrédient (jamais en dessous).
+  amount_min: 1
+
+# ── Ressources tardives (late raws, inactivées par défaut) ────────────────────
+late_raws:
+  # Gating 100 % (toutes les raws non-startup verrouillées à leur jalon).
+  enabled: false
+  # Conservés pour compat config ; inutilisés (injection déterministe à 100 %).
+  share: 0.25
+  pick_chance: 0.6
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prototypes NON BRANCHÉS au pipeline à cette version (fournis pour référence ;
+# les surcharger n'a aucun effet sur la génération tant qu'ils ne sont pas
+# câblés) :
+#
+# difficulty:
+#   enabled: false
+#   starting_area: [2, 5]
+#   nest_density: [1.0, 3.0]
+#   evolution_factor: [0.25, 1.5]
+#   pollution_factor: [0.5, 2.0]
+#   cliff_density: [0.5, 2.0]
+#   biomes: [plains, forest, desert]
+#
+# rare_resources:
+#   enabled: false
+#   near_radius: 40
+#   far_radius: 120
+#   near_richness_factor: 0.4
+#   near_count_factor: 0.5
+#   far_richness_factor: 2.0
+#   far_count_factor: 1.8
+#   required_resources: [iron-ore, copper-ore, coal, water]
+#
+# ─────────────────────────────────────────────────────────────────────────────

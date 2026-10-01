@@ -21,7 +21,7 @@ def test_asset_data_resolved():
 
 
 def test_asset_config_resolved():
-    assert (asset_path("config") / "settings.yaml").exists()
+    assert (asset_path("config") / "defaults.yaml").exists()
 
 
 def test_asset_inconnu_leve_erreur_claire():

@@ -14,6 +14,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
+from tool.common import config as _cfg
 from tool.prototypes.base import PrototypeConfig
 
 
@@ -35,11 +36,11 @@ class CraftQuantityConfig(PrototypeConfig):
 yaml, jamais codés en dur par le moteur."""
         cfg = config.get("craft_quantity", {})
         return cls(
-            enabled=bool(cfg.get("enabled", False)),
-            mode=str(cfg.get("mode", "symmetric")),
-            factor_min=float(cfg.get("factor_min", 0.5)),
-            factor_max=float(cfg.get("factor_max", 3.0)),
-            amount_min=int(cfg.get("amount_min", 1)),
+            enabled=bool(cfg.get("enabled", _cfg.default_value("craft_quantity", "enabled"))),
+            mode=str(cfg.get("mode", _cfg.default_value("craft_quantity", "mode"))),
+            factor_min=float(cfg.get("factor_min", _cfg.default_value("craft_quantity", "factor_min"))),
+            factor_max=float(cfg.get("factor_max", _cfg.default_value("craft_quantity", "factor_max"))),
+            amount_min=int(cfg.get("amount_min", _cfg.default_value("craft_quantity", "amount_min"))),
         )
 
 
