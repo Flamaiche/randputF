@@ -76,7 +76,7 @@ contenu arbitraire.
 | [energie.md](energie.md) | §10, §10bis | Électricité (déclenchement, générateurs, ruptures) et chaleur (triade source/transport/sink) |
 | [combat.md](combat.md) | §11, §12 | Armes, munitions, transports avancés, armes montées randomisées |
 | [tech.md](tech.md) | §13, §14 | Arbre technologique linéaire, fin de partie (fusée) |
-| [solvabilite.md](solvabilite.md) | §10ter, §15 | Vérificateur de bootstrap, invariants de solvabilité |
+| [solvabilite.md](solvabilite.md) | §10ter, §15 | Bootstrap sûr (graphe initial correct par construction), vérificateur de bootstrap, invariants de solvabilité |
 | [seed.md](seed.md) | §16 | Seed, déterminisme, configuration consommée |
 | [architecture.md](architecture.md) | §4, §17, §18 | Architecture générale, pipeline technique, structure du projet |
 
