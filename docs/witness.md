@@ -99,7 +99,7 @@ mod installé portera toujours ce nom.
 
 > **Conséquence pour une release** : le md5 du témoin dépend de la version (le
 > préfixe racine contient `randputF_<version>`). Bump de version = nouveau
-> témoin. Voir `RELEASE.md` (procédure de publication).
+> témoin. Voir la procédure de publication (notes de release, hors tag).
 
 ## 4. Ce qui est exclu du témoin
 

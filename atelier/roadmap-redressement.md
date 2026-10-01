@@ -8,7 +8,7 @@ preparant ce plan.
 Convention : chaque tache est un lot de commits sur `dev` (jamais de push
 direct ; le push reste une decision du mainteneur). Effort indicatif.
 
-Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](../docs/README.md).
 
 ---
 

@@ -136,7 +136,8 @@ recettes alternatives pour les crafts trop lourds (§9.3).
 ### `late_raws`
 
 `enabled` (false par défaut), `share`, `pick_chance` (conservés, inertes :
-injection déterministe à 100 %). Voir [plan-extracteurs-dispatche.md](plan-extracteurs-dispatche.md).
+injection déterministe à 100 %). Le plan v2 correspondant est une note de
+chantier, hors tag.
 
 ### `nonfinite` — **inerte**
 

@@ -207,10 +207,7 @@ randputF/
 ├── README.md            # ce document (installation, utilisation)
 ├── README_EN.md         # version anglophone (doc de conception reste en FR)
 ├── CHANGELOG.md         # résumé des versions, corrections emblématiques
-├── RELEASE.md           # source unique des notes de release + publication
 ├── docs/                # documentation de conception (voir docs/README.md)
-├── IDEES.md             # idées / corrections en attente
-├── PLAN_bootstrap_inline.md # plan du redesign du bootstrap sûr
 ├── config/
 │   ├── defaults.yaml     # réglages par défaut (source unique, non modifiable)
 │   └── user.yaml         # surcharges utilisateur (facultatives, validées)
