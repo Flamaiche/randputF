@@ -243,9 +243,15 @@ MIT — voir [`LICENSE`](LICENSE).
 
 ## Outils et développement
 
-- **Historique complet** : `master` ne contient qu'un commit (la release, par
-  choix de packaging). Tout l'historique de travail et les notes de chantier
-  vivent sur la branche [`dev`](https://github.com/Flamaiche/randputF/tree/dev).
+- **Historique complet** : `master` porte l'historique de développement entier.
+  Les versions sont des tags posés dessus ([`v1.0.0`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.0),
+  [`v1.0.1`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.1)) :
+  un tag est l'état publié, rien n'est réécrit après coup.
+- **Branche de travail** : [`dev`](https://github.com/Flamaiche/randputF/tree/dev)
+  accueille les changements en cours. `master` n'est jamais poussée
+  directement : tout passe par `dev`, puis fusion. Les notes de chantier
+  (plans, idées, notes de révision) sont regroupées dans `atelier/`, absent
+  des tags.
 - **Changelog** : [`CHANGELOG.md`](CHANGELOG.md). Corrections seed par seed et
   garanties mesurées, en résumé.
 - **English README** : [`README_EN.md`](README_EN.md) pour les joueurs
