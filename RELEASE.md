@@ -43,10 +43,12 @@ v1.1.0 — Randomizer total deterministe pour Factorio 2.0
 >
 > **🔒 Determinisme verifiable**
 > ```
-> randputf witness --seed 5 --expect 12ac143e06174df126537b978ff928d3
+> randputf witness --seed 5 --expect <md5 de la v1.1.0>
 > ```
-> Le meme temoin qu'en v1.0.0 (le contenu du mod pour la seed 5 n'a pas
-> change).
+> Le contenu du mod pour la seed 5 est inchange depuis la v1.0.0, mais le
+> temoin **change** au bump de version (le prefixe racine du zip contient
+> `randputF_<version>`) : le md5 attendu sera celui de la v1.1.0, pas celui de
+> la v1.0.0. Le detail de la canonisation est dans `docs/witness.md`.
 >
 > **📦 Installation** : `pip install .` (embarque mod/, data/ et config/) puis
 > `randputf generate --seed <S>`, ou telecharger le zip attache. Config dans
@@ -65,8 +67,21 @@ v1.1.0 — Randomizer total deterministe pour Factorio 2.0
 >   identique ; `settings.yaml` n'est plus lu.
 > - **Plus aucune valeur de reglage en dur dans le moteur** : prototypes,
 >   generateurs, CLI et pipeline lisent tous leurs valeurs depuis le YAML.
-> - **Documentation** : config deux YAML et feuille de route de
->   redressement ; README et docs a jour.
+> - **Documentation** : reference de configuration complete dans
+> `docs/config.md`, doc du temoin dans `docs/witness.md`, doc de conception du
+> graphe dans `docs/graphe-interactif.md`, `CHANGELOG.md` (hautes lumieres par
+> version), `README_EN.md` pour les joueurs anglophones.
+>
+> **Chemin parcouru** (le `master` ne contient qu'un commit de release ; tout
+> l'historique de travail est sur la branche `dev`) : la v1.0.0 est le fruit
+> d'un travail de fond, pas d'un coup d'etat. Un bootstrap qui rendait
+> certaines seeds injouables (seed 13 : l'electricite exigeait deja
+> l'electricite), des cycles d'hebergement qui rendaient l'ordre d'usage
+> impossible (seeds 255 et 1043), un ordre de debloage non deterministe
+> (seed 1299, un `set` non trie) et une dependance a l'ordre de generation des
+> seeds (seed 1269) ont ete trouves par un **rejoueur « fake player »** qui
+> simule une partie : **1501/1501 parties** rejouees victorieuses sur le
+> balayage 0-1500. Les 722 tests verrouillent ces corrections en regression.
 >
 > **Garanties mesurees** : 722 tests, invariants de solvabilite (§15),
 > rejoueur « fake player » 1501/1501 victoires, temoin de determinisme

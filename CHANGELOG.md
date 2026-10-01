@@ -39,11 +39,15 @@ Première release publique. Randomizer total déterministe pour Factorio 2.0
 Le détail seed par seed est dans [DEVIANCES.md](docs/DEVIANCES.md). Les plus
 significatifs :
 
-- **Bootstrap guard (seed 13)** : un cycle où l'électricité exigeait déjà
+- **Bootstrap sûr (seed 13)** : un cycle où l'électricité exigeait déjà
   l'électricité (turbine → landfill → tuyau → atelier électrique) rendait la seed
-  injouable ; le bootstrap sûr résout ce cas.
-- **Ordre d'usage des fluids (seed 426)** : un atelier à ingrédients fluides
-  rendait l'ordre d'usage impossible ; corrigé.
+  injouable. Le redesign du bootstrap (graphe initial correct par construction)
+  résout ce cas ; `bootstrap_guard` n'est plus une passe de production, il
+  reste un diagnostic de test.
+- **Fabrication d'atelier avec des ingrédients fluides (seed 426)** : la recette
+  d'un bâtiment à ≥ 2 slots fluides se retrouvait hébergée dans un atelier
+  fluide unlocké tard, donc jamais disponible à temps ; les bâtiments se
+  fabriquent désormais uniquement avec des items.
 - **Cycles d'hébergement (seeds 255, 1043)** : cycles mutuel (U2) et long (U1)
   créés par le ré-hébergement, cassés par les passes d'usage.
 - **Ordre des effets `unlock-recipe` non déterministe (seed 1299)** : un `set`
