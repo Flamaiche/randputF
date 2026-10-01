@@ -74,8 +74,11 @@ v1.1.0 — Randomizer total deterministe pour Factorio 2.0
 
 ### 2.3 Faits verifies (pour ne rien inventer dans la note)
 
-- Temoin seed 5 : `12ac143e06174df126537b978ff928d3` — **identique** a v1.0.0
-  (verifie : suite complete 722 tests verte sur `dev`).
+- Temoin seed 5 sur `dev` **avant bump** : `12ac143e06174df126537b978ff928d3`
+  — **identique** a v1.0.0 (verifie : suite complete 722 tests verte sur `dev`).
+  Apres le bump en 1.1.0 le md5 **change** (prefixe racine du zip) : le
+  nouveau temoin sera calcule et ecrit dans `.github/workflows/ci.yml` au
+  moment du bump (cf. checklist §3). Ne pas reprendre l'ancien md5 tel quel.
 - Tests : 722.
 - Fichiers de config remplaces : `config/settings.yaml` (supprime) ->
   `config/defaults.yaml` + `config/user.yaml`.
@@ -92,8 +95,8 @@ v1.1.0 — Randomizer total deterministe pour Factorio 2.0
       bump de version **change le temoin**. Recalculer le nouveau md5 et le
       mettre a jour dans `.github/workflows/ci.yml` (ligne « Temoin de
       determinisme »).
-- [ ] **`release.yml` a restaurer sur `dev`** (voir §4) — sinon pas de zip
-      attache ni de publication automatique au tag.
+- [x] **`release.yml` restaure sur `dev`** (fichier rapatrie de `master`, voir
+      §4) — le tag pourra construire le zip et publier la release.
 - [ ] **Depot propre dans le tag** : ne pas embarquer les notes de chantier
       (`IDEES.md`, `PLAN_bootstrap_inline.md`, `docs/roadmap-redressement.md`,
       `docs/plan-extracteurs-dispatche.md`, ce fichier). Le tag ne contient que
@@ -105,19 +108,22 @@ v1.1.0 — Randomizer total deterministe pour Factorio 2.0
 - [ ] **Publier la note** (§2.2) sur la release GitHub.
 - [ ] Aucun push sans decision explicite du mainteneur.
 
-## 4. Point bloquant a traiter avant v1.1.0
+## 4. Point bloquant avant v1.1.0 : RESOLU
 
-**Le workflow `release.yml` n'existe QUE sur `master`** (commit `f94f471`,
-`blob ea84054`). Il est **absent de `dev`** (la branche a ete creee avant, et
-master n'est pas un ancetre de dev). Consequence : si `dev` est fusionne dans
-`master` en l'etat, le fichier disparait et le tag `v1.1.0` **ne construira
-pas le zip et ne publiera pas la release automatiquement**.
+**Constat** : le workflow `release.yml` n'existait QUE sur `master` (commit
+`f94f471`, `blob ea84054`) et etait **absent de `dev`** (la branche a ete creee
+avant, et `master` n'est pas un ancetre de `dev`). Une fusion `dev` -> `master`
+en l'etat aurait supprime le fichier : le tag `v1.1.0` n'aurait construit ni
+zip ni publication automatique.
 
-Action : rapatrier `.github/workflows/release.yml` de `master` vers `dev`
-(cherry-pick du fichier / copie) **avant** la fusion. `release.yml` execute :
-`pip install .` -> `randputf witness --seed 5` (sans `--expect`, il verifie
-juste la generation) -> `randputf generate --seed 5 --out` -> zip
-`randputF_<version>.zip` -> `gh release upload` (ou `create`).
+**Resolution** : `.github/workflows/release.yml` a ete rapatrie de `master`
+vers `dev` (fichier identique, blob `ea84054`). Il n'est donc plus a toucher au
+moment du tag.
+
+Pour memoire, `release.yml` execute : `pip install .` ->
+`randputf witness --seed 5` (sans `--expect`, il verifie juste la generation)
+-> `randputf generate --seed 5 --out` -> zip `randputF_<version>.zip` ->
+`gh release upload` (ou `create`).
 
 ## 5. Suite des releases
 

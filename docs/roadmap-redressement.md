@@ -31,20 +31,20 @@ Retour : [docs/README.md](README.md).
 
 ## Lot A : les deux lignes qui changent la perception (5 min)
 
-- [ ] **A1 — Mention de l'assistant IA** en fin de README, section discrete
+- [x] **A1 — Mention de l'assistant IA** en fin de README, section discrete
       « Outils », pas en gros titre. Une ligne factuelle : l'assistant a
       assiste a la relecture et a la redaction ; la conception, les decisions
       et les corrections ont ete pilotees et validees par le mainteneur.
-- [ ] **A2 — Lien vers la branche `dev`** (« l'historique complet de
+- [x] **A2 — Lien vers la branche `dev`** (« l'historique complet de
       developpement vit sur la branche `dev` » ; le `master` est squashé en un
       commit de release), dans la section « Structure du projet » ou en fin de
       README. Le squash est assume ; le lien rend le parcours accessible.
 
 ## Lot B : CHANGELOG.md (30 min)
 
-- [ ] **B1** Creer `CHANGELOG.md` a la racine, format « highlights »
+- [x] **B1** Creer `CHANGELOG.md` a la racine, format « highlights »
       (3-5 puces par version), en tete : `## v1.0.0`.
-- [ ] **B2** Alimenter v1.0.0 depuis les sources deja ecrites (pas
+- [x] **B2** Alimenter v1.0.0 depuis les sources deja ecrites (pas
       d'invention) :
       - `docs/DEVIANCES.md` §2 : seed 426 (§2.1 ordre d'usage), 255 (§2.2
         cycle mutuel U2), 1043 (§2.4 cycle long U1), 1299 (§2.5 jalon
@@ -53,9 +53,9 @@ Retour : [docs/README.md](README.md).
       - `docs/solvabilite.md` : bootstrap guard seed 13, rejoueur
         **1501/1501 victoires** (balayage 0-1500).
       - `docs/nondeterminism.md` : multi-sous-processus `PYTHONHASHSEED`.
-- [ ] **B3** Ajouter les liens vers `docs/DEVIANCES.md` (détail seed par seed)
+- [x] **B3** Ajouter les liens vers `docs/DEVIANCES.md` (détail seed par seed)
       et `docs/solvabilite.md` (preuves chiffrées).
-- [ ] **B4** References **depuis** `README.md` et `docs/README.md` (index
+- [x] **B4** References **depuis** `README.md` et `docs/README.md` (index
       References).
 
 Note : la revue parle d'un « parcours de 15 lignes » ; le CHANGELOG doit
@@ -66,25 +66,25 @@ rester court et factuel. Le detail reste dans `docs/`.
 Passe sur `README.md` + les 16 fichiers de `docs/`. Corrections confirmees
 lors de la preparation de ce plan :
 
-- [ ] **C1 — `docs/solvabilite.md:21` « CALSE un cycle »** → « casse un
+- [x] **C1 — `docs/solvabilite.md:21` « CALSE un cycle »** → « casse un
       cycle » (le verbe du contexte est bien « casser », pas « calculer »).
-- [ ] **C2 — `docs/solvabilite.md:80` « ils ne disent rien d'un playlist reel »**
+- [x] **C2 — `docs/solvabilite.md:80` « ils ne disent rien d'un playlist reel »**
       → « ils ne disent rien d'un parcours reel » (le mot est *playthrough*,
       pas *playlist*).
-- [ ] **C3 — `docs/tech.md:52` « la quantite n'est jamais demandee »** →
+- [x] **C3 — `docs/tech.md:52` « la quantite n'est jamais demandee »** →
       « demandee » (accords).
-- [ ] **C4 — NE PAS corriger « gaté »** (14 occurrences : `docs/seed.md`,
+- [x] **C4 — NE PAS corriger « gaté »** (14 occurrences : `docs/seed.md`,
       `docs/DEVIANCES.md`, `docs/plan-extracteurs-dispatche.md`,
       `docs/nondeterminism.md`, `docs/developpement.md`). C'est du jargon du
       projet dérivé de *gating* (`late_raws.gated`, section `late_raws`), pas
       la faute « gatée » signalée par la revue. Corriger cassera le
       vocabulaire de `docs/nomenclature-rejoueur.md`.
-- [ ] **C5 — « ~7 % Mo »** (`README.md:135`) : mesuré sur le témoin local,
+- [x] **C5 — « ~7 % Mo »** (`README.md:135`) : mesuré sur le témoin local,
       `seed.graph.html` fait **7,2 Mo** (7 487 511 octets). Le `%` est une
       coquille → « ~7,2 Mo ».
-- [ ] **C6** Balayage des restes (« CALSE », « playlist », doubles espaces,
+- [x] **C6** Balayage des restes (« CALSE », « playlist », doubles espaces,
       accords) sur les autres fichiers, sans toucher au jargon.
-- [ ] **C7 — Densite** : `docs/solvabilite.md`, `docs/starter.md`,
+- [x] **C7 — Densite** : `docs/solvabilite.md`, `docs/starter.md`,
       `docs/recettes.md` ont des paragraphes de 15 lignes imbriquees.
       Decouper en sous-sections, avec un exemple court en tete de section
       avant le detail. Les docs de reference (`tags.md`,
@@ -92,25 +92,25 @@ lors de la preparation de ce plan :
 
 ## Lot D : sortir la table de config du README (30 min)
 
-- [ ] **D1** Creer `docs/config.md` : reference complete des sections de
+- [x] **D1** Creer `docs/config.md` : reference complete des sections de
       `config/defaults.yaml` (les 17 sections) + regles de surcharge de
       `config/user.yaml` + schema de validation (type, plage, `min <= max`,
       contraintes croisees) + exemple de surcharge minimal.
-- [ ] **D2** Dans le README : ne garder que le resume (les 4 sections
+- [x] **D2** Dans le README : ne garder que le resume (les 4 sections
       principales : `factorio_version`, `paths`, `map`, `starter`) + un lien
       vers `docs/config.md`. Le README passe de ~19 lignes de table a ~6.
-- [ ] **D3** Ajouter `docs/config.md` a l'index de `docs/README.md`.
+- [x] **D3** Ajouter `docs/config.md` a l'index de `docs/README.md`.
 
 ## Lot E : temoin de reproductibilite et release note (1 h)
 
-- [ ] **E1** Creer `docs/witness.md` : ce qu'est le temoin, la commande
+- [x] **E1** Creer `docs/witness.md` : ce qu'est le temoin, la commande
       (`randputf witness --seed 5 --expect 12ac143e06174df126537b978ff928d3`),
       et le detail de canonisation qui est aujourd'hui noye dans la release
       note : zlib-ng vs zlib, `os.walk` qui suit `os.scandir`, champ « version
       made by » du zip dependant de la plateforme. Reprendre la section
       existante de la release note (source : `/tmp/opencode/RELEASE_v1.0.0.md`
       si toujours presente).
-- [ ] **E2** Reecrire la release note v1.0.0 selon la structure proposee par
+- [x] **E2** Reecrire la release note v1.0.0 selon la structure proposee par
       la revue :
       1. titre « v1.0.0 — Randomizer total deterministe pour Factorio 2.0 »
          (le « randputF v1.0.0 » fait doublon avec le nom du repo) ;
@@ -120,12 +120,12 @@ lors de la preparation de ce plan :
       4. « Garanties mesurees » : 1501/1501, invariants §15 ;
       5. installation ;
       6. lien vers `docs/witness.md` pour le detail.
-- [ ] **E3** Ajouter ~15 lignes sur le **chemin parcouru** dans la release note
+- [x] **E3** Ajouter ~15 lignes sur le **chemin parcouru** dans la release note
       (la revue signale que le squash a efface la preuve de methode) :
       bootstrap guard seed 13, cycles d'hebergement 255/1043, ordre
       `unlock-recipe` 1299, dependance a l'ordre des seeds 1269, jalons de
       ressources tardives. Sources : `docs/DEVIANCES.md`.
-- [ ] **E4** La release note est sur GitHub (objet `gh release edit`) :
+- [x] **E4** La release note est sur GitHub (objet `gh release edit`) :
       c'est une action du mainteneur, pas un fichier du depot. Ne pas publier
       automatiquement.
 
@@ -134,7 +134,7 @@ lors de la preparation de ce plan :
 Constate en preparant ce plan (preexistant a la migration config, present
 aussi sur `master` `f94f471`).
 
-- [ ] **F1 — `bootstrap_guard` n'est plus execute par le pipeline.**
+- [x] **F1 — `bootstrap_guard` n'est plus execute par le pipeline.**
       `tool/generator/bootstrap_guard.py` existe et n'est appele que par les
       tests (`tests/test_bootstrap_guard.py`,
       `tests/test_pipeline_invariants.py:834,860`). Aucun appel dans
@@ -152,9 +152,9 @@ aussi sur `master` `f94f471`).
       mettre la doc a jour, soit le re-integrer au pipeline et ajouter la
       section config. Le plan `PLAN_bootstrap_inline.md` va dans le premier
       sens ; la doc et le code divergent depuis.
-- [ ] **F2** Verifier que les autres docs ne decrivent pas de sections de
+- [x] **F2** Verifier que les autres docs ne decrivent pas de sections de
       config inexistantes (meme controle que F1 sur les 17 sections).
-- [ ] **F3 — Table de config du README** : decider si elle reste (voir Lot D)
+- [x] **F3 — Table de config du README** : decider si elle reste (voir Lot D)
       et verifier que chaque section citee existe dans `defaults.yaml`.
 
 ## Lot G : doc de conception du graphe interactif (45 min)
@@ -166,30 +166,30 @@ section de conception. `docs/architecture.md:156-158` affirme explicitement le
 contraire (« c'est une sortie joueur, pas une piece de conception ») : c'est
 un choix a remettre en cause, pas une erreur de la revue.
 
-- [ ] **G1** Ecrire `docs/graphe-interactif.md` : pipeline d'export
+- [x] **G1** Ecrire `docs/graphe-interactif.md` : pipeline d'export
       (`tool/exporters/seed_graph.py`), graphe produit→ingredient→produit,
       encodage base64 des icones, choix d'auto-suffisance du HTML, navigation
       et sous-graphes, determinisme de la sortie.
-- [ ] **G2**.decider si `docs/architecture.md:156-158` est remplace par un
+- [x] **G2**.decider si `docs/architecture.md:156-158` est remplace par un
       renvoi vers ce document.
-- [ ] **G3** Indexer le document dans `docs/README.md`.
+- [x] **G3** Indexer le document dans `docs/README.md`.
 
 ## Lot H : separer le chantier de la release (30 min)
 
-- [ ] **H1** `docs/developpement.md` est un doc de dev mais reference depuis la
+- [x] **H1** `docs/developpement.md` est un doc de dev mais reference depuis la
       release ; il contient des notes de chantier (la roadmap point 3 est un
       pave avec du vecu). Extraire les notes de chantier vers `IDEES.md` ou
       `docs/DEVIANCES.md`, ne garder que l'environnement de dev et la
       roadmap dans `developpement.md`.
-- [ ] **H2** Verifier que la release note ne renvoie plus a du contenu de
+- [x] **H2** Verifier que la release note ne renvoie plus a du contenu de
       chantier.
 
 ## Lot I : visibilite internationale (2-3 h)
 
-- [ ] **I1 — README EN** (ou badge « Documentation : FR | EN a venir » en attendant).
+- [x] **I1 — README EN** (ou badge « Documentation : FR | EN a venir » en attendant).
       Le public Factorio est massivement anglophone. C'est le verrou a lever
       pour une visibilite au-dela du cercle proche.
-- [ ] **I2** Badge licence en tete de README (MIT, deja en section Licence
+- [x] **I2** Badge licence en tete de README (MIT, deja en section Licence
       ligne 241).
 - [ ] **I3** Le titre du repo (`randputF`) et la description GitHub meritent
       d'aligner le nom de produit sur « randomizer total deterministe ».

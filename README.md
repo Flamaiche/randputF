@@ -1,5 +1,7 @@
 # randputF
 
+![Licence MIT](https://img.shields.io/badge/licence-MIT-blue)
+
 **Randomizer total pour Factorio 2.0 (base, sans Space Age).**
 
 randputF ne se contente pas de mélanger des recettes entre elles : il régénère
@@ -88,29 +90,23 @@ VALIDÉES contre un schéma strict (type, plage, bornes `min <= max`,
 contraintes croisées) : une clé inconnue ou une valeur impossible est une
 erreur explicite, jamais une génération à l'aveugle. Un config fusionné est
 toujours complet (toutes les sections/clés existent), donc aucune valeur de
-secours n'est codée dans le moteur. Sections principales :
+secours n'est codée dans le moteur.
+
+Les 4 sections principales :
 
 | Section | Rôle |
 |---|---|
-| `factorio_version` | Version du jeu cible (2.0), reportée dans `info.json` et la méta de la seed |
-| `paths` | Dossiers : mod source, dump vanilla, *factorio_mods* (installation) — les chemins sont **vides dans le template**, à renseigner pour ton install |
-| `map` | Nombre de gisements (3-8), richesse des items/fluides, blocs/puits par gisement (`wells_per_patch`), rayons des champs |
-| `starter` | Munitions du kit (`ammo_count`), bras optionnel (`inserter_chance`) |
-| `late_raws` *(optionnel)* | Jalonnement des ressources tardives : `enabled` (désactivé par défaut), `share`/`pick_chance` inertes (gating 100 %, déterminisme préservé) |
-| `recursive` | Phase récursive : poids par catégorie, armes montées (`armed_vehicles`, `vehicle_weapons`, slots, portée) |
-| `wreck` | Loot du site de crash : loi pondérée `t/a/b` (0 très fréquent … 3 très rare), pool de matériaux |
-| `lakes` | Lacs de fluide : nombre `min/max`, richesse (taille du lac) |
-| `tree` | Nombre d'objets débloqués par tech (`group_chances`) |
-| `easeup` | Recettes alternatives pour les crafts trop lourds (`max_recipes`, `depth_threshold`...) |
-| `recipes` *(optionnel)* | Temps de craft (`energies`, `energy_per_ingredient`), équilibre production/consommation (`balance_min/max`) — absente : défauts du prototype |
-| `relay` *(optionnel)* | Recettes relais des ressources non-infinies (`prefix`, `max_dispatch_steps`) — absente : défauts du prototype |
-| `usage` | Garantie d'usage (D2) : bâtiments terminaux exemptés de U1 (`terminal_buildings`), bâtiments du kit réputés tech 0 (`kit_exempt`) |
-| `nonfinite` *(inerte)* | Ressources non-infinies randomisées (A1) : `enabled: false` — écrite, non activée |
-| `craft_quantity` *(inerte)* | Facteurs de quantité par recette (B3) : `enabled: false` — écrite, non activée |
-| `pools`, `weights` *(inertes)* | Sections présentes par défaut mais **non lues** par le moteur à ce jour |
+| `paths` | Dossiers : *factorio_mods* (installation) — à surcharger dans `user.yaml` pour ton install |
+| `map` | Nombre et richesse des gisements, blocs/puits par gisement, rayons |
+| `starter` | Munitions du kit (`ammo_count`), bras optionnel (`inserter_chance`), combustible |
+| `recursive` | Phase récursive : poids par catégorie, armes montées, véhicules |
+
+La **référence complète** des 16 sections, de chaque clé et des règles de
+validation est dans [`docs/config.md`](docs/config.md).
 
 La signification détaillée de chaque clé est décrite dans
-[`docs/seed.md`](docs/seed.md) et référencée au fil des sections de conception.
+[`docs/config.md`](docs/config.md) et [`docs/seed.md`](docs/seed.md), et référencée
+au fil des sections de conception.
 
 ## Ce que produit une génération
 
@@ -132,7 +128,7 @@ randputF_<version>/
 └── seed.graph.html        # graphe de production interactif (voir plus bas)
 ```
 
-`seed.graph.html` est **autonome mais lourd** (~7 % Mo : les icônes vanilla sont
+`seed.graph.html` est **autonome mais lourd** (~7,2 Mo : les icônes vanilla sont
 embarquées en base64). À ouvrir **en local**, pas à héberger : chaque génération
 le régénère.
 
@@ -243,5 +239,19 @@ Le détail par fichier est décrit dans
 MIT — voir [`LICENSE`](LICENSE).
 
 ---
+
+## Outils et développement
+
+- **Historique complet** : `master` ne contient qu'un commit (la release, par
+  choix de packaging). Tout l'historique de travail et les notes de chantier
+  vivent sur la branche [`dev`](https://github.com/Flamaiche/randputF/tree/dev).
+- **Changelog** : [`CHANGELOG.md`](CHANGELOG.md). Corrections seed par seed et
+  garanties mesurées, en résumé.
+- **English README** : [`README_EN.md`](README_EN.md) pour les joueurs
+  anglophones (la doc de conception reste en français).
+- **Assistant IA** : la documentation et certains passages de code ont été
+  rédigés ou relus avec l'aide d'un assistant IA. Toute la conception, les
+  décisions et les corrections ont été pilotées et validées par le
+  mainteneur.
 
 *randputF — chaque partie est un jeu que personne n'a jamais vu.*

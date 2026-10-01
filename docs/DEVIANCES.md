@@ -36,7 +36,22 @@ contrôlé, et ne ressemble pas au vanilla.
   nôtre.
 - **Extracteur requis au spawn** : la tech gratuite `starter-extraction` ne
   garde que les extracteurs utiles dès le spawn ; les autres partent au
-  premier consommateur ou sur une tech payante (§9.6). Voir l'averto §3.2.
+  premier consommateur ou sur une tech payée (§9.6). Voir l'averto §3.2.
+- **Lacs : pose runtime déterministe** (§7.5) : chaque lac est **creusé par le
+  jeu** à l'init (`on_chunk_generated`), pas posé par le mapgen. Le mapgen ne
+  pose **0** tuile de lac (override
+  `property_expression_names["tile:<lac>:probability"]` = `randputf-no-water`,
+  comme l'eau vanilla) ; la tuile reste créée/inscrite pour `set_tiles`, la
+  palette et la liste du menu de génération. Une nappe discrète de rayon fixe
+  par fluide choisi est positionnée sur un anneau équiréparti autour du spawn
+  → aucune superposition, surface maîtrisée, tous les liquides pompables.
+  **Pourquoi (vécu)** : le scatter `resource-autoplace` sur des tuiles faisait
+  chevaucher les nappes de départ et laissait un seul liquide (le dernier, d'ordre
+  le plus élevé) dominer ; un rework `autoplace tile` seul ne garantissait pas
+  non plus un équilibre (vérifié headless). D'où le creusage `control.lua`.
+  On conserve du système antérieur : couleur/copie de tuile, berge (redessinée
+  au runtime par `set_tiles(..., correct_tiles = true)`), compatibilité pompe
+  offshore.
 
 ## 2. Bugs corrigés
 
