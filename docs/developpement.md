@@ -4,38 +4,25 @@ Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.
 
 ## 19. Roadmap
 
-1. **v1 — vanilla seul** : implémentation complète de tout ce document
-   (starter récursif, électricité, armes, arbre linéaire, fusée).
-2. **Fins d'implémentation v1** :
-   - passage possible de l'arbre technologique linéaire à un arbre **branché** ;
-   - génération automatique de seed (date/heure) — *fait* (seed temporelle
-     par défaut, §16).
-3. **Utiliser le moteur du jeu (vision extracteur)** : au lieu d'encoder les
-   règles de lecture du contenu en dur dans le tool Python, faire de
-   l'exporter (= le jeu, qui CONNAÎT déjà tous ses prototypes et ceux des
-   mods chargés) la source de vérité. À l'init d'une partie, l'exporter
-   extrait **tout** (ressources + bâtiments déjà présents, vanilla et futurs
-   mods confondus) et calcule **côté moteur** comment tout fonctionne, puis
-   l'outil ne fait que **trier et valider** ces données. Conséquence directe :
-   le support des **mods tiers** (Krastorio, Py, …) passe **sans rien recoder
-   dans l'outil** — on ne parse plus le contenu à la main, le moteur le
-   décrit.
-   Cible précise de la refonte (aujourd'hui en dur dans le Python) :
-   - classification fonctionnelle des bâtiments (`research`/`transformer`/
-     `generator`/`distribution`/`extractor`/`other`) — déplacée dans
-     `_parse_entity` c'est-à-dire `exporter/control.lua`, déduite des
-     capacités prototypes (`crafting_categories`, `resource_categories`,
-     `energy_source`, `get_max_power_output`, `stack_size`…) que Factorio 2.0
-     expose déjà nativement ;
-   - stackabilité réelle, catégories de munitions, compatibilité combustible,
-     dépendances (robot↔roboport, solaire↔accumulateur) ;
-- réduction des listes/heuristiques en dur de `tool/common/db.py`
-      (`ROCKET_CHAIN`, `NON_STACKABLE_ITEM_TYPES`, `VEHICLE_GUNS`;
-      `POWER_POLES` et `TOOL_LIKE_ITEMS` supprimés, migrés vers
-      `is_power_pole` / `is_virtual_item`) à celles qui sont du *choix de
-      conception* du randomizer et non une *donnée moteur*.
-Le Python garde son rôle réel : trier, générer la seed, vérifier la
-    solvabilité §15 — il ne re-découvre plus le contenu à la main.
+1. **v1 — vanilla seul** : implémentation complète (starter récursif, électricité,
+   armes, arbre linéaire, fusée).
+2. **Évolutions v1** :
+   - Passage possible de l'arbre linéaire à un arbre **branché**.
+   - Génération automatique de seed (date/heure) — fait (§16).
+3. **Utiliser le moteur du jeu (vision extracteur)** : déplacer l'extraction
+   des prototypes côté jeu (exporter Lua). Le jeu connaît déjà tous ses
+   prototypes (vanilla + mods) : l'exporter calcule les capacités côté moteur,
+   l'outil Python se contente de trier et de valider. Objectif : permettre le
+   support de **mods tiers** sans tout recoder dans l'outil.
+   - Classification fonctionnelle des bâtiments (`research/transformer/generator/
+     distribution/extractor/other`) déplacée dans `exporter/control.lua`
+     (déduite des capacités natives de Factorio 2.0).
+   - Stackabilité réelle, catégories de munitions, compatibilité combustible,
+     dépendances (robot↔roboport, solaire↔accumulateur).
+   - Réduction des heuristiques codées en dur dans `tool/common/db.py` au
+     strict nécessaire (différencier choix de conception vs données moteur).
+   Le Python reste sur son rôle : trier, générer la seed, vérifier la
+   solvabilité (§15).
 
 > **Lacs : pose runtime déterministe** (fait, remplace l'autoplace resource,
 > cf. §7.5). Le détail du choix (creusage `control.lua`, pourquoi l'autoplace

@@ -6,29 +6,26 @@ qu'ils respectent. Pour installer et jouer, voir le [README](../README.md).
 
 ## 1. Concept général
 
-Un run classique de Factorio est appris par cœur : fer, cuivre, charbon, pétrole ;
-les mêmes fours, les mêmes assembleurs, le même arbre de technologie. randputF
-supprime toute connaissance préalable : **rien de ce que le joueur connaît n'est
+Dans Factorio classique, bien des éléments sont toujours les mêmes. randputF
+supprime ce réflexe : **à chaque partie, rien de ce que le joueur connaît n'est
 garanti**.
 
-À chaque partie, le randomizer :
+À chaque génération :
 
-- place au sol un nombre et des types de ressources tirés au hasard parmi
-  **tout** ce que le jeu peut transporter (items sur tapis, fluides dans les
-  tuyaux) ;
-- choisit les bâtiments d'extraction, de transformation et de transport adaptés
-  à ces ressources ;
-- génère les recettes qui relient ces éléments entre eux ;
-- distribue l'ensemble dans un arbre technologique lui-même généré ;
-- fournit au joueur un kit de départ aléatoire.
+- **Ressources au sol** : un nombre et des types aléatoires, choisis parmi
+  tout ce que le jeu peut transporter (items sur tapis, fluides dans les tuyaux).
+- **Bâtiments** : extraction, transformation et transport sont choisis pour
+  s'adapter à ces ressources.
+- **Recettes** : elles relient les éléments entre eux, générées aléatoirement.
+- **Arbre technologique** : lui aussi est généré pour ce monde.
+- **Kit de départ** : fourni aléatoirement.
 
-Le principe central s'appelle le **randput** : la randomisation des entrées et
-sorties. Un slot d'entrée ou de sortie déclaré pour un certain type (item ou
-fluide) peut recevoir n'importe quel élément de ce type présent dans le jeu.
-Un bâtiment capable de sortir un item peut donc sortir n'importe quel item ;
-un bâtiment capable de manipuler des fluides peut manipuler n'importe quel
-fluide. Le contenu change, la structure reste : c'est elle qui rend le monde
-cohérent et jouable.
+**Principe : le randput** (randomisation des entrées/sorties). Un slot d'entrée
+ou de sortie d'un type donné (item ou fluide) peut recevoir n'importe quel
+élément de ce type. Un bâtiment capable de produire/sortir un item peut donc
+sortir n'importe quel item ; un bâtiment manipulant des fluides peut manipuler
+n'importe quel fluide. Le contenu change, la structure reste : c'est ce qui
+garantit un monde cohérent et jouable.
 
 ## 2. Périmètre et cible
 
@@ -39,32 +36,20 @@ cohérent et jouable.
 | Mods tiers | **Hors scope v1.** Le randomizer cible le jeu vanilla seul. Le support de contenu de mods tiers (Krastorio, Py, etc.) fera l'objet d'un projet séparé, bien plus tardif |
 | Fin de partie | Classique : **lancement de la fusée** = victoire. Les technologies infinies restent disponibles ensuite, inchangées dans leur principe |
 
-Ces choix sont volontairement conservateurs : verrouiller le périmètre sur le
-vanilla permet de construire un moteur robuste avant d'envisager le parsing de
-contenu arbitraire.
+Ces choix sont volontairement conservateurs pour garder un moteur robuste.
 
 ## Ordre de lecture conseillé
 
-1. [3. Terminologie](model.md#3-terminologie) — le vocabulaire du projet.
-2. [5. Le modèle randput : classification des bâtiments](model.md#5-le-modèle-randput--classification-des-bâtiments) —
-   la fondation du moteur (types, slots, directives).
-3. [6. Les ressources au sol](ressources.md#6-les-ressources-au-sol) — patches,
-   lacs, pose runtime.
-4. [7. La phase de démarrage](starter.md#7-la-phase-de-démarrage) et
-   [8. La chaîne initiale](starter.md#8-la-chaîne-initiale-starter).
-5. [9. La phase récursive](recettes.md#9-la-phase-récursive) — tirages pondérés,
-   recettes, déblocage sur le tas, relais.
-6. [10. L'électricité](energie.md#10-lélectricité) et
-   [10bis. La chaleur](energie.md#10bis-la-chaleur).
-7. [11. Combat et armement](combat.md#11-combat-et-armement) et
-   [12. Transports avancés](combat.md#12-transports-avancés).
-8. [13. L'arbre technologique](tech.md#13-larbre-technologique) et
-   [14. Fin de partie](tech.md#14-fin-de-partie).
-9. [15. Règles de solvabilité](solvabilite.md#15-règles-de-solvabilité) — les
-   invariants garantis pour toute seed acceptée.
-10. [15ter. Le rejoueur « fake player »](solvabilite.md#15ter-rejoueur-fake-player-vérification-par-simulation)
-    — la preuve par simulation : une partie rejouée de bout en bout
-    (1501/1501 victoires mesurées).
+1. [Terminologie](model.md#3-terminologie)
+2. [Modèle randput (bâtiments)](model.md#5-le-modèle-randput--classification-des-bâtiments) — fondation du moteur
+3. [Ressources au sol](ressources.md#6-les-ressources-au-sol) — patches, lacs
+4. [Phase de démarrage](starter.md#7-la-phase-de-démarrage) et [chaîne initiale](starter.md#8-la-chaîne-initiale-starter)
+5. [Phase récursive](recettes.md#9-la-phase-récursive) — tirages, recettes, relais
+6. [Électricité](energie.md#10-lélectricité) et [Chaleur](energie.md#10bis-la-chaleur)
+7. [Combat/armement](combat.md#11-combat-et-armement) et [Transports avancés](combat.md#12-transports-avancés)
+8. [Arbre technologique](tech.md#13-larbre-technologique) et [Fin de partie](tech.md#14-fin-de-partie)
+9. [Règles de solvabilité](solvabilite.md#15-règles-de-solvabilité) — invariants
+10. [Rejoueur (vérification par simulation)](solvabilite.md#15ter-rejoueur-fake-player-vérification-par-simulation) — preuve (1501/1501 victoires)
 
 ## Index des documents
 
@@ -88,16 +73,16 @@ contenu arbitraire.
 | Document | Contenu |
 |---|---|
 | [tags.md](tags.md) | Référence complète des tags de bâtiments et d'items |
-| [nondeterminism.md](nondeterminism.md) | Inventaire des sources potentielles de non-déterminisme et leur résolution |
-| [nomenclature-rejoueur.md](nomenclature-rejoueur.md) | Vocabulaire seed ↔ rejoueur : table de correspondance exacte des champs consommés |
-| [config.md](config.md) | Les deux fichiers de configuration, chaque clé et section, et les règles de validation |
-| [witness.md](witness.md) | Le témoin de déterminisme : ce qu'il couvre, ses exclusions assumées, sa mise à jour au bump de version |
-| [graphe-interactif.md](graphe-interactif.md) | Construction de `seed.graph.html` : nœuds, arêtes, icônes fidèles au jeu, autonomie du fichier |
+| [nondeterminism.md](nondeterminism.md) | Sources de non-déterminisme et leur résolution |
+| [nomenclature-rejoueur.md](nomenclature-rejoueur.md) | Correspondance exacte seed ↔ rejoueur |
+| [config.md](config.md) | Configuration (defaults + user) : clés, sections, validation |
+| [witness.md](witness.md) | Témoin de déterminisme : périmètre, exclusions, mise à jour au bump |
+| [graphe-interactif.md](graphe-interactif.md) | Génération de `seed.graph.html` (nœuds, arêtes, icônes) |
 
 ### Notes de chantier
 
 | Document | Contenu |
 |---|---|
-| [DEVIANCES.md](DEVIANCES.md) | Dérives de gameplay assumées, bugs corrigés, avertissements résiduels |
-| [CHANGELOG.md](../CHANGELOG.md) | Historique des versions, garanties mesurées et corrections seed par seed |
-| [developpement.md](developpement.md) | §19, §20 : roadmap, environnement de dev, génération et installation |
+| [DEVIANCES.md](DEVIANCES.md) | Dérives assumées, bugs corrigés, avertissements résiduels |
+| [CHANGELOG.md](../CHANGELOG.md) | Historique des versions, garanties mesurées, corrections seed par seed |
+| [developpement.md](developpement.md) | Roadmap, dev, génération et installation |
