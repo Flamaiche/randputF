@@ -1,37 +1,36 @@
 # Configuration
 
-randputF lit **toute** sa configuration dans deux fichiers YAML, jamais dans des
-valeurs codées en dur :
+randputF lit **toute** sa configuration dans deux fichiers YAML, jamais dans
+des valeurs codées en dur :
 
 | Fichier | Rôle | Modifiable |
 |---|---|---|
-| `config/defaults.yaml` | **Source unique** de tous les réglages par défaut | Non |
-| `config/user.yaml` | Tes surcharges, facultatives | Oui |
+| `config/defaults.yaml` | **Source unique** des réglages par défaut | Non |
+| `config/user.yaml` | Surcharges (facultatives) | Oui |
 
-Les deux sont fusionnés en profondeur, puis **validés** avant chaque génération.
-Un config fusionné est toujours complet : il n'existe aucun chemin par lequel le
-moteur invente une valeur de secours.
+Ils sont fusionnés en profondeur puis **validés** avant chaque génération. La
+configuration fusionnée est toujours complète : le moteur n'invente jamais de
+valeur de secours.
 
-Retour : [README.md](../README.md) · [seed.md](seed.md) (§16, seed et config).
+Retour : [README.md](../README.md) · [seed.md](seed.md) (§16).
 
 ---
 
 ## 1. Principes
 
-1. **Source unique.** Une valeur de réglage existe à un seul endroit :
-   `config/defaults.yaml`. Le moteur la lit via `config.default_value(section,
-   key)`, jamais par un littéral dupliqué.
-2. **Ne pas modifier `defaults.yaml`.** Il est livré avec le tool. Tes
-   intentions vont dans `config/user.yaml`.
-3. **Fusion profonde.** `user.yaml` écrase clé par clé ; les sections et les
-   clés absentes de `user.yaml` viennent des defaults.
-4. **Validation stricte.** Type, plage, bornes `min <= max`, contraintes
-   croisées. Une clé inconnue, un mauvais type ou une valeur impossible est une
-   **erreur explicite** au chargement, jamais une génération silencieuse.
-5. **Déterminisme.** Changer une valeur dans `defaults.yaml` change l'espace des
-   seeds (et invalide le témoin). Les constantes *structurelles* (formes de
-   gisements, invariants de solvabilité) ne sont volontairement pas dans le YAML
-   : les voir dans [nondeterminism.md](nondeterminism.md).
+1. **Source unique.** Toute valeur vient de `config/defaults.yaml`. Le moteur
+   l'utilise via `config.default_value(...)`, jamais par un littéral dupliqué.
+2. **Ne pas modifier `defaults.yaml`.** Tout changement va dans
+   `config/user.yaml`.
+3. **Fusion profonde.** `user.yaml` écrase clé par clé ; ce qui y est absent
+   vient des defaults.
+4. **Validation stricte.** Types, plages, bornes `min <= max`, contraintes
+   croisées. Clé inconnue, mauvais type ou valeur impossible = **erreur
+   explicite** au chargement (jamais silencieuse).
+5. **Déterminisme.** Tout changement dans `defaults.yaml` modifie l'espace des
+   seeds (et invalide le témoin). Les constantes structurelles (formes de
+   gisements, invariants de solvabilité) ne sont pas dans le YAML : voir
+   [nondeterminism.md](nondeterminism.md).
 
 ## 2. Exemple de surcharge
 
@@ -53,8 +52,8 @@ Les sections marquées **inertes** sont
 
 ### `factorio_version` (racine)
 
-Version du jeu cible, `"2.0"`. Inerte : lue depuis `mod/info.json`, qui est la
-source de vérité de la version (`tool/common/version.py`).
+Version cible (`"2.0"`). Inerte : lue depuis `mod/info.json` (source de vérité,
+`tool/common/version.py`).
 
 ### `paths`
 
@@ -68,9 +67,9 @@ surchargé pour installer dans Factorio.
 |---|---|---|
 | `patches_min` / `patches_max` | 3 / 8 | Nombre **total** de gisements posés au sol, items + fluides confondus, tiré une fois dans la fourchette (§6). Le tirage est sans remise : une ressource n'apparaît qu'une fois sur la carte |
 | `richness_item` / `richness_fluid` | [400000, 1500000] / [100000, 600000] | Richesse d'un champ |
-| `wells_per_patch` | [3, 8] | Blocs / puits par gisement (§6.5) |
-| `item_patch_radius` | [9, 17] | Rayon du champ item type mapgen |
-| `cluster_radius` | [9, 16] | Dispersion des puits fluide autour du centre |
+| `wells_per_patch` | [3, 8] | Blocs/puits par gisement (§6.5) |
+| `item_patch_radius` | [9, 17] | Rayon du champ item (mapgen) |
+| `cluster_radius` | [9, 16] | Dispersion des puits fluides autour du centre |
 | `first_center_dist` | 25 | Distance du 1er gisement au spawn |
 | `center_ring_step` | 24 | Pas des anneaux de centres suivants |
 
@@ -78,11 +77,11 @@ surchargé pour installer dans Factorio.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `free_researches_count` | [1, 2] | **Inerte** — déclarée et validée, jamais lue. Le nombre de recherches gratuites est fixé par le build (`starter_chain.build_tech_steps`, §7), pas par la config |
+| `free_researches_count` | [1, 2] | **Inerte** (non lue). Le nombre est fixé par `starter_chain.build_tech_steps` (§7) |
 | `ammo_count` | 50 | Munitions du kit |
 | `inserter_chance` | 0.5 | Probabilité d'un inserter dans le kit |
-| `spawn_fuel_count` | 50 | Combustible du starter en burner |
-| `deferred` | [] | **Interne** (pipeline, raws late) — ne pas renseigner |
+| `spawn_fuel_count` | 50 | Combustible du starter (burner) |
+| `deferred` | [] | **Interne** (pipeline/late raws) — à ne pas renseigner |
 
 ### `recursive` — phase récursive
 
