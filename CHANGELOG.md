@@ -68,6 +68,11 @@ lisent tout depuis le YAML.
   du témoin) : 5,2 Mo → 52 Ko.
 - Les tests ne dépendent plus de la version en dur : ils lisent
   `MOD_NAME_VERSIONED`.
+- L'orchestration de génération est factorisée dans `tool/service.py`, désormais
+  partagée entre la CLI et l'interface graphique (à venir). **Aucun changement
+  de comportement** : c'est un déplacement de code, pour que la future
+  IG ne puisse pas diverger de la CLI — si elle réimplémentait la génération,
+  le témoin ne garantirait plus rien pour le joueur qui passe par elle.
 
 ### Garanties mesurées
 
