@@ -50,6 +50,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
+      # ci.yml tourne en parallele sur le meme push : sans ce test ici, un commit
+      # qui casse la suite publierait quand meme une release.
+      - name: Tester
+        run: pytest -q
       - name: Determinisme seed 5
         run: |
           cd /tmp
@@ -59,6 +63,16 @@ jobs:
           mkdir -p /tmp/modrel
           randputf generate --seed 5 --out /tmp/modrel
           cd /tmp/modrel && zip -r "/tmp/randputF_${VERSION}.zip" "randputF_${VERSION}"
+      - name: Creer le tag
+        run: |
+          # Tag pose explicitement sur le commit promu. Sans cela, une release
+          # publiee depuis un brouillon fait creer le tag par GitHub au
+          # targetCommitish du brouillon -- donc sur le bon commit par
+          # coincidence, pas par construction. Le push du tag ne redemarre rien :
+          # le workflow n'ecoute pas les tags.
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          echo "tag $TAG -> $(git rev-parse --short "$TAG")"
       - name: Publier la release Github
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,10 +86,7 @@ jobs:
             # brouillon (gh release edit ne publie pas de lui-meme).
             gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTE_FILE" --draft=false
           else
-            # --target : cree le tag sur le commit master qui vient d'etre
-            # promu, donc le code publie est bien celui de la promotion.
             gh release create "$TAG" "$ZIP" \
-              --target "$GITHUB_SHA" \
               --title "$TITLE" \
               --notes-file "$NOTE_FILE"
           fi
