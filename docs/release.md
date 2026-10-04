@@ -82,16 +82,18 @@ tels quels ; ne pas les recopier ici.
 Le bump de version se fait **dans `dev`** (seule branche de travail) :
 `mod/info.json` (source de vérité) et `pyproject.toml` au même moment —
 `tool/common/version.py` lit `mod/info.json`, il ne se bump pas.
-La release est le **tag sur `dev`**, puis `master` est aligné dessus par le
-mainteneur.
+La release est la **promotion `dev` → `master`**, décidée par le mainteneur.
 
-> **`master` n'est jamais fusionné, seulement aligné sur le tag.** Le tag v1.0.0
-> (`f94f471`) est un commit racine sans parent : `master` et `dev` n'ont donc
-> aucun ancêtre commun, et `git merge` y serait refusé. Inutile de s'en servir :
-> aligner `master` sur le tag est plus simple, et dès la première release les
-> deux branches redeviennent parent-enfant — les fusions suivantes sont des
-> *fast-forward*, sans conflit. Le seul prix : le commit v1.0.0 reste accessible
-> par son tag, mais sort de l'ascendance de `master`.
+> **La release est la promotion `dev` → `master`.** Le workflow se déclenche
+> quand `master` reçoit le travail de `dev` ; il lit la version dans
+> `mod/info.json`, construit le mod, crée le tag `v<version>` sur le commit
+> promu et publie. Il n'y a plus à créer de tag à la main. Le tag v1.0.0
+> (`f94f471`) est un commit racine sans parent, donc `master` et `dev` n'ont
+> aujourd'hui aucun ancêtre commun et `master` se replace sur `dev` par
+> `git push origin dev:master --force`. Dès cette première promotion, les deux
+> branches redeviennent parent-enfant : les promotions suivantes sont des
+> *fast-forward*, sans `--force`. Conséquence à garder en tête : le commit
+> v1.0.0 reste accessible par son tag, mais sort de l'ascendance de `master`.
 
 - [ ] **Tout passer par `dev`** : corrections, docs, bump de version sur `dev`.
 - [ ] **Version** : bump de `mod/info.json` `"version"` — c'est la **source de
@@ -116,16 +118,16 @@ mainteneur.
       `randputF_*` laissé par un run antérieur peut faire passer un test en
       local alors qu'il échoue en CI. Relancer la suite depuis un arbre propre :
       `rm -rf output && python -m pytest`.
-- [ ] **Tag** : `git tag -a v<version> -m "<version> — <ce qu'elle apporte>"`
-      puis `git push origin dev --tags`. Le tag déclenche `release.yml` : build
-      du wheel, témoin, zip attaché, **publication automatique** du titre et de
-      la note depuis `notes/v<version>.md`.
-- [ ] **Aligner `master`** — *réservé au mainteneur* : `git branch -f master
-      v<version>` puis `git push origin master --force`. Ni l'agent ni l tooling
-      ne touchent `master` : c'est le seul moment où la branche bouge, et c'est
-      une décision humaine.
-- [ ] **Vérifier la CI du tag** avant de conclure : un tag peut être poussé
-      alors qu'un test casse (le bump casse les versions codées en dur).
+- [ ] **Promouvoir `master`** — *réservé au mainteneur, seul moment où la
+      branche bouge* : `git push origin dev:master --force` (le `--force` n'est
+      nécessaire que pour cette première promotion, cf. l'encadré §3 ; ensuite
+      un simple `git push origin dev:master` suffit). Ce push **déclenche la
+      release** : build du wheel, témoin, zip attaché, tag `v<version>` créé sur
+      le commit promu, **publication automatique** du titre et de la note depuis
+      `notes/v<version>.md`.
+- [ ] **Vérifier la CI** avant de conclure : la promotion est rejetée si la
+      version est déjà taguée, si la note est absente, ou si un test casse (le
+      bump casse les versions codées en dur).
 - [ ] Aucun push sans décision explicite du mainteneur.
 
 ## 4. Ce que la v1.0.1 a appris (tentative du 2026-10-01, jamais publiée)
@@ -152,15 +154,17 @@ ont été corrigés dans le code — ils sont la raison de l'état actuel.
 `release.yml` exécute : `pip install .` ->
 `randputf witness --seed 5` (sans `--expect`, il vérifie juste la génération)
 -> `randputf generate --seed 5 --out` -> zip `randputF_<version>.zip` ->
-`gh release create` (ou `upload` + `edit` si la release existe déjà, avec
-`--draft=false` pour republier un brouillon).
+`gh release create --target <commit promu>` (ou `upload --clobber` + `edit`
+si une release existe déjà, avec `--draft=false` pour republier un brouillon).
 
 ## 5. Suite des releases
 
 **Modèle de branches** : `dev` porte le travail en cours et **la vérité** ;
-`master` pointe sur le **dernier état publié**. Conséquence à avoir en tête : le
-tag v1.0.0 reste accessible par son nom mais n'est pas dans l'ascendance de
-`master` — le tag reste la référence pour cette version.
+`master` porte le **dernier état publié**. Le passage de l'un à l'autre est la
+release elle-même : pousser `dev` sur `master` déclenche le build et la
+publication (§3). Conséquence à avoir en tête : le tag v1.0.0 reste accessible
+par son nom mais n'est pas dans l'ascendance de `master` — le tag reste la
+référence pour cette version.
 
 **Numérotation** : semver. Changement visible par l'utilisateur (fichier de
 config supprimé, valeur par défaut modifiée, migration à faire) -> numéro

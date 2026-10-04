@@ -1,12 +1,24 @@
 name: Release
 
+# La release EST la promotion dev -> master : le workflow se declenche quand
+# master recoit le travail de dev. Il lit la version dans mod/info.json
+# (source de verite unique), construit le mod et publie la release, en
+# creant le tag v<version> sur le commit master.
+#
+# workflow_dispatch permet de relancer apres un echec sans repousser master.
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - master
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+# Deux promotions simultanees ne doivent pas publier deux fois la meme chose.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -16,6 +28,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Verifier la version et la note
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('mod/info.json'))['version'])")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=v${VERSION}"
+          echo "TAG=v${VERSION}" >> "$GITHUB_ENV"
+          NOTE_FILE="notes/v${VERSION}.md"
+          if [ ! -f "$NOTE_FILE" ]; then
+            echo "ERREUR: $NOTE_FILE introuvable - impossible de publier sans note"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "ERREUR: le tag v${VERSION} existe deja - version deja publiee"
+            exit 1
+          fi
+          echo "A publier : v${VERSION} (commit $(git rev-parse --short HEAD))"
       - name: Installer
         run: |
           python -m pip install --upgrade pip
@@ -26,8 +56,6 @@ jobs:
           randputf witness --seed 5
       - name: Generer le mod
         run: |
-          VERSION=$(python -c "import json; print(json.load(open('mod/info.json'))['version'])")
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p /tmp/modrel
           randputf generate --seed 5 --out /tmp/modrel
           cd /tmp/modrel && zip -r "/tmp/randputF_${VERSION}.zip" "randputF_${VERSION}"
@@ -35,21 +63,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="$GITHUB_REF_NAME"
           ZIP="/tmp/randputF_${VERSION}.zip"
           NOTE_FILE="notes/v${VERSION}.md"
-          if [ ! -f "$NOTE_FILE" ]; then
-            echo "ERREUR: $NOTE_FILE introuvable - impossible de publier sans note"
-            exit 1
-          fi
           TITLE=$(head -1 "$NOTE_FILE" | sed 's/^# //')
           if gh release view "$TAG" --json tagName -q .tagName >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
-            # --draft=false : sans lui, une release créée en brouillon reste
-            # brouillon (gh release edit ne publie pas de lui-même).
+            # --draft=false : sans lui, une release creee en brouillon reste
+            # brouillon (gh release edit ne publie pas de lui-meme).
             gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTE_FILE" --draft=false
           else
+            # --target : cree le tag sur le commit master qui vient d'etre
+            # promu, donc le code publie est bien celui de la promotion.
             gh release create "$TAG" "$ZIP" \
+              --target "$GITHUB_SHA" \
               --title "$TITLE" \
               --notes-file "$NOTE_FILE"
           fi
