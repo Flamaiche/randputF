@@ -45,7 +45,9 @@ jobs:
           TITLE=$(head -1 "$NOTE_FILE" | sed 's/^# //')
           if gh release view "$TAG" --json tagName -q .tagName >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTE_FILE"
+            # --draft=false : sans lui, une release créée en brouillon reste
+            # brouillon (gh release edit ne publie pas de lui-même).
+            gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTE_FILE" --draft=false
           else
             gh release create "$TAG" "$ZIP" \
               --title "$TITLE" \

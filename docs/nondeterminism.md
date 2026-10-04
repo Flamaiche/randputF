@@ -297,7 +297,8 @@ mais d'une **itération de frozenset ordonnant des recettes** dans la chaîne fu
 **Fix** : `targets = sorted(ROCKET_CHAIN)` (`endgame_phase.py:47`). Après correction,
 2 runs `tool generate --seed 5` produisent des `seed.lua` et `seed.json`
 **octet-pour-octet identiques** (vérifié sur les 10 fichiers du mod).
-71 tests passent toujours.
+La suite de tests passe toujours (elle compte aujourd'hui 722 tests ; à
+l'époque de cette correction, elle en comptait 71).
 
 Après les correctifs (chaîne fusée, §5c, §5d), les itérations de
 `set`/`frozenset` restantes (ex. `map_patches.py:101` `hero`, `recipes.py:522`)

@@ -32,6 +32,6 @@ def _read_info() -> dict:
 _INFO = _read_info()
 
 MOD_NAME = _INFO["name"]                 # "randputF"
-VERSION = _INFO["version"]               # "1.0.0"
-MOD_NAME_VERSIONED = f"{MOD_NAME}_{VERSION}"  # "randputF_1.0.0"
+VERSION = _INFO["version"]               # lu dans mod/info.json
+MOD_NAME_VERSIONED = f"{MOD_NAME}_{VERSION}"  # "randputF_<version>"
 FACTORIO_VERSION = _INFO["factorio_version"]  # "2.0"
