@@ -49,7 +49,12 @@ jobs:
       - name: Installer
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          # Extras de DEV, comme .github/workflows/ci.yml : le job lance
+          # pytest juste apres. Avec un simple `pip install .`, pytest ne serait
+          # pas installe et le job echouerait sur « pytest: command not found »
+          # -- pas sur un test casse, ce qui est pire : la panne ressemblerait
+          # a de la documentation, pas a un outillage manquant.
+          pip install ".[dev]"
       # ci.yml tourne en parallele sur le meme push : sans ce test ici, un commit
       # qui casse la suite publierait quand meme une release.
       - name: Tester
