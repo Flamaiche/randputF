@@ -8,6 +8,10 @@ Invariants :
 2. progressivité : chaque recette n'utilise que des ingrédients obtenus.
 3. cohérence tech-recettes : chaque recette débloquée par exactement UNE tech.
 4. coûts obtenables : matériaux de recherche produisibles au bon moment.
+5. règle des tuyaux : aucun produit inaccessible depuis les sources externes.
+6. complétude fusée : la recette du silo est toujours présente.
+7. packs sans ressource brute : aucun pack de science crafté sur de la matière
+   extraite (patch, fluide de lac, environnemental).
 """
 
 from __future__ import annotations

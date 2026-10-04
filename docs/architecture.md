@@ -79,6 +79,10 @@ Chaîne complète, de l'écriture d'une seed à une partie jouable :
    tirés, remplacement des ressources vanilles), kit de départ, recherches
    gratuites, déblocages progressifs au fil des recherches.
 
+Cette section résume la chaîne ; la chronologie détaillée des jalons, les flux
+RNG et les points d'échec sont dans [`pipeline.md`](pipeline.md), et le
+développement du mod Lua fichier par fichier dans [`runtime.md`](runtime.md).
+
 ## 18. Structure du projet
 
 ```

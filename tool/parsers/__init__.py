@@ -1,0 +1,1 @@
+"""Normalisation du dump vanilla (``data/vanilla_dump.json``) vers ``VanillaDB``."""

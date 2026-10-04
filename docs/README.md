@@ -78,6 +78,10 @@ Ces choix sont volontairement conservateurs pour garder un moteur robuste.
 | [config.md](config.md) | Configuration (defaults + user) : clés, sections, validation |
 | [witness.md](witness.md) | Témoin de déterminisme : périmètre, exclusions, mise à jour au bump |
 | [graphe-interactif.md](graphe-interactif.md) | Génération de `seed.graph.html` (nœuds, arêtes, icônes) |
+| [modules.md](modules.md) | Le outillage Python : une passe par module et son statut de branchement (branché / testé non branché / diagnostic) |
+| [pipeline.md](pipeline.md) | Chronologie de génération : fonctions d'orchestration, jalons, flux RNG, invariants, chemin d'échec |
+| [vanilladb.md](vanilladb.md) | `VanillaDB` : format du dump vanilla, schéma des données, prédicats de détection, inférences |
+| [runtime.md](runtime.md) | Le mod Lua : les cinq fichiers, le contrat `seed` → Lua, les clés consommées, le câblé-inactif |
 
 ### Notes de chantier
 

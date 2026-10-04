@@ -1,0 +1,1 @@
+"""Écriture de la seed dans le dossier du mod, et graphe interactif HTML."""

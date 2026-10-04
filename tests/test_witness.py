@@ -9,6 +9,7 @@ relatif canonique, indépendant du système de fichiers.
 from pathlib import Path
 
 from tool.common.witness import canonical_entries, witness_md5
+from tool.common.version import MOD_NAME_VERSIONED
 
 
 def _make_mod_dir(tmp_path: Path, order: list[str]) -> Path:
@@ -89,4 +90,4 @@ def test_witness_independant_du_nom_du_dossier(tmp_path):
     assert witness_md5(src) == witness_md5(renamed)
     # et la racine est bien randputF_<version>, quel que soit le dossier
     ref = witness_md5(src)
-    assert ref == witness_md5(renamed, prefix="randputF_1.0.0")
+    assert ref == witness_md5(renamed, prefix=MOD_NAME_VERSIONED)
