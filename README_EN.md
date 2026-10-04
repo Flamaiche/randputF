@@ -252,10 +252,11 @@ MIT — see [`LICENSE`](LICENSE).
 
 ## Development
 
-- **Full history**: `master` carries the whole development history. Versions are
-  tags on top ([`v1.0.0`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.0),
-  [`v1.0.1`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.1)): a tag
-  is the published state, nothing is rewritten afterwards.
+- **Tags**: versions are Git tags on top of `master`. A tag is the published
+  state, nothing is rewritten afterwards. The published version is
+  [`v1.0.0`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.0). v1.0.1 is
+  being prepared on `dev` and has never been published (procedure:
+  [`docs/release.md`](docs/release.md)).
 - **Work branch**: [`dev`](https://github.com/Flamaiche/randputF/tree/dev) takes
   the changes in progress. `master` is never pushed directly: everything goes
   through `dev`, and the `dev` → `master` promotion **is** the release (it
