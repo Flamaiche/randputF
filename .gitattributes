@@ -1,0 +1,16 @@
+# Garantie de livraison : le journal de bord est versionne pour etre
+# sauvegarde et partage, mais il ne fait partie d'aucun livrable.
+#
+# `export-ignore` retire ces chemins des archives produites par
+# `git archive` — donc aussi des zip/tar « Source code (zip) » que GitHub
+# telecharge automatiquement depuis l'onglet Code. Resultat : `master` peut
+# porter l'arbre complet de `dev` (exigence de reproductibilite : le tag doit
+# pouvoir regenerer le mod et donc contenir `tool/`), tout en gardant les notes
+# de chantier hors du produit distribue.
+#
+# Deuxieme rempart, cote wheel : `pyproject.toml` enumere ses paquets
+# explicitement (liste `packages`, pas `packages.find`) et `atelier/` n'y est
+# pas — le wheel n'a donc jamais contenu ces notes. Les deux remparts sont
+# independants : la wheel-liste protege le wheel, cet attribut protege les
+# archives Git.
+atelier/ export-ignore
