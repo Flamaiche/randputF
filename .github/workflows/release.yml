@@ -37,10 +37,17 @@ jobs:
         run: |
           TAG="$GITHUB_REF_NAME"
           ZIP="/tmp/randputF_${VERSION}.zip"
+          NOTE_FILE="notes/v${VERSION}.md"
+          if [ ! -f "$NOTE_FILE" ]; then
+            echo "ERREUR: $NOTE_FILE introuvable - impossible de publier sans note"
+            exit 1
+          fi
+          TITLE=$(head -1 "$NOTE_FILE" | sed 's/^# //')
           if gh release view "$TAG" --json tagName -q .tagName >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTE_FILE"
           else
             gh release create "$TAG" "$ZIP" \
-              --title "randputF ${VERSION}" \
-              --generate-notes
+              --title "$TITLE" \
+              --notes-file "$NOTE_FILE"
           fi

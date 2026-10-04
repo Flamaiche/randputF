@@ -14,16 +14,16 @@ Retour : [README.md](../README.md) · [nondeterminism.md](nondeterminism.md).
 
 ```bash
 pip install .
-randputf witness --seed 5 --expect f41e065e606ce24c8855d458c661988f
+randputf witness --seed 5 --expect c9566134864507d900f65806ade277d9
 ```
 
-Le témoin v0.0.0 (tag `v0.0.0`) est :
+Le témoin de la version courante (0.0.1) est :
 
 ```
-f41e065e606ce24c8855d458c661988f
+c9566134864507d900f65806ade277d9
 ```
 
-> Le hash ci-dessus est celui de la **v0.0.0**, la version courante du dépôt.
+> Le hash ci-dessus est celui de la **v0.0.1**, la version courante du dépôt.
 > Il **change à chaque bump de version** (le préfixe racine du zip contient
 > `randputF_<version>`, cf. §3.4), même si le contenu du mod ne change pas.
 > Pour la version que vous testez, lisez le hash dans `.github/workflows/ci.yml`,

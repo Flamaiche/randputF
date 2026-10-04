@@ -1,0 +1,1 @@
+"""Briques partagées : version (source de vérité), base vanilla, tagsets, rng, témoin."""

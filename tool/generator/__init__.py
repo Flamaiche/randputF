@@ -1,0 +1,1 @@
+"""Pipeline de génération d'une seed randputF — chronologie dans ``docs/pipeline.md``."""
