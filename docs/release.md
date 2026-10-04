@@ -108,9 +108,10 @@ La release est la **promotion `dev` → `master`**, décidée par le mainteneur.
       `# <version> — <ce qu'elle apporte>`, puis 3-5 puces highlights).
       Sans ce fichier, `release.yml` échoue explicitement.
 - [ ] **CHANGELOG** : ajouter la section `## v<version>` dans
-      [`CHANGELOG.md`](../CHANGELOG.md) au moment de la publication. Il ne
-      documente que les versions **publiées** — tant que la v1.0.1 est en
-      préparation sur `dev`, il s'arrête à v1.0.0.
+      [`CHANGELOG.md`](../CHANGELOG.md) **dans le commit du bump de version**, pas
+      après. L'entrée est ainsi publiée **en même temps** que la promotion : rien
+      à réécrire une fois le tag posé, et l'arbre promu est auto-cohérent.
+      Le titre reprend celui de `notes/v<version>.md`.
 - [ ] **Supprimer le brouillon résiduel** : si un `gh release list` affiche un
       *draft* pour cette version, le supprimer avant le tag — sinon le workflow
       le reprend et le publie avec une date et un corps périmés.
