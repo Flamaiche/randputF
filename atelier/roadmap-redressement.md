@@ -1,5 +1,11 @@
 # Feuille de route : redressement documentaire
 
+> **Instantané archivé.** Ce plan date du 30 septembre 2026 et décrit l'état du
+> projet à ce moment-là. Les chemins, chiffres et le témoin qu'il mentionne
+> (ex. `12ac143e…`) ne sont plus les valeurs actuelles — voir
+> [`docs/witness.md`](../docs/witness.md) et [`CHANGELOG.md`](../CHANGELOG.md)
+> pour l'état en cours.
+
 Plan d'action issu de la revue indépendante du 30 septembre 2026
 (*revue complète de la documentation randputF*). Couvre les 10 actions
 priorisées de la revue, plus les divergences doc/code detectees en
