@@ -33,4 +33,4 @@ explicitement) ni dans le zip du mod (qui ne contient que le mod généré).
 ## liens
 
 - Gabarit et procedure : [`docs/release.md`](../docs/release.md).
-- Historique des versions publiees : [`CHANGELOG.md`](../CHANGELOG.md).
+- Historique des versions : [`CHANGELOG.md`](../CHANGELOG.md).
