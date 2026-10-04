@@ -77,6 +77,7 @@ Ces choix sont volontairement conservateurs pour garder un moteur robuste.
 | [nomenclature-rejoueur.md](nomenclature-rejoueur.md) | Correspondance exacte seed ↔ rejoueur |
 | [config.md](config.md) | Configuration (defaults + user) : clés, sections, validation |
 | [witness.md](witness.md) | Témoin de déterminisme : périmètre, exclusions, mise à jour au bump |
+| [release.md](release.md) | Procédure de publication et état des versions (ce qui est publié, ce qui est en préparation) |
 | [graphe-interactif.md](graphe-interactif.md) | Génération de `seed.graph.html` (nœuds, arêtes, icônes) |
 | [modules.md](modules.md) | Le outillage Python : une passe par module et son statut de branchement (branché / testé non branché / diagnostic) |
 | [pipeline.md](pipeline.md) | Chronologie de génération : fonctions d'orchestration, jalons, flux RNG, invariants, chemin d'échec |
