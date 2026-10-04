@@ -62,9 +62,10 @@ prototypes vanilla viennent d'un dump JSON embarqué (`data/vanilla_dump.json`).
 Il n'y a ni portail à scraper, ni pilote à télécharger, ni jeton à gérer.
 
 Et générer un mod est **plus simple** que télécharger un mod : pas de client
-HTTP, pas d'API de portail. Le `.exe` embarque exactement les mêmes assets que le wheel
-(`--add-data "mod;mod"`, `"data;data"`, `"config;config"`) et se contente
-d'appeler le générateur. Le produit est le mod en local, pas un téléchargement.
+HTTP, pas d'API de portail. Le `.exe` embarque exactement les mêmes assets que
+le wheel (`--add-data "mod;mod"`, `"data;data"`, `"config;config"`) et se
+contente d'appeler le générateur. Le produit est le mod en local, pas un
+téléchargement.
 
 Voie retenue : **tkinter pour l'IG v1** (inclus dans Python, zéro dépendance),
 **PyInstaller pour l'exe**. Le passage à l'IG suffit à ouvrir ce chantier ;
