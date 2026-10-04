@@ -7,114 +7,52 @@ import sys
 import time
 from pathlib import Path
 
-from tool.common import config as _cfg
-from tool.common.assets import asset_path, repo_root
 from tool.common.db import VanillaDB
-from tool.common.demo import build_demo_db
-from tool.common.version import MOD_NAME_VERSIONED, VERSION
-from tool.exporters.mod_seed import write_seed_files
+from tool.common.version import VERSION
 from tool.exporters.seed_graph import write_seed_graph_html
-from tool.generator.pipeline import generate_seed
-from tool.parsers.vanilla import load_db_from_dump, summarize_db
-from tool.validator.solver import validate_seed
+from tool.parsers.vanilla import summarize_db
+from tool.service import (
+    DUMP_PATH_DEFAULT,
+    MAX_ATTEMPTS,
+    OUTPUT_DIR,
+    DumpInvalidError,
+    DumpMissingError,
+    RandputfError,
+    SeedUnplayableError,
+    build_mod,
+    current_seed,
+    generate_with_retry,
+    install_mod,
+    load_config,
+    load_db,
+)
+from tool.service import build_mod as _build_mod
+from tool.service import install_mod as _install_mod
+from tool.service import load_config as _load_config
+from tool.service import load_db as _load_db_raising
 
 from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 from tool.audit.difficulty import compute_difficulty, summarize_difficulty
 from tool.common.witness import witness_md5
+from tool.generator.pipeline import generate_seed
 
-# Assets résolus en wheel (namespace packages embarqués) comme en dépôt.
-MOD_SOURCE = asset_path("mod")
-DUMP_PATH_DEFAULT = asset_path("data") / "vanilla_dump.json"
-# Marqueur de checkout : ``pyproject.toml`` n'est jamais livré dans le wheel
-# (il vit dans le ``.dist-info``), alors que ``mod/info.json`` existe dans les
-# deux cas. Sans ce test, un install classique écrivait le mod généré dans
-# ``site-packages/output`` — sale, et fatal si site-packages est en lecture
-# seule (install système / PEP 668). Depuis un checkout on garde ``<repo>/output``.
-_OUTPUT_REPO = (repo_root() / "pyproject.toml").exists()
-OUTPUT_DIR = repo_root() / "output" if _OUTPUT_REPO else Path.cwd() / "output"
-
-
-def _load_config() -> dict:
-    """Config de la run : defaults.yaml (source unique) + surcharges du fichier
-    ``user.yaml`` (facultatif), VALIDÉS avant génération."""
-    return _cfg.runtime_config()
+from tool.service import MOD_SOURCE
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
-    if demo:
-        return build_demo_db()
-    if not dump_path.exists():
-        print(
-            f"Vanilla dump introuvable: {dump_path}\n"
-            "Le dump est embarque dans le paquet (data/vanilla_dump.json) : "
-            "reinstalle randputf (pip install .) ou passe --dump <fichier>.\n"
-            "Pour regenerer le dump depuis un checkout du depot, utilise le "
-            "mod compagnon 'exporter' (README, section Systeme de dev)."
-        )
-        sys.exit(1)
+    """Wrapper CLI : traduit les exceptions du service en sortie de processus.
+
+    Le service lève (pour que l'IG ne se fasse pas tuer) ; ici on quitte, comme
+    toujours. Messages et codes de sortie inchangés.
+    """
     try:
-        return load_db_from_dump(json.loads(dump_path.read_text(encoding="utf-8")))
-    except ValueError as err:
+        return _load_db_raising(demo, dump_path)
+    except DumpMissingError as err:
+        print(err)
+        sys.exit(1)
+    except DumpInvalidError as err:
         print(f"[DUMP INVALIDE] {err}")
         sys.exit(1)
-
-
-def _build_mod(seed: dict, dest: Path) -> Path:
-    """Assemble le mod complet dans dest. Retourne le chemin du dossier."""
-    mod_name = MOD_NAME_VERSIONED
-    mod_dir = dest / mod_name
-    dest.mkdir(parents=True, exist_ok=True)
-
-    if mod_dir.exists():
-        shutil.rmtree(mod_dir)
-    mod_dir.mkdir()
-
-    for item in MOD_SOURCE.iterdir():
-        if item.name == "seed" or item.is_symlink():
-            continue
-        target = mod_dir / item.name
-        if item.is_dir():
-            shutil.copytree(item, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(item, target)
-
-    write_seed_files(seed, mod_dir / "seed")
-    return mod_dir
-
-
-def _install_mod(seed: dict, mods_dir: Path) -> None:
-    """Copie le mod dans le dossier Factorio mods + met a jour mod-list.json."""
-    mod_name = MOD_NAME_VERSIONED
-    dest = mods_dir / mod_name
-
-    if dest.is_symlink():
-        dest.unlink()
-    elif dest.exists():
-        shutil.rmtree(dest)
-
-    _build_mod(seed, mods_dir)
-
-    info = json.loads((dest / "info.json").read_text(encoding="utf-8"))
-    mod_list_name = info.get("name", mod_name)
-
-    mod_list = mods_dir / "mod-list.json"
-    if mod_list.exists():
-        data = json.loads(mod_list.read_text(encoding="utf-8"))
-    else:
-        data = {"mods": [{"name": "base", "enabled": True}]}
-
-    names = {m["name"] for m in data["mods"]}
-    if mod_list_name not in names:
-        data["mods"].append({"name": mod_list_name, "enabled": True})
-    else:
-        for m in data["mods"]:
-            if m["name"] == mod_list_name:
-                m["enabled"] = True
-    for m in data["mods"]:
-        if m["name"] == "randputf-exporter":
-            m["enabled"] = False
-
-    mod_list.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def cmd_parse(args: argparse.Namespace) -> None:
@@ -137,6 +75,13 @@ def cmd_audit(args: argparse.Namespace) -> None:
     sys.exit(0 if report.ok else 1)
 
 
+def _report_retry(attempt: int, seed_value: int, issues: list[str]) -> None:
+    """Trace une tentative dérivée. La seed N+1… est déterministe : ce n'est
+    donc jamais l'horloge qui remplace silencieusement la graine demandée."""
+    first = issues[0] if issues else "raison inconnue"
+    print(f"[RETRY {attempt}] seed {seed_value} non jouable ({first}), derive...")
+
+
 def cmd_generate(args: argparse.Namespace) -> None:
     """Génère une seed (démonstrateur) puis l'assemble en mod : seed.json/
     .lua + graphe HTML. Retente avec une graine dérivée tant que la seed est
@@ -144,29 +89,19 @@ def cmd_generate(args: argparse.Namespace) -> None:
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
 
-    if args.seed is not None:
-        db.seed_value = args.seed
-    else:
-        # Seed tirée du temps courant (ms) : partie unique à chaque génération.
-        db.seed_value = int(time.time() * 1000)
+    # Seed tirée de l'horloge (ms) : partie unique à chaque génération. Avec
+    # ``--seed N`` la dérivation reste déterministe (N+1, N+2…) pour ne jamais
+    # remplacer silencieusement la valeur demandée par l'horloge.
+    base = args.seed if args.seed is not None else current_seed()
 
-    seed = generate_seed(db, config=cfg)
-
-    # Une seed peut être non solvable : régénérer avec une graine dérivée.
-    # Avec ``--seed N`` la dérivation reste déterministe (N+1, N+2…) pour ne
-    # jamais remplacer silencieusement la valeur demandée par l'horloge.
-    base = args.seed if args.seed is not None else int(time.time() * 1000)
-    attempts = 0
-    issues = validate_seed(seed)
-    while issues:
-        attempts += 1
-        if attempts >= 10:
-            for issue in issues[:10]:
-                print(f"[INVALIDE] {issue}")
-            sys.exit(2)
-        db.seed_value = base + attempts
-        seed = generate_seed(db, config=cfg)
-        issues = validate_seed(seed)
+    try:
+        seed, db = generate_with_retry(
+            db, cfg, base, on_attempt=_report_retry
+        )
+    except SeedUnplayableError as err:
+        for issue in err.issues[:10]:
+            print(f"[INVALIDE] {issue}")
+        sys.exit(2)
 
     if args.install:
         paths = cfg.get("paths", {})
@@ -216,7 +151,7 @@ def cmd_witness(args: argparse.Namespace) -> None:
     cfg = _load_config()
     seed = generate_seed(db, config=cfg)
     out_dir = Path(args.out) if args.out else OUTPUT_DIR
-    mod_path = _build_mod(seed, out_dir)
+    mod_path = build_mod(seed, out_dir)
     digest = witness_md5(mod_path)
     print(f"seed_value: {db.seed_value}")
     print(f"temoins   : {digest}")
