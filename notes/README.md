@@ -24,14 +24,13 @@ Il est **présent dans les tags** : le workflow de release fait son checkout sur
 le tag et doit donc pouvoir lire la note. C'est le seul dossier du dépôt qui
 voyage dans les tags sans être du produit.
 
-`atelier/`, à l'inverse, est un journal de bord : il est versionné sur `dev`,
-donc présent dans l'arbre de tout tag, sauf si on l'a retiré avant de taguer
-(étape explicite de la checklist).
+`atelier/`, à l'inverse, est un journal de bord **non versionné** : il est
+ignoré par git, donc absent de tout commit et de tout tag.
 
 Il n'entre ni dans le wheel (`pyproject.toml` liste ses packages
 explicitement) ni dans le zip du mod (qui ne contient que le mod généré).
 
 ## liens
 
-- Gabarit et procedure : [`atelier/RELEASE.md`](../atelier/RELEASE.md).
+- Gabarit et procedure : [`docs/release.md`](../docs/release.md).
 - Historique des versions publiees : [`CHANGELOG.md`](../CHANGELOG.md).
