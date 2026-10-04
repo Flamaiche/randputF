@@ -157,7 +157,8 @@ MIT — see [`LICENSE`](LICENSE).
   is the published state, nothing is rewritten afterwards.
 - **Work branch**: [`dev`](https://github.com/Flamaiche/randputF/tree/dev) takes
   the changes in progress. `master` is never pushed directly: everything goes
-  through `dev`, then through the tag, and `master` is aligned onto that tag.
+  through `dev`, and the `dev` → `master` promotion **is** the release (it
+  triggers the build and the publication).
   Procedure: [`docs/release.md`](docs/release.md).
 - **Changelog**: [`CHANGELOG.md`](CHANGELOG.md).
 - **AI assistant**: parts of the documentation and code were written or

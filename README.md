@@ -249,8 +249,9 @@ MIT — voir [`LICENSE`](LICENSE).
   un tag est l'état publié, rien n'est réécrit après coup.
 - **Branche de travail** : [`dev`](https://github.com/Flamaiche/randputF/tree/dev)
   accueille les changements en cours. `master` n'est jamais poussée
-  directement : tout passe par `dev`, puis par le tag, et `master` est aligné
-  sur ce tag. Procédure dans [`docs/release.md`](docs/release.md).
+  directement : tout passe par `dev`, et la promotion `dev` → `master` **est** la
+  release (elle déclenche le build et la publication). Procédure dans
+  [`docs/release.md`](docs/release.md).
 - **Changelog** : [`CHANGELOG.md`](CHANGELOG.md). Corrections seed par seed et
   garanties mesurées, en résumé.
 - **English README** : [`README_EN.md`](README_EN.md) pour les joueurs
