@@ -59,13 +59,12 @@ mesurées. Les faits vérifiés sont en §2.3.
 
 ## 3. Checklist de publication (procédure)
 
-Le bump de version se fait **au moment de la release**, sur `master`, jamais
-avant sur `dev` : tant que `dev` est en 1.0.1, le témoin de `ci.yml` est celui
-de la 1.0.1.
+Le bump de version se fait **dans `dev`** (seule branche de travail) :
+`tool/common/version.py`, `mod/info.json`, `pyproject.toml` au même moment.
+La release est le **commit de fusion** `dev` → `master` ; jamais de push direct
+sur `master`.
 
-- [ ] **Tout passer par `dev`** : corrections et docs sur `dev`, jamais de push
-      direct sur `master` (§5). On ne bumpe la version que dans le commit de
-      release, une fois `dev` mergé dans `master`.
+- [ ] **Tout passer par `dev`** : corrections, docs, bump de version sur `dev`.
 - [ ] **Version** : bump `mod/info.json` `"version"` (source de vérité :
       `tool/common/version.py`), et `pyproject.toml` au même moment.
 - [ ] **Témoin** : le md5 du témoin dépend de la version (préfixe racine
@@ -73,21 +72,20 @@ de la 1.0.1.
       bump de version **change le témoin**. Recalculer le nouveau md5
       (`randputf witness --seed 5`) et le mettre à jour dans
       `.github/workflows/ci.yml` **et** `docs/witness.md`.
+- [ ] **Note de release** : créer `notes/v<version>.md` (format : première ligne
+      `# <version> — <ce qu'elle apporte>`, puis 3-5 puces highlights).
+      Sans ce fichier, `release.yml` échoue explicitement.
 - [ ] **Vérifier l'arbre propre avant de committer** : un `output/` ou un
       `randputF_*` laissé par un run antérieur peut faire passer un test en
-      local alors qu'il échoue en CI (`tests/test_cli_install.py` s'en est
-     .heurté). Relancer la suite depuis un arbre propre :
+      local alors qu'il échoue en CI. Relancer la suite depuis un arbre propre :
       `rm -rf output && python -m pytest`.
 - [ ] **Dépôt propre dans le tag** : le dossier `atelier/` n'est jamais
       embarqué (il reste sur `dev`). Le tag ne contient que le produit + sa
-      documentation.
-- [ ] **Fusionner** `dev` -> `master`.
+      documentation + `notes/`.
+- [ ] **Fusionner** `dev` -> `master` (commit de fusion = release).
 - [ ] **Pousser le tag** (déclenche `release.yml` : build du wheel, témoin, zip
-      attaché).
-- [ ] **Publier la note ET corriger le titre** : note « highlights » (§2.2 pour
-      le gabarit) et titre `<version> — <ce qu'elle apporte>`, sans le nom du
-      dépôt (§5). Le workflow publie un titre automatique et un « Full
-      Changelog » seul : **il faut éditer la release après coup**.
+      attaché, **publication automatique de la note et du titre** depuis
+      `notes/v<version>.md`).
 - [ ] **Vérifier la CI du tag** avant de conclure : un tag peut être poussé
       alors qu'un test casse (le bump casse les versions codées en dur).
 - [ ] Aucun push sans décision explicite du mainteneur.

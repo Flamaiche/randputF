@@ -1,0 +1,1 @@
+"""Deux validations distinctes : ``pipeline_validator`` (structure) et ``solver`` (seed finale)."""
