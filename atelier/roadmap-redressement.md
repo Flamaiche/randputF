@@ -109,7 +109,8 @@ lors de la preparation de ce plan :
 ## Lot E : temoin de reproductibilite et release note (1 h)
 
 - [x] **E1** Creer `docs/witness.md` : ce qu'est le temoin, la commande
-      (`randputf witness --seed 5 --expect 12ac143e06174df126537b978ff928d3`),
+      (`randputf witness --seed 5 --expect <md5 du tag courant>` ; la valeur
+      d'origine etait `12ac143e06174df126537b978ff928d3` en v1.0.0),
       et le detail de canonisation qui est aujourd'hui noye dans la release
       note : zlib-ng vs zlib, `os.walk` qui suit `os.scandir`, champ « version
       made by » du zip dependant de la plateforme. Reprendre la section
@@ -240,6 +241,11 @@ un choix a remettre en cause, pas une erreur de la revue.
 - Un doc modifie qui decrit un comportement du code doit cite `file.py:ligne`.
 - Le jargon du projet (« gaté », « randput », « watershed », « bootstrap »)
   n'est pas une typo (cf. C4).
-- Le determinisme est intouchable : le temoin seed 5 doit rester
-  `12ac143e06174df126537b978ff928d3` (verifie par `.github/workflows/ci.yml`).
-  Aucun lot de ce plan ne doit le modifier (lots A-J : documentation seule).
+- Le determinisme est intouchable : le **contenu** du mod pour une seed donnée
+  ne doit pas changer. Le temoin seed 5 vaut
+  `ce428c2140ec7031f9604637ecf70cbc` (verifie par `.github/workflows/ci.yml`),
+  mais sa **valeur** est legitime amenee a bouger : elle change a chaque bump de
+  version, puisque la racine du zip de reference est `randputF_<version>` et
+  fait partie des entrees hachees (cf. `docs/witness.md`). Ce qui ne doit
+  jamais bouger, c'est le contenu du mod. Aucun lot de ce plan ne doit le
+  modifier (lots A-J : documentation seule).
