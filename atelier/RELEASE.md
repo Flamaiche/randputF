@@ -84,14 +84,31 @@ Le bump de version se fait **dans `dev`** (seule branche de travail) :
 La release est le **tag sur `dev`**, puis `master` est aligné dessus par le
 mainteneur.
 
-> **Pourquoi pas de fusion `dev` → `master` ?** Le dépôt a **deux racines
-> d'historique** : `master` part de `f94f471` (la v1.0.0), `dev` part de
-> `1c322be`. Elles n'ont aucun ancêtre commun, donc `git merge` est refusé, et
-> `--allow-unrelated-histories` produit **42 conflits** (chaque branche a ajouté
-> le projet entier). La bonne opération est un **alignement** :
-> `git branch -f master <nouveau-tag>`, qui pose `master` exactement sur le
-> commit publié. Le tag `v1.0.0` reste accessible par son nom, même s'il
-> n'est plus dans l'ascendance de `master`.
+> **Pourquoi `git merge dev` est refusé aujourd'hui ?** Le tag v1.0.0
+> (`f94f471`) est un **commit racine sans parent** : c'est un instantané, pas un
+> descendant de `dev`. Les deux branches n'ont donc aucun ancêtre commun, et
+> `--allow-unrelated-histories` retomberait sur **42 conflits** (chaque ligne a
+> ajouté le projet entier).
+>
+> Ce n'est **pas irrémédiable** : la tentative du 2026-10-01 l'avait résolu par
+> un vrai commit de fusion (`ee036a6`, « historique de travail rattaché à
+> master »), qui garde `v1.0.0` dans l'ascendance. Remettre `master` dessus et
+> fusionner `dev` ne donne que **7 conflits de contenu**. Ce qui a coupé le
+> lien, c'est le reset de `master` sur `f94f471` seul pour qu'il ne contienne
+> que du publié — pas un oubli de conception. Deux modèles sont possibles :
+>
+> - **A — `master` = dernier état publié** (état actuel) : `master` est
+>   aligné sur le tag au moment de la release, jamais fusionné. Prix : le tag
+>   v1.0.0 reste accessible par son nom mais sort de l'ascendance de `master`.
+> - **B — `master` = branche d'intégration** : on restaure la fusion, l'historique
+>   reste continu et v1.0.0 reste dans l'ascendance. Prix : entre deux releases,
+>   `master` contient du travail non publié.
+>
+> Modèle retenu : **A**. Il ne demande aucune réécriture d'historique, et
+> `master` ne contient jamais rien qui n'ait été publié. Repasser en B
+> exigerait de choisir entre `git branch -f master ee036a6` (reprend le travail
+> de la tentative abandonnée) et un nouveau commit de fusion
+> `--allow-unrelated-histories` —decision du mainteneur.
 
 - [ ] **Tout passer par `dev`** : corrections, docs, bump de version sur `dev`.
 - [ ] **Version** : bump de `mod/info.json` `"version"` — c'est la **source de
@@ -164,11 +181,11 @@ ont été corrigés dans le code — ils sont la raison de l'état actuel.
 ## 5. Suite des releases
 
 **Modèle de branches** : `dev` porte le travail en cours et **la vérité** ;
-`master` pointe sur le **dernier état publié**. Les deux n'ont aucun ancêtre
-commun (deux racines d'historique), donc il ne se fusionnent pas : `master` est
-simplement aligné sur le tag au moment de la release (§3). Conséquence à avoir
-en tête : l'historique de `master` ne contient pas le tag `v1.0.0` dans son
-ascendance — le tag reste la référence pour cette version.
+`master` pointe sur le **dernier état publié** (modèle A, §3). Conséquence à
+avoir en tête : le tag v1.0.0 reste accessible par son nom mais n'est pas dans
+l'ascendance de `master` ; le tag reste la référence pour cette version. Ce n'est
+pas définitif — le modèle B (§3) rétablit un historique continu si le
+mainteneur le souhaite.
 
 **Numérotation** : semver. Changement visible par l'utilisateur (fichier de
 config supprimé, valeur par défaut modifiée, migration à faire) -> numéro
