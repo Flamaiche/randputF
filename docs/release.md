@@ -1,15 +1,16 @@
-# Notes de release (procédure et état)
+# Release : procédure et état
 
-Fichier de travail de la release randputF. Il tient **la procédure** de
-publication et l'état d'avancement des versions.
+Ce document tient **la procédure** de publication et l'état d'avancement des
+versions.
 
 **La note publiée, elle, vit dans [`notes/v<version>.md`](../notes/)** : c'est ce
 fichier que `release.yml` publie (titre = première ligne). Cette page ne
 contient donc pas la note — elle décrit comment la produire et où elle est.
 
-Ce dossier est un **journal de bord** : il est suivi sur `dev` et n'a rien à
-faire dans une release. Comme il est versionné, il est présent dans l'arbre de
-tout tag posé sur `dev` — le retirer fait partie de la checklist (§3).
+Les brouillons de travail (plans, idées, notes de révision) vivaient dans
+`atelier/`. Ce dossier est désormais **ignoré par git** : il reste sur le disque
+du mainteneur, mais n'entre dans aucun commit, donc dans aucun tag. Ce qui doit
+être versionné est ici, dans `docs/`.
 
 Retour : [README.md](../README.md).
 
@@ -84,31 +85,13 @@ Le bump de version se fait **dans `dev`** (seule branche de travail) :
 La release est le **tag sur `dev`**, puis `master` est aligné dessus par le
 mainteneur.
 
-> **Pourquoi `git merge dev` est refusé aujourd'hui ?** Le tag v1.0.0
-> (`f94f471`) est un **commit racine sans parent** : c'est un instantané, pas un
-> descendant de `dev`. Les deux branches n'ont donc aucun ancêtre commun, et
-> `--allow-unrelated-histories` retomberait sur **42 conflits** (chaque ligne a
-> ajouté le projet entier).
->
-> Ce n'est **pas irrémédiable** : la tentative du 2026-10-01 l'avait résolu par
-> un vrai commit de fusion (`ee036a6`, « historique de travail rattaché à
-> master »), qui garde `v1.0.0` dans l'ascendance. Remettre `master` dessus et
-> fusionner `dev` ne donne que **7 conflits de contenu**. Ce qui a coupé le
-> lien, c'est le reset de `master` sur `f94f471` seul pour qu'il ne contienne
-> que du publié — pas un oubli de conception. Deux modèles sont possibles :
->
-> - **A — `master` = dernier état publié** (état actuel) : `master` est
->   aligné sur le tag au moment de la release, jamais fusionné. Prix : le tag
->   v1.0.0 reste accessible par son nom mais sort de l'ascendance de `master`.
-> - **B — `master` = branche d'intégration** : on restaure la fusion, l'historique
->   reste continu et v1.0.0 reste dans l'ascendance. Prix : entre deux releases,
->   `master` contient du travail non publié.
->
-> Modèle retenu : **A**. Il ne demande aucune réécriture d'historique, et
-> `master` ne contient jamais rien qui n'ait été publié. Repasser en B
-> exigerait de choisir entre `git branch -f master ee036a6` (reprend le travail
-> de la tentative abandonnée) et un nouveau commit de fusion
-> `--allow-unrelated-histories` —decision du mainteneur.
+> **`master` n'est jamais fusionné, seulement aligné sur le tag.** Le tag v1.0.0
+> (`f94f471`) est un commit racine sans parent : `master` et `dev` n'ont donc
+> aucun ancêtre commun, et `git merge` y serait refusé. Inutile de s'en servir :
+> aligner `master` sur le tag est plus simple, et dès la première release les
+> deux branches redeviennent parent-enfant — les fusions suivantes sont des
+> *fast-forward*, sans conflit. Le seul prix : le commit v1.0.0 reste accessible
+> par son tag, mais sort de l'ascendance de `master`.
 
 - [ ] **Tout passer par `dev`** : corrections, docs, bump de version sur `dev`.
 - [ ] **Version** : bump de `mod/info.json` `"version"` — c'est la **source de
@@ -133,12 +116,6 @@ mainteneur.
       `randputF_*` laissé par un run antérieur peut faire passer un test en
       local alors qu'il échoue en CI. Relancer la suite depuis un arbre propre :
       `rm -rf output && python -m pytest`.
-- [ ] **Retirer `atelier/` du tag** : le dossier est versionné, donc il entrerait
-      dans le tag. Le retirer de l'index (les fichiers restent sur le disque) :
-      `git rm -r --cached atelier/` puis `git commit -m "atelier: hors release"`.
-      Taguer ensuite, puis remettre le dossier sur `dev` :
-      `git add atelier/` et `git commit -m "atelier: remis sur dev"`. Le tag ne
-      contient alors que le produit, sa documentation et `notes/`.
 - [ ] **Tag** : `git tag -a v<version> -m "<version> — <ce qu'elle apporte>"`
       puis `git push origin dev --tags`. Le tag déclenche `release.yml` : build
       du wheel, témoin, zip attaché, **publication automatique** du titre et de
@@ -181,11 +158,9 @@ ont été corrigés dans le code — ils sont la raison de l'état actuel.
 ## 5. Suite des releases
 
 **Modèle de branches** : `dev` porte le travail en cours et **la vérité** ;
-`master` pointe sur le **dernier état publié** (modèle A, §3). Conséquence à
-avoir en tête : le tag v1.0.0 reste accessible par son nom mais n'est pas dans
-l'ascendance de `master` ; le tag reste la référence pour cette version. Ce n'est
-pas définitif — le modèle B (§3) rétablit un historique continu si le
-mainteneur le souhaite.
+`master` pointe sur le **dernier état publié**. Conséquence à avoir en tête : le
+tag v1.0.0 reste accessible par son nom mais n'est pas dans l'ascendance de
+`master` — le tag reste la référence pour cette version.
 
 **Numérotation** : semver. Changement visible par l'utilisateur (fichier de
 config supprimé, valeur par défaut modifiée, migration à faire) -> numéro
