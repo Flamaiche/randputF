@@ -346,11 +346,11 @@ MIT — voir [`LICENSE`](LICENSE).
 
 ## Outils et développement
 
-- **Historique complet** : `master` porte l'historique de développement entier.
-  Les versions sont des tags posés dessus — la version publiée est
-  [`v1.0.0`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.0) ; un tag
-  est l'état publié, rien n'est réécrit après coup. La v1.0.1 est en préparation
-  sur `dev` et n'a jamais été publiée (procédure : [`docs/release.md`](docs/release.md)).
+- **Tags** : les versions sont des tags Git posés sur `master`. Un tag est l'état
+  publié, rien n'est réécrit après coup. La version publiée est
+  [`v1.0.0`](https://github.com/Flamaiche/randputF/releases/tag/v1.0.0). La v1.0.1
+  est en préparation sur `dev` et n'a jamais été publiée (procédure :
+  [`docs/release.md`](docs/release.md)).
 - **Branche de travail** : [`dev`](https://github.com/Flamaiche/randputF/tree/dev)
   accueille les changements en cours. `master` n'est jamais poussée
   directement : tout passe par `dev`, et la promotion `dev` → `master` **est** la
