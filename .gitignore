@@ -28,6 +28,3 @@ mod/seed/seed.lua
 .vscode/
 *.swp
 mod-list.json
-
-# Journal de bord (local, non versionne)
-atelier/
