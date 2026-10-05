@@ -28,3 +28,6 @@ mod/seed/seed.lua
 .vscode/
 *.swp
 mod-list.json
+
+# Candidats de reecriture IA, jamais versionnes
+atelier/revues/
