@@ -1,31 +1,20 @@
 # Documentation randputF
 
-Cette documentation est la **référence de conception** du randomizer. Elle
-décrit l'ensemble des mécanismes du système, leur justification et les règles
-qu'ils respectent. Pour installer et jouer, voir le [README](../README.md).
+Cette documentation est la **référence de conception** du randomizer. Elle détaille l'ensemble des mécanismes du système, leurs justifications et les règles qu'ils appliquent. Pour installer le mod et jouer, consulte le [README](../README.md).
 
 ## 1. Concept général
 
-Dans Factorio classique, bien des éléments sont toujours les mêmes. randputF
-supprime ce réflexe : **à chaque partie, rien de ce que le joueur connaît n'est
-garanti**.
+Dans Factorio vanilla, les repères restent identiques d'une partie à l'autre. randputF casse ces habitudes : **à chaque génération, aucun acquis du joueur n'est garanti**.
 
-À chaque génération :
+Chaque partie réinvente :
 
-- **Ressources au sol** : un nombre et des types aléatoires, choisis parmi
-  tout ce que le jeu peut transporter (items sur tapis, fluides dans les tuyaux).
-- **Bâtiments** : extraction, transformation et transport sont choisis pour
-  s'adapter à ces ressources.
-- **Recettes** : elles relient les éléments entre eux, générées aléatoirement.
-- **Arbre technologique** : lui aussi est généré pour ce monde.
-- **Kit de départ** : fourni aléatoirement.
+- **Ressources au sol** : quantité et types choisis aléatoirement parmi tous les éléments transportables du jeu (items sur tapis, fluides en tuyau).
+- **Bâtiments** : machines d'extraction, de transformation et de transport sélectionnées pour s'adapter à ces ressources.
+- **Recettes** : générées aléatoirement pour lier l'ensemble des éléments.
+- **Arbre technologique** : totalement reconstruit pour le monde généré.
+- **Kit de départ** : attribué de manière aléatoire.
 
-**Principe : le randput** (randomisation des entrées/sorties). Un slot d'entrée
-ou de sortie d'un type donné (item ou fluide) peut recevoir n'importe quel
-élément de ce type. Un bâtiment capable de produire/sortir un item peut donc
-sortir n'importe quel item ; un bâtiment manipulant des fluides peut manipuler
-n'importe quel fluide. Le contenu change, la structure reste : c'est ce qui
-garantit un monde cohérent et jouable.
+**Principe : le randput** (randomisation des entrées/sorties). Un emplacement d'entrée ou de sortie d'un type donné (item ou fluide) accepte n'importe quel élément de ce type. Un bâtiment qui produit un item peut donc sortir n'importe quel item ; une machine gérant des fluides peut traiter n'importe quel fluide. La structure globale est conservée mais le contenu varie : c'est ce qui garantit un monde cohérent et jouable.
 
 ## 2. Périmètre et cible
 
@@ -36,7 +25,7 @@ garantit un monde cohérent et jouable.
 | Mods tiers | **Hors scope v1.** Le randomizer cible le jeu vanilla seul. Le support de contenu de mods tiers (Krastorio, Py, etc.) fera l'objet d'un projet séparé, bien plus tardif |
 | Fin de partie | Classique : **lancement de la fusée** = victoire. Les technologies infinies restent disponibles ensuite, inchangées dans leur principe |
 
-Ces choix sont volontairement conservateurs pour garder un moteur robuste.
+Ces choix délibérément conservateurs garantissent la robustesse du moteur.
 
 ## Ordre de lecture conseillé
 
@@ -79,10 +68,10 @@ Ces choix sont volontairement conservateurs pour garder un moteur robuste.
 | [witness.md](witness.md) | Témoin de déterminisme : périmètre, exclusions, mise à jour au bump |
 | [release.md](release.md) | Procédure de publication et état des versions (ce qui est publié, ce qui est en préparation) |
 | [graphe-interactif.md](graphe-interactif.md) | Génération de `seed.graph.html` (nœuds, arêtes, icônes) |
-| [modules.md](modules.md) | Le outillage Python : une passe par module et son statut de branchement (branché / testé non branché / diagnostic) |
+| [modules.md](modules.md) | L'outillage Python : une passe par module et son statut de branchement (branché / testé non branché / diagnostic) |
 | [pipeline.md](pipeline.md) | Chronologie de génération : fonctions d'orchestration, jalons, flux RNG, invariants, chemin d'échec |
 | [vanilladb.md](vanilladb.md) | `VanillaDB` : format du dump vanilla, schéma des données, prédicats de détection, inférences |
-| [runtime.md](runtime.md) | Le mod Lua : les cinq fichiers, le contrat `seed` → Lua, les clés consommées, le câblé-inactif |
+| [runtime.md](runtime.md) | Le mod Lua : les cinq fichiers, le contrat `seed` → Lua, les clés consommées, ce qui est câblé mais inactif (§9) |
 
 ### Notes de chantier
 
