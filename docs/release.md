@@ -7,10 +7,13 @@ versions.
 fichier que `release.yml` publie (titre = première ligne). Cette page ne
 contient donc pas la note — elle décrit comment la produire et où elle est.
 
-Les brouillons de travail (plans, idées, notes de révision) vivaient dans
-`atelier/`. Ce dossier est désormais **ignoré par git** : il reste sur le disque
-du mainteneur, mais n'entre dans aucun commit, donc dans aucun tag. Ce qui doit
-être versionné est ici, dans `docs/`.
+Les brouillons de travail (plans, idées, notes de révision) vivent dans
+`atelier/`. Ce dossier **est versionné** — il est sauvegardé, historisé, et
+partagé — mais il **n'entre dans aucun livrable** : `.gitattributes` le marque
+`export-ignore`, donc il est absent de `git archive`, des zip « Source code »
+de GitHub, du wheel (`pyproject.toml` énumère ses paquets explicitement) et du
+zip de release. Règle : **`atelier/` vit dans le dépôt, jamais dans le
+produit**. Ce qui doit être de la documentation, lui, est ici, dans `docs/`.
 
 Retour : [README.md](../README.md).
 
@@ -38,8 +41,10 @@ v1.0.0 parle de `config/settings.yaml`, qui existe bien dans `v1.0.0`. Ne pas
 2026-10-01, mais **jamais publiée** — elle est restée en *draft* sur GitHub, et
 son tag a été supprimé au reset de `master`. Rien n'a donc jamais été public
 sous ce numéro : le réemployer ne trompe personne, et c'est ce qui a été fait.
-Le brouillon residuel est supprimé avant le tag (sinon le workflow le
-reprendrait et le publierait avec une date et un corps périmés).
+Le brouillon résiduel a été **supprimé** : la release v1.0.1 sera donc créée de
+zéro par le workflow (chemin `create`), et non reprise d'un brouillon avec une
+date et un corps périmés. Un `draft` réapparu pour cette version signalerait
+un reliquat : le supprimer avant le tag (cf. checklist §3).
 
 **Écart assumé sur la numérotation** : la configuration à deux YAML est un
 changement visible par l'utilisateur (un fichier supprimé, des surcharges à
@@ -52,7 +57,8 @@ patch.
 ## 2. Release v1.0.1 : EN PRÉPARATION
 
 Porte le système de configuration à deux YAML et la refonte documentaire. Elle
-sortira au tag `v1.0.1`, en même temps que le merge de `dev` dans `master`.
+sortira au tag `v1.0.1`, créé **par le workflow** au moment où `master`
+reçoit le travail de `dev` (cf. §3 — ce n'est pas un merge, voir l'encadré).
 
 ### 2.1 Titre et note
 
@@ -115,10 +121,12 @@ La release est la **promotion `dev` → `master`**, décidée par le mainteneur.
 - [ ] **Supprimer le brouillon résiduel** : si un `gh release list` affiche un
       *draft* pour cette version, le supprimer avant le tag — sinon le workflow
       le reprend et le publie avec une date et un corps périmés.
-- [ ] **Vérifier l'arbre propre avant de committer** : un `output/` ou un
-      `randputF_*` laissé par un run antérieur peut faire passer un test en
-      local alors qu'il échoue en CI. Relancer la suite depuis un arbre propre :
-      `rm -rf output && python -m pytest`.
+- [ ] **Vérifier l'arbre propre avant de committer** : un `output/`, un
+      `randputF_*` ou un `mod-list.json` laissé par un run antérieur peut faire
+      passer un test en local alors qu'il échoue en CI. Ce n'est pas
+      hypothétique : c'est exactement ce qui a masqué le bug décrit en §4.
+      Relancer la suite depuis un arbre propre :
+      `rm -rf output randputF_* mod-list.json && python -m pytest`.
 - [ ] **Promouvoir `master`** — *réservé au mainteneur, seul moment où la
       branche bouge* : `git push origin dev:master --force` (le `--force` n'est
       nécessaire que pour cette première promotion, cf. l'encadré §3 ; ensuite
@@ -152,11 +160,32 @@ ont été corrigés dans le code — ils sont la raison de l'état actuel.
   résiduel (`output/randputF_1.0.0` d'un run antérieur) — d'où la règle
   « relancer depuis un arbre propre » en §3.
 
-`release.yml` exécute : `pip install .` ->
-`randputf witness --seed 5` (sans `--expect`, il vérifie juste la génération)
--> `randputf generate --seed 5 --out` -> zip `randputF_<version>.zip` ->
-`gh release create --target <commit promu>` (ou `upload --clobber` + `edit`
-si une release existe déjà, avec `--draft=false` pour republier un brouillon).
+### Ce que `release.yml` fait, dans l'ordre
+
+C'est le **script réel** du job, pas un résumé — s'en écarter casse la
+publication :
+
+1. Vérifier la version (`mod/info.json`) et que `notes/v<version>.md` existe ;
+   refuser si le tag existe déjà sur l'origin. Échec explicite, sans état
+   partiel.
+2. Installer le paquet **avec ses extras de dev** (`pip install ".[dev]"`,
+   comme `ci.yml`) — le job lance `pytest` juste après.
+3. **`pytest -q`** — les tests sont bloquants : une release ne peut pas sortir
+   sur une suite rouge. C'est la garantie que le bump d'une version ne casse
+   rien en silence.
+4. `randputf witness --seed 5` — vérifie que la génération aboutit (sans
+   `--expect` : c'est la CI qui porte la valeur figée, cf. `docs/witness.md`).
+5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier
+   `randputF_<version>/` uniquement. `seed.graph.html` est **exclu** du zip
+   (vue de debug de 5 Mo, déjà écartée du témoin) : 5,2 Mo -> 52 Ko.
+6. **Créer le tag explicitement** : `git tag "$TAG" "$GITHUB_SHA"` puis
+   `git push origin "$TAG"`. Le tag est donc créé **après** les tests et le
+   build, et pointe exactement sur le commit promu.
+7. Publier : si la release existe déjà (brouillon), `gh release upload --clobber`
+   puis `gh release edit --draft=false` — `gh release edit` ne publie pas de
+   lui-même. Sinon `gh release create` avec le zip en asset.
+
+Le titre et le corps sont lus dans `notes/v<version>.md`, jamais recopiés.
 
 ## 5. Suite des releases
 

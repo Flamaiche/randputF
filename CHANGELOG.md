@@ -13,9 +13,12 @@ vocabulaire du projet (gating, §16 de `seed.md`), pas une faute.
 
 ## v1.0.1
 
-Configuration en deux YAML et parcours joueur. Le contenu du mod pour une seed
-donnée est inchangé ; ce sont la configuration, l'installation et la doc qui
-bougent.
+Le mod ne change pas : pour une seed donnée, le contenu généré est identique
+au caractère près — le seul écart entre `v1.0.0` et `v1.0.1` dans `mod/` est le
+numéro de version de `info.json`, et `data/` n'a pas bougé. Ce sont la
+configuration, l'installation et la documentation qui changent.
+
+90 commits, 57 fichiers, +4 229 / −756 lignes.
 
 ### ⚠️ Changement de configuration — migration requise
 
@@ -49,29 +52,47 @@ lisent tout depuis le YAML.
 
 ### Documentation
 
-- **Parcours joueur** : voie rapide sans Python, tableau des dossiers `mods`,
-  section dépannage / FAQ (mod invisible, warning des fours, seed
-  injouable, retrouver sa seed, erreur de config).
-- **Conception** : index `docs/` complété (`modules.md`, `pipeline.md`,
-  `runtime.md`, `vanilladb.md`), `docs/config.md`, `docs/witness.md`,
-  `docs/release.md` (procédure de publication). `docs/architecture.md` §18
-  remis à jour contre le code réel.
-- `README_EN.md` aligné sur le README français.
+- **Treize documents écrits ou remis à niveau**, ~3 000 lignes, organisés en trois
+  étages pour que la lecture s'arrête où le besoin s'arrête : *Jouer* (README,
+  note de release) → *Comprendre* (`docs/README.md` puis chaque mécanisme) →
+  *Développer* (pipeline, modules, runtime, VanillaDB, témoin).
+- **Nouveaux** : `docs/config.md`, `docs/DEVIANCES.md`, `docs/witness.md`,
+  `docs/pipeline.md`, `docs/modules.md`, `docs/vanilladb.md`, `docs/runtime.md`,
+  `docs/graphe-interactif.md`, `docs/release.md`, `README_EN.md` (anglais),
+  `CHANGELOG.md` (qui n'existait pas avant 1.0.1).
+- **Réécrits** : le parcours joueur du `README.md` (voie rapide sans Python,
+  dossier `mods` par système, dépannage), l'index `docs/README.md`, et la
+  section 18 de `docs/architecture.md`, qui décrivait une arborescence devenue
+  obsolète.
+- La note de release 1.0.1 a été refaite pour ouvrir sur ce qui change
+  réellement pour le joueur, la seule action requise, l'installation, la
+  documentation, et pour **déclarer explicitement ce que la version ne couvre
+  pas** (interface graphique, `.exe`, mods tiers, nouvelle mécanique).
 
 ### Outillage
 
 - La publication est **automatique** : la promotion `dev` → `master` déclenche le
   build, le témoin, le zip et la publication de la note. Plus de tag à créer à
-  la main. La suite de tests est exécutée **dans** le job de publication : une
-  release ne peut plus sortir sur des tests rouges.
+  la main. Le tag est créé par le workflow, explicitement, **après** les tests
+  et la construction, et pointe sur le commit promu.
+- La suite de tests est exécutée **dans** le job de publication : une release ne
+  peut plus sortir sur des tests rouges. Le job installe `".[dev]`, comme la CI.
 - Le zip de release exclut `seed.graph.html` (vue de debug de 5 Mo, déjà écartée
   du témoin) : 5,2 Mo → 52 Ko.
 - Les tests ne dépendent plus de la version en dur : ils lisent
   `MOD_NAME_VERSIONED`.
+- L'orchestration de génération est factorisée dans `tool/service.py`, désormais
+  partagée entre la CLI et l'interface graphique (à venir). **Aucun changement
+  de comportement** : c'est un déplacement de code, pour que la future
+  IG ne puisse pas diverger de la CLI — si elle réimplémentait la génération,
+  le témoin ne garantirait plus rien pour le joueur qui passe par elle.
+- `atelier/` est versionné mais marqué `export-ignore` : il est sauvegardé et
+  historisé, et ne peut entrer dans aucun livrable.
 
 ### Garanties mesurées
 
-- **722 tests** verts.
+- **722 tests** verts, exécutés avant chaque publication (274 fonctions de test
+  paramétrées).
 - **1501/1501** parties rejouées victorieuses (seeds 0-1500), rejoueur « fake
   player » ; invariants de solvabilité garantis pour toute seed acceptée.
 - Balayages 0-2000 à **2000/2000** victoires, avertissement des fours inclus.
