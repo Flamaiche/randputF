@@ -1,16 +1,13 @@
 # Configuration
 
-randputF lit **toute** sa configuration dans deux fichiers YAML, jamais dans
-des valeurs codées en dur :
+randputF charge l'intégralité de sa configuration depuis deux fichiers YAML. Aucune valeur n'est codée en dur :
 
 | Fichier | Rôle | Modifiable |
 |---|---|---|
 | `config/defaults.yaml` | **Source unique** des réglages par défaut | Non |
 | `config/user.yaml` | Surcharges (facultatives) | Oui |
 
-Ils sont fusionnés en profondeur puis **validés** avant chaque génération. La
-configuration fusionnée est toujours complète : le moteur n'invente jamais de
-valeur de secours.
+Ces fichiers subissent une fusion profonde puis une validation stricte avant chaque génération. La configuration finale est complète : le moteur ne génère aucune valeur de secours par lui-même.
 
 Retour : [README.md](../README.md) · [seed.md](seed.md) (§16).
 
@@ -18,48 +15,34 @@ Retour : [README.md](../README.md) · [seed.md](seed.md) (§16).
 
 ## 1. Principes
 
-1. **Source unique.** Toute valeur vient de `config/defaults.yaml`. Le moteur
-   l'utilise via `config.default_value(...)`, jamais par un littéral dupliqué.
-2. **Ne pas modifier `defaults.yaml`.** Tout changement va dans
-   `config/user.yaml`.
-3. **Fusion profonde.** `user.yaml` écrase clé par clé ; ce qui y est absent
-   vient des defaults.
-4. **Validation stricte.** Types, plages, bornes `min <= max`, contraintes
-   croisées. Clé inconnue, mauvais type ou valeur impossible = **erreur
-   explicite** au chargement (jamais silencieuse).
-5. **Déterminisme.** Tout changement dans `defaults.yaml` modifie l'espace des
-   seeds (et invalide le témoin). Les constantes structurelles (formes de
-   gisements, invariants de solvabilité) ne sont pas dans le YAML : voir
-   [nondeterminism.md](nondeterminism.md).
+1. **Source unique.** Chaque paramètre provient de `config/defaults.yaml`. Le moteur y accède exclusivement via `config.default_value(...)`, évitant toute duplication de littéraux.
+2. **Préservation de `defaults.yaml`.** Écris tes modifications uniquement dans `config/user.yaml`.
+3. **Fusion profonde.** Le fichier `user.yaml` surcharge les clés définies. Les valeurs absentes sont complétées par les valeurs par défaut.
+4. **Validation stricte.** Le système contrôle les types, les plages de valeurs, les bornes `min <= max` et les contraintes croisées. Une clé inconnue, un type incorrect ou une valeur hors limites déclenche une erreur explicite immédiate. Rien n'est ignoré en silence.
+5. **Déterminisme.** Modifier `defaults.yaml` altère l'espace des seeds et invalide le témoin. Les constantes de structure, comme la forme des gisements ou les règles de solvabilité, restent codées en dehors du YAML (consulte [nondeterminism.md](nondeterminism.md)).
 
 ## 2. Exemple de surcharge
 
-`config/user.yaml` n'écrit que ce que tu changes. Chemin du dossier mods pour un
-install Steam flatpak :
+Renseigne uniquement tes modifications dans `config/user.yaml`. Exemple pour définir le chemin du dossier des mods avec une installation Steam Flatpak :
 
 ```yaml
 paths:
   factorio_mods: ~/.var/app/com.valvesoftware.Steam/.factorio/mods
 ```
 
-Toute la section `map`, `recursive`, `tree`… reste celle des defaults.
+Les sections `map`, `recursive`, `tree` et les autres conservent leurs valeurs par défaut.
 
 ## 3. Sections
 
-16 sections, plus la racine `factorio_version` (17 entrées de premier niveau).
-Les sections marquées **inertes** sont
-écrites et validées mais **pas lues** par le moteur à ce jour.
+La configuration compte 17 entrées de premier niveau : 16 sections et la racine `factorio_version`. Les sections signalées comme **inertes** sont lues et validées, mais le moteur ne les exploite pas encore.
 
 ### `factorio_version` (racine)
 
-Version cible (`"2.0"`). Inerte : lue depuis `mod/info.json` (source de vérité,
-`tool/common/version.py`).
+Version cible de Factorio (`"2.0"`). Cette clé est inerte : la véritable version est lue dans `mod/info.json` via `tool/common/version.py`.
 
 ### `paths`
 
-Dossiers. `mod_dir` et `vanilla_dump` sont résolus par l'asset (wheel ou dépôt).
-`factorio_mods` est utilisé par `randputf generate --install` et doit être
-surchargé pour installer dans Factorio.
+Emplacements des dossiers. L'application résout d'elle-même `mod_dir` et `vanilla_dump` selon l'environnement (paquet wheel ou dépôt). La clé `factorio_mods` sert à la commande `randputf generate --install` ; modifie-la pour cibler ton installation de Factorio.
 
 ### `map` — gisements au sol
 
@@ -85,81 +68,56 @@ surchargé pour installer dans Factorio.
 
 ### `recursive` — phase récursive
 
-Poids par catégorie (`weight_transformer` 30, `weight_extractor` 15,
-`weight_generator` 10, `weight_distribution` 10, `weight_combat` 15,
-`weight_science` 20), `progressive_factor` (0.15), `excluded_buildings`
-(`[character, lab]`), `max_iterations` (120), `stall_threshold` (10), cadence des
-pylônes (`dist_marks`, `dist_guaranteed`), bornes `recipes_per_building_min/max`,
-`tech_count_min/max`, `science_cost_min/max`, `companions` (paires d'items
-jamais dissociées), et les **armes montées** (§12.1) : `armed_vehicles`,
-`vehicle_weapons`, `vehicle_slots_min/max`, `vehicle_slots_with_replacement`,
-`vehicle_range_base_size`, `vehicle_range_scale`.
+Contient les poids des catégories (`weight_transformer` 30, `weight_extractor` 15, `weight_generator` 10, `weight_distribution` 10, `weight_combat` 15, `weight_science` 20), le facteur `progressive_factor` (0.15), les bâtiments exclus `excluded_buildings` (`[character, lab]`), la limite `max_iterations` (120) et le seuil `stall_threshold` (10). Elle règle aussi la distribution des pylônes (`dist_marks`, `dist_guaranteed`), les limites `recipes_per_building_min`/max, `tech_count_min`/max, `science_cost_min`/max, les paires d'objets liées `companions`, et les **armes embarquées** (§12.1) : `armed_vehicles`, `vehicle_weapons`, `vehicle_slots_min`/max, `vehicle_slots_with_replacement`, `vehicle_range_base_size` et `vehicle_range_scale`.
 
 ### `tree` — arbre technologique
 
-`group_chances` (proba d'extension du groupe d'objets), `research_time` (60 s
-par unité de coût), `max_cost_packs` (4 packs différents max), `max_per_tech`
-(5 unlocks max).
+Gère `group_chances` (probabilité d'étendre un groupe d'objets), `research_time` (durée de recherche fixée à 60 s par unité de coût), `max_cost_packs` (maximum de 4 packs de science différents requis) et `max_per_tech` (limite de 5 déblocages par technologie).
 
 ### `recipes`
 
-Poids du nombre d'ingrédients / résultats, `energies` + `energy_per_ingredient`
-(temps de craft), équilibre cons/prod (`balance_min/max`, `balance_steepness`,
-`balance_max_factor`, `max_overproduced_ratio`), montants d'ingrédients,
-`recipe_prefix` (`randputf-`), poids des ressources environnementales.
+Définit la pondération du nombre d'ingrédients et de produits, les paramètres `energies` et `energy_per_ingredient` (durée de fabrication), l'équilibre entre consommation et production (`balance_min`/max, `balance_steepness`, `balance_max_factor`, `max_overproduced_ratio`), la quantité d'ingrédients, le préfixe `recipe_prefix` (`randputf-`) et le poids des ressources de l'environnement.
 
 ### `relay`
 
-`prefix` (`randputf-relay-`) et `max_dispatch_steps` (3) : recettes relais des
-ressources non-infinies (§9.5).
+Configure le préfixe `prefix` (`randputf-relay-`) et la limite `max_dispatch_steps` (3) pour les recettes relais associées aux ressources épuisables (§9.5).
 
 ### `easeup`
 
-`prefix`, `max_recipes` (8), `depth_threshold` (5), `unlocks_per_tech` (5) :
-recettes alternatives pour les crafts trop lourds (§9.3).
+Définit le préfixe `prefix`, le nombre `max_recipes` (8), le seuil `depth_threshold` (5) et la valeur `unlocks_per_tech` (5) pour générer des recettes de secours lorsque les fabrications s'avèrent trop complexes (§9.3).
 
 ### `usage`
 
-`enabled` (true), `strict_order` (U2), `terminal_buildings`
-(`[lab, rocket-silo]`), `kit_exempt` : garantie d'usage dure (D2).
+Contient `enabled` (true), `strict_order` (U2), `terminal_buildings` (`[lab, rocket-silo]`) et `kit_exempt` pour assurer la garantie d'utilisation stricte (D2).
 
 ### `wreck` — site de crash
 
-`t` / `a` / `b` : loi pondérée des raretés 0..3 (formule paramétrique, contrainte
-`6t + 3a < 100` et `b >= 1`) ; `loot` (matériaux non finis du bootstrap).
+Définit `t` / `a` / `b` pour la loi pondérée des raretés 0..3 (formule paramétrique sous contraintes `6t + 3a < 100` et `b >= 1`), et le butin `loot` composé de matériaux intermédiaires pour la phase de démarrage.
 
 ### `lakes`
 
-`min` / `max` (nombre de lacs), `richness_fluid` (taille).
+Détermine le nombre minimal et maximal de lacs (`min` / `max`) et la taille via `richness_fluid`.
 
 ### `late_raws`
 
-`enabled` (false par défaut), `share`, `pick_chance` (conservés, inertes :
-injection déterministe à 100 %). Le plan v2 correspondant est une note de
-chantier, hors tag.
+Comprend `enabled` (désactivé par défaut avec false), `share` et `pick_chance`. Ces paramètres restent inertes car l'injection est déterministe à 100 %. Le plan v2 associé est une simple note de travail, non intégrée à la version publiée.
 
 ### `nonfinite` — **inerte**
 
-Facteurs de randomisation des ressources non finies (A1), `enabled: false`.
+Contient les coefficients de randomisation des ressources inépuisables (A1), avec `enabled: false`.
 
 ### `craft_quantity` — **inerte**
 
-Facteurs de quantité par recette (B3), `enabled: false`.
+Définit les multiplicateurs de volume par recette (B3), avec `enabled: false`.
 
 ### `pools`, `weights` — **inertes**
 
-Exclusions et pondérations réservées, sans consommateur dans le moteur. Les
-exclusions effectives sont traduites en pools exportées dans la seed.
+Pondérations et exclusions réservées pour un usage futur, sans effet actuel sur le moteur. Les exclusions réelles sont converties en listes exportées directement dans la seed.
 
 ## 4. Sections commentées mais non câblées
 
-En pied de `defaults.yaml`, deux blocs sont commentés : `difficulty`
-(`randputf difficulty`) et `rare_resources`. Ils ne sont pas câblés au
-pipeline ; les surcharger n'a aucun effet tant qu'ils ne le sont pas.
+Le fichier `defaults.yaml` se termine par deux blocs désactivés sous forme de commentaires : `difficulty` (lié à `randputf difficulty`) et `rare_resources`. Ils ne sont pas connectés au pipeline. Les modifier dans ta configuration n'aura aucun impact tant qu'ils ne seront pas raccordés.
 
 ## 5. Où sont lues les valeurs
 
-`pipeline.generate_seed` normalise la config via
-`tool.common.config.full_config`, puis la passe aux prototypes dataclass
-(`tool/prototypes/*.py`) et aux générateurs. `randputf difficulty` consomme la
-même config que `generate`.
+La fonction `pipeline.generate_seed` harmonise la configuration à l'aide de `tool.common.config.full_config`. Elle la transmet ensuite aux classes de données de `tool/prototypes/*.py` et aux différents modules de génération. La commande `randputf difficulty` exploite exactement la même configuration que le processus `generate`.
