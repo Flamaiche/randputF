@@ -1,5 +1,7 @@
 # Non-déterminisme du pipeline — Inventaire complet
 
+Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+
 ## Problème
 
 Le pipeline `tool generate` n'est **pas déterministe** : deux runs avec la même seed
@@ -18,23 +20,23 @@ et chaque seed = une combinaison unique de choix.
 ## 1. Choix d'items/resource patches (Phase 1 — map_patches.py)
 
 ### 1a. Items solides tirés en patches
-- **Fichier** : `tool/generator/map_patches.py:77`
-- **Code** : `rng.sample(item_candidates, n_items)`
+- **Fichier** : `tool/generator/map_patches.py:105-131` (`_draw`)
+- **Code** : `n_items = rng.randint(min_items, max(min_items, count - 1))` (`:105`) puis tirage sans remise : `rng.shuffle(pool)` (`:123`) en sautant les identités déjà dans `used` (pas de `rng.sample`)
 - **Pool** : `db.beltable_items()` = **209 items** (tous les items beltables non-tool)
 - **Ce que ça fait** : choisit N items solides qui seront posés en carte (gisements)
 - **Seed** : `n_items` = nombre tiré (1-3), puis `rng.sample()` choisit lesquels
 - **Impact** : détermine quels items sont miniables en carte (pierre, fer, cuivre, etc.)
 
 ### 1b. Fluides tirés en patches
-- **Fichier** : `tool/generator/map_patches.py:79`
-- **Code** : `rng.sample(fluid_candidates, n_fluids)`
+- **Fichier** : `tool/generator/map_patches.py:121-131` (`_draw`, branche fluide)
+- **Code** : `rng.shuffle(pool)` puis prise sans remise, en sautant les identités déjà dans `used`
 - **Pool** : `db.pipable_fluids()` = **8 fluids** (water, crude-oil, heavy-oil, light-oil, lubricant, steam, petroleum-gas, sulfuric-acid)
 - **Ce que ça fait** : choisit N fluids qui seront en carte (gisements fluides)
 - **Seed** : identique
 - **Impact** : détermine quels fluids sont disponibles via pumpjack
 
 ### 1c. Shuffle final des patches
-- **Fichier** : `tool/generator/map_patches.py:82`
+- **Fichier** : `tool/generator/map_patches.py:137`
 - **Code** : `rng.shuffle(patches)`
 - **Pool** : liste de N items + M fluids (quelques dizaines max)
 - **Impact** : l'ordre des patches dans la seed (post-shuffle)
@@ -45,9 +47,9 @@ et chaque seed = une combinaison unique de choix.
 ## 2. Chaîne initiale (Phase 2 — starter_chain.py)
 
 ### 2a. Extracteur pour ressource
-- **Fichier** : `tool/generator/starter_chain.py:177`
+- **Fichier** : `tool/generator/starter_chain.py:318`
 - **Code** : `extractor = rng.choice(candidates)`
-- **Pool** : `_extractors_for_resource(db, kind, name)` — taille variable :
+- **Pool** : `_extractors_for_resource` (`starter_chain.py:341`) — taille variable :
   - `kind=SLOT_FLUID, name=water` → **1** (offshore-pump)
   - `kind=SLOT_FLUID, name!=water` → **1-2** (offshore-pump si no_electric, sinon pumpjack)
   - `kind=SLOT_ITEM` → **2** (burner-mining-drill, electric-mining-drill)
@@ -56,41 +58,41 @@ et chaque seed = une combinaison unique de choix.
 - **Exemple concret** : si heavy-oil est un patch → pumpjack choisi → son craft doit être accessible
 
 ### 2b. Transformateur (fabricateur)
-- **Fichier** : `tool/generator/starter_chain.py:238`
+- **Fichier** : `tool/generator/starter_chain.py:375`
 - **Code** : `chosen = rng.choice(transformers)`
-- **Pool** : `db.buildings_of_type("transformer")` filtré starters = **~5-8** (stone-furnace, steel-furnace, assembling-machine-1/2, etc.)
+- **Pool** : `db.buildings_with_tag("is_crafter")` filtré starters = **~5-8** (stone-furnace, steel-furnace, assembling-machine-1/2, etc.)
 - **Ce que ça fait** : choisit le bâtiment de transformation principal (four, assembleur…)
 - **Impact** : détermine la catégorie de craft (smelting, crafting, etc.)
 
 ### 2c. Bâtiment de recherche (lab)
-- **Fichier** : `tool/generator/starter_chain.py:266`
+- **Fichier** : `tool/generator/starter_chain.py:400`
 - **Code** : `item = rng.choice(candidates)`
 - **Pool** : items avec `place_result` = building type "research" = **1** (lab)
 - **Impact** : nul (pool=1)
 
 ### 2d. Premier science pack
-- **Fichier** : `tool/generator/starter_chain.py:296`
+- **Fichier** : `tool/generator/starter_chain.py:425`
 - **Code** : `item = rng.choice(packs)`
 - **Pool** : items `is_science_pack` = **7** (automation, logistic, military, chemical, production, utility, space)
 - **Ce que ça fait** : choisit le premier pack craftable (gratuit au démarrage)
 - **Impact** : détermine quelle branche de science est ouverte en premier
 
 ### 2e. Item kit cible (armes/munitions)
-- **Fichier** : `tool/generator/starter_chain.py:340`
+- **Fichier** : `tool/generator/starter_chain.py:485`
 - **Code** : `chosen = rng.choice(candidates)`
 - **Pool** : items matchant patterns (weapon/gun/armor) = **~10-15**
 - **Ce que ça fait** : choisit l'arme principale du kit de départ
 - **Impact** : détermine l'arme que le joueur a au spawn
 
 ### 2f. Gun pour l'arme
-- **Fichier** : `tool/generator/starter_chain.py:349`
+- **Fichier** : `tool/generator/starter_chain.py:542`
 - **Code** : `gun = rng.choice(guns)`
 - **Pool** : items `is_handheld_gun` = **6** (pistol, submachine-gun, shotgun, combat-shotgun, rocket-launcher, flamethrower)
 - **Ce que ça fait** : choisit le type d'arme à munitions
 - **Impact** : détermine quel gun est craftable
 
 ### 2g. Munitions alignées
-- **Fichier** : `tool/generator/starter_chain.py:355`
+- **Fichier** : `tool/generator/starter_chain.py:548`
 - **Code** : `ammo = rng.choice(matching or ammos)`
 - **Pool** : items `is_ammo` = **14** (bullet, shotgun-shell, rocket, flask, etc.)
 - **Ce que ça fait** : choisit les munitions alignées avec le gun
@@ -101,27 +103,27 @@ et chaque seed = une combinaison unique de choix.
 ## 3. Recettes et ateliers (recipes.py)
 
 ### 3a. Atelier pour recette (whitelist)
-- **Fichier** : `tool/generator/recipes.py:445`
+- **Fichier** : `tool/generator/recipes.py:709` (`_pick_building`, defini `:646`)
 - **Code** : `rng.choice(candidates)`
 - **Pool** : `db.buildings.values()` filtré whitelist = variable (souvent 1-5)
 - **Impact** : choix du bâtiment fabricant pour une recette
 
 ### 3b. Atelier pour recette (déjà unlocké)
-- **Fichier** : `tool/generator/recipes.py:453`
+- **Fichier** : `tool/generator/recipes.py:720` (même `_pick_building`)
 - **Code** : `rng.choice(candidates)`
 - **Pool** : `db.buildings.values()` filtré `state.unlocked_buildings` = variable
 - **Impact** : quel atelier libre fabrique la recette
 
 ### 3c. Atelier pour recette (tout bâtiment)
-- **Fichier** : `tool/generator/recipes.py:462`
-- **Code** : `rng.choice(candidates)`
+- **Fichier** : `tool/generator/recipes.py:732` (même `_pick_building`)
+- **Code** : `building = rng.choice(candidates)`
 - **Pool** : `db.buildings.values()` hors exclusions = variable (~10-30)
 - **Impact** : dernier repli pour choisir un atelier
 
 ### 3d. Combustible pour bâtiment burner
-- **Fichier** : `tool/generator/recipes.py:519`
-- **Code** : `rng.choice(fuel_items)`
-- **Pool** : `db.fuel_items()` hors rocket-chain = **~5** (wood, coal, solid-fuel, rocket-fuel, nuclear-fuel)
+- **Fichier** : `tool/generator/recipes.py:782` (`_ensure_burner_fuel`)
+- **Code** : `fuel = rng.choice(fuel_items)`
+- **Pool** : `db.fuel_items()` filtré `not in ROCKET_CHAIN` (`:777`) = **5** (`coal`, `solid-fuel`, `uranium-fuel-cell`, `wood`, `nuclear-fuel` — `rocket-fuel` exclu, chaîne fusée)
 - **Impact** : détermine quel combustible est assigné aux fours/brûleurs
 
 ---
@@ -129,51 +131,51 @@ et chaque seed = une combinaison unique de choix.
 ## 4. Phase récursive (recursive_phase.py)
 
 ### 4a. Couverture d'items
-- **Fichier** : `tool/generator/recursive_phase.py:222`
+- **Fichier** : `tool/generator/recursive_phase.py:297`
 - **Code** : `rng.shuffle(items)`
 - **Pool** : `db.beltable_items()` = **209 items**
 - **Ce que ça fait** : mélange l'ordre de couverture (quels items ont des recettes)
 - **Impact** : détermine l'ordre de création des recettes d'extension
 
 ### 4b. Munitions manquantes
-- **Fichier** : `tool/generator/recursive_phase.py:301`
+- **Fichier** : `tool/generator/recursive_phase.py:372`
 - **Code** : `rng.shuffle(missing)`
 - **Pool** : items `is_ammo` manquants = variable
 - **Impact** : ordre de création des recettes de munitions
 
 ### 4c. Bâtiment distribution (transporteur)
-- **Fichier** : `tool/generator/recursive_phase.py:374`
-- **Code** : `rng.choice(candidates)`
-- **Pool** : `db.buildings_of_type("distribution")` = **5** (4 power poles + beacon)
+- **Fichier** : `tool/generator/recursive_phase.py:542-556` (`_generate_for_element(..., "distribution", pole)`, `_pick_real_pole`)
+- **Code** : `rng.choice(candidates)` (`:556`)
+- **Pool** : `db.buildings_with_tag("is_distribution")` = **5** (4 power poles + beacon)
 - **Impact** : choisit le transporteur/connexions
 
 ### 4d. Bâtiment par catégorie
-- **Fichier** : `tool/generator/recursive_phase.py:459`
-- **Code** : `rng.choice(candidates)`
-- **Pool** : `db.buildings_of_type(category)` = variable par catégorie
+- **Fichier** : `tool/generator/recursive_phase.py:658-681` (`_pick_element`)
+- **Code** : `rng.choice(candidates)` (`:667`/`:675`/`:681` selon la branche)
+- **Pool** : `db.buildings_with_tag(_CATEGORY_TAGS[category])` = variable par catégorie
 - **Impact** : choisit quel bâtiment fabrique une recette d'un type donné
 
 ### 4e. Gun pour arme montée
-- **Fichier** : `tool/generator/recursive_phase.py:466`
-- **Code** : `rng.choice(candidates)`
+- **Fichier** : `tool/generator/recursive_phase.py:311-323` (`_assign_vehicle_weapons`, pool `VEHICLE_GUNS` à `:247`)
+- **Code** : `drawn = [rng.choice(pool) for _ in range(n)]` (`:323`)
 - **Pool** : items `is_handheld_gun` = **6**
 - **Impact** : arme assignée aux véhicules (tank, spidertron, etc.)
 
 ### 4f. Science pack pour recherche
-- **Fichier** : `tool/generator/recursive_phase.py:469`
-- **Code** : `rng.choice(candidates)`
+- **Fichier** : `tool/generator/recursive_phase.py:780` (et `:805`)
+- **Code** : `pack = rng.choice(_unlocked_science_packs)`
 - **Pool** : items `is_science_pack` = **7**
 - **Impact** : quel pack est consommé par une tech
 
 ### 4g. Item obtenu pour ingrédient
-- **Fichier** : `tool/generator/recursive_phase.py:620`
-- **Code** : `rng.choice(candidates)`
+- **Fichier** : `tool/generator/recursive_phase.py:1075-1142` (`_make_fixed_item_recipe`)
+- **Code** : ingrédients puisés dans `state.obtained_items` trié (`:1115`), `n_item = rng.randint(1, max_ingredients)` (`:1127`), puis `rng.shuffle(ingredients)` (`:1142`)
 - **Pool** : `state.obtained_items` (set) = variable (quelques dizaines)
 - **Impact** : choisit un item déjà obtainable comme ingrédient
 
 ### 4h. Fluide obtenu pour ingrédient
-- **Fichier** : `tool/generator/recursive_phase.py:620`
-- **Code** : `rng.choice(candidates)`
+- **Fichier** : `tool/generator/recursive_phase.py:999-1045` (`_make_fixed_fluid_recipe`)
+- **Code** : `input_fluid = rng.choice(narrowed)` (`:1045`), candidats depuis `obtained_fluids = sorted(state.obtained_fluids)` (`:1035`)
 - **Pool** : `state.obtained_fluids` (set) = variable (0-8)
 - **Impact** : choisit un fluide déjà obtainable comme ingrédient
 
@@ -208,8 +210,8 @@ et chaque seed = une combinaison unique de choix.
   sous `PYTHONHASHSEED` 0/1 et compare `seed.json` octet par octet.
 
 ### 5d. Claim des ateliers débloqués « sur le tas » (claim anti-orpheline)
-- **Fichier** : `tool/generator/recursive_phase.py:854`
-- **Code** : `for name in state.unlocked_buildings - buildings_before:`
+- **Fichier** : `tool/generator/recursive_phase.py:863`
+- **Code** : `for name in sorted(state.unlocked_buildings - buildings_before):`
   `step_buildings.append(name)` — itération d'un **set** qui alimente
   `step["unlocks_buildings"]`.
 - **Impact** : l'ordre des effets `unlock-recipe` d'une tech varie entre
@@ -230,8 +232,8 @@ et chaque seed = une combinaison unique de choix.
 ## 6. Lacs (lakes.py)
 
 ### 6a. Fluide du lac
-- **Fichier** : `tool/generator/lakes.py:63`
-- **Code** : `rng.choice(candidates)`
+- **Fichier** : `tool/generator/lakes.py:60-75`
+- **Code** : `count = rng.randint(low, high)` (`:60`), `rng.shuffle(candidates)` (`:70`), puis prise des `count` premiers — sans remise, note A5 — et richesse par `rng.randint` (`:75`)
 - **Pool** : `db.pipable_fluids()` = **8** fluids
 - **Ce que ça fait** : choisit quel fluide sera dans un lac
 - **Impact** : détermine quel fluide est pompable via offshore-pump sur les lacs
@@ -243,19 +245,19 @@ et chaque seed = une combinaison unique de choix.
 | Pool | Taille | Utilisé dans |
 |------|--------|-------------|
 | Items beltables | 209 | patches (1a), couverture (4a) |
-| Fluids pipables | 8 | patches (1b), lacs (7a) |
+| Fluids pipables | 8 | patches (1b), lacs (6a) |
 | Extractors water | 1 | choix fixe |
 | Extractors ground | 2 | choix extracteur sol (2a) |
 | Extractors fluid | 1-2 | choix extracteur fluide (2a) |
 | Transformers | ~5-8 | fabricateur starter (2b) |
-| Generators | 5 | électricité (5b, 6a) |
+| Generators | 4 | électricité (5b) |
 | Distribution | 5 | pylônes (5a, 4c) |
 | Research | 1 | lab fixe |
-| Fuel items | ~5 | combustible (3d, 6b, 6c) |
+| Fuel items | 5 | combustible (3d) |
 | Science packs | 7 | pack starter (2d), tech (4f) |
 | Handheld guns | 6 | arme kit (2f), véhicule (4e) |
 | Ammo | 14 | munitions (2g, 4b) |
-| Items obtenus (set) | variable | ingrédients (4g, 6d) |
+| Items obtenus (set) | variable | ingrédients (4g) |
 | Fluids obtenus (set) | variable | ingrédients (4h) |
 
 ---
@@ -281,7 +283,7 @@ La cause racine **finalement identifiée** ne venait pas des pools de choix (rar
 mais d'une **itération de frozenset ordonnant des recettes** dans la chaîne fusée :
 
 - `tool/common/db.py:29` : `ROCKET_CHAIN = frozenset({"processing-unit", "low-density-structure", "rocket-fuel"})`.
-- `tool/generator/endgame_phase.py:47` : `targets = list(ROCKET_CHAIN)` → ordre non déterministe
+- `tool/generator/endgame_phase.py:42` : `targets = sorted(ROCKET_CHAIN)` — le fix est en place ; avant correction, `targets = list(ROCKET_CHAIN)` donnait un ordre non déterministe
   entre process (PYTHONHASHSEED aléatoire) → les 3 recettes de `rocket-part`
   (dont `processing-unit` et `rocket-fuel`) étaient générées dans un ordre variable
   dans `state.recipes`, décalant le flot RNG postérieur et inversant 2 recettes du seed.
@@ -294,14 +296,15 @@ mais d'une **itération de frozenset ordonnant des recettes** dans la chaîne fu
   *purement* dans l'ordre d'insertion des recettes, pas dans le choix RNG.
 - Diff pointu : seuls `randputf-processing-unit` ↔ `randputf-rocket-fuel` échangés.
 
-**Fix** : `targets = sorted(ROCKET_CHAIN)` (`endgame_phase.py:47`). Après correction,
+**Fix** : `targets = sorted(ROCKET_CHAIN)` (`endgame_phase.py:42`). Après correction,
 2 runs `tool generate --seed 5` produisent des `seed.lua` et `seed.json`
 **octet-pour-octet identiques** (vérifié sur les 10 fichiers du mod).
 La suite de tests passe toujours (elle compte aujourd'hui 722 tests ; à
 l'époque de cette correction, elle en comptait 71).
 
 Après les correctifs (chaîne fusée, §5c, §5d), les itérations de
-`set`/`frozenset` restantes (ex. `map_patches.py:101` `hero`, `recipes.py:522`)
+`set`/`frozenset` restantes (ex. `map_patches.py:278` `hero`,
+`recipes.py:777` du filtre de `_ensure_burner_fuel`)
 ne servent QUE des tests d'appartenance (`in`/`not in`), déterministes —
 aucune ne trie une séquence exportée.
 
@@ -331,8 +334,9 @@ leur position.
   même process, victoire 101/101 en process vierge. Pré-existant mais amplifié
   par le shortcut inerte (avant, chaque seed rejouait la passe B et ré-écrasait
   `deferred` avec SON plan).
-- **Fix** : copie défensive `cfg = dict(cfg); cfg["starter"] = dict(starter)` au
-  lieu de muter le dict partagé (`pipeline.py`, passe B).
+- **Fix** : copie défensive `starter_cfg = dict(cfg.get("starter") or {})`, puis
+  `cfg = dict(cfg)` et `cfg["starter"] = starter_cfg` au lieu de muter le dict
+  partagé (`tool/generator/pipeline.py:230-233`).
 - **Preuve** : seed 1269 byte-identique (hash `c8c55ecf05e4`) en process vierge,
   après 1 seed, et après **1400 seeds cumulées** — victoire 101/101 dans tous
   les cas ; `BASE["starter"]` reste intact après génération. Sweep gaté **0-2000
@@ -341,3 +345,5 @@ leur position.
   d'ordre (seed 1269 après cumul) couvrent ce mode ; les sweeps s'exécutent
   maintenant dans des conditions équivalentes au process vierge appliqué une
   fois par seed.
+
+--- FIN ---
