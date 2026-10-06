@@ -4,7 +4,7 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 ## 4. Architecture générale
 
-Le système repose sur trois composants distincts :
+Le système comprend trois parties distinctes :
 
 ```
 ┌─────────────────────┐      ┌──────────────────────────┐      ┌─────────────────┐
@@ -21,67 +21,68 @@ Le système repose sur trois composants distincts :
 
 ### 4.1 Tool externe (Python)
 
-La génération complète est effectuée **hors du jeu**, par un outil Python.
-Raisons :
+La génération de la seed se fait entièrement hors du jeu via un outil Python.
+Motifs :
 
-- Factorio ne permet **pas** de modifier les ingrédients d'une recette au
-  runtime via l'API : tout doit être construit en *data-stage*. Le tool écrit
-  donc les fichiers que le mod consommera à ce moment-là ;
-- la **solvabilité** d'une seed (§15) est vérifiable hors du jeu, avant même
-  de lancer Factorio — on refuse une seed injouable plutôt que de laisser le
-  joueur tomber sur un blocage ;
-- Python est choisi pour sa simplicité de développement et de débogage.
+- Factorio ne permet pas de modifier les ingrédients d'une recette au runtime
+  par l'API : tout s'effectue en *data-stage*. Le tool écrit donc les fichiers
+  nécessaires pour cette étape ;
+- la solvabilité d'une seed (§15) se vérifie en amont, avant de lancer
+  Factorio, ce qui évite les parties bloquées ;
+- Python offre un cadre simple pour le développement et le débogage.
 
 ### 4.2 Formats de fichiers
 
-- **YAML** pour les fichiers de configuration (lisibles, commentables) ;
-- **JSON** pour les données générées consommées par le mod (seed, graphe,
-  définitions de recettes/techs) ;
-- d'autres formats pourront compléter si besoin.
+- **YAML** pour les paramètres de configuration (accessibles et commentables) ;
+- **JSON** pour les données de la seed et les définitions générées lues par le
+  mod ;
+- d'autres formats viendront s'ajouter si nécessaire.
 
 ### 4.3 Mod Factorio
 
-En *data-stage*, le mod lit la configuration et la seed puis construit :
+Durant le *data-stage*, le mod charge la configuration et la seed pour créer :
 
-- une **entité ressource cachée** pour chaque item beltable et chaque fluide
-  pipable candidat (des centaines), sans autoplace par défaut — elles ne
-  seront placées que sur décision du runtime ;
-- toutes les **recettes** générées ;
-- tout l'**arbre technologique**.
+- une entité ressource cachée pour chaque item transportable par convoyeur et
+  chaque fluide transportable par tuyau éligible (plusieurs centaines), sans
+  autoplace par défaut — leur apparition dépend uniquement du runtime ;
+- l'ensemble des recettes générées ;
+- l'intégralité de l'arbre technologique.
 
-Au runtime (*control.lua*), le mod :
+Pendant l'exécution (*control.lua*), le mod :
 
-- remplace les champs de ressources vanilles lors de la génération de la
-  surface et place les entités ressources tirées par la seed ;
-- gère les déblocages progressifs, le kit de départ, les recherches
+- applique les patchs de ressources lors de la génération de la surface selon
+  les choix de la seed ;
+- pilote les déblocages progressifs, le kit de départ et les recherches
   gratuites.
 
 ## 17. Pipeline technique
 
-Chaîne complète, de l'écriture d'une seed à une partie jouable :
+Le déroulement complet, de la création d'une seed au lancement d'une partie :
 
-1. `config/defaults.yaml` — paramètres généraux (fourchettes, pondérations,
-   pools, récursion/armes montées, loot du site de crash §7) ; surcharges
-   utilisateur dans `config/user.yaml`, fusionnées puis validées (§Note config).
-2. Tool Python :
-   1. parse les prototypes vanilla 2.0 (items beltables, fluides pipables,
-      bâtiments avec leurs slots/directives par tier) ;
-   2. tire le graphe complet depuis la seed (phases §6 → §14) — en 2 passes
-      sur la même référence RNG quand le jalonnement late raws est actif
-      (§6.3 : passe A = mesure de la dépendance, passe B = starter rejoué sur
-      le pool de démarrage dégradé, état vierge porté par
-      `StarterConfig.deferred`) ;
-   3. vérifie les invariants de solvabilité (§15) ;
-   4. écrit `seed.json` (+ données associées) dans le dossier du mod.
-3. Mod Factorio, data-stage : lecture YAML/JSON → construction des entités
-   ressources cachées, des recettes et de l'arbre technologique.
-4. Runtime (`control.lua`) : génération de la surface (placement des patchs
-   tirés, remplacement des ressources vanilles), kit de départ, recherches
-   gratuites, déblocages progressifs au fil des recherches.
+1. `config/defaults.yaml` regroupe les paramètres généraux (seuils, poids,
+   pools, récursion/armes embarquées, butin du site de crash §7). Les réglages
+   de `config/user.yaml` s'y ajoutent avant d'être validés (§Note config).
+2. L'outil Python s'exécute :
+   1. il analyse les prototypes de base de Factorio 2.0 (items sur convoyeurs,
+      fluides en tuyaux, bâtiments et leurs emplacements par niveau) ;
+   2. il calcule le graphe complet à partir de la seed (phases §6 à §14) en
+      effectuant deux passes sur la même source aléatoire si le jalonnement
+      des late raws est actif (§6.3 : la passe A mesure les dépendances, la
+      passe B relance le départ sur un pool réduit, l'état initial étant
+      conservé via `StarterConfig.deferred`) ;
+   3. il contrôle les règles de solvabilité (§15) ;
+   4. il enregistre `seed.json` et ses annexes dans le dossier du mod.
+3. Le mod Factorio lit les fichiers YAML et JSON en *data-stage* pour bâtir les
+   ressources cachées, les recettes et les technologies.
+4. Le code d'exécution (`control.lua`) prend le relais pour façonner la carte
+   (placement des patchs, substitution des ressources d'origine), distribuer
+   le kit de départ, attribuer les recherches gratuites et gérer les
+   déblocages séquentiels.
 
-Cette section résume la chaîne ; la chronologie détaillée des jalons, les flux
-RNG et les points d'échec sont dans [`pipeline.md`](pipeline.md), et le
-développement du mod Lua fichier par fichier dans [`runtime.md`](runtime.md).
+Ce résumé présente les grandes étapes. Le détail des jalons, des flux de
+génération aléatoire et des contrôles se trouve dans [`pipeline.md`](pipeline.md),
+tandis que la description du code Lua fichier par fichier est accessible dans
+[`runtime.md`](runtime.md).
 
 ## 18. Structure du projet
 
@@ -169,12 +170,12 @@ randputF/
 └── output/              # mod assemblé (généré)
 ```
 
-Le graphe interactif (`seed.graph.html`, exporté par `tool/exporters/seed_graph.py`)
-est décrit pour l'utilisateur dans le README racine (section « Le graphe
-interactif ») et pour sa **construction** dans
-[graphe-interactif.md](graphe-interactif.md) : c'est à la fois une sortie
-joueur et une pièce du système (lecture produit → ingrédient de la seed,
-icônes fidèles au jeu, autonomie du fichier).
+Le graphe interactif (`seed.graph.html`, produit par `tool/exporters/seed_graph.py`)
+est documenté pour les joueurs dans le README principal (section « Le graphe
+interactif ») et pour sa conception dans [graphe-interactif.md](graphe-interactif.md).
+Il sert à la fois de visualisation pour l'utilisateur et d'élément du système,
+combinant l'exploitation des données du produit, les icônes du jeu et un
+format de fichier autonome.
 
-(La structure fine pourra évoluer pendant l'implémentation ; les rôles de
-haut niveau restent ceux décrits en §4.)
+L'organisation interne pourra évoluer au fil des développements, mais les rôles
+principaux restent ceux présentés au §4.
