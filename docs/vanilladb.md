@@ -2,9 +2,9 @@
 
 ## 1. Rôle du module et position dans le pipeline
 
-Le module `tool/common/db.py` fournit la **base de données normalisée** qui constitue la source de vérité en lecture pour toutes les phases du générateur. Elle convertit le `vanilla_dump.json` (export du jeu) en une structure interne (`VanillaDB`) utilisée par les autres composants du pipeline de génération.
+Le module `tool/common/db.py` centralise la **base de données normalisée**, source de vérité pour toutes les phases du générateur. Il convertit le `vanilla_dump.json` en une structure interne, `VanillaDB`, exploitée par le pipeline.
 
-Dans le pipeline de génération (`tool/generator/pipeline.py`), la fonction `load_db_from_dump()` (ligne 154‑226) charge le dump et construit un objet `VanillaDB` qui contient les entités (items, fluides, bâtiments, recettes) ainsi que les pools dérivés. Cette base est ensuite passée à `randputf` pour la génération finale.
+Définie dans `tool/parsers/vanilla.py` (lignes 154‑226) et appelée par `tool/generator/pipeline.py`, la fonction `load_db_from_dump()` initialise l'objet `VanillaDB` à partir du dump : items, fluides, bâtiments taggés par capacités, recettes, puis pools dérivés. Cette base est ensuite transmise à `randputf` pour la génération.
 
 ```
 # Position dans le pipeline
@@ -16,15 +16,15 @@ Dans le pipeline de génération (`tool/generator/pipeline.py`), la fonction `lo
 
 ## 2. Format d'entrée : `vanilla_dump.json` et métadonnées
 
-Le fichier `vanilla_dump.json` est le dump brut du jeu (version 2.0). Il contient les sections suivantes qui sont exploitées par `VanillaDB` :
+Le `vanilla_dump.json` (version 2.0) fournit les données brutes exploitées par `VanillaDB` :
 
-* **`meta`** – métadonnées du jeu, notamment `game_version_numeric` (ligne 161) qui détermine la `seed_value` (ligne 316).
-* **`items`** – tous les objets solides (armes, munitions, outils, packs de science, etc.). Chaque entrée est un `ItemDef` (voir §3).
-* **`fluids`** – tous les fluides (liquides, gaz, etc.). Chaque entrée est un `FluidDef` (voir §3).
-* **`entities`** – entités du monde (minéraux, biologiques, etc.), filtrées par `is_junk` (ligne 163).
-* **`recipes`** – recettes brutes du dump, chacune avec `name`, `category`, `ingredients`, `products` et `energy` (ligne 209‑216).
+* **`meta`** – métadonnées : `game_version` est exportée (ex. « 2.0.77 ») ; `game_version_numeric` est absente, d'où `seed_value = 0` par défaut (ligne 161).
+* **`items`** – objets solides (armes, munitions, outils, science), filtrés par `is_junk` (lignes 163‑166). Chaque entrée est un `ItemDef` (§3).
+* **`fluids`** – fluides (liquides, gaz), filtrés par `is_junk` (lignes 191‑194). Chaque entrée est un `FluidDef` (§3).
+* **`entities`** – entités du monde, filtrées par `is_junk` (lignes 200‑204) puis taggées par capacités (`tag_parse_entity`).
+* **`recipes`** – recettes brutes avec `name`, `category`, `ingredients`, `products` et `energy` (lignes 209‑216).
 
-La `seed_value` est extraite de `meta.game_version` (ou `meta.game_version_numeric` par défaut) et initialise le flux aléatoire utilisé par le pipeline (ligne 316).
+La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` (ligne 316) pour initialiser les flux aléatoires du pipeline (§1).
 
 ## 3. Schéma des données
 
@@ -53,13 +53,13 @@ class ItemDef:
     is_capsule_throwable: bool = False
 ```
 
-Champs clés :
-- **Nom et sous‑groupe** – identification unique (ligne 117‑119).
-- **Place de sortie** – où l'item est posé (`item_output_slots` / `fluid_outputs`).
-- **Valeur combustible** – `fuel_value` (brûlable).
-- **Tags cumulables** – `is_environmental`, `is_virtual_item`, `is_module`, `is_capsule_throwable` (ligne 117‑143).
-- **Propriétés de stackabilité** – `stack_size` (si > 1, empileable ; sinon déduit du type).
-- **Catégories** – `item_type`, `fuel_category`, `subgroup` (catégories de craft, énergie, etc.).
+Champs clés :
+- **Identification** – `name` et `subgroup` (lignes 117‑119).
+- **Placement** – `place_result` (où l'item est posé).
+- **Combustion** – `fuel_value` (valeur énergétique).
+- **Tags** – `is_environmental`, `is_virtual_item`, `is_module`, `is_capsule_throwable` (lignes 117‑143).
+- **Stack** – `stack_size` (définit l'empilement).
+- **Catégories** – `item_type`, `fuel_category`, `subgroup`.
 
 ### 3.2 `FluidDef` (fluide)
 
@@ -70,7 +70,7 @@ class FluidDef:
     fuel_value: float | None = None
 ```
 
-Un fluide est identifié uniquement par son nom (la température n'est pas une dimension).
+Un fluide est défini uniquement par son nom.
 
 ### 3.3 `BuildingDef` (bâtiment)
 
@@ -117,7 +117,6 @@ class BuildingDef:
     is_water_extractor: bool = False
     is_fluid_extractor: bool = False
     is_ground_extractor: bool = False
-    # Tags cumulables (rôle fonctionnel)
     is_belt: bool = False
     is_underground_belt: bool = False
     is_splitter: bool = False
@@ -130,7 +129,22 @@ class BuildingDef:
     is_storage: bool = False
     is_roboport: bool = False
     is_robot: bool = False
-    # Tags spécialisés
+    # --- Tags §3 : train & véhicules (docs/tags.md §3) ---
+    is_rail: bool = False             # voie (droite/courbe/surélevée)
+    is_rail_support: bool = False     # rampes/piliers (rail-support)
+    is_rail_signal: bool = False      # signal/chain
+    is_train_stop: bool = False       # gare
+    is_locomotive: bool = False       # locomotive
+    is_wagon: bool = False            # wagon (cargo/fluide/artillerie)
+    is_vehicle: bool = False          # tous véhicules
+    is_spider_vehicle: bool = False   # spider (spidertron)
+    # --- Tags §4 : production spécialisée (docs/tags.md §4) ---
+    is_furnace: bool = False          # four (smelting)
+    is_assembler: bool = False        # machine d'assemblage
+    is_chemical_plant: bool = False   # usine chimique
+    is_refinery: bool = False         # raffinerie (oil-processing)
+    is_centrifuge: bool = False       # centrifugeuse
+    is_rocket_parts_crafter: bool = False  # silo à fusée
     is_boiler: bool = False
     is_heat_exchanger: bool = False
     is_solar: bool = False
@@ -143,7 +157,6 @@ class BuildingDef:
     is_pumpjack: bool = False
     is_offshore_pump: bool = False
     is_well_pump: bool = False
-    # Tags combat & défense
     is_turret: bool = False
     is_gun_turret: bool = False
     is_laser_turret: bool = False
@@ -152,7 +165,6 @@ class BuildingDef:
     is_defensive_wall: bool = False
     is_landmine: bool = False
     is_combat_robot: bool = False
-    # Tags réseau & électronique
     is_circuit_combinator: bool = False
     is_constant_combinator: bool = False
     is_circuit_io: bool = False
@@ -164,28 +176,28 @@ class BuildingDef:
 
 | Pool | Méthode | Description |
 |------|---------|-------------|
-| `beltable_items` | `VanillaDB.beltable_items()` | Items posables sur tapis (hors outils). Calculé à partir des bâtiments `is_belt` et `is_underground_belt` (lignes 326‑327). |
-| `pipable_fluids` | `VanillaDB.pipable_fluids()` | Fluides pipables (eau, pétrole, vapeur, etc.). Calculé à partir des fluides sans recette de production directe (lignes 333‑350). |
-| `extraction_only_fluids` | `VanillaDB.extraction_only_fluids` | Fluides sans recette de production directe (eau, pétrole brut, vapeur). Exclut les barils (cycles barril → fluide). (lignes 338‑350). |
-| `raw_resources` | `VanillaDB.raw_resources()` | Ressources brutes du patch + `ENVIRONMENTAL_ITEMS` + `extraction_only_fluids`. (lignes 352‑357). |
-| `fuel_items` | `VanillaDB.fuel_items()` | Items à valeur combustible, triés par nom. (lignes 359‑365). |
-| `fuels_for(b)` | méthode | Combustibles qu'un bâtiment peut brûler (catégories `fuel_categories`). (lignes 366‑378). |
-| `fuel_residues(b)` | méthode | Résidus de combustion (item) issus des combustibles du bâtiment. (lignes 379‑386). |
-| `fuel_item_flow(b)` | méthode | Vue normalisée d'une machine à combustible (entrée = item, sorties = résidus). (lignes 387‑404). |
-| `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item (combustible → résidu). (lignes 399‑404). |
-| `fuel_fluids()` | méthode | Fluides à valeur combustible, triés par nom. (lignes 405‑411). |
-| `buildings_with_tag(tag)` | méthode | Bâtiments portant un tag donné. (lignes 412‑418). |
-| `extractors_for_medium(medium)` | méthode | Extracteurs du dump pour un milieu donné (item/fluid). (lignes 420‑430). |
+| `beltable_items` | `VanillaDB.beltable_items()` | Items solides posables sur tapis, HORS outils (`not is_tool`), triés par nom (lignes 326‑331). |
+| `pipable_fluids` | `VanillaDB.pipable_fluids()` | TOUS les fluides du dump, triés par nom (lignes 333‑335). |
+| `extraction_only_fluids` | `VanillaDB.extraction_only_fluids` | Fluides sans recette de production directe (eau, pétrole brut, vapeur) ; barillage exclu (cycle fluide → baril → fluide) (lignes 338‑350). |
+| `raw_resources` | `VanillaDB.raw_resources(patch_resources)` | Patches posés + `ENVIRONMENTAL_ITEMS` + `extraction_only_fluids` (lignes 352‑357). |
+| `fuel_items` | `VanillaDB.fuel_items()` | Items combustibles triés (lignes 359‑365). |
+| `fuels_for(b)` | méthode | Combustibles compatibles par bâtiment (lignes 366‑378). |
+| `fuel_residues(b)` | méthode | Résidus de combustion (lignes 379‑386). |
+| `fuel_item_flow(b)` | méthode | Flux normalisé : combustible vers résidu (lignes 387‑404). |
+| `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item (lignes 399‑404). |
+| `fuel_fluids()` | méthode | Fluides combustibles triés (lignes 405‑411). |
+| `buildings_with_tag(tag)` | méthode | Bâtiments possédant le tag (lignes 412‑418). |
+| `extractors_for_medium(medium)` | méthode | Extracteurs par milieu (lignes 420‑430). |
 
 ## 4. Prédicats de détection par capacités
 
 ### 4.1 `has_hidden_recipe(b: BuildingDef) -> bool`
 
-Détecte les bâtiments possédant une **recette cachée** (code de fabrication codé en dur, non accessible avant la transformation du mod). La détection est faite **par capacités intrinsèques** (aucune liste de noms) :
+Détecte les bâtiments à recette cachée via leurs capacités intrinsèques :
 
-1. Le bâtiment doit porter au moins un tag de production (`is_research`, `is_crafter`, `is_generator`, `is_extractor`).
-2. Il doit avoir une entrée (item, fluide ou combustible) et une sortie (item/fluide ou résidu).
-3. Il ne doit **pas** posséder de catégorie de crafting valide (`is_crafter`, `is_generator`, `is_constructor`).
+1. Possède un tag de production (`is_research`, `is_crafter`, `is_generator`, `is_extractor`).
+2. Possède une entrée (item, fluide, combustible) et une sortie (item, fluide, résidu).
+3. Ne possède pas de catégorie de crafting valide.
 
 ```python
 def has_hidden_recipe(b: "BuildingDef") -> bool:
@@ -209,14 +221,9 @@ def has_hidden_recipe(b: "BuildingDef") -> bool:
     return has_input and has_output
 ```
 
-**Exemples** :
-- `boiler` (fluide → fluide) et `heat-exchanger` (fluide → fluide) → `True`.
-- `nuclear-reactor` (item → résidu item) → `True`.
-- Un générateur classique (turbine, panneau solaire) → `False` car il n'a ni entrée ni sortie de type produit.
-
 ### 4.2 `is_fixed_fluid_crafter(b: BuildingDef) -> bool`
 
-Sous‑ensemble de `has_hidden_recipe` où le générateur crée une **recette fluide → fluide** randomisée (boiler, heat‑exchanger). Les autres bâtiments à recette fixe (combusteurs à résidu, etc.) sont exclus.
+Détecte les générateurs de recettes fluide → fluide (ex: boiler, heat-exchanger).
 
 ```python
 def is_fixed_fluid_crafter(b: "BuildingDef") -> bool:
@@ -230,7 +237,7 @@ def is_fixed_fluid_crafter(b: "BuildingDef") -> bool:
 
 ### 4.3 `is_fixed_crafter(b: BuildingDef) -> bool`
 
-Bâtiment à recette **fixe** pouvant héberger une recette randomisée. Inclut les bâtiments à recette fixe (boiler, heat‑exchanger) ET les générateurs/extracteurs/lab qui produisent un résidu (combustible → résidu item).
+Détecte les bâtiments à recette fixe pouvant recevoir une recette randomisée : atelier `is_crafter` avec sortie (fluide ou item), OU bâtiment à résidu de combustible (le réacteur, item → résidu item).
 
 ```python
 def is_fixed_crafter(b: "BuildingDef") -> bool:
@@ -246,121 +253,73 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 
 ## 5. Tags orthogonaux cumulables et catégories
 
-### 5.1 Tags de rôle fonctionnel (cumulables)
-
-| Tag | Signification | Déterminé par | Consommé par |
-|------|---------------|---------------|--------------|
-| `is_research` | Lab / pack de recherche | `PRODUCING_TAGS` + entrée | `starter_chain`, `map_patches`, `recipes` |
-| `is_crafter` | Atelier (sortie item/fluide) | catégories de craft, `rocket_parts_required`, `target_temperature` | `recursive_phase`, `recipes`, `building_fluids` |
-| `is_generator` | Produit d'énergie (élec/ chaleur) | `max_power_output > 0`, `production > 0`, `produces_heat` | `recursive_phase`, `building_fluids` |
-| `is_distribution` | Infrastructure de distribution (pylônes) | `supply_area_distance ≠ 0` | `recursive_phase`, `electricity` |
-| `is_extractor` | Extrait une ressource (minéral, fluide, solide) | `resource_categories`, `pumped_fluid` | `recipes`, `starter_chain`, `extractors_for_medium` |
-| `is_other` | Aucune capacité reconnue | = ¬(tous les rôles ci‑dessus) | `summarize_db` (uniquement) |
+### 5.1 Tags de rôle fonctionnel
+- `is_research` : Lab / pack de recherche.
+- `is_crafter` : Atelier (sortie item/fluide).
+- `is_generator` : Production d'énergie.
+- `is_distribution` : Infrastructure électrique.
+- `is_extractor` : Extraction de ressources.
+- `is_other` : Aucune capacité reconnue.
 
 ### 5.2 Tags énergétiques & chaleur
-
-| Tag | Signification | Déterminé par | Consommé par |
-|------|---------------|---------------|--------------|
-| `is_boiler` | Four (type `boiler`, `energy_type = burner`) | `type == 'boiler'` + `energy_type == 'burner'` | `is_fixed_fluid_crafter`, `building_fluids` |
-| `is_heat_exchanger` | Échangeur (type `boiler`, `energy_type = heat`) | `type == 'boiler'` + `energy_type == 'heat'` | `is_fixed_fluid_crafter`, `building_fluids` |
-| `is_solar` | Panneau solaire | `type == 'solar-panel'` | `audit`, tests |
-| `is_reactor` | Réacteur nucléaire | `type == 'reactor'` | `audit` (via `fuel_residues`) |
-| `is_heat_transport` | Pipe de chaleur | `type == 'heat-pipe'` | `recursive_phase` |
-| `is_heat_sink` | Consommateur de chaleur | `energy_type == 'heat'` | `recursive_phase` |
+- `is_boiler` : Type `boiler`, énergie `burner`.
+- `is_heat_exchanger` : Type `boiler`, énergie `heat`.
+- `is_solar` : Panneau solaire.
+- `is_reactor` : Réacteur nucléaire.
+- `is_heat_transport` : Pipe de chaleur.
+- `is_heat_sink` : Consommateur de chaleur.
 
 ### 5.3 Tags d'extraction
+- `is_mining_drill` : Mineur de solide.
+- `is_pumpjack` : Pompe à fluide brut.
+- `is_offshore_pump` : Pompe d'eau.
+- `is_well_pump` : Pompe de fluide.
 
-| Tag | Signification | Déterminé par | Consommé par |
-|------|---------------|---------------|--------------|
-| `is_mining_drill` | Mineur (minerai solide) | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | `starter_chain`, `map_patches` |
-| `is_pumpjack` | Pompe à fluide brut | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | `starter_chain` (fluides profonds) |
-| `is_offshore_pump` | Pompe d'eau | `is_water_extractor` (médium = eau) | `starter_chain`, `map_patches` |
-| `is_well_pump` | Pompe de fluide brut | `type == 'pump'` | `starter_chain` (patch water) |
+Précisions d'extraction (vanilla.py:462‑465) : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = le seul extracteur `medium == 'water'` ; `is_well_pump` = `type == 'pump'`.
 
 ### 5.4 Tags de logistique & transport
-
-| Tag | Signification | Déterminé par | Consommé par |
-|------|---------------|---------------|--------------|
-| `is_belt` | Transport‑belt | `type == 'transport-belt'` | `starter_chain` (rôle `belt`) |
-| `is_splitter` | Splitter de flux | `type == 'splitter'` | `starter_chain` (rôle `splitter`) |
-| `is_inserter` | Inserter de flux | `type == 'inserter'` | `starter_chain` (rôle `inserter`) |
-| `is_pipe` | Pipe (fluide) | `type == 'pipe'` | `starter_chain` (rôle `pipe`) |
-| `is_pipe_to_ground` | Pipe sous‑terrain | `type == 'pipe-to-ground'` | `starter_chain` (rôle `pipe_to_ground`) |
-| `is_fluid_transport` | Union `pipe` + `pipe_to_ground` | dérivé des deux précédents | – |
-| `is_chest` | Conteneur (stockage) | `type == 'container'` | `starter_chain` (raffinage usage‑view) |
-| `is_logistics_chest` | Logistics‑chest | `type == 'logistic-container'` | `starter_chain` (raffinage usage‑view) |
-| `is_storage` | Stockage (chest/chest) | `is_chest` ou `is_logistics_chest` | – |
-| `is_roboport` | Roboport (C3 ↔ roboport) | `type == 'roboport'` | – |
-| `is_robot` | Robot logistique/construction | `is_mounted_gun` absent, `type` dans les catégories robot | – |
+- `is_belt`, `is_splitter`, `is_inserter` : Logistique de flux.
+- `is_pipe`, `is_pipe_to_ground` : Logistique fluide.
+- `is_chest`, `is_logistics_chest` : Stockage.
+- `is_roboport`, `is_robot` : Logistique robotique — `is_robot` = robot logistique/construction uniquement ; le robot de combat est `is_combat_robot` (jamais confondu).
 
 ### 5.5 Tags spécialisés
-
-| Tag | Signification | Déterminé par | Consommé par |
-|------|---------------|---------------|--------------|
-| `is_boiler`, `is_heat_exchanger` | Boiler / Heat‑exchanger | `type == 'boiler'` + `energy_type` | – |
-| `is_solar` | Panneau solaire | `type == 'solar-panel'` | – |
-| `is_reactor` | Réacteur nucléaire | `type == 'reactor'` | – |
-| `is_beam_pole` | Pile électrique (type `electric-pole`) | `type == 'electric-pole'` | `electricity`, `tech_tree`, `recursive_phase` |
-| `is_beacon` | Module de transmission d'effet | `type == 'beacon'` | raffinage usage‑view |
-| `is_accumulator` | Stockeur d'énergie | `type == 'accumulator'` | audit |
-| `is_energy_storage` | Stockage d'énergie | `buffer_capacity > 0` (sans production) | raffinage |
-| `is_offgrid` | Producteur hors réseau (solaire, burner‑generator) | `produces_electricity` + énergie non `electric` | audit |
-| `consumes_electricity` | Consomme du courant | `energy_type == 'electric'` sans production ni stockage | audit |
-| `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` | Extracteur par médium | `is_extractor` + `medium` (water/fluid/ground) | `extractors_for_medium`, `starter_chain` |
-| `produces_electricity` | Producteur de courant (turbine, steam‑engine, solar‑panel) | – | `electricity`, `building_fluids` |
-| `produces_heat` | Producteur de chaleur (nuclear‑reactor) | – | `electricity` (exclut le réacteur du réseau), `recursive_phase` |
-| `is_heat_source` | Source de chaleur (réacteur) | `type == 'reactor'` ou (`has_heat_output` ET `energy_type == 'burner'`) | `recursive_phase._ensure_heat_prereq` |
-| `is_heat_sink` | Consommateur de chaleur (heat‑exchanger) | `energy_type == 'heat'` | `recursive_phase._ensure_heat_prereq` |
-| `is_boiler`, `is_heat_exchanger` | Distinction source vs transport de chaleur | – | – |
+- `is_power_pole` : Pylône électrique (`type == 'electric-pole'` ; l'ancien `is_beam_pole` a disparu au chantier D3).
+- `is_beacon` : Transmission d'effet.
+- `is_accumulator` : Stockage électrique.
+- `is_energy_storage` : Stockage d'énergie — le dump n'exporte pas `buffer_capacity`, tag rabattu sur `is_accumulator` (vanilla.py:394‑397).
+- `is_offgrid` : Production hors réseau.
+- `consumes_electricity` : Consommation électrique.
+- `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` : Extracteurs par milieu.
+- `produces_electricity` : Production élec.
+- `produces_heat` : Production chaleur.
+- `is_heat_source` : Source de chaleur.
 
 ## 6. Règles d'inférence
 
 ### 6.1 `is_stackable`
+Un item est empilable si `stack_size > 1` ou si son type n'est pas dans `NON_STACKABLE_ITEM_TYPES`.
 
-Une entrée est **empilable** si son `stack_size` est supérieur à 1. Sinon, on se fie au type :
+### 6.2 `has_hidden_recipe`
+Ne compte JAMAIS la chaleur ni l'électricité comme sortie recevable (§4.1). Le réacteur (item → résidu item) et les boiler/heat-exchanger (fluide → fluide) sont révélés ; les générateurs/extracteurs/lab restants n'ont pas cette signature.
 
-```python
-def is_stackable(self) -> bool:
-    if self.stack_size:
-        return self.stack_size > 1
-    return self.item_type not in NON_STACKABLE_ITEM_TYPES
-```
+### 6.3 `is_fixed_fluid_crafter`
+Restreint `has_hidden_recipe` aux ateliers `is_crafter` à entrée ET sortie fluides : en vanilla, boiler et heat-exchanger. Les autres bâtiments à recette fixe (combusteur à résidu, générateurs, extracteurs) sont exclus.
 
-Les types non‑stackables (armure, arme, véhicule, etc.) sont toujours non‑empilables.
-
-### 6.2 `has_hidden_recipe` (rappel)
-
-Comme décrit en §4.1, ce prédicat détecte les bâtiments à recette cachée. Il **ne compte jamais** la chaleur ou l'électricité : les réacteurs (item → résidu) et les boilers/heat‑exchangers sont considérés comme `has_hidden_recipe = True` mais **ne sont pas** des `is_fixed_fluid_crafter` (car ils ne produisent pas de fluide).
-
-### 6.3 `is_fixed_fluid_crafter` (rappel)
-
-Restreint `has_hidden_recipe` aux bâtiments qui créent une recette **fluide → fluide** randomisée (boiler, heat‑exchanger). Les autres bâtiments à recette fixe (combusteurs à résidu, générateurs, extracteurs) sont exclus.
-
-### 6.4 `is_fixed_crafter` (rappel)
-
-Inclut les bâtiments à recette fixe pouvant recevoir une recette randomisée :
-- `is_crafter` + sortie fluide ou item
-- `is_crafter` + résidu item (combustible → résidu)
-
-Ces bâtiments reçoivent effectivement une recette aléatoire lors de la génération.
+### 6.4 `is_fixed_crafter`
+Inclut les bâtiments à recette fixe pouvant recevoir une recette randomisée : un atelier `is_crafter` avec sortie (fluide ou item), OU un bâtiment à résidu de combustible (`fuel_residues` non vide — le réacteur item → résidu item).
 
 ## 7. Notes d'implémentation
 
 ### 7.1 `seed_value`
+Identifiant de la graine guidant toute la génération, lu depuis `meta.game_version_numeric` (défaut 0 sinon, vanilla.py:161) et stocké dans `VanillaDB.seed_value` (ligne 316). Le dump livré n'exporte que `game_version` : `seed_value` vaut donc 0 à l'entrée, puis est surchargé par le CLI (`randputf gen --seed` ou, par défaut, l'horodatage courant).
 
-La `seed_value` est l'identifiant de la graine aléatoire qui guide toute la génération. Elle provient de `meta.game_version` (ou `meta.game_version_numeric` par défaut) dans le dump (ligne 161). La valeur est stockée dans `VanillaDB.seed_value` (ligne 316) et utilisée par le flux aléatoire partagé (`db.seed_value`) dans toutes les phases du pipeline (lignes 153, 151, 167, 177, 203, 215, 221).
-
-### 7.2 `fuel_residues` remplis après parse
-
-Après le parsing du dump, les `fuel_residues` de chaque bâtiment sont calculés à partir des `burnt_result` des combustibles (lignes 379‑386). Ces résidus sont remplis **après** la création de la base `VanillaDB` et servent à :
-- Activer le tag `has_hidden_recipe` pour les bâtiments correspondants (ligne 224).
-- Alimenter `fuel_item_flow` et `fuel_residues` pour les méthodes de pool (lignes 399‑404).
+### 7.2 `fuel_residues`
+Les résidus (`burnt_result` des combustibles du bâtiment) sont calculés à la fin du parse (vanilla.py:223‑225) : ils dépendent de la base items, indisponible à la volée. Ils alimentent `fuel_item_flow` et `has_fuel_item_flow`, et estampent `has_hidden_recipe` (§4.1) — le réacteur est ainsi révélé sans liste de noms.
 
 ### 7.3 Relation avec `tags.md`
-
-Tous les tags définis dans `tool/common/tagsets.py` (section 1‑13 de `docs/tags.md`) sont appliqués sur les entités via les capacités intrinsèques. La base `VanillaDB` expose les méthodes de filtrage (`buildings_with_tag`, `extractors_for_medium`) qui correspondent aux sections du document de tags. L'audit (`tool/audit/tags.py`) vérifie l'orthogonalité et la cohérence des tags par rapport à ces règles.
+Les TAGS sont calculés PAR CAPACITÉS dans `tool/parsers/vanilla.py` (`tag_parse_entity`) — aucune liste de noms. `tool/common/tagsets.py` ne porte que les ENSEMBLES FIGÉS (ENVIRONMENTAL_ITEMS, VEHICLE_GUNS, ROCKET_CHAIN…, docs/tags.md §14) ; `tool/common/db.py` les re-exporte pour compatibilité. L'audit (`tool/audit/tags.py`) vérifie orthogonalité et cohérence de ces règles.
 
 ---
-
-*Document généré à partir de `tool/common/db.py` et `docs/tags.md`.*
-*Version 1.0 – 2026‑10‑02*
+*Document généré à partir de `tool/common/db.py`, `tool/parsers/vanilla.py` et `docs/tags.md`.*
+*Version 1.1 – 2026‑10‑07*
