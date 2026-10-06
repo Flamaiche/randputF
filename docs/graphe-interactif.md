@@ -1,10 +1,10 @@
 # Le graphe interactif (`seed.graph.html`)
 
-À côté de `seed/seed.json`, l'export `--out` produit **une** sortie
-supplémentaire : `seed.graph.html`, un **graphe de production cliquable et
-autonome** de la seed. Ce document explique comment il est construit ; le
-mode d'emploi est côté utilisateur (README racine, section « Le graphe
-interactif »).
+À côté de `seed/seed.json`, l'export `--out` génère **un** fichier
+supplémentaire : `seed.graph.html`, qui correspond à un **graphe de production
+cliquable et autonome** propre à la seed. Ce document détaille sa conception ;
+l'usage est décrit côté utilisateur dans le README racine, sous la section
+« Le graphe interactif ».
 
 Retour : [docs/README.md](README.md).
 
@@ -12,68 +12,76 @@ Retour : [docs/README.md](README.md).
 
 ## 1. Ce que c'est
 
-Un nœud par item/fluide, une arête par **dépendance de craft** (produit →
-ingrédient) étiquetée par la **quantité** nécessaire au craft (`amount`). Le
-graphe est laid en left-to-right sur fond sombre.
+Le graphe comprend un nœud par item ou fluide, ainsi qu'une arête par
+**dépendance de craft** (produit vers ingrédient). Chaque arête est étiquetée par
+la **quantité** nécessaire au craft (`amount`). Visuellement, le graphe s'affiche
+en disposition left-to-right sur fond sombre.
 
-Le HTML est **autonome** : le SVG est intégré, les icônes sont embarquées en
-**data-URI**, le JS de navigation est dans le fichier. Il s'ouvre en local,
-sans serveur, et se déplace seul. Il est régénéré à chaque export.
+Le code HTML est **autonome** : le SVG y est intégré, les icônes sont embarquées
+en **data-URI**, et le script de navigation réside directement dans le fichier.
+Ce dernier s'ouvre localement sans requérir de serveur et fonctionne de manière
+autonome. Il fait l'objet d'une régénération à chaque export.
 
-Il accompagne l'export `--out` (`.venv/bin/python -m tool generate --out …`),
-**jamais** dans le mod installé (`mod/`), et il est **exclu du témoin** de
-déterminisme (voir [witness.md](witness.md) : le `<svg>` embarque une version
-de Graphviz).
+Il est produit par l'export `--out` (`.venv/bin/python -m tool generate --out …`),
+mais **jamais** inclus dans le mod installé (`mod/`). De plus, il est **exclu du
+témoin** de déterminisme, tel que précisé dans [witness.md](witness.md) puisque
+le `<svg>` intègre une version de Graphviz.
 
 ## 2. Construction, étape par étape
 
-1. **Collecte des nœuds** : chaque item/fluide du graphe devient un nœud ; la
-   structure produit → ingrédient des recettes de la seed définit les arêtes.
-2. **Icônes** : l'icône de chaque nœud est **celle que le jeu affiche
-   réellement**. Résolution, dans l'ordre (`_icon_path`) :
+1. **Collecte des nœuds** : chaque item ou fluide de la seed forme un nœud. La
+   structure produit → ingrédient des recettes de la seed détermine les arêtes.
+2. **Icônes** : chaque nœud récupère **l'icône réellement affichée par le jeu**. La
+   résolution suit cet ordre précis (`_icon_path`) :
    - fichier exact `<name>.png` ;
    - fluide : `fluid/<name>.png` ;
-   - sinon l'icône **déclarée dans les prototypes installés** (ex.
-     `raw-fish`→`fish.png`, `stone-wall`→`wall.png` ; lu depuis les `.lua`
-     prototypes) ;
-   - sinon fût vide pour les `*-barrel`.
-   Les variantes de stades (`-1/-2/-3`) et les icônes `technology/` sont
-   exclues.
-3. **Icônes en data-URI** (`_embed_icons`) : chaque PNG est lu puis encodé en
-   base64 dans le SVG → le fichier HTML n'a plus besoin du dossier d'icônes
-   vanilla.
-4. **Rendu SVG** : `build_seed_graph_dot` produit un fichier `.dot`, rendu par
-   `dot -Tsvg` (**Graphviz requis**). Sans Graphviz, l'export HTML est
-   simplement **ignoré** (message honnête, pas d'erreur).
-5. **Assemblage HTML** : le SVG, les infos de nœuds, les recettes et les
-   technos sont injectés dans un gabarit (`_HTML_TEMPLATE`).
+   - sinon l'icône **déclarée dans les prototypes installés** (par exemple
+     `raw-fish`→`fish.png`, `stone-wall`→`wall.png`, issus de la lecture des
+     prototypes `.lua`) ;
+   - sinon un fût vide pour les `*-barrel`.
+   Les variantes de stades (`-1/-2/-3`) ainsi que les icônes de type
+   `technology/` sont écartées.
+3. **Icônes en data-URI** (`_embed_icons`) : chaque PNG est lu puis converti en
+   base64 à l'intérieur du SVG. Par conséquent, le fichier HTML se passe du
+   dossier d'icônes vanilla.
+4. **Rendu SVG** : la fonction `build_seed_graph_dot` génère un fichier `.dot`,
+   ensuite converti par `dot -Tsvg` (**Graphviz requis**). En l'absence de
+   Graphviz, l'export HTML est simplement **ignoré** en affichant un message
+   clair, sans lever d'erreur.
+5. **Assemblage HTML** : le contenu SVG, les métadonnées des nœuds, les recettes
+   et les technologies sont injectés dans un gabarit de référence
+   (`_HTML_TEMPLATE`).
 
 ## 3. Le côté interactif (le JS embarqué)
 
-Le fichier est **un seul document** : le JS intégré gère :
+Le fichier forme **un document unique**. Le code JavaScript intégré prend en
+charge :
 
-- **zoom / pan** à la souris (molette + drag) sur le SVG ;
-- **fiche au clic** sur un nœud : nom, icône agrandie, ingrédients et
-  utilisateurs, avec les technos associées (extraites des prototypes, d'où la
-  présence des `packs` de science dans les fiches).
+- les actions de **zoom et pan** à la souris (via molette et glisser-déposer) sur
+  le SVG ;
+- l'affichage d'une **fiche au clic** sur un nœud, détaillant son nom, son icône
+  agrandie, ses ingrédients, ses utilisateurs et les technologies reliées (récupérées
+  depuis les prototypes, ce qui explique la présence des `packs` de science dans
+  les fiches).
 
-Les données injectées (`info`, `recips`, `techs`) sont du JSON sérialisé dans
-le HTML, construit depuis la seed.
+Les données injectées (`info`, `recips`, `techs`) consistent en du JSON sérialisé
+au cœur du HTML et bâti à partir de la seed.
 
 ## 4. Déterminisme de la sortie
 
-Le `seed.graph.html` **n'est pas couvert par le témoin** d'octet-pour-octet
-(le `<svg>` porte un commentaire de version de Graphviz qui varie d'une
-machine à l'autre). Il reste **régénérable** : deux exports de la même seed
-produisent le même graphe *logique* (mêmes nœuds, mêmes arêtes), même si le
-SVG n'est pas bit-à-bit identique. C'est explicitement la limite documentée du
-témoin.
+Le fichier `seed.graph.html` **n'entre pas dans le périmètre du témoin**
+octet-pour-octet, car le code `<svg>` embarque un commentaire de version lié à
+Graphviz qui fluctue selon les machines. Il demeure néanmoins **régénérable** :
+lancer deux exports d'une même seed fournit un graphe *logique* identique (mêmes
+nœuds et mêmes arêtes), même si le code SVG diffère au bit près. Cette limite
+est documentée explicitement pour le témoin.
 
 ## 5. Pourquoi une doc de conception ici
 
-Le graphe est à la fois une **sortie joueur** (README) et une **pièce du
-système** (comment on lit la seed, structure produit → ingrédient, icônes
-fidèles au jeu). La revue documentaire pointait cet angle mort ; ce document
-le couvre. Il ne remplace pas la lecture utilisateur du README.
+Le graphe joue un double rôle : c'est à la fois une **sortie joueur** (décrite
+dans le README) et une **pièce du système** (qui détaille la lecture de la seed,
+la structure produit → ingrédient et le respect des icônes du jeu). La revue
+documentaire a mis en lumière cet angle mort, que le présent document vient
+combler. Il ne se substitue pas à la lecture du README par l'utilisateur.
 
 Retour : [docs/README.md](README.md).
