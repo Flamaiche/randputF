@@ -1,8 +1,8 @@
 # Les ressources au sol
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
-
 ## 6. Les ressources au sol
+
+Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 Au spawn, la carte est entièrement re-décidée :
 
@@ -27,7 +27,7 @@ Au spawn, la carte est entièrement re-décidée :
   plein (`~1 %` de trous, fraction `NOISE_CORE` du rayon), anneau externe
   dilué, contour ondule — l'équivalent visuel d'une vraie couche d'ore. La
   taille est celle d'une vraie veine (`item_patch_radius`, défaut `9..17`,
-  soit des champs d'environ 200 à 700 tuiles utiles), dense comme une couche
+  soit des champs d'environ **170 à 615 tuiles posées**), dense comme une couche
   de fer/cuivre de Factorio.
   Le mod **pose chaque bloc/puits au runtime** — entité-resource
   `randputf-minerai-<item>` (minée par une foreuse) ou `randputf-oil-<fluide>`
@@ -50,7 +50,7 @@ Au spawn, la carte est entièrement re-décidée :
     la perceuse avant toute ressource au sol).
 - les items « briques garanties » ne sont **jamais** des patchs : lab (§8),
   les 3 ingrédients de la fusée et le rocket-silo (§14). Ce sont des recettes
-  générées et unlockées par une tech précise ; si un tel item tombait au sol,
+  générées et unlockées par une tech précise ; si un such item tombait au sol,
   la recette garantie n'existerait pas et l'invariant d'endgame serait cassé.
 - les **science packs** ne sont **jamais** des patchs (§13) : leur économie
   repose sur le craft (chaque pack se fabrique, jamais extrait du sol). Posé
@@ -82,7 +82,8 @@ Pour chaque patch, la seed embarque :
   `ceil(π·r²)` qui sur-estimait le champ et diluait la richesse par tuile ;
 - `cluster_radius` — le **rayon de dispersion** autour du centre : large pour
   les puits fluides (défaut `9..16`), taille de champ « type vanilla » pour les
-  items (défaut `9..17`, ~250 à ~900 tuiles — la taille d'une vraie veine) ;
+  items (défaut `9..17`, ~170 à ~615 tuiles posées — l'aire théorique du
+  disque 254..908), la taille d'une vraie veine) ;
 - `well_seed` — la **graine locale** pour dériver chaque position de bloc/puits.
 
 Au runtime (`on_chunk_generated`), quand un chunk contenant le gisement est
