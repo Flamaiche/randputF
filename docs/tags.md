@@ -16,8 +16,8 @@ Tous déterminés **par capacités intrinsèques** dans `tag_parse_entity`.
 | `is_crafter` | **Atelier** : sortie item/fluide, transforme des entrées en produit de craft (fours, assembling-machines, usine chimique, le personnage…) | catégories de craft, `rocket_parts_required`, `target_temperature` | `recursive_phase` (catégorie `transformer`), `starter_chain`, `recipes`, `building_fluids` |
 | `is_generator` | Producteur d'**énergie** (électricité OU chaleur : turbine, steam-engine, solar-panel, réacteur, heat-exchanger) | `max_power_output` > 0, `production` > 0, sortie chaleur ; jamais un `accumulator` | `recursive_phase` (catégorie `generator`), `building_fluids` |
 | `is_distribution` | Infrastructure de **distribution** (`supply_area_distance` : pylônes, beacon) | `supply_area_distance` non nul | `recursive_phase`, `electricity` (pylônes via `is_power_pole`) |
-| `is_extractor` | **Extrait** une ressource de l'environnement → item/fluide (minerais, offshore-pump, pumpjack) | `resource_categories`, `pumped_fluid`, pompage sans entrée | `recipes` (`_is_extractor_item`), `starter_chain` (`_extractors_for_resource`), `extractors_for_medium` |
-| `is_other` | Aucune capacité reconnue (backup, jamais perdu) | = !(tous les rôles ci-dessus) | `summarize_db` uniquement (non consommé par le générateur) |
+| `is_extractor` | **Extrait** une ressource de l'environnement → item/fluide (minerais, offshore-pump, pumpjack) | `resource_categories`, `pumped_fluid`, pompage sans entrée | `recipes` (`_is_building_item_recipe`), `starter_chain` (`_extractors_for_resource`), `extractors_for_medium`, `recursive_phase` (catégorie `extractor`), audit |
+| `is_other` | Aucune capacité reconnue (backup, jamais perdu) | = !(tous les rôles ci-dessus) | `summarize_db`, audit (invariant de partition) — non consommé par le générateur |
 
 `PRODUCING_TAGS = ("is_research", "is_crafter", "is_generator", "is_extractor")` (liste partagée dans `db.py`) regroupe les rôles ayant une production propre. Les « distribution » et « other » ne produisent rien.
 
@@ -30,7 +30,7 @@ Exemples de comptage sur `data/vanilla_dump.json` : `is_research` 1, `is_crafter
 | `is_power_pole` | poteau électrique | `type == 'electric-pole'` | `electricity`, `tech_tree` (jalons réseau), `recursive_phase` |
 | `is_beacon` | module de transmission d'effet | `type == 'beacon'` | raffinage **usage en vue** (affine `is_distribution`) |
 | `is_accumulator` | stockeur d'énergie | `type == 'accumulator'` | audit (distingué du producteur) |
-| `is_energy_storage` | stockage d'énergie (pas de production) | `buffer_capacity` ; repli = `is_accumulator` (le dump n'exporte pas `buffer_capacity`) | raffinage (alias de l'accumulateur), audit |
+| `is_energy_storage` | stockage d'énergie (pas de production) | `buffer_capacity` ; repli = `is_accumulator` (le dump n'exporte pas `buffer_capacity`) | documenté (alias de l'accumulateur), tests — aucun consommateur générateur |
 | `is_offgrid` | producteur hors réseau (solaire, burner-generator) | `produces_electricity` + énergie non `electric` OU `type == 'solar-panel'` | audit |
 | `consumes_electricity` | consomme du courant | `energy_type == 'electric'` sans production ni stockage | audit, tier tardif du balayage (via `_is_network_dependent_item`) |
 | `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` | extracteur par MEDIUM | `is_extractor` + `medium` (water/fluid/ground) | `extractors_for_medium`, `starter_chain` |
@@ -75,12 +75,12 @@ Tags **usage en vue** : le pool d'armement des véhicules (§12.1) et la constan
 
 | Tag | Déterminé par | Consommé par |
 |-----|---------------|--------------|
-| `is_furnace` | catégorie `smelting` | audit, `recursive_phase` (premier atelier handcraftable) |
-| `is_assembler` | catégorie `crafting` / `advanced-crafting` / `crafting-with-fluid` | audit, `recursive_phase` |
+| `is_furnace` | catégorie `smelting` | audit (invariant §4) |
+| `is_assembler` | catégorie `crafting` / `advanced-crafting` / `crafting-with-fluid` | audit (invariant §4) |
 | `is_chemical_plant` | catégorie `chemistry` | audit |
 | `is_refinery` | catégorie `oil-processing` | audit |
 | `is_centrifuge` | catégorie `centrifuging` | audit |
-| `is_rocket_parts_crafter` | catégorie `rocket-building` OU pièces de fusée | `endgame_phase`, audit |
+| `is_rocket_parts_crafter` | catégorie `rocket-building` OU pièces de fusée | audit ; `endgame_phase` cible `db.items['rocket-silo']` (jamais ce tag) |
 
 NB : `character` (crafting à la main) est lui aussi `is_assembler` — la catégorie `crafting` le qualifie, conformément au signal.
 
@@ -90,8 +90,8 @@ boiler ET heat-exchanger partagent le type `'boiler'` dans le dump : on les dist
 
 | Tag | Déterminé par | Consommé par |
 |-----|---------------|--------------|
-| `is_boiler` | `type == 'boiler'` + `energy_type == 'burner'` | `is_fixed_fluid_crafter` (C7), `building_fluids` |
-| `is_heat_exchanger` | `type == 'boiler'` + `energy_type == 'heat'` | `is_fixed_fluid_crafter` (C7), `building_fluids` |
+| `is_boiler` | `type == 'boiler'` + `energy_type == 'burner'` | audit — sous-tend `is_fixed_fluid_crafter` (§8, mêmes capacités) |
+| `is_heat_exchanger` | `type == 'boiler'` + `energy_type == 'heat'` | audit — sous-tend `is_fixed_fluid_crafter` (§8, mêmes capacités) |
 | `is_solar` | `type == 'solar-panel'` | audit, tests |
 | `is_reactor` | `type == 'reactor'` | audit (voir §6 `fuel_residues`) |
 | `is_heat_transport` | `type == 'heat-pipe'` | `recursive_phase` (envoyé par `_ensure_heat_prereq`) |
@@ -103,9 +103,9 @@ boiler ET heat-exchanger partagent le type `'boiler'` dans le dump : on les dist
 
 | Tag | Déterminé par | Consommé par |
 |-----|---------------|--------------|
-| `is_mining_drill` | `type == 'mining-drill'` (minerai solide via médium ground) | `starter_chain`, `map_patches` |
-| `is_pumpjack` | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | `starter_chain` (fluides profonds) |
-| `is_offshore_pump` | `is_water_extractor` (médium eau) | `starter_chain` (patch water), `map_patches` |
+| `is_mining_drill` | `type == 'mining-drill'` (minerai solide via médium ground) | via `is_extractor` + `medium` (`extractors_for_medium`), replay (vérif), audit |
+| `is_pumpjack` | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | via `is_extractor` + `fluid_outputs`/`resource_categories` (`starter_chain._extractors_for_resource`), replay (vérif), audit |
+| `is_offshore_pump` | `is_water_extractor` (médium eau) | via `pumped_fluid` (`starter_chain`, lacs) ; `mod/control.lua` (`on_built_entity` offshore-pump, runtime) ; replay (vérif), audit |
 | `is_well_pump` | `type == 'pump'` | raffinage **usage en vue** |
 
 ## 7. Sortie spéciale (orthogonale aux rôles)
@@ -197,13 +197,13 @@ Tags sur `ItemDef`, décidés par type brut du dump (`item_type`), sous-groupe e
 |-----|---------------|--------------|
 | `is_environmental` | `ENVIRONMENTAL_ITEMS` (source de vérité via `_is_environmental_item`) | poids environnementaux (`recipes._environmental_weight`), anti-cycle, pools, `_excludable_items` (map_patches), tests |
 | `is_virtual_item` | `item_type` ∈ types contrôle ET `place_result` absent (le rail, type `rail-planner` mais posable, n'est PAS virtuel) | exclusion des pools craftables / patchs (`_coverage_items`, map_patches) |
-| `is_module` | `item_type == 'module'` | pools de craft |
-| `is_capsule_throwable` | `item_type == 'capsule'` | pools de craft |
+| `is_module` | `item_type == 'module'` | audit (invariant §9), tests |
+| `is_capsule_throwable` | `item_type == 'capsule'` | audit (invariant §9), tests |
 | `is_ammo` | `item_type == 'ammo'` | `_dispatch_vehicle_ammo` (§12.1), `starter_chain` (kit) |
-| `is_gun` | `item_type == 'gun'` | `map_patches` (exclusion), `_dispatch_vehicle_ammo`, audit |
-| `is_armor` | `item_type == 'armor'` | raffinage **usage en vue** (audit) |
-| `is_tool` | `item_type == 'tool'` | `starter_chain`, pools — `beltable_items` l'exclut du transport ; les 7 science packs (raffinage `is_science_pack`) reçoivent quand même une recette (catégorie `science`) |
-| `is_science_pack` | `subgroup == 'science-pack'` — RAFFINAGE d'`is_tool` (les packs SONT de type tool) | `starter_chain`, `map_patches`, `recursive_phase`, audit |
+| `is_gun` | `item_type == 'gun'` | `map_patches` (exclusion `_excludable_items`), audit — `_dispatch_vehicle_ammo` lit `is_ammo`/`ammo_category`, jamais `is_gun` |
+| `is_armor` | `item_type == 'armor'` | documenté, non consommé (usage en vue) |
+| `is_tool` | `item_type == 'tool'` | `beltable_items` (db.py:329 — l'exclut du transport, des pools et des patchs), audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
+| `is_science_pack` | `subgroup == 'science-pack'` — RAFFINAGE d'`is_tool` (les packs SONT de type tool) | `starter_chain`, `map_patches` (exclusion), `recursive_phase`, `easeup_phase`, validator, audit, tests |
 | `is_handheld_gun` (propriété) | `is_gun` ET hors `VEHICLE_GUNS` (armes montées) | `VEHICLE_GUNS` (soft list, gap `is_mounted_gun`) |
 | `is_stackable` (propriété) | `stack_size > 1` du dump ; sinon déduit du type (`NON_STACKABLE_ITEM_TYPES`) | clamp des produits/ingrédients (§9.6) |
 
