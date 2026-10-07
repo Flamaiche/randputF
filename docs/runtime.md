@@ -38,7 +38,7 @@ end
 |-----------|-------------|
 | `pcall` + `type == "table"` | Un mod installé **sans** seed ne casse pas la data-stage : le mod se charge, il ne randomise rien |
 | Miroir Lua et non JSON | Aucun parseur JSON en data-stage ; le coût est un fichier de 8 000 lignes lu nativement (`tool/exporters/mod_seed.py:5-7`) |
-| `require` et non `dofile` | Le résultat est **mémoïsé** par Lua : les cinq fichiers voient la même table |
+| `require` et non `dofile` | Le résultat est **mémoïsé** par Lua : les quatre fichiers du mod voient la même table |
 | `or {}` sur chaque accès | `seed.pools or {}`, `(seed.map or {}).patches or {}`… : un champ manquant ne lève jamais |
 
 **Convention de préfixe.** Deux casses coexistent intentionnellement :
@@ -130,7 +130,7 @@ Le bloc `research_trigger` gère la mécanique de **hand-craft**. Une technologi
 | `clone_gun_for` | 35-49 | **Clone** de `data.raw.gun[gun]` nommé `randputf-<véhicule>-<arme>`, portée rescalée |
 | Application | 52-74 | `car` et `spider-vehicle` prennent une **liste** `guns` ; `artillery-wagon` prend un `gun` unique |
 
-La **pool** des armes provient de la seed (`seed.pools.vehicle_weapons`, `tool/generator/pipeline.py:441`), sans valeur en dur. Le clone permet de définir une portée propre. L'arme d'origine subsiste mais ne reste plus assignée au véhicule.
+La **pool** des armes provient de la seed (`seed.vehicle_armament`, `mod/data-updates.lua:51`), sans valeur en dur — `pools.vehicle_weapons` est exporté mais **jamais lu en Lua** (§9). Le clone permet de définir une portée propre. L'arme d'origine subsiste mais ne reste plus assignée au véhicule.
 
 ### 4.2 Gabarits de ressource
 
@@ -158,7 +158,7 @@ Pour chaque ressource unique :
 | `stages` | 225-237 | Minerais solides : 4 positions, échelle 0.25–0.45 — l'icône de l'item **sur le sol** |
 | `map_color` | 239-243 | Dérivé du hash par composante : `((map_seed_hash × K + i × J) mod 101 + 30) / 255`, avec (K, J) = (131, 47) pour `r`, (197, 83) pour `g`, (251, 127) pour `b` — composantes 30..130 |
 
-L'affectation `base_density = 0` forme la pièce maîtresse du modèle : **les gisements sont posés au runtime**, garantissant le placement exact de `count` blocs (§6.6).
+L'affectation `base_density = 0` forme la pièce maîtresse du modèle : **les gisements sont posés au runtime**, garantissant le placement exact de `count` blocs (§6.8).
 
 Les deux appels `data:extend` sont encadrés par un `pcall` et tracent leur décompte (`mod/data-updates.lua:248-262`), évitant qu'une table invalide ne bloque la data-stage.
 
