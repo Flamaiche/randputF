@@ -4,64 +4,61 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 ## 3. Terminologie
 
-- **Randput** : contraction de *randomize input/output*. Mécanisme central : tout slot d'une recette typé « item » reçoit un item arbitraire, tout slot typé « fluide » reçoit un fluide arbitraire, parmi tous ceux existant dans le jeu.
-- **Item beltable** : tout item pouvant circuler sur un tapis. Constitue le pool des candidats « ressource brute de type item ».
-- **Fluide pipable** : tout fluide pouvant circuler dans un tuyau. Constitue le pool des candidats « ressource brute de type fluide ».
-- **Ressource brute (raw)** : ressource extraite directement du sol — patch posé au sol (fini) ou fluide d'extraction (eau, pétrole brut, vapeur : « infinis » ou non). Seule elle alimente le début de la chaîne de production. **Un science pack ne peut jamais être crafté avec une ressource brute** (§13) : sa recette tire ses ingrédients parmi les intermédiaires craftés, invariant vérifié à la génération et par le validateur (`pools.raw_resources`, §16).
-- **Ressource non automatisable** : entité récoltable à la main ou par interaction directe (arbres, poissons, …). Exclue du calcul des ressources durables (relais §9.5), mais réintroduite comme ingrédient possible dans les crafts ultérieurs — et, comme toute ressource brute, bannie des recettes de science packs (§13).
-- **Recette relais** : pour un produit dont la recette générée consomme une ressource non automatisable, version **alternative du même produit** dont les ingrédients ne font appel qu'à des ressources durables — débloquée dans les 3 premières techs (§9.5).
-- **Ressource durable** : ressource infiniment disponible sur la durée du run (patch au sol, item fabriqué, fluide obtenu). Par opposition aux ressources non automatisables, qui s'épuisent.
-- **Slot** : emplacement d'entrée ou de sortie d'un bâtiment ou d'une recette, caractérisé par son type (item, fluide, combustible, énergie).
-- **Milieu** : environnement d'où un extracteur tire sa ressource (sol, eau, …). Deux extracteurs de milieux différents restent du même type : une pompe et une pompe offshore sont toutes les deux des extracteurs.
-- **Directive** : possibilité déclarée d'un bâtiment — une capacité optionnelle qui distingue deux bâtiments du même type (voir §5).
-- **Pool atteignable** : ensemble des choses que le joueur peut obtenir à un instant donné de la génération (ressources déjà posées, bâtiments déjà débloqués, crafts déjà validés).
-- **Déblocage sur le tas** : mécanisme par lequel le randomizer crée, au moment même où il en a besoin, tout ce qui manque pour rendre une recette valide (extraction, craft, combustible…).
-- **Graine / seed** : valeur déterministe pilotant tous les tirages du randomizer. Par défaut tirée de l'instant présent (millisecondes) à chaque génération, donc unique ; on peut imposer une valeur via `--seed` (§16).
-- **Gaté / gating** (à ne pas corriger en « gâté ») : ressource **mise de côté**, volontairement retirée du pool d'une seed pour ne pas être disponible trop tôt dans le run. C'est le vocabulaire du projet, emprunté à l'anglais *gating*, pas une faute d'orthographe. Le terme apparaît dans `seed.md`, `DEVIANCES.md` et `nondeterminism.md` ; le `CHANGELOG.md` le déclare explicitement.
+- **Randput** : contraction de *randomize input/output*. C'est le cœur du mod : chaque slot d'item ou de fluide d'une recette reçoit un élément aléatoire parmi tous ceux disponibles dans le jeu.
+- **Item beltable** : tout objet transportable sur un tapis roulant. Il rejoint le pool des ressources brutes de type item.
+- **Fluide pipable** : tout fluide capable de circuler dans un tuyau. Il rejoint le pool des ressources brutes de type fluide.
+- **Ressource brute (raw)** : ressource extraite directement du milieu (gisement fini au sol ou fluide d'extraction infini ou non). Elle alimente le départ de la production. Règle absolue : **un science pack ne se fabrique jamais directement à partir d'une ressource brute** (§13). Sa recette exige des intermédiaires déjà craftés. Cet invariant est validé à la génération par `raw_resources` (§16).
+- **Ressource non automatisable** : objet récolté uniquement à la main ou par interaction directe (arbres, poissons, ...). Elle est exclue des ressources durables (§9.5), mais peut servir d'ingrédient pour des crafts avancés. Comme toute ressource brute, elle reste bannie des recettes de science packs (§13).
+- **Recette relais** : alternative de craft pour un produit dont la recette principale exige une ressource non automatisable. Elle n'utilise que des ressources durables et se débloque parmi les 3 premières technologies (§9.5).
+- **Ressource durable** : ressource disponible à l'infini durant la partie (gisement, objet fabriqué, fluide produit), contrairement aux ressources non automatisables qui finissent par s'épuiser.
+- **Slot** : point d'entrée ou de sortie d'un bâtiment ou d'une recette. Il possède un type précis : item, fluide, combustible ou énergie.
+- **Milieu** : environnement d'extraction d'une ressource brute. Les trois valeurs exactes du code sont `ground`, `fluid` et `water`. Deux extracteurs opérant dans des milieux différents partagent le même type fonctionnel : une pompe et une pompe offshore sont toutes deux des extracteurs.
+- **Directive** : capacité optionnelle déclarée d'un bâtiment. Elle permet de différencier deux machines de même type (§5).
+- **Pool atteignable** : ensemble des éléments accessibles par le joueur à une étape précise de la génération (ressources placées, bâtiments débloqués, recettes validées).
+- **Déblocage sur le tas** : processus où le randomizer génère à la volée les éléments requis pour valider une recette (méthode d'extraction, craft intermédiaire, combustible, ...).
+- **Graine / seed** : valeur déterministe qui régit tous les tirages du randomizer. Unique et basée par défaut sur le temps système (en millisecondes), elle peut être fixée avec l'option `--seed` (§16).
+- **Gaté / gating** (sans accent circonflexe) : ressource volontairement écartée du pool d'une seed pour retarder son apparition dans la partie. Ce terme technique provient de l'anglais *gating*. Il figure dans `seed.md`, `DEVIANCES.md` et `nondeterminism.md`, et est explicitement documenté dans le `CHANGELOG.md`.
 
 ## 5. Le modèle randput : classification des bâtiments
 
-C'est la fondation de tout le moteur. **Aucun bâtiment n'est traité comme « bâtiment + ses recettes vanilles ».** Chaque bâtiment est défini par :
+Ce modèle est le pilier du moteur de génération. **Aucun bâtiment n'est lié à ses recettes vanilla.** Chaque entité se définit par :
 
 1. un **type** fonctionnel ;
-2. des **slots** d'entrée/sortie **typés** ;
-3. des **directives** : ses possibilités, ses capacités optionnelles.
+2. des **slots** d'entrée et de sortie typés ;
+3. des **directives** décrivant ses capacités optionnelles.
 
-Cette classification est lourde à construire mais c'est précisément sur elle que repose le randomizer : c'est elle qui permet des combinaisons « extraordinaires » tout en gardant un monde cohérent.
+Cette classification rigoureuse permet au randomizer de créer des combinaisons surprenantes tout en garantissant la cohérence logique du monde.
 
 ### 5.1 Types fonctionnels
 
-| Type | Rôle | Exemples vanilles |
+| Type | Rôle | Exemples vanilla |
 |---|---|---|
-| Extracteur | Sort une ressource brute d'un milieu | perceuse, pompe offshore, tour de pompage |
-| Transformateur | Convertit des entrées en sorties | fours, assembleurs, usine chimique, raffinerie, **chaudière** |
-| Recherche | Convertit des science packs en technologie | **laboratoire** |
-| Producteur d'énergie | Output spécial « énergie » | turbine, panneau solaire, réacteur |
-| Consommateur d'énergie | Input spécial « énergie » | perceuse électrique, assembleur électrique… |
-| Transport | Déplace items/fluides | tapis, splitters, undergrounds, tuyaux, pompes |
-| Logistique | Manipule les objets sans flux continu | bras robotisés |
+| `extractor` | Extrait une ressource brute d'un milieu | foreuse, pompe offshore, pompe à pétrole |
+| `transformer` | Convertit des entrées en sorties | fours, machines d'assemblage, usine chimique, raffinerie, chaudière |
+| `research` | Convertit des science packs en technologies | laboratoire |
+| `generator` | Produit de l'énergie | turbine, panneau solaire, réacteur |
+| `distribution` | Distribue l'électricité | poteaux électriques |
+| `other` | Autres comportements | coffres, bras robotisés, tapis roulants |
 
-Points importants, volontairement soulignés car ils guident tout le modèle :
+Notez que le transport, la logistique et la consommation d'énergie ne sont pas des types fonctionnels, mais des tags (§2 : `is_belt`, `is_logistics_chest`, `consumes_electricity`).
 
-- **Il n'existe pas de chaîne figée.** Une pompe et une pompe offshore sont *toutes les deux* des extracteurs — simplement dans des milieux différents. Le moteur raisonne en types et milieux, jamais en objets précis.
-- Une **chaudière** est un transformateur, similaire aux fours : elle prend des entrées (un fluide, un combustible) et produit une sortie (un autre fluide).
-- Une **turbine** est un bâtiment électrique qui demande un fluide en entrée — et ce fluide est décidé **au moment où le bâtiment est créé** par le randomizer, pas avant.
-- Un **laboratoire** n'est jamais un transformateur : détecté par sa capacité à consommer des science packs, il est classé dans le type dédié **recherche** et garanti dès le starter (§8) — il n'entre donc jamais dans le pool des ateliers de craft.
+- **Pas de chaîne de production figée** : une pompe et une pompe offshore appartiennent toutes deux au type `extractor`, mais opèrent dans des milieux différents. Le moteur de génération raisonne par types et par milieux, jamais par objets spécifiques.
+- Une **chaudière** est classée comme `transformer` (au même titre que les fours) : elle consomme des entrées (fluide, combustible) pour générer une sortie (autre fluide).
+- Une **turbine** (type `generator`) requiert un fluide en entrée, déterminé uniquement **lors de sa création** par le randomizer.
+- Un **laboratoire** (type `research`) n'est jamais un `transformer`. Identifié par sa consommation de science packs, il est garanti dès le kit de départ (§8) et n'apparaît jamais dans le pool des ateliers de craft.
 
 ### 5.2 Slots typés
 
-Chaque slot porte un type parmi :
+Chaque slot est associé à l'un des types suivants :
 
-- **item** (tout élément transportable sur tapis) ;
-- **fluide** (tout élément transportable par tuyau) ;
-- **combustible** (item ou fluide doté d'une valeur énergétique) ;
-- **énergie** (cas particulier, voir §10).
+- **item** : tout élément transportable sur tapis ;
+- **fluide** : tout élément transportable par tuyau ;
+- **combustible** : item ou fluide possédant une valeur énergétique ;
+- **énergie** : cas particulier (§10).
 
 ### 5.3 Directives : les possibilités par tier
 
-Les directives expriment ce qu'un bâtiment *peut faire*, indépendamment de ses recettes vanilles. Elles créent des écarts de capacité entre tiers du même type. Exemples canoniques :
+Les directives décrivent les capacités d'action d'un bâtiment, indépendamment de ses recettes vanilla. Elles introduisent des variations de puissance entre les différents tiers d'un même type. Exemples types :
 
-- un **assembleur tier 1** n'accepte que des slots items ; un **assembleur tier 2** possède la capacité supplémentaire d'avoir une entrée fluide — une recette fluide peut donc lui être attribuée si la ressource sélectionnée en entrée est un fluide ;
-- une **perceuse électrique** peut, dès le début du jeu, exiger un fluide pour fonctionner (directive « input auxiliaire »). Le moteur garantit alors que ce fluide est obtenable : les tuyaux qui le transportent peuvent être fabriqués **à partir de ce fluide lui-même**, ou d'une **autre ressource** — mais **jamais à partir de la ressource qui en a besoin** (règle anti-cycle, §8 et §15).
-
-C'est cette matrice type × tier × directives qui remplace toute classification manuelle figée.
+- Un **assembleur de tier 1** n'accepte que des slots d'items. Un **assembleur de tier 2** peut recevoir une entrée fluide supplémentaire : une recette avec fluide peut donc lui être assignée si la ressource d'entrée requise est un fluide.
+- Une **foreuse électrique** peut exiger un fluide dès le début de la partie (directive d'entrée auxiliaire). Le moteur garantit l'accessibilité de ce fluide : les tuyaux de transport peuvent être fabriqués **avec ce fluide lui-même** ou via une **autre ressource**, mais **jamais à partir de la ressource extraite par cette foreuse** (règle anti-cycle, §8 et §15).
