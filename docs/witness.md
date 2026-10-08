@@ -1,8 +1,8 @@
 # Témoin de déterminisme
 
-Plutôt que d'affirmer son déterminisme, randputF le prouve : son témoin prend la forme d'une empreinte numérique que chacun peut calculer et vérifier de manière autonome.
+randputF prouve son déterminisme par les faits. Son témoin est une empreinte numérique que chacun peut calculer et vérifier lui-même.
 
-Ce document détaille le rôle du témoin, le procédé de canonisation qui garantit sa reproductibilité, ainsi que les pièges techniques réellement observés et déjoués.
+Ce document présente le rôle de ce témoin, la méthode de canonisation qui assure sa reproductibilité et les pièges techniques contournés.
 
 Retour : [README.md](../README.md) · [nondeterminism.md](nondeterminism.md).
 
@@ -27,11 +27,13 @@ ce428c2140ec7031f9604637ecf70cbc
 
 L'instruction `witness --seed 5` assemble le mod lié à la seed 5 avant d'en calculer le md5 canonique. L'option `--expect <hash>` effectue la comparaison et produit une erreur en cas d'écart. Sans `--expect`, la commande se contente de générer et d'afficher le témoin.
 
-L'assemblage s'effectue **depuis le tag** (le wheel embarque l'intégralité des ressources), et non depuis une copie de travail de développement : ce parcours reproduit fidèlement la situation d'un utilisateur.
+L'assemblage s'effectue sur l'arbre de travail courant (le wheel embarque l'intégralité des ressources), et non depuis un tag : ce parcours reproduit fidèlement la situation d'un utilisateur.
+
+Dans le workflow d'intégration, `ci.yml` utilise `--expect` (une divergence produit une sortie 1, ce qui est bloquant). À l'inverse, `release.yml` lance le témoin sans `--expect` (la divergence n'y est pas bloquante, seule la réussite de la génération compte).
 
 ## 2. Ce qui est garanti
 
-- **Au bit près** : un contenu de mod identique donne le même md5, sur n'importe quelle machine, quelle que soit la version de Python ou de zlib.
+- **Au bit près** : un contenu de mod identique produit le même md5 sur n'importe quelle machine, peu importe la version de Python ou de zlib.
 - **Vérifié automatiquement** : l'action CI « wheel » (`.github/workflows/ci.yml`, Python 3.12) installe le paquet depuis une copie vierge, réévalue le témoin **depuis `/tmp`, hors checkout**, puis contrôle sa concordance avec le hash attendu.
 - **Identique depuis les tags** : chacun peut réexécuter la commande ci-dessus depuis le tag de la version testée pour retrouver la même empreinte. Le témoin dépendant de la version (§3.4), le hash attendu est celui associé à cette version dans `ci.yml`.
 
@@ -65,7 +67,7 @@ Par défaut, la bibliothèque `zipfile` dérive `create_system` depuis `sys.plat
 
 Le nom du répertoire d'assemblage ne doit pas influer sur le md5 : exécuter le traitement sur un dossier renommé doit renvoyer le même résultat pour un contenu inchangé. Le zip de référence ajoute donc en préfixe de chaque entrée la chaîne `randputF_<version>`, issue de la version du mod (`tool/common/version.py`, tirée de `mod/info.json`). Le mod installé conserve systématiquement cette dénomination.
 
-> **Conséquence pour une release** : le md5 du témoin dépend directement du numéro de version (le préfixe racine intégrant `randputF_<version>`). Modifier la version génère un nouveau témoin. Voir la procédure de publication : [notes/README.md](../notes/README.md).
+> **Conséquence pour une release** : le md5 du témoin dépend directement du numéro de version (le préfixe racine intégrant `randputF_<version>`). Modifier la version génère un nouveau témoin. Pour la procédure de publication, voir `docs/release.md`. Le fichier `notes/README.md` (accessible via [notes/README.md](../notes/README.md)) sert quant à lui de gabarit d'écriture de note.
 
 ## 4. Ce qui est exclu du témoin
 
