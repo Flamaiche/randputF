@@ -4,15 +4,15 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 ## 4. Architecture générale
 
-Le système comprend trois parties distinctes :
+Le système s'articule autour de trois composants clés :
 
 ```
 ┌─────────────────────┐      ┌──────────────────────────┐      ┌─────────────────┐
 │   Tool externe      │      │   Mod Factorio           │      │  Runtime        │
 │   Python            │ ───► │   data-stage             │ ───► │  control.lua    │
 │                     │      │                          │      │                 │
-│ • parse vanilla     │ YAML │ • lit config + seed      │      │ • placement des │
-│ • génère le graphe  │ JSON │ • construit entités      │      │   patchs        │
+│ • parse vanilla     │ seed │ • charge seed.lua        │      │ • placement des │
+│ • génère le graphe  │ .lua │ • construit entités      │      │   patchs        │
 │ • valide solvabilité│      │   ressources cachées     │      │ • déblocages    │
 │ • écrit la seed     │      │ • construit recettes/    │      │   progressifs   │
 │                     │      │   techs depuis la seed   │      │ • kit départ    │
@@ -21,86 +21,69 @@ Le système comprend trois parties distinctes :
 
 ### 4.1 Tool externe (Python)
 
-La génération de la seed se fait entièrement hors du jeu via un outil Python.
-Motifs :
+La génération de la seed s'effectue en dehors du jeu grâce à un outil en Python.
+Pourquoi ce choix ?
 
-- Factorio ne permet pas de modifier les ingrédients d'une recette au runtime
-  par l'API : tout s'effectue en *data-stage*. Le tool écrit donc les fichiers
-  nécessaires pour cette étape ;
-- la solvabilité d'une seed (§15) se vérifie en amont, avant de lancer
-  Factorio, ce qui évite les parties bloquées ;
-- Python offre un cadre simple pour le développement et le débogage.
+- L'API de Factorio interdit de modifier les ingrédients d'une recette au runtime : tout se fige durant le *data-stage*. L'outil Python prépare et écrit donc les fichiers requis pour cette phase ;
+- La solvabilité de la seed (§15) est validée en amont, évitant de lancer Factorio pour se retrouver bloqué en cours de partie ;
+- Python fournit un environnement idéal pour développer, tester et déboguer rapidement.
 
 ### 4.2 Formats de fichiers
 
-- **YAML** pour les paramètres de configuration (accessibles et commentables) ;
-- **JSON** pour les données de la seed et les définitions générées lues par le
-  mod ;
-- d'autres formats viendront s'ajouter si nécessaire.
+- **YAML** pour configurer le mod de manière lisible et commentée ;
+- **JSON** pour stocker la seed générée et ses définitions ;
+- D'autres formats pourront s'ajouter selon les besoins futurs.
 
 ### 4.3 Mod Factorio
 
-Durant le *data-stage*, le mod charge la configuration et la seed pour créer :
+Pendant le *data-stage*, le mod charge uniquement la seed via `require("seed.seed")` (le fichier `seed.lua`). Aucun fichier `yaml` ou `json` n'est lu par les scripts `mod/*.lua`, et `seed.json` n'est jamais lu par le code Lua (le champ `pools` de la seed reste d'ailleurs une variable locale morte dans `mod/data.lua:18`). Le mod utilise ces données pour générer :
 
-- une entité ressource cachée pour chaque item transportable par convoyeur et
-  chaque fluide transportable par tuyau éligible (plusieurs centaines), sans
-  autoplace par défaut — leur apparition dépend uniquement du runtime ;
-- l'ensemble des recettes générées ;
-- l'intégralité de l'arbre technologique.
+- Les entités de ressources au sol : le mod ne crée pas des centaines d'entités cachées. En réalité, `mod/data-updates.lua:125-155` génère uniquement les entités `randputf-minerai-*` et `randputf-oil-*` requises pour les patchs de la seed (entre 3 et 8 ressources dédupliquées). La liste complète `seed.pools` (qui contient 209 items et 8 fluides) sert exclusivement à `vehicle_range_scaling` dans `mod/data-updates.lua:18` ;
+- L'ensemble des recettes générées ;
+- L'intégralité de l'arbre technologique.
 
-Pendant l'exécution (*control.lua*), le mod :
+Pendant l'exécution en jeu (`control.lua`), le mod :
 
-- applique les patchs de ressources lors de la génération de la surface selon
-  les choix de la seed ;
-- pilote les déblocages progressifs, le kit de départ et les recherches
-  gratuites.
+- Place les patchs de ressources lors de la génération de la carte selon les paramètres de la seed ;
+- Gère les déblocages progressifs, distribue le kit de départ et attribue les recherches gratuites.
 
 ## 17. Pipeline technique
 
-Le déroulement complet, de la création d'une seed au lancement d'une partie :
+Voici les étapes clés, de la génération de la seed jusqu'au lancement de votre partie :
 
-1. `config/defaults.yaml` regroupe les paramètres généraux (seuils, poids,
-   pools, récursion/armes embarquées, butin du site de crash §7). Les réglages
-   de `config/user.yaml` s'y ajoutent avant d'être validés (§Note config).
-2. L'outil Python s'exécute :
-   1. il analyse les prototypes de base de Factorio 2.0 (items sur convoyeurs,
-      fluides en tuyaux, bâtiments et leurs emplacements par niveau) ;
-   2. il calcule le graphe complet à partir de la seed (phases §6 à §14) en
-      effectuant deux passes sur la même source aléatoire si le jalonnement
-      des late raws est actif (§6.3 : la passe A mesure les dépendances, la
-      passe B relance le départ sur un pool réduit, l'état initial étant
-      conservé via `StarterConfig.deferred`) ;
-   3. il contrôle les règles de solvabilité (§15) ;
-   4. il enregistre `seed.json` et ses annexes dans le dossier du mod.
-3. Le mod Factorio lit les fichiers YAML et JSON en *data-stage* pour bâtir les
-   ressources cachées, les recettes et les technologies.
-4. Le code d'exécution (`control.lua`) prend le relais pour façonner la carte
-   (placement des patchs, substitution des ressources d'origine), distribuer
-   le kit de départ, attribuer les recherches gratuites et gérer les
-   déblocages séquentiels.
+1. `config/defaults.yaml` centralise les paramètres généraux (seuils, poids, pools, récursion, armes embarquées, butin du site de crash §7). L'utilisateur peut surcharger ces valeurs dans `config/user.yaml`, l'ensemble étant validé par `config.py`.
+2. L'outil Python entre en scène :
+   1. Il extrait les prototypes de base de Factorio 2.0 (items sur convoyeurs, fluides en tuyaux, bâtiments et leurs emplacements par niveau) ;
+   2. Il génère le graphe complet à partir de la seed (phases §6 à §14). Si le jalonnement des late raws est actif (voir la section des ressources §6 ou §6.5), il effectue deux passes sur la même source aléatoire : la passe A évalue les dépendances, puis la passe B relance le départ sur un pool restreint, l'état initial restant préservé via `StarterConfig.deferred` ;
+   3. Il valide rigoureusement les règles de solvabilité (§15) ;
+   4. Il écrit `seed.json` et ses fichiers annexes directement dans le répertoire du mod.
+3. Lors du *data-stage*, le mod Factorio charge uniquement le fichier `seed.lua` pour assembler les ressources, les recettes et les technologies.
+4. Enfin, le code d'exécution (`control.lua`) prend le relais en jeu : il façonne la carte (placement des patchs et remplacement des ressources d'origine), distribue le kit de départ, offre les recherches gratuites et orchestre les déblocages séquentiels.
 
-Ce résumé présente les grandes étapes. Le détail des jalons, des flux de
-génération aléatoire et des contrôles se trouve dans [`pipeline.md`](pipeline.md),
-tandis que la description du code Lua fichier par fichier est accessible dans
-[`runtime.md`](runtime.md).
+Ce survol pose les bases. Pour plonger dans le détail des jalons, des flux aléatoires et des contrôles, consultez [`pipeline.md`](pipeline.md). L'analyse pas à pas du code Lua est disponible dans [`runtime.md`](runtime.md).
 
 ## 18. Structure du projet
 
 ```
 randputF/
+├── LICENSE              # licence du projet
 ├── README.md            # utilisateur : installation / jouer
 ├── README_EN.md         # version anglophone du README
 ├── CHANGELOG.md         # résumé des versions (hautes lumières par version)
-├── docs/                # conception : ce dossier + tags.md, nondeterminism.md
+├── conftest.py          # configuration des tests pytest
 ├── .gitignore
 ├── pyproject.toml       # package Python (randputf, ≥3.11)
+├── atelier/             # outils de travail et scripts de build
+├── notes/               # notes de recherche et de conception
+├── docs/                # conception : ce dossier + tags.md, nondeterminism.md
 ├── config/              # configurations YAML
 │   ├── defaults.yaml    # réglages par défaut (source unique, non modifiable)
 │   └── user.yaml        # surcharges utilisateur (facultatives, validées)
 ├── data/                # dump des prototypes vanilla
 │   └── vanilla_dump.json
 ├── tool/                # générateur externe Python
-│   ├── __main__.py      # CLI : parse, audit, generate
+│   ├── __main__.py      # CLI : parse, audit, generate, difficulty, witness
+│   ├── service.py       # service d'orchestration (202 lignes)
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker, config
 │   │   ├── db.py
 │   │   ├── demo.py
@@ -109,7 +92,7 @@ randputF/
 │   │   ├── tagsets.py         # ensembles de noms figés (source unique, tags.md §14)
 │   │   ├── weighted_picker.py
 │   │   ├── config.py          # les deux YAML : fusion profonde + validation stricte
-│   │   ├── assets.py          # résolution des assets (prototypes, icônes)
+│   │   ├── assets.py          # résolution des dossiers mod/ (info.json), data/ (vanilla_dump.json) et config/ (defaults.yaml)
 │   │   ├── version.py         # version unique (source : mod/info.json)
 │   │   └── witness.py         # témoin de déterminisme (docs/witness.md)
 │   ├── audit/           # audits : tags (invariants C8), difficulté
@@ -123,14 +106,14 @@ randputF/
 │   │   ├── lakes.py             # phase 1bis : lacs de fluide
 │   │   ├── starter_chain.py     # phase 2 : chaîne initiale
 │   │   ├── building_fluids.py   # phase 2bis : fluides des bâtiments fixes (§6)
-│   │   ├── recursive_phase.py   # phase 3 : récursion + balayage contenu
-│   │   ├── electricity.py       # phase 3 : résolution électricité
-│   │   ├── endgame_phase.py     # phase 4 : chaîne fusée
+│   │   ├── electricity.py       # Phase 3 : résolution électricité
+│   │   ├── recursive_phase.py   # Phase 4 : récursion + balayage contenu
+│   │   ├── endgame_phase.py     # Phase 4ter : chaîne fusée
 │   │   ├── relay_phase.py       # relais ressources non-infinies + prologue
-│   │   ├── easeup_phase.py      # recettes alternatives crafts lourds (§9.3)
+│   │   ├── easeup_phase.py      # recettes alternatives pour les crafts lourds (voir config.md ou la passe 20 de pipeline.md)
 │   │   ├── recipes.py           # primitives recettes (make_recipe, ensure_obtainable)
 │   │   ├── extractor_timing.py  # timing de déblocage C3 (+ boîte D4bis)
-│   │   ├── late_raws.py         # jalons late raws (§6.3) : plan passe A + dégradation
+│   │   ├── late_raws.py         # jalons late raws (voir ressources.md §6 ou §6.5) : plan passe A + dégradation
 │   │   ├── early_oracle.py      # watershed « obtenable avant le réseau » (§10ter)
 │   │   ├── bootstrap_guard.py   # DIAGNOSTIC seul (tests) — plus une passe pipeline
 │   │   ├── usage_pass.py        # U1/U2 : rattachement d'usage, gardes anti-cycle
@@ -144,7 +127,7 @@ randputF/
 │   │   ├── recursive.py        # RecursiveConfig (§9 : poids, armes montées §12.1)
 │   │   ├── starter.py          # StarterConfig (§7/§8 : ammo_count, inserter_chance, deferred)
 │   │   ├── relay.py            # RelayConfig (§9.5)
-│   │   ├── easeup.py           # EaseupConfig (§9.3)
+│   │   ├── easeup.py           # EaseupConfig (voir config.md ou la passe 20 de pipeline.md)
 │   │   ├── craft_quantity.py   # CraftQuantityConfig (miroir du module generator)
 │   │   ├── usage.py            # UsageConfig (D2 : garantie d'usage dure)
 │   │   ├── difficulty_knobs.py # expérimental — testé, non branché
@@ -160,9 +143,12 @@ randputF/
 │       └── solver.py              # validation du seed dict assemblé
 ├── tools/               # scripts dev : audit_playthrough, audit_usage, classify_late_raws
 ├── mod/                 # le mod Factorio 2.0
+│   ├── info.json        # métadonnées du mod
 │   ├── data.lua         # data-stage : lecture seed, construction
 │   ├── data-updates.lua # réarmement véhicules, lacs, fuel unifié
+│   ├── data-final-fixes.lua # ajustements finaux du data-stage
 │   ├── control.lua      # runtime : carte, déblocages, kit
+│   ├── graphics/        # éléments graphiques du mod
 │   ├── locale/          # localisations (en, fr)
 │   └── seed/            # seed.json et données générées
 ├── exporter/            # mod compagnon (dump JSON des prototypes)
@@ -170,12 +156,6 @@ randputF/
 └── output/              # mod assemblé (généré)
 ```
 
-Le graphe interactif (`seed.graph.html`, produit par `tool/exporters/seed_graph.py`)
-est documenté pour les joueurs dans le README principal (section « Le graphe
-interactif ») et pour sa conception dans [graphe-interactif.md](graphe-interactif.md).
-Il sert à la fois de visualisation pour l'utilisateur et d'élément du système,
-combinant l'exploitation des données du produit, les icônes du jeu et un
-format de fichier autonome.
+Le graphe interactif (`seed.graph.html`, généré par `tool/exporters/seed_graph.py`) est présenté aux joueurs dans le README principal (section « Le graphe interactif ») et détaillé techniquement dans [graphe-interactif.md](graphe-interactif.md). Cet outil sert d'interface visuelle et de brique système, unissant données générées, icônes du jeu et format autonome.
 
-L'organisation interne pourra évoluer au fil des développements, mais les rôles
-principaux restent ceux présentés au §4.
+Bien que la structure interne puisse évoluer au fil du développement, les rôles fondamentaux restent fidèles à l'architecture du §4.
