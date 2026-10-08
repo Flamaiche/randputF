@@ -4,14 +4,14 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 ## 11. Combat et armement
 
-- **Les biters ne changent pas** : pour le moment, leur comportement, leur évolution et la pollution restent identiques à la version vanilla.
-- **Les armes sont randomisées** : leur déblocage suit le système de pourcentages appliqué aux autres bâtiments.
-- **Munitions** : chaque arme obtenue est liée à un type de munitions spécifique. Les autres catégories de munitions sont traitées comme des crafts standards plus tard, ou plus tôt si elles ont été sélectionnées comme recettes. **Garantie jouable** : si une arme est débloquée par une technologie alors qu'**aucune** munition de sa catégorie n'est disponible, les munitions manquantes sont générées et débloquées dans **la même tech**. Une arme n'est jamais inutile. Si une munition compatible existe déjà, rien n'est ajouté.
-- **Une arme par tech** : le groupement du §13 ne fusionne jamais deux étapes de combat consécutives (même règle que pour les pylônes au §9.4). Cela évite qu'une seule technologie débloque plusieurs armes et leurs munitions d'un coup. Chaque arme arrive seule, avec sa munition dédiée.
+- **Les biters ne changent pas** : leur comportement, leur évolution et la gestion de la pollution restent identiques à la version vanilla.
+- **Les armes sont randomisées** : leur déblocage suit les pourcentages appliqués aux autres bâtiments.
+- **Munitions** : chaque arme est liée à un type de munitions spécifique. Les autres catégories de munitions sont traitées comme des crafts standards. **Garantie de jouabilité** : si une arme est débloquée par une technologie alors qu'**aucune** munition compatible n'est disponible, une munition manquante est générée et débloquée dans la **même tech**. Une arme n'est jamais inutile. Si une munition compatible existe déjà, rien n'est ajouté.
+- **Une arme par tech** : le groupement du §13 ne fusionne jamais deux étapes de combat consécutives (même règle que pour les pylônes au §9.4). Chaque arme arrive seule, avec sa munition dédiée.
 
 ## 12. Transports avancés
 
-Trains, véhicules et logistique avancée utilisent le même modèle que les armes. Ce sont des **catégories d'objets** déblocables par pourcentages. Les dépendances sont **minimes** et fixées lors du tirage : un véhicule peut exiger un **combustible** ; un train impose les **rails avant ou en même temps** que lui. Aucun autre traitement spécial n'est appliqué.
+Trains, véhicules et logistique avancée utilisent le même modèle que les armes : ce sont des **catégories d'objets** déblocables par pourcentages. Les dépendances sont **minimes** et fixées lors du tirage : un véhicule peut exiger un **combustible**. Aucune contrainte n'est imposée entre les rails et les locomotives. Aucun autre traitement spécial n'est appliqué.
 
 ### 12.1 Armes montées randomisées
 
@@ -21,7 +21,7 @@ Les armes **montées-uniquement** (`VEHICLE_GUNS` : canons, mitrailleuses, lance
 
 **Portée scalée selon la taille du véhicule** : la portée du clone augmente avec la taille du véhicule selon la formule `range × (1 + max(taille - base_size, 0) × scale)`. La `taille` correspond à l'extent de la `selection_box` (tank 2.6, spidertron 2, wagon d'artillerie 6). Avec les valeurs par défaut (`base_size: 2`, `scale: 0.4`), le tank augmente la portée de ses armes de ×1.24 et le wagon de ×2.6. Le spidertron, à la taille de base, conserve les portées d'origine. La **munition** consommée par le clone (ammo_category) est celle de l'arme source, car chaque munition est déjà randomisée et craftable (§9.6).
 
-**Munitions garanties après le véhicule** : lors de la création de la technologie d'un véhicule, le générateur vérifie les munitions de ses armes (via `ammo_category`). Celles qui n'ont pas encore de recette sont créées immédiatement et **dispatchées dans les 3 techs isolées qui suivent celle du véhicule** (`randputf-ammo-<véhicule>-<munition>`). Elles coûtent des packs de science déjà débloqués. Le joueur reçoit ainsi son véhicule, puis ses munitions rapidement après au laboratoire. Les munitions déjà présentes ne sont pas recalculées.
+**Munitions garanties après le véhicule** : lors de la création de la technologie d'un véhicule, le générateur vérifie les munitions de ses armes (via `ammo_category`). Celles qui n'ont pas encore de recette sont créées immédiatement et **dispatchées dans jusqu'à 3 techs isolées qui suivent celle du véhicule** (`randputf-ammo-<véhicule>-<munition>`). Elles coûtent des packs de science déjà débloqués. Le joueur reçoit son véhicule, puis ses munitions rapidement après. Les munitions déjà présentes ne sont pas recalculées.
 
 L'assignation est enregistrée dans `vehicle_armament` (items gun réels, sans champ `vehicle_armament_items`), la pool dans `pools.vehicle_weapons` et le scale dans `pools.vehicle_range_scaling`. **Aucune valeur n'est en dur** : `armed_vehicles`, `vehicle_weapons`, `vehicle_slots_min/max`, `vehicle_slots_with_replacement`, `vehicle_range_base_size` et `vehicle_range_scale` se configurent via `recursive:` (§16).
 
