@@ -15,7 +15,7 @@ et chaque seed = une combinaison unique de choix.
 
 ---
 
-## 1. Choix d'items/resource patches (Phase 1 — map_patches.py)
+## Choix d'items/resource patches (Phase 1 — map_patches.py)
 
 ### 1a. Items solides tirés en patches
 - **Fichier** : `tool/generator/map_patches.py:77`
@@ -42,7 +42,7 @@ et chaque seed = une combinaison unique de choix.
 
 ---
 
-## 2. Chaîne initiale (Phase 2 — starter_chain.py)
+## Chaîne initiale (Phase 2 — starter_chain.py)
 
 ### 2a. Extracteur pour ressource
 - **Fichier** : `tool/generator/starter_chain.py:177`
@@ -98,7 +98,7 @@ et chaque seed = une combinaison unique de choix.
 
 ---
 
-## 3. Recettes et ateliers (recipes.py)
+## Recettes et ateliers (recipes.py)
 
 ### 3a. Atelier pour recette (whitelist)
 - **Fichier** : `tool/generator/recipes.py:445`
@@ -126,7 +126,7 @@ et chaque seed = une combinaison unique de choix.
 
 ---
 
-## 4. Phase récursive (recursive_phase.py)
+## Phase récursive (recursive_phase.py)
 
 ### 4a. Couverture d'items
 - **Fichier** : `tool/generator/recursive_phase.py:222`
@@ -179,7 +179,7 @@ et chaque seed = une combinaison unique de choix.
 
 ---
 
-## 5. Électricité (electricity.py)
+## Électricité (electricity.py)
 
 ### 5a. Pylône
 - **Fichier** : `tool/generator/electricity.py` (`_pick_pole`)
@@ -227,7 +227,7 @@ et chaque seed = une combinaison unique de choix.
 
 ---
 
-## 6. Lacs (lakes.py)
+## Lacs (lakes.py)
 
 ### 6a. Fluide du lac
 - **Fichier** : `tool/generator/lakes.py:63`
@@ -300,7 +300,7 @@ mais d'une **itération de frozenset ordonnant des recettes** dans la chaîne fu
 La suite de tests passe toujours (elle compte aujourd'hui 722 tests ; à
 l'époque de cette correction, elle en comptait 71).
 
-Après les correctifs (chaîne fusée, §5c, §5d), les itérations de
+Après les correctifs (chaîne fusée, [nondeterminism.md](nondeterminism.md#électricité-electricitypy), [nondeterminism.md](nondeterminism.md#électricité-electricitypy)), les itérations de
 `set`/`frozenset` restantes (ex. `map_patches.py:101` `hero`, `recipes.py:522`)
 ne servent QUE des tests d'appartenance (`in`/`not in`), déterministes —
 aucune ne trie une séquence exportée.
@@ -308,23 +308,23 @@ aucune ne trie une séquence exportée.
 **Régression** : `tests/test_determinism.py` régénère les seeds **1337 et 1299**
 en sous-processus sous `PYTHONHASHSEED` 0/1 et compare `seed.json` octet par
 octet — l'ordre des effets de la tech `randputf-combat-submachine-gun`
-(correctif §5d) est couvert par ce garde.
+(correctif [nondeterminism.md](nondeterminism.md#électricité-electricitypy)) est couvert par ce garde.
 
 ---
 
-## 7. Dépendance à l'ordre d'un même processus (multi-seeds, sweeps) — corrigé
+## Dépendance à l'ordre d'un même processus (multi-seeds, sweeps) — corrigé
 
 Problème distinct du hash-order : enchaîner plusieurs seeds dans le **même
 processus** (sweeps, boucles de tests) produisait des seeds différentes selon
 leur position.
 
-- **Cause racine** : la passe B du jalonnement (§16 `late_raws`) faisait
+- **Cause racine** : la passe B du jalonnement ([seed.md](seed.md#seed-et-configuration) `late_raws`) faisait
   `cfg.setdefault("starter", {})["deferred"] = sorted(map(list, plan.gated))`
   — le config du caller est partagé par **copie superficielle** entre seeds
   (`dict(config)` ne copie pas le sous-dict `starter`) → `deferred` était muté
   **en place** dans la config partagée et n'était ré-écrasé que par les seeds
-  qui rejouent la passe B. Le retour anticipé « gating inerte » (§5 des
-  DEVIANCES) rendait alors une seed inerte dépendante du jalon `deferred` laissé
+  qui rejouent la passe B. Le retour anticipé « gating inerte » ([DEVIANCES.md](DEVIANCES.md#gating--inerte--jalons-tous--0-rendant-la-passe-b-auto-cassante))
+  rendait alors une seed inerte dépendante du jalon `deferred` laissé
   par la seed non-inerte précédente.
 - **Découvert sur** : seed 1269 — défaite en gaté (tech 21, `light-oil` du pack
   `automation-science-pack`) quand on la générait après ~40 autres seeds dans le
@@ -341,3 +341,9 @@ leur position.
   d'ordre (seed 1269 après cumul) couvrent ce mode ; les sweeps s'exécutent
   maintenant dans des conditions équivalentes au process vierge appliqué une
   fois par seed.
+
+## Lectures associées
+
+- **Parent** : [seed.md](seed.md) — seed et configuration
+- **Enfant(s)** : [witness.md](witness.md) — le témoin de déterminisme
+- **Concepts liés** : [pipeline.md](pipeline.md#les-flux-rng-du-pipeline) ; [seed.md](seed.md#seed-et-configuration) ; [modules.md](modules.md#toolgenerator--les-phases)

@@ -12,7 +12,9 @@ pioche au lancement de la fusée.
 
 Ce README couvre l'installation et l'utilisation. La référence de conception
 (comment le système fonctionne, pourquoi il est construit ainsi) vit dans
-[`docs/`](docs/README.md).
+[`docs/`](docs/README.md), organisée en **arbre de lecture** (un concept large
+par page parente, ses enfants au détail) — commencez par
+[`docs/README.md`](docs/README.md) « Arbre de lecture ».
 
 ## Table des matières
 
@@ -204,7 +206,7 @@ acceptées.
 
 > Warning runtime « fours » : si une console de partie affiche un message de
 > recette four non satisfaite, sache qu'il est **documenté et assumé** —
-> `docs/DEVIANCES.md` §3.1 (2000/2000 parties rejouées gagnées le prouvent).
+> [`docs/DEVIANCES.md`](docs/DEVIANCES.md#usage_pass-warning-four-consommé-mais-aucun-candidat-à-rattacher) (2000/2000 parties rejouées gagnées le prouvent).
 
 ## Le graphe interactif
 
@@ -251,13 +253,14 @@ Avertissement **résiduel et non bloquant**, assumé. Il concerne les fours
 (`stone-furnace`, `steel-furnace`, `electric-furnace`) : leur item est bien
 consommé par d'autres recettes, mais ce four-là n'héberge aucune recette
 propre. Balayages vérifiés à **2000/2000 victoires** avec ce warning présent.
-Détail dans [`docs/DEVIANCES.md`](docs/DEVIANCES.md) §3.1.
+Détail dans [`docs/DEVIANCES.md`](docs/DEVIANCES.md#usage_pass-warning-four-consommé-mais-aucun-candidat-à-rattacher).
 
 **Ma seed est-elle vraiment jouable ?**
 Oui — c'est une garantie mesurée, pas un espoir. **1501 parties sur 1501**
 (seed 0 à 1500) ont été rejouées victorieuses par un rejoueur « fake player »,
 et les invariants de solvabilité sont garantis pour toute seed acceptée.
-[`CHANGELOG.md`](CHANGELOG.md) et [`docs/solvabilite.md`](docs/solvabilite.md) §15.
+[`CHANGELOG.md`](CHANGELOG.md), [`docs/invariants.md`](docs/invariants.md#règles-de-solvabilité) et
+[`docs/solvabilite.md`](docs/solvabilite.md#rejoueur--fake-player--vérification-par-simulation).
 
 **Comment retrouver la seed d'un mod ?**
 Elle est affichée à la génération (`Seed <valeur> valide`) et stockée dans le
@@ -334,7 +337,7 @@ randputF/
 ```
 
 Le détail par fichier est décrit dans
-[`docs/architecture.md`](docs/architecture.md#18-structure-du-projet).
+[`docs/architecture.md`](docs/architecture.md#structure-du-projet).
 
 ---
 

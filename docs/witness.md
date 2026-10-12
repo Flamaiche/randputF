@@ -10,7 +10,7 @@ Retour : [README.md](../README.md) · [nondeterminism.md](nondeterminism.md).
 
 ---
 
-## 1. Le témoin en une commande
+## Le témoin en une commande
 
 ```bash
 pip install .
@@ -25,7 +25,7 @@ ce428c2140ec7031f9604637ecf70cbc
 
 > Le hash ci-dessus est celui de la **v1.0.1**, la version courante du dépôt.
 > Il **change à chaque bump de version** (le préfixe racine du zip contient
-> `randputF_<version>`, cf. §3.4), même si le contenu du mod ne change pas.
+> `randputF_<version>`, cf. [witness.md](witness.md#préfixe-racine-et-nom-de-dossier)), même si le contenu du mod ne change pas.
 > Pour la version que vous testez, lisez le hash dans `.github/workflows/ci.yml`,
 > qui est toujours à jour.
 
@@ -37,7 +37,7 @@ La commande assemble le mod **depuis le tag** (le wheel embarque tous les
 assets), pas depuis un checkout de développement : c'est le chemin le plus
 proche de ce que fait un visiteur.
 
-## 2. Ce qui est garanti
+## Ce qui est garanti
 
 - **À l'octet près** : même contenu de mod → même md5, sur n'importe quelle
   machine, quelle que soit la version de Python ou de zlib.
@@ -46,14 +46,14 @@ proche de ce que fait un visiteur.
   témoin **depuis `/tmp`, hors checkout**, puis le compare au hash attendu.
 - **Le même depuis les tags** : n'importe qui peut refaire la commande ci-dessus
   depuis le tag correspondant à la version testée et retomber sur le même hash.
-  Comme le témoin dépend de la version (§3.4), le hash attendu est celui de
+  Comme le témoin dépend de la version ([witness.md](witness.md#préfixe-racine-et-nom-de-dossier)), le hash attendu est celui de
   cette version, celui écrit dans `ci.yml`.
 
 Ce que le témoin ne couvre pas : il prouve la reproductibilité **à contenu
-égal**, pas la solubilité d'une seed (ça, ce sont les invariants §15 et le
+égal**, pas la solubilité d'une seed (ça, ce sont les invariants ([invariants.md](invariants.md#règles-de-solvabilité)) et le
 rejoueur, voir [solvabilite.md](solvabilite.md)).
 
-## 3. La canonisation
+## La canonisation
 
 Le md5 est calculé sur un zip « de référence » construit de façon déterministe
 (`tool/common/witness.py`). Chaque brique supprime une source de variation
@@ -67,7 +67,7 @@ réelle :
 | Champ « version made by » figé (`create_system = 3`) | La dérivation de `sys.platform` dans le zip |
 | Préfixe racine fixé à `randputF_<version>` | Le nom du dossier d'assemblage local |
 
-### 3.1 `os.walk` ne suffit pas
+### `os.walk` ne suffit pas
 
 Le piège le plus subtil : `sorted(os.walk(dir))` trie les tuples **après** que
 le générateur a déjà parcouru l'arborescence. L'ordre d'émission des fichiers
@@ -75,21 +75,21 @@ reste celui d'`os.scandir`, qui **varie selon la machine**. La bonne approche es
 de **collecter d'abord tous les chemins**, puis de trier par chemin relatif
 canonique (`canonical_entries`). C'est ce que fait le code.
 
-### 3.2 La déflation n'est pas stable
+### La déflation n'est pas stable
 
 Mesuré : zlib 1.3.1.zlib-ng (Python 3.14) et zlib 1.3.2 (Python 3.12)
 compressent le même octet en deux blocs différents. Le témoin n'utilise donc que
 des entrées **stockées** (non compressées) : le md5 dépend du **contenu**, pas
 de l'encodage de sa compression.
 
-### 3.3 Le champ « version made by » du zip
+### Le champ « version made by » du zip
 
 Par défaut, `zipfile` dérive `create_system` de `sys.platform` (0 sur win32, 3
 ailleurs) et ce champ entre dans le md5. Il rendait le témoin différent sur
 Windows et POSIX. Il est forcé à POSIX (`create_system = 3`), d'où la promesse
 Windows↔POSIX.
 
-### 3.4 Préfixe racine et nom de dossier
+### Préfixe racine et nom de dossier
 
 Le nom du dossier assemblé ne doit pas entrer dans le md5 (un appel sur un
 dossier renommé doit donner le même digest pour le même contenu). Le zip de
@@ -101,19 +101,24 @@ mod installé portera toujours ce nom.
 > préfixe racine contient `randputF_<version>`). Bump de version = nouveau
 > témoin. Voir la procédure de publication (notes de release, hors tag).
 
-## 4. Ce qui est exclu du témoin
+## Ce qui est exclu du témoin
 
 `seed.graph.html` est **exclu** du zip de référence (`WITNESS_EXCLUDED`). Raison :
 le `<svg>` embarqué porte un commentaire de version de Graphviz, qui varie d'une
 machine à l'autre ; le graphe est régénérable et ne porte pas la garantie de
 l'octet. Le reste du mod (y compris `seed.json`, `seed.lua`) est couvert.
 
-## 5. Relation avec le déterminisme de la seed
+## Relation avec le déterminisme de la seed
 
 Le témoin prouve la **reproductibilité de l'assemblage** (étant donné le même
 contenu de seed, le même zip). Le déterminisme de la seed elle-même (étant donné
 la même valeur `--seed`, le même contenu généré) est une propriété distincte,
 documentée et testée dans [nondeterminism.md](nondeterminism.md) et
-[seed.md](seed.md) (§16) : absence d'itération de `set`/`frozenset` alimentant
+[seed.md](seed.md) : absence d'itération de `set`/`frozenset` alimentant
 un `rng`, tri systématique avant toute consommation d'un `set`, indépendance de
 l'ordre des seeds dans un même process.
+
+## Lectures associées
+
+- **Parent** : [nondeterminism.md](nondeterminism.md) — non-déterminisme du pipeline
+- **Concepts liés** : [pipeline.md](pipeline.md) ; [seed.md](seed.md#seed-et-configuration) ; [release.md](release.md#checklist-de-publication-procédure)
