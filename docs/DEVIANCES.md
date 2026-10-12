@@ -8,7 +8,7 @@ Retour : [docs/README.md](README.md).
 
 ---
 
-## 1. Dérives de gameplay assumées (design du mod)
+## Dérives de gameplay assumées (design du mod)
 
 Ces écarts sont **volontaires** : le graphe est entièrement généré, aléatoire
 contrôlé, et ne ressemble pas au vanilla.
@@ -17,7 +17,7 @@ contrôlé, et ne ressemble pas au vanilla.
   un `assembling-machine-2` ou un `oil-refinery` se fabriquent via une recette
   `randputf-<bâtiment>` dont les ingrédients sont tirés aléatoirement. C'est le
   principe du « tout-aléatoire », mais cela implique que **l'ordre de
-  fabrication des ateliers compte** (voir le bug §2.1 qui découle de là).
+  fabrication des ateliers compte** (voir le bug [DEVIANCES.md](DEVIANCES.md#fabrication-datelier-avec-des-ingrédients-fluides--ordre-dusage-impossible) qui découle de là).
 - **Bâtiments à recette FIXE** (`is_fixed_crafter`) : boiler/heat-exchanger
   (et équivalents) n'ont pas une recette de craft classique mais une recette
   **unique** « fluide → fluide » (ou « item → item ») randomisée, portée par le
@@ -25,7 +25,7 @@ contrôlé, et ne ressemble pas au vanilla.
   `building_fluid_assignments`). C'est le moteur de progression des fluides.
 - **Science packs à base d'intermédiaires, pas de matières premières** :
   les packs de recherche exigent des items issus du graphe (intermédiaires),
-  les matières premières environnementales sont exclues (§13).
+  les matières premières environnementales sont exclues ([tech.md](tech.md#larbre-technologique)).
 - **Techs gratuites starter + prologue hand-craft** : le palier
   « bootstrap → sciences » se débloque par HAND-CRAFT d'un item (way vanilla
   automation/logistics), sans packs en labo.
@@ -36,8 +36,8 @@ contrôlé, et ne ressemble pas au vanilla.
   nôtre.
 - **Extracteur requis au spawn** : la tech gratuite `starter-extraction` ne
   garde que les extracteurs utiles dès le spawn ; les autres partent au
-  premier consommateur ou sur une tech payée (§9.6). Voir l'averto §3.2.
-- **Lacs : pose runtime déterministe** (§7.5) : chaque lac est **creusé par le
+  premier consommateur ou sur une tech payée ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu)). Voir l'averto [DEVIANCES.md](DEVIANCES.md#extractor_timing-extracteur-requis-au-spawn-mais-atelier-n--plateau-gratuit-2--fabricable-seulement-en-profondeur).
+- **Lacs : pose runtime déterministe** ([starter.md](starter.md#la-phase-de-démarrage), point 5) : chaque lac est **creusé par le
   jeu** à l'init (`on_chunk_generated`), pas posé par le mapgen. Le mapgen ne
   pose **0** tuile de lac (override
   `property_expression_names["tile:<lac>:probability"]` = `randputf-no-water`,
@@ -53,9 +53,9 @@ contrôlé, et ne ressemble pas au vanilla.
   au runtime par `set_tiles(..., correct_tiles = true)`), compatibilité pompe
   offshore.
 
-## 2. Bugs corrigés
+## Bugs corrigés
 
-### 2.1. Fabrication d'atelier avec des ingrédients FLUIDES → ordre d'usage impossible
+### Fabrication d'atelier avec des ingrédients FLUIDES → ordre d'usage impossible
 
 - **Seed** : 426 (sélectrique : balayage 301-499, `198/199`).
 - **Symptôme** : le rejoueur bloque à la tech 12 (`military-science-pack`) :
@@ -70,7 +70,7 @@ contrôlé, et ne ressemble pas au vanilla.
 - **Cause racine** : une recette de **fabrication d'un BÂTIMENT-ATELIER** peut
   consommer des fluides → l'item bâtiment doit être posé dans un atelier fluide
   (oil-refinery/chemical-plant), unlocké tard. Alors que le bâtiment est requis
-  comme atelier tôt. **§8 ne posait l'interdiction des fluides que pour les
+  comme atelier tôt. **[starter.md](starter.md#la-chaîne-initiale-starter) ne posait l'interdiction des fluides que pour les
   EXTRACTEURS** (`_is_extractor_item`).
 - **Fix** : `tool/generator/recipes.py` — la garde `_is_building_item_recipe`
   (remplace l'antérieure `_is_extractor_item`) couvre désormais **tout bâtiment
@@ -78,7 +78,7 @@ contrôlé, et ne ressemble pas au vanilla.
   anti-cycle + ordre d'usage des ateliers).
 - **État** : ✓ corrigé (seed 426 → victory, researched 92).
 
-### 2.2. Cycle d'hébergement MUTUEL créé par le ré-hébergement U2
+### Cycle d'hébergement MUTUEL créé par le ré-hébergement U2
 
 - **Seed** : 255 (balayage 201-300, échec unique).
 - **Symptôme** : le rejoueur bloque — `randputf-assembling-machine-2` est
@@ -91,7 +91,7 @@ contrôlé, et ne ressemble pas au vanilla.
   dans les boucles de candidats de U1 et U2. Repli « précéder B » exclu.
 - **État** : ✓ corrigé (255 → victory, researched 92).
 
-### 2.4. Cycle d'hébergement LONG refermé par le ré-hébergement U1
+### Cycle d'hébergement LONG refermé par le ré-hébergement U1
 
 - **Seed** : 1043 (balayage 1001-1500, échec unique).
 - **Symptôme** : le rejoueur bloque — tech 18 coûte `utility-science-pack`
@@ -110,7 +110,7 @@ contrôlé, et ne ressemble pas au vanilla.
   de l'atelier cible vers P** ; cycle ssi B →* P.
 - **État** : ✓ corrigé (1043 → victory, researched 89).
 
-### 2.3. Patch ITEM requérant une foreuse (modèle de mine erroné)
+### Patch ITEM requérant une foreuse (modèle de mine erroné)
 
 - **Seeds** : 249 (balayage 0-200) — et erreur de modèle globale.
 - **Symptôme** : le rejoueur exigeait une foreuse pour chaque patch item
@@ -123,7 +123,7 @@ contrôlé, et ne ressemble pas au vanilla.
   les patchs item sur des foreuses.
 - **État** : ✓ corrigé.
 
-### 2.5. Jalon d'une raw gatée au 1er INGRÉDIENT alors qu'elle est requise comme ATELIER
+### Jalon d'une raw gatée au 1er INGRÉDIENT alors qu'elle est requise comme ATELIER
 
 - **Seed** : 1299 (balayage gaté 1200-1600, échec unique).
 - **Symptôme** : en gaté, défaite au rejoueur (88/88 en baseline) — la tech 5
@@ -144,7 +144,7 @@ contrôlé, et ne ressemble pas au vanilla.
   rétrogradée au tier 0.
 - **État** : ✓ corrigé (1299 → victory, researched 84).
 
-### 2.6. Ordre des effets `unlock-recipe` d'une tech non déterministe (set non trié)
+### Ordre des effets `unlock-recipe` d'une tech non déterministe (set non trié)
 
 - **Seed** : 1299 — révélé par le contrôle `PYTHONHASHSEED` 0/1 (pré-existant,
   baseline comme gaté).
@@ -160,7 +160,7 @@ contrôlé, et ne ressemble pas au vanilla.
   37/412/1299 baseline + gatées ; garde élargi dans
   `tests/test_determinism.py` (seeds 1337 et 1299).
 
-### 2.7. Gating « inerte » (jalons tous ≤ 0) rendant la passe B auto-cassante
+### Gating « inerte » (jalons tous ≤ 0) rendant la passe B auto-cassante
 
 - **Seed** : 1757 (balayage gaté 1600-2000, échec unique).
 - **Symptôme** : en gaté, défaite au rejoueur à la tech 21
@@ -176,7 +176,7 @@ contrôlé, et ne ressemble pas au vanilla.
 - **État** : ✓ corrigé (1757 → victory 101/101, seed byte-identique à la
   baseline ; garde `test_seed_1757_gating_inerte_victoire_comme_baseline`).
 
-### 2.8. Dépendance à l'ordre des seeds d'un même processus (mutation config)
+### Dépendance à l'ordre des seeds d'un même processus (mutation config)
 
 - **Seed** : 1269 — perte en gaté selon la position dans le processus (victoire
   101/101 en process vierge). Pré-existant, amplifié par la déviance 2.7.
@@ -191,11 +191,11 @@ contrôlé, et ne ressemble pas au vanilla.
   — aucune mutation du config du caller.
 - **État** : ✓ corrigé — 1269 byte-identique (hash `c8c55ecf05e4`) en process
   vierge, après 1 et après 1400 seeds ; sweep gaté 0-2000 rejoué : 2000 victoires
-  / 0 défaite ; voir §7 de `docs/nondeterminism.md`.
+  / 0 défaite ; voir [docs/nondeterminism.md](nondeterminism.md#dépendance-à-lordre-dun-même-processus-multi-seeds-sweeps--corrigé).
 
-## 3. Avertissements résiduels (à surveiller, non bloquants)
+## Avertissements résiduels (à surveiller, non bloquants)
 
-### 3.1. `usage_pass warning: <four>: consommé mais aucun candidat à rattacher`
+### `usage_pass warning: <four>: consommé mais aucun candidat à rattacher`
 
 - **Symptôme** : `stone-furnace`, `steel-furnace`, `electric-furnace`
   apparaissent en **`consommé`** — leur item est un INGRÉDIENT d'autres
@@ -212,7 +212,7 @@ contrôlé, et ne ressemble pas au vanilla.
 - **À trancher** : acceptable (usage consommation) ou chercher un rattachement
   quand même (pool plus large de candidats).
 
-### 3.2. `extractor_timing: <extracteur> requis au spawn mais atelier N >= plateau gratuit 2 — fabricable seulement en profondeur`
+### `extractor_timing: <extracteur> requis au spawn mais atelier N >= plateau gratuit 2 — fabricable seulement en profondeur`
 
 - **Symptôme** : un extracteur est utilisé dès le spawn (consommé par la chaîne
   initiale) mais sa **recette de fabrication** est posée dans un atelier dont
@@ -223,14 +223,18 @@ contrôlé, et ne ressemble pas au vanilla.
 - **À trancher** : si un cas réel bloque, forcer l'extracteur requis-spawn à un
   atelier du plateau gratuit (craft à la main).
 
-## 4. Choses « oubliées » par rapport au vanilla (détectées)
+## Choses « oubliées » par rapport au vanilla (détectées)
 
-- **Fabrication d'atelier parfluide** : corrigé (§2.1) — c'est l'oubli le plus
+- **Fabrication d'atelier parfluide** : corrigé ([DEVIANCES.md](DEVIANCES.md#fabrication-datelier-avec-des-ingrédients-fluides--ordre-dusage-impossible)) — c'est l'oubli le plus
   structurant : un bâtiment ne doit jamais se fabriquer avec un fluide.
-- **Modèle de mine des patchs item** : corrigé (§2.3) — le rejoueur et le
+- **Modèle de mine des patchs item** : corrigé ([DEVIANCES.md](DEVIANCES.md#patch-item-requérant-une-foreuse-modèle-de-mine-erroné)) — le rejoueur et le
   générateur avaient dérivé vers un « mining obligatoire » incompatible avec
   l'amorce.
 - **Graphe entièrement le nôtre (pas de remplaçant)** : rappel acté — aucune
   substitution « vanilla-like » tolérée : si un item boucle, on corrige le
   graphe, on ne remplace pas l'item.
 ```
+
+## Lectures associées
+
+- **Concepts liés** : [solvabilite.md](solvabilite.md) solvabilite.md ; [pipeline.md](pipeline.md) pipeline.md ; [tech.md](tech.md) tech.md ; [recettes.md](recettes.md) recettes.md

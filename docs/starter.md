@@ -2,52 +2,52 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 7. La phase de démarrage
+## La phase de démarrage
 
 Le randomizer détermine tout dès le spawn (l'électricité suivra sa propre
-logique, §10) :
+logique, [energie.md](energie.md#lélectricité)) :
 
 1. **Kit de départ randomisé** : le joueur ne commence pas forcément avec le
    même équipement. Son arme de départ est tirée au hasard, et **les munitions
    se calent sur l'arme** (`starter.ammo_count` exemplaires, défaut 50,
-   plafonnées au stack du munition, configurable §16) pour qu'il puisse
+   plafonnées au stack du munition, configurable [seed.md](seed.md#seed-et-configuration)) pour qu'il puisse
    effectivement l'utiliser. Le kit fournit aussi le fabricateur, l'extracteur
    URPLS de la seed et un combustible si besoin, à raison d'**UNE amorce par
    type d'extracteur** : une foreuse par type de sol ; côté fluides, une
-   pumpjack pour les patchs et une pompe offshore pour les lacs (§7.5, deux
+   pumpjack pour les patchs et une pompe offshore pour les lacs ([starter.md](starter.md#la-phase-de-démarrage) (point 5), deux
    milieux distincts).
 
    Ce n'est PAS la dotation qui rend la suite faisable : c'est l'**unlock**.
    L'amorce du kit ne fait que briser l'œuf/poule du premier exemplaire. Même
    pour un extracteur différé, le kit fournit toujours son item.
 
-   **Chaque ressource du run (patchs ou lacs, §7.5) a la recette de son
-   extracteur débloquée « juste-au-besoin » (§C3)** :
+   **Chaque ressource du run (patchs ou lacs, [starter.md](starter.md#la-phase-de-démarrage) (point 5)) a la recette de son
+   extracteur débloquée « juste-au-besoin » (C3)** :
 
    - la tech gratuite `starter-extraction` ne garde que les extracteurs utiles
      dès le spawn (leur ressource est consommée par la chaîne initiale) ;
    - un extracteur dont la ressource n'est servie qu'en profondeur part avec le
      **premier consommateur** (tech d'usage, au plus tard, jamais après) ;
-   - un extracteur jamais utilisé suit le balayage de contenu (§9.6), sur une
+   - un extracteur jamais utilisé suit le balayage de contenu ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu)), sur une
      tech payante tirée aléatoirement.
 
    Contrainte de fabrication : l'extracteur n'est jamais débloqué avant
    l'atelier qui le fabrique (U2). Quand on a besoin d'une ressource, son
    extracteur est donc déjà craftable, et on en refabrique autant qu'il faut
-   (le poisson se pêche dans les lacs, §7.5).
+   (le poisson se pêche dans les lacs, [starter.md](starter.md#la-phase-de-démarrage) (point 5)).
 2. **Techs gratuites du starter** : les premières recettes (la chaîne
-   initiale, §8) sont débloquées par les techs du starter
+   initiale, [starter.md](starter.md#la-chaîne-initiale-starter)) sont débloquées par les techs du starter
    (`randputf-starter-*`), **gratuites** — coût nul, auto-complétées au
    runtime (free_researches). Elles se craftent avec **tout le pool du début**,
    ressources au sol ET ressources non-infinies (bois/pierre/poisson).
 3. **Techs de prologue** (`randputf-prologue-*`) : juste après ces techs
    gratuites, les recettes **propres** des produits dont le bootstrap
-   consommait des ressources non-infinies (§9.5) sont regroupées en techs de
-   prologue de **≤ 5 unlocks chacune** (plafond §13, jamais une tech géante —
+   consommait des ressources non-infinies ([recettes.md](recettes.md#relais-des-ressources-non-infinies)) sont regroupées en techs de
+   prologue de **≤ 5 unlocks chacune** (plafond [tech.md](tech.md#larbre-technologique), jamais une tech géante —
    une seule suffit s'il y a peu de recettes, aucune tech si aucune recette).
    Ce ne sont pas des
    free_researches : chaque prologue se débloque par **hand-craft** d'un item
-   du bootstrap (§9.3) — façon vanilla (automation/logistics) : le joueur
+   du bootstrap ([recettes.md](recettes.md#déblocage-sur-le-tas)) — façon vanilla (automation/logistics) : le joueur
    fabrique l'item déclencheur à la main et la tech s'active aussitôt. Le
    joueur sort vite de la dépendance au bois/pierre/poisson et débloque
    simultanément l'entrée en science avec
@@ -55,7 +55,7 @@ logique, §10) :
 4. **Site de crash randomisé** : les conteneurs `crash-site-*` du crash
    vanilla (munitions, plaques…) sont **vidés puis remplis aléatoirement**
    : chaque slot reçoit `n` copies d'un matériau aléatoire du pool de loot
-   (`wreck.loot`, §16), avec `n ∈ {0, 1, 2, 3}` tiré selon une loi pondérée
+   (`wreck.loot`, [seed.md](seed.md#seed-et-configuration)), avec `n ∈ {0, 1, 2, 3}` tiré selon une loi pondérée
    **strictement décroissante** (0 le plus fréquent → slot vide, 3 le plus
    rare) : `seed.wreck.counts = [c0, c1, c2, c3]` calculés par la formule
    générique `c3 = t`, `c2 = t + a`, `c1 = 100 − 5t − 2a`, `c0 = c1 + b`
@@ -72,15 +72,15 @@ logique, §10) :
    (plaques, fours…) dont la recette n'est pas garantie débloquée par
    l'arbre randomisé.
 5. **Lacs de fluide** : 3e type de **raw ressource**, après les items et les
-    fluides pumpjack (§6). Le mod **supprime toute l'eau vanilla de la carte**
+    fluides pumpjack ([ressources.md](ressources.md#les-ressources-au-sol)). Le mod **supprime toute l'eau vanilla de la carte**
     (océans, shallow…) puis ne génère QUE les lacs tirés par la seed
     (`seed.map.lakes = [{resource, richness}]`) : chaque lac est une tuile
     `randputf-lac-<fluid>` (copie de la tuile eau, **recolorée**) portant
     `fluid = <fluide tiré>` — une **pompe offshore vanilla** posée dessus
     débite ce fluide, **infini** comme l'eau. Richesse = taille du lac (volume
-     illimité). **Contraste patchs/lacs (§7)** : un *patch* fluide est une
+     illimité). **Contraste patchs/lacs ([starter.md](starter.md#la-phase-de-démarrage))** : un *patch* fluide est une
      **entité** resource `basic-fluid` posée sur la terre → il se mine avec la
-     **pumpjack** (électrique, §10) ; un *lac* est une **tuile** → il se pompe
+     **pumpjack** (électrique, [energie.md](energie.md#lélectricité)) ; un *lac* est une **tuile** → il se pompe
      avec la **pompe offshore** (énergie void, sans électricité). Les deux
      extracteurs ont leur recette au starter et un amorce au kit quand les deux
      milieux sont présents. Comptage `count ∈ [min, max]` (défaut 1, zéro possible via
@@ -155,19 +155,25 @@ logique, §10) :
    infranchissable tant que le joueur ne peut pas le franchir. Quand la seed
    tire **au moins un lac**, la chaîne du starter appelle `ensure_obtainable`
    sur le `landfill` dès le bootstrap (recette `randputf-landfill` unlockée
-   par `starter-transformation`, craftée avec le pool de début, §8/§13) : le
+   par `starter-transformation`, craftée avec le pool de début, [starter.md](starter.md#la-chaîne-initiale-starter)/[tech.md](tech.md#larbre-technologique)) : le
    joueur peut toujours franchir/combler l'eau de la carte dès le départ.
    Sans lac, inutile d'imposer le landfill — sa recette tombe alors au hasard
-   dans le balayage de couverture (§9.6).
+   dans le balayage de couverture ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu)).
 
-### 7.1 Kit et extracteurs en un coup d'œil
+Les règles d'amorçage transverses (bootstrap main, déblocage sur le tas,
+recette orpheline, techs de prologue) sont rassemblées dans
+[amorcage.md](amorcage.md#les-règles-damorçage) ; les **formes** d'une ressource brute (patch
+item, patch fluide, lac) et leur extracteur dans
+[ressources-brutes.md](ressources-brutes.md#les-formes-dune-ressource-brute).
+
+### Kit et extracteurs en un coup d'œil
 
 Le kit fournit une amorce par type d'extracteur (foreuse, pumpjack, pompe
 offshore). Ce qui rend la suite faisable n'est pas cette dotation mais
 l'**unlock** : chaque ressource a son extracteur débloqué « juste-au-besoin »
-(§C3, détaillé en §7 point 1).
+(C3, détaillé en [starter.md](starter.md#la-phase-de-démarrage) point 1).
 
-## 8. La chaîne initiale (starter)
+## La chaîne initiale (starter)
 
 Une fois les types de ressources brutes posés, le randomizer construit la
 première boucle de production :
@@ -188,7 +194,7 @@ première boucle de production :
    tunnels/undergrounds côté tapis, équivalents côté tuyaux.
 4. **Logistique** : des bras robotisés sont ajoutés — avec probabilité
    `starter.inserter_chance` (défaut 0.5, défini dans
-   `config/defaults.yaml` §16).
+   `config/defaults.yaml` [seed.md](seed.md#seed-et-configuration)).
 
 **Contrainte anti-cycle fondamentale** : si un bâtiment de cette phase exige
 une entrée supplémentaire (le cas d'école : une perceuse électrique qui boit
@@ -214,13 +220,13 @@ poissons). Ces dernières servent de matière première d'appoint du démarrage 
 leur présence garantit un début de run qui marche, même pour les seeds sans
 aucun patch item. Mais elles ne sont **pas tenables à long terme** : tout
 produit dont la recette générée en consomme obtient une **recette relais**
-(§9.5), débloquée dans les 3 premières techs.
+([recettes.md](recettes.md#relais-des-ressources-non-infinies)), débloquée dans les 3 premières techs.
 
 **Le lab est une brique du starter — type « recherche »** : tout bâtiment
 consommant des science packs (`lab_inputs`) est classé dans un type fonctionnel
-dédié, `recherche` (§5.1), et non parmi les transformateurs : ce n'est pas un
+dédié, `recherche` ([model.md](model.md#types-fonctionnels)), et non parmi les transformateurs : ce n'est pas un
 atelier de craft, il n'a rien à faire dans le pool des recettes artisanales
-(anti-cycle §8). Sans lab, la partie se fige dès les premières techs gratuites
+(anti-cycle [starter.md](starter.md#la-chaîne-initiale-starter)). Sans lab, la partie se fige dès les premières techs gratuites
 consommées : le starter garantit donc par construction qu'un bâtiment de
 recherche tombe dans la **2e recherche gratuite** (starter-transformation),
 avec une recette craftée avec le pool de début.
@@ -234,3 +240,9 @@ catégorie : le kit de départ glisse simplement le combustible à la plus grand
 brûleur du kit (perceuse, chaudière, four, réacteur…). Sans ce patch, un kit
 pouvait tirer une cellule d'uranium (catégorie « nuclear ») dans un
 `burner-mining-drill` n'acceptant que « chemical » : inutilisable.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Enfant(s)** : [amorcage.md](amorcage.md) — les règles d'amorçage
+- **Concepts liés** : [ressources.md](ressources.md#les-ressources-au-sol) et [ressources-brutes.md](ressources-brutes.md#les-formes-dune-ressource-brute) ; [recettes.md](recettes.md#la-phase-récursive) ; [energie.md](energie.md#lélectricité) ; [tech.md](tech.md#larbre-technologique)

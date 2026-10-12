@@ -2,7 +2,7 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 3. Terminologie
+## Terminologie
 
 - **Randput** : contraction de *randomize input/output*. Mécanisme central :
   tout slot d'une recette typé « item » reçoit un item arbitraire, tout slot
@@ -16,18 +16,18 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   posé au sol (fini) ou fluide d'extraction (eau, pétrole brut, vapeur :
   « infinis » ou non). Seule elle alimente le début de la chaîne de production.
   **Un science pack ne peut jamais être crafté avec une ressource brute**
-  (§13) : sa recette tire ses ingrédients parmi les intermédiaires craftés,
+  ([tech.md](tech.md#larbre-technologique)) : sa recette tire ses ingrédients parmi les intermédiaires craftés,
   invariant vérifié à la génération et par le validateur
-  (`pools.raw_resources`, §16).
+  (`pools.raw_resources`, [seed.md](seed.md#seed-et-configuration)).
 - **Ressource non automatisable** : entité récoltable à la main ou par
   interaction directe (arbres, poissons, …). Exclue du calcul des ressources
-  durables (relais §9.5), mais réintroduite comme ingrédient possible dans les
+  durables (relais [recettes.md](recettes.md#relais-des-ressources-non-infinies)), mais réintroduite comme ingrédient possible dans les
   crafts ultérieurs — et, comme toute ressource brute, bannie des recettes de
-  science packs (§13).
+  science packs ([tech.md](tech.md#larbre-technologique)).
 - **Recette relais** : pour un produit dont la recette générée consomme une
   ressource non automatisable, version **alternative du même produit** dont les
   ingrédients ne font appel qu'à des ressources durables — débloquée dans les
-  3 premières techs (§9.5).
+  3 premières techs ([recettes.md](recettes.md#relais-des-ressources-non-infinies)).
 - **Ressource durable** : ressource infiniment disponible sur la durée du run
   (patch au sol, item fabriqué, fluide obtenu). Par opposition aux ressources
   non automatisables, qui s'épuisent.
@@ -37,7 +37,7 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   …). Deux extracteurs de milieux différents restent du même type : une pompe
   et une pompe offshore sont toutes les deux des extracteurs.
 - **Directive** : possibilité déclarée d'un bâtiment — une capacité optionnelle
-  qui distingue deux bâtiments d même type (voir §5).
+  qui distingue deux bâtiments d même type (voir [model.md](model.md#le-modèle-randput--classification-des-bâtiments)).
 - **Pool atteignable** : ensemble des choses que le joueur peut obtenir à un
   instant donné de la génération (ressources déjà posées, bâtiments déjà
   débloqués, crafts déjà validés).
@@ -46,7 +46,7 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   valide (extraction, craft, combustible…).
 - **Graine / seed** : valeur déterministe pilotant tous les tirages du
   randomizer. Par défaut tirée de l'instant présent (millisecondes) à chaque
-  génération, donc unique ; on peut imposer une valeur via `--seed` (§16).
+  génération, donc unique ; on peut imposer une valeur via `--seed` ([seed.md](seed.md#seed-et-configuration)).
 - **Gaté / gating** (à ne pas corriger en « gâté ») : ressource **mise de côté**,
   volontairement retirée du pool d'une seed pour ne pas être disponible trop
   tôt dans le run. C'est le vocabulaire du projet, emprunté à l'anglais
@@ -54,7 +54,7 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   `DEVIANCES.md` et `nondeterminism.md` ; le `CHANGELOG.md` le déclare
   explicitement.
 
-## 5. Le modèle randput : classification des bâtiments
+## Le modèle randput : classification des bâtiments
 
 C'est la fondation de tout le moteur. **Aucun bâtiment n'est traité comme
 « bâtiment + ses recettes vanilles ».** Chaque bâtiment est défini par :
@@ -67,7 +67,7 @@ Cette classification est lourde à construire mais c'est précisément sur elle
 que repose le randomizer : c'est elle qui permet des combinaisons
 « extraordinaires » tout en gardant un monde cohérent.
 
-### 5.1 Types fonctionnels
+### Types fonctionnels
 
 | Type | Rôle | Exemples vanilles |
 |---|---|---|
@@ -92,19 +92,19 @@ Points importants, volontairement soulignés car ils guident tout le modèle :
   randomizer, pas avant.
 - Un **laboratoire** n'est jamais un transformateur : détecté par sa capacité
   à consommer des science packs, il est classé dans le type dédié **recherche**
-  et garanti dès le starter (§8) — il n'entre donc jamais dans le pool des
+  et garanti dès le starter ([starter.md](starter.md#la-chaîne-initiale-starter)) — il n'entre donc jamais dans le pool des
   ateliers de craft.
 
-### 5.2 Slots typés
+### Slots typés
 
 Chaque slot porte un type parmi :
 
 - **item** (tout élément transportable sur tapis) ;
 - **fluide** (tout élément transportable par tuyau) ;
 - **combustible** (item ou fluide doté d'une valeur énergétique) ;
-- **énergie** (cas particulier, voir §10).
+- **énergie** (cas particulier, voir [energie.md](energie.md#lélectricité)).
 
-### 5.3 Directives : les possibilités par tier
+### Directives : les possibilités par tier
 
 Les directives expriment ce qu'un bâtiment *peut faire*, indépendamment de ses
 recettes vanilles. Elles créent des écarts de capacité entre tiers du même
@@ -119,7 +119,13 @@ type. Exemples canoniques :
   ce fluide est obtenable : les tuyaux qui le transportent peuvent être
   fabriqués **à partir de ce fluide lui-même**, ou d'une **autre ressource** —
   mais **jamais à partir de la ressource qui en a besoin** (règle anti-cycle,
-  §8 et §15).
+  [starter.md](starter.md#la-chaîne-initiale-starter) et [invariants.md](invariants.md#règles-de-solvabilité)).
 
 C'est cette matrice type × tier × directives qui remplace toute classification
 manuelle figée.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Enfant(s)** : [tags.md](tags.md) ; [vanilladb.md](vanilladb.md)
+- **Concepts liés** : [ressources.md](ressources.md#les-ressources-au-sol) (milieu d'une ressource) ; [tags.md](tags.md#modèle--chaleur--producteur--transport--consommateur) (rôle chaleur) ; [chaleur.md](chaleur.md#la-chaleur)

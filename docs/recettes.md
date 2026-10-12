@@ -2,13 +2,13 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 9. La phase récursive
+## La phase récursive
 
 Après le starter, la génération devient récursive. Le début aussi s'appuie
 sur des pourcentages pour obtenir telle ou telle chose — mais ici ils sont
 utilisés massivement et systématiquement :
 
-### 9.1 Tirages pondérés
+### Tirages pondérés
 
 - Chaque catégorie (bâtiments, armes, science packs, transports avancés…)
   possède un **pourcentage d'obtention**.
@@ -17,7 +17,11 @@ utilisés massivement et systématiquement :
 - Plus on avance dans les recettes implémentées, plus il devient possible
   d'en débloquer davantage : le pool s'élargit avec la progression.
 
-### 9.2 Génération des recettes
+Les pourcentages, le groupement des objets dans une même tech et le dispatch des
+contenus isolés sont détaillés dans le cas partagé
+[aiguillage.md](aiguillage.md#comment-les-éléments-rejoignent-larbre).
+
+### Génération des recettes
 
 Les recettes restent simples dans leur forme :
 
@@ -46,9 +50,9 @@ le surplus) et on **freine sa production** comme produit (`_pick_product`,
 quota `recipes.max_overproduced_ratio` (défaut `1/3`) — on ne pousse jamais à
 consommer un flux stupide. Effet : les quantités consommées tendent vers les
 quantités produites (« on n'accumule pas ce qu'on ne se sert pas »), sans
-jamais changer le pool atteignable (donc sans casser la solvabilité §15).
+jamais changer le pool atteignable (donc sans casser la solvabilité [invariants.md](invariants.md#règles-de-solvabilité)).
 
-### 9.3 Déblocage sur le tas
+### Déblocage sur le tas
 
 Puisque toutes les ressources sont plus ou moins déblocables :
 
@@ -63,6 +67,9 @@ Puisque toutes les ressources sont plus ou moins déblocables :
 
 Le résultat : aucune impasse possible, mais aussi aucun chemin prévisible.
 
+Le déblocage « sur le tas », la recette-orpheline et le claim d'atelier sont
+rassemblés dans le cas partagé [amorcage.md](amorcage.md#les-règles-damorçage).
+
 **Claim des ateliers débloqués « sur le tas » (anti-recette-orpheline)** : un
 bâtiment de craft débloqué pendant la génération d'un élément (via
 `_pick_building` → `_unlock_building`, typiquement un assembleur de tier
@@ -75,13 +82,13 @@ bâtiment nouvellement débloqué à `step_buildings`/`unlocks_buildings` de la
 tech (dédup en conservant l'ordre). Couvre **tout** déblocage d'atelier sur le
 tas, quel que soit l'élément — zéro recette orpheline mesurée sur 200 seeds.
 
-Les **déclencheurs hand-craft** des techs (prologue §13, et plus tard les
+Les **déclencheurs hand-craft** des techs (prologue [tech.md](tech.md#larbre-technologique), et plus tard les
 tirages aléatoires parmi les techs) obéissent à la même règle : l'item
 demandé doit être **available AVANT** la tech qui le réclame. Bug classique à
 éviter (et corrigé ici) : ne jamais tirer les candidats depuis une liste de
 recettes **étendue après coup** par une phase postérieure — on prendrait des
 items unlockés bien plus tard (four électrique, réacteur nucléaire, silo…),
-et la tech resterait **bloquée pour toujours** (§9.3). Les candidats sont donc
+et la tech resterait **bloquée pour toujours** ([recettes.md](recettes.md#déblocage-sur-le-tas)). Les candidats sont donc
 calculés à partir des **seules recettes des techs gratuites du starter**
 (disponibles au bootstrap), et chaque déclencheur est vérifié strictement
 avant sa tech (voir `test_craft_trigger_prologue_craftable_des_le_starter`).
@@ -98,9 +105,9 @@ l'arbre, plus le nombre d'items à fabriquer est grand. Pour ce tirage, la
 même contrainte s'applique : restreindre le pool aux items de recettes déjà
 unlockées, jamais aux produits de recettes futures.
 
-### 9.4 Cadence garantie des pylônes
+### Cadence garantie des pylônes
 
-La distribution du courant (§10) est vitale pour la progression : sans poteau,
+La distribution du courant ([energie.md](energie.md#lélectricité)) est vitale pour la progression : sans poteau,
 un générateur ne transporte rien de jouable. Pour éviter le pire cas où le
 premier pylône n'apparaît qu'en profondeur de l'arbre, on force une **cadence
 de 3 pôles** pendant la phase récursive, indépendamment du hasard :
@@ -111,23 +118,23 @@ de 3 pôles** pendant la phase récursive, indépendamment du hasard :
 - Chaque pôle forcé tire un **type différent** (petit → moyen → grand /
   substation via `_pick_element`, jamais déjà déployé — donc pas de doublon).
 - Si le starter a déjà débloqué un pylône **craftable** (électricité au
-  bootstrap, §10), le premier jalon est **déjà satisfait** : on ne force rien
+  bootstrap, [energie.md](energie.md#lélectricité)), le premier jalon est **déjà satisfait** : on ne force rien
   tant que les jalons suivants ne sont pas atteints. Un pylône posé **en patch**
-  au sol (§6) ne compte pas : il n'est pas constructible, le joueur ne peut pas
-  s'en servir pour étendre son réseau (§9.6, `_has_product_recipe`).
+  au sol ([ressources.md](ressources.md#les-ressources-au-sol)) ne compte pas : il n'est pas constructible, le joueur ne peut pas
+  s'en servir pour étendre son réseau ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu), `_has_product_recipe`).
 - Les pylônes **au-delà** de ces 3 jalons restent randomisés comme de simples
-  items/bâtiments (§9.1) — pas de sur-cadence.
+  items/bâtiments ([recettes.md](recettes.md#tirages-pondérés)) — pas de sur-cadence.
 
 Configurable dans `RecursiveConfig` (`dist_marks`, `dist_guaranteed`) via
-`recursive` dans `settings` (§16).
+`recursive` dans `settings` ([seed.md](seed.md#seed-et-configuration)).
 
-### 9.5 Relais des ressources non-infinies
+### Relais des ressources non-infinies
 
 Les ressources non automatisables (arbres → `wood`, rochers → `stone`, poissons
 → `raw-fish`) sont obtenues dès le départ, mais s'épuisent : elles ne peuvent
 pas être la colonne vertébrale d'un run. Comme le bootstrap se joue précisément
 sur ces ressources rares, **les recettes du démarrage (craftables à la main,
-§10) DOUBLENT la quantité de leurs ingrédients environnementaux** — la bascule
+[energie.md](energie.md#lélectricité)) DOUBLENT la quantité de leurs ingrédients environnementaux** — la bascule
 vers les recettes « propres » du relais devient aussi un objectif économique.
 La phase relais, qui tourne **après toutes les phases productrices de
 recettes**, garantit leur remplacement :
@@ -148,12 +155,12 @@ recettes**, garantit leur remplacement :
    relais coexiste avec la recette bootstrap d'origine, qui reste
    hand-craftable.
 4. **Consolidation en prologue** : les recettes relais sont regroupées en
-   **techs de prologue** (`randputf-prologue-*`, §7, **≤ 5 unlocks chacune**,
-   plafond §13), placées **immédiatement après les techs gratuites du starter**
+   **techs de prologue** (`randputf-prologue-*`, [starter.md](starter.md#la-phase-de-démarrage), **≤ 5 unlocks chacune**,
+   plafond [tech.md](tech.md#larbre-technologique)), placées **immédiatement après les techs gratuites du starter**
    (une seule si peu de recettes, aucune si rien).
 
    Elles ne sont pas des free_researches et se débloquent par **hand-craft** d'un
-   item du bootstrap (§9.3) : le bootstrap reste la route de départ, et le
+   item du bootstrap ([recettes.md](recettes.md#déblocage-sur-le-tas)) : le bootstrap reste la route de départ, et le
    joueur bascule sur les versions propres + l'entrée en sciences dès qu'il
    fabrique le déclencheur, sans compter sur le bois/pierre/poisson sur la
    durée.
@@ -164,7 +171,7 @@ Règles d'anti-cycle spécifiques au relais :
   produits **déjà relayés** (dans l'ordre de création pour les relais, jamais
   de dépendance vers un relais plus ancien → **DAG** par construction) ;
 - les recettes relais ne peuvent **pas** référencer un fluide en ingrédient
-  pour produire un **extracteur** (même règle items-only que §8) ;
+  pour produire un **extracteur** (même règle items-only que [starter.md](starter.md#la-chaîne-initiale-starter)) ;
 - le scan est **relancé jusqu'à stabilité** : une recette créée « sur le tas »
   pendant un tirage (déblocage d'un bâtiment) peut à son tour consommer des
   environnementaux et mériter son propre relais.
@@ -173,30 +180,30 @@ Si aucun item durable n'est disponible (cas limite d'une seed sans aucun pool
 item), le relais est simplement **manqué silencieusement** : la recette bootstrap
 reste l'unique route — acceptable puisque la solvabilité, elle, est garantie.
 
-**Conséquence sur la validation (§15)** : un relais n'est qu'une **route
+**Conséquence sur la validation ([invariants.md](invariants.md#règles-de-solvabilité))** : un relais n'est qu'une **route
 alternative** à un produit — pas un doublon cyclique. L'anti-cycle est donc
 vérifié au niveau **item** (un item est solvable dès que l'une de ses recettes
 l'est), et non plus en tri topologique de Kahn au niveau recette.
 
-### 9.6 Couverture complète : le balayage de contenu
+### Couverture complète : le balayage de contenu
 
-Sans étape supplémentaire, la récursion (§9) ne touche que les 4 catégories
+Sans étape supplémentaire, la récursion ([recettes.md](recettes.md#la-phase-récursive)) ne touche que les 4 catégories
 fonctionnelles + combat + science : une fois les bâtiments de ces catégories
 recrutés, la boucle s'arrête (~35 techs) et le reste du jeu **n'a jamais de
 recette**. Une phase **3bis**, exécutée **après** la récursion pondérée et
-**après** la chaîne fusée (§14), garantit à **chaque item restant** sa recette
+**après** la chaîne fusée ([tech.md](tech.md#fin-de-partie)), garantit à **chaque item restant** sa recette
 `randputf-<item>` et sa tech `randputf-content-<item>` :
 
 - **Cibles** : tout item beltable sans recette produit, dans un ordre déterminé
   par la seed.
 - **Coûts** : la récursion précédente a déjà unlocké **tous** les science packs,
   donc le coût de chaque tech de balayage est toujours un pack déjà disponible
-  (payable production → consommation, §13).
-- **Patches** : un item posé au sol (§6) garde quand même sa recette
+  (payable production → consommation, [tech.md](tech.md#larbre-technologique)).
+- **Patches** : un item posé au sol ([ressources.md](ressources.md#les-ressources-au-sol)) garde quand même sa recette
   (`make_recipe`, pas `ensure_obtainable`) : « obtainable » ≠ « craftable ».
 - **Exclusions** : chaîne fusée (`processing-unit`, `low-density-structure`,
   `rocket-fuel`, `rocket-silo` — sinon doublon d'unlock avec `randputf-endgame-*`),
-  armes montées (rattachées à LEUR véhicule en §12 — jamais randomisées comme
+  armes montées (rattachées à LEUR véhicule en [combat.md](combat.md#transports-avancés) — jamais randomisées comme
   armes de poing), items de contrôle (`is_virtual_item` : blueprint, planner,
   *remotes*, items `rail-planner` sans place_result…) — jamais de recette ni de
   patch.
@@ -218,27 +225,27 @@ recette**. Une phase **3bis**, exécutée **après** la récursion pondérée et
 Résultat : ~180 techs / ~200 recettes par seed, dont des techs de contenu
 (belts, inserters, chests, modules, robots, trains, isotopes…).
 
-### 9.7 Garantie de compagnons
+### Garantie de compagnons
 
 Certains items ne sont **jouables que relativement à un autre** : un robot
 (logistic/construction) est du contenu **mort** sans son roboport, un premier
-solaire sans accumulateur provoque un blackout la nuit (§10). Sans garantie,
-le balayage de couverture (§9.6) pouvait diffuser ces paires loin l'une de
+solaire sans accumulateur provoque un blackout la nuit ([energie.md](energie.md#lélectricité)). Sans garantie,
+le balayage de couverture ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu)) pouvait diffuser ces paires loin l'une de
 l'autre, ou l'une jamais — du contenu inutilisable.
 
-`RecursiveConfig.companions` (clé `companions`, §16) liste des **groupes** de
+`RecursiveConfig.companions` (clé `companions`, [seed.md](seed.md#seed-et-configuration)) liste des **groupes** de
 produits liés (défaut `[["roboport","logistic-robot","construction-robot"],
 ["solar-panel","accumulator"]]`). La phase récursive détecte, au fil de la
 génération d'un élément (contenu **ou** bâtiment — ex. solaire), si l'item
 appartient à un groupe, via `_dispatch_companions` : chaque compagnon non
 encore unlocké reçoit immédiatement sa recette, puis des **techs isolées
 (≤ 3, `isolate=True`) sont dispatchées juste APRÈS la tech du produit** — le
-même pattern de dispatch que les munitions de véhicules (§12.1). Résultat :
+même pattern de dispatch que les munitions de véhicules ([combat.md](combat.md#armes-montées-randomisées)). Résultat :
 tous les membres d'un groupe restent à ±3 techs l'un de l'autre (invariant
 `test_companions_proches`), jamais diffusés en profondeur. Un item d'un groupe
 absent de la seed est ignoré ; un groupe entièrement absent n'ajoute rien.
 
-### 9.8 Quantités de craft aléatoires (C1)
+### Quantités de craft aléatoires (C1)
 
 Optionnel (section `craft_quantity:` de la config, `enabled: false` par
 défaut — chantier C1) : après l'assemblage de la seed, une **passe post-pipeline
@@ -249,7 +256,13 @@ multiplicatif aléatoire** aux quantités d'entrée/sortie de chaque recette.
   `mode: asymmetric` → un facteur indépendant par ligne (plus chaotique) ;
 - bornes par défaut `factor_min: 0.5` / `factor_max: 3.0`, minimum absolu
   `amount_min: 1` unité par ingrédient et par résultat ;
-- **noms, étapes, ordre et structure inchangés** — et la solvabilité (§15) ne
+- **noms, étapes, ordre et structure inchangés** — et la solvabilité ([invariants.md](invariants.md#règles-de-solvabilité)) ne
   lit que la structure (pas les montants), donc cette passe ne peut pas casser
   les garanties : elle ne change que l'économie (plus/moins cher), pas
   l'atteignabilité.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Enfant(s)** : [aiguillage.md](aiguillage.md) — mise en techs : pourcentages, groupement, dispatch
+- **Concepts liés** : [starter.md](starter.md#la-phase-de-démarrage) ; [energie.md](energie.md#lélectricité) et [chaleur.md](chaleur.md#la-chaleur) ; [tech.md](tech.md#larbre-technologique) ; [invariants.md](invariants.md#règles-de-solvabilité)

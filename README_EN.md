@@ -10,7 +10,10 @@ buildings, tech tree, starting kit — while guaranteeing every seed (*seed
 value*) a valid, loop-free run from the first pick to rocket launch.
 
 > This is the English README. The full reference (in French) lives in
-> [`docs/`](docs/README.md); the French README is [`README.md`](README.md).
+> [`docs/`](docs/README.md), organised as a **reading tree** (one broad concept
+> per parent, its children nested below); the French README is
+> [`README.md`](README.md). See [`docs/README.md`](docs/README.md) “Arbre de
+> lecture”.
 
 ## Contents
 
@@ -218,14 +221,15 @@ A **residual, non-blocking** warning, knowingly accepted. It concerns furnaces
 (`stone-furnace`, `steel-furnace`, `electric-furnace`): their item is indeed
 consumed by other recipes, but that particular furnace hosts no recipe of its
 own. Verified at **2000/2000 wins** with the warning present. Details in
-[`docs/DEVIANCES.md`](docs/DEVIANCES.md) §3.1 (French).
+[`docs/DEVIANCES.md`](docs/DEVIANCES.md#usage_pass-warning-four-consommé-mais-aucun-candidat-à-rattacher) (French).
 
 **Is my seed really playable?**
 Yes — a measured guarantee, not a hope. **1501 games out of 1501** (seed 0 to
 1500) were replayed to victory by a "fake player" replayer, and solvability
 invariants are guaranteed for every accepted seed. See
 [`CHANGELOG.md`](CHANGELOG.md) and
-[`docs/solvabilite.md`](docs/solvabilite.md) §15.
+[`docs/invariants.md`](docs/invariants.md#règles-de-solvabilité) and
+[`docs/solvabilite.md`](docs/solvabilite.md#rejoueur--fake-player--vérification-par-simulation).
 
 **How do I find the seed of a mod?**
 It is printed at generation time (`Seed <value> valide`) and stored in the mod

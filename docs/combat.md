@@ -2,7 +2,7 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 11. Combat et armement
+## Combat et armement
 
 - **Les biters ne changent pas** (pour l'instant) : comportement, évolution et
   pollution restent vanilla.
@@ -16,14 +16,15 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   catégorie n'est encore débloquée, les munitions manquantes sont générées et
   unlockées dans **la même tech** que l'arme — jamais une arme inutilisable.
   Si une munition de la catégorie est déjà débloquée (avant ou dans la même
-  tech), rien n'est ajouté : l'arme peut déjà tirer.
-- **Une arme par tech** : le groupement §13 ne fusionne jamais deux steps
-  combat consécutifs dans la même tech (même garde-fou que les pylônes §9.4).
+  tech), rien n'est ajouté : l'arme peut déjà tirer. Ce dispatch est décrit
+  une seule fois dans [aiguillage.md](aiguillage.md#nœuds-isolés-et-dispatch).
+- **Une arme par tech** : le groupement [tech.md](tech.md#larbre-technologique) ne fusionne jamais deux steps
+  combat consécutifs dans la même tech (même garde-fou que les pylônes [recettes.md](recettes.md#cadence-garantie-des-pylônes)).
   Sinon une tech arriverait avec « toute » : plusieurs armes et leurs munitions
   cumulées (ex. submachine-gun + shotgun + leurs balles dans UNE tech). Chaque
   arme sort seule, alignée sur SA munition.
 
-## 12. Transports avancés
+## Transports avancés
 
 Trains, véhicules et logistique avancée suivent exactement le même modèle
 que les armes : ce sont simplement des **catégories d'objets** déblocables par
@@ -33,11 +34,11 @@ un véhicule peut exiger un **combustible** pour être utilisable ; un train
 exige les **rails avant ou en même temps** que lui. Rien de plus : aucun
 traitement spécial.
 
-### 12.1 Armes montées randomisées
+### Armes montées randomisées
 
 Les armes **montées-uniquement** (`VEHICLE_GUNS` : cannons, mitrailleuses,
 lance-flammes, artillerie, roquettes de spidertron) sont **exclues du pool de
-poing** (§11) et du balayage (§9.6) : sans leur véhicule elles seraient du
+poing** ([combat.md](combat.md#combat-et-armement)) et du balayage ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu)) : sans leur véhicule elles seraient du
 contenu mort — elles ne sont **jamais craftées**. La randomisation des
 véhicules repose sur une **pool cachée** : `pools.vehicle_weapons` liste de
 vrais **items gun** (les armes montées ci-dessus, mais aussi des armes de poing
@@ -52,7 +53,7 @@ une arme vanilla** de l'entité — le véhicule ne garde que les armes tirées
 (le tank/spidertron remplacent leur tableau `guns`, le wagon d'artillerie son
 `gun` unique). Ni item, ni recette, ni unlock : la pool ne sert QU'à
 l'assignation (les items de poing de la pool gardent, eux, leur recette de main
-normale, §11). Les items *legacy* (tank-machine-gun vanilla,
+normale, [combat.md](combat.md#combat-et-armement)). Les items *legacy* (tank-machine-gun vanilla,
 spidertron-rocket-launcher-2/3/4, identiques au -1) restent du contenu mort :
 jamais de recette ni d'unlock.
 
@@ -63,7 +64,7 @@ la `selection_box` de l'entité (tank 2.6, spidertron 2, wagon d'artillerie 6).
 Avec les défauts (`base_size: 2`, `scale: 0.4`) : le tank étire ses armes
 ×1.24, le wagon ×2.6, le spidertron (à la taille de base) garde les portées
 d'origine. La **munition** consommée par le clone (ammo_category) est celle de
-l'arme source : tout ammo est déjà randomisé/craftable (§9.6).
+l'arme source : tout ammo est déjà randomisé/craftable ([recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu)).
 
 **Munitions garanties après le véhicule** : quand la tech d'un véhicule est
 créée, le générateur vérifie les munitions de ses armes montées (par
@@ -72,16 +73,22 @@ réparties au hasard, potentiellement très après le véhicule) sont créées
 immédiatement et **dispatchées dans les 3 techs isolées qui suivent celle du
 véhicule** (`randputf-ammo-<véhicule>-<munition>`, payées en science pack déjà
 unlocké) : le joueur reçoit son véhicule avec ses munitions au labo dans la
-foulée. Les munitions déjà présentes ne sont pas rejouées.
+foulée. Les munitions déjà présentes ne sont pas rejouées. Ce dispatch est
+décrit une seule fois dans [aiguillage.md](aiguillage.md#nœuds-isolés-et-dispatch).
 
 L'assignation est récoltée dans `vehicle_armament` de la seed (items gun réels,
 pas de champ `vehicle_armament_items`), la pool dans `pools.vehicle_weapons` et
 le scale dans `pools.vehicle_range_scaling` — **aucune valeur en dur** :
 `armed_vehicles`, `vehicle_weapons`, `vehicle_slots_min/max`,
 `vehicle_slots_with_replacement`, `vehicle_range_base_size` et
-`vehicle_range_scale` se configurent via `recursive:` (§16).
+`vehicle_range_scale` se configurent via `recursive:` ([seed.md](seed.md#seed-et-configuration)).
 
 **La randomisation est APPLIQUÉE aux prototypes d'entités** : `data-updates.lua`
 clone et ré-arme chaque véhicule à partir de `vehicle_armament`. Sans cela la
 seed ne changerait RIEN en jeu : les véhicules garderaient leur armement vanilla
 figé.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Concepts liés** : [tech.md](tech.md#larbre-technologique) ; [aiguillage.md](aiguillage.md#comment-les-éléments-rejoignent-larbre) ; [recettes.md](recettes.md#la-phase-récursive) ; [nondeterminism.md](nondeterminism.md#chaîne-initiale-phase-2--starter_chainpy)

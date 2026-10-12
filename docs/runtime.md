@@ -9,7 +9,7 @@ Toutes les références `fichier:ligne` sont vérifiées sur le code.
 
 ---
 
-## 1. Les cinq fichiers Lua
+## Les cinq fichiers Lua
 
 | Fichier | Lignes | Phase Factorio | Rôle |
 |---------|--------|----------------|------|
@@ -23,7 +23,7 @@ Toutes les références `fichier:ligne` sont vérifiées sur le code.
 généré de `seed.json` (`tool/exporters/mod_seed.py:62`). Il n'est pas documenté
 ici — voir [`seed.md`](seed.md).
 
-## 2. Le contrat `seed` → Lua
+## Le contrat `seed` → Lua
 
 Les quatre fichiers du mod chargent la seed **de la même manière** :
 
@@ -52,7 +52,7 @@ end
 | Préfixe | Sens | Exemples |
 |---------|------|----------|
 | `randputf-` | Objets **créés ou modifiés** par le mod | `randputf-steel-furnace`, `randputf-minerai-iron-ore`, `randputf-lac-water` |
-| `randputF:` | Préfixe de **flux RNG** Python (jamais visible en Lua) | `randputF:wells:` — voir [`nondeterminism.md`](nondeterminism.md) §2 |
+| `randputF:` | Préfixe de **flux RNG** Python (jamais visible en Lua) | `randputF:wells:` — voir [`nondeterminism.md`](nondeterminism.md#chaîne-initiale-phase-2--starter_chainpy) |
 
 L'exporter reconnaît le secondvia une constante distincte : `_RANDPUTF_PREFIX =
 "randputf-"` côté Python (`tool/parsers/vanilla.py:61`) et `RANDPUTF_PREFIX =
@@ -60,15 +60,15 @@ L'exporter reconnaît le secondvia une constante distincte : `_RANDPUTF_PREFIX =
 doit être répercutée dans l'autre** — c'est écrit en commentaire
 (`exporter/control.lua:407-409`).
 
-## 3. `mod/data.lua` — recettes et technologies
+## `mod/data.lua` — recettes et technologies
 
-### 3.1 Sous-groupe d'inventaire
+### Sous-groupe d'inventaire
 
 `mod/data.lua:9-16` crée `item-subgroup` `randputf` dans
 `intermediate-products`, `order = "z-randputf"`. C'est le groupe d'attente de
 tous les produits sans sous-groupe hérité.
 
-### 3.2 Recherche de prototypes
+### Recherche de prototypes
 
 Deux helpers, utilisés partout dans le fichier :
 
@@ -80,7 +80,7 @@ Deux helpers, utilisés partout dans le fichier :
 `find_item_proto` est nécessaire parce que les armes et munitions ont leur
 propre table : chercher uniquement `data.raw.item` les raterait.
 
-### 3.3 Construction des recettes
+### Construction des recettes
 
 Boucle sur `seed.recipes` (`mod/data.lua:51-118`), une recette par entrée :
 
@@ -99,13 +99,13 @@ Boucle sur `seed.recipes` (`mod/data.lua:51-118`), une recette par entrée :
 > `enabled` vaut `false` par défaut : le tool Python n'émet **jamais** la clé
 > `enabled` sur une recette (vérifié : aucune occurrence dans
 > `tool/generator/*.py`). Toutes les recettes naissent donc désactivées et sont
-> activées au runtime par les techs — voir §6.2.
+> activées au runtime par les techs — voir [runtime.md](runtime.md#techs-gratuites-et-activation-des-recettes).
 
 L'ajout de `crafting_categories` sur un prototype vanilla est une **mutation
 directe** de `data.raw` : c'est légal en data-stage, et c'est la seule façon
 qu'un bâtiment sans catégorie puisse héberger une recette.
 
-### 3.4 Construction des technologies
+### Construction des technologies
 
 `tech_template = data.raw.technology["automation"]` (`mod/data.lua:120`) sert de
 socle : chaque tech est un `table.deepcopy` de ce prototype
@@ -127,7 +127,7 @@ jamais — elle se lance en craftant l'item déclencheur. Les déclencheurs sont
 émis par `tool/generator/relay_phase.py:195-198` avec `craft_trigger_count =
 round(2 ** (n + 1/4))`.
 
-### 3.5 Icônes de technologie
+### Icônes de technologie
 
 | Fonction | Ligne | Rôle |
 |----------|-------|------|
@@ -136,17 +136,17 @@ round(2 ** (n + 1/4))`.
 | `proto_icon` | 131-140 | `icons[1]` (2.0) ou `icon` (1.x) |
 | `tech_icons_for_effects` | 142-179 | Parcourt les effets `unlock-recipe`, prend le premier proto résolvable, **plafonne à 4** |
 
-### 3.6 Bloc dormant
+### Bloc dormant
 
 `mod/data.lua:228-234` désactiverait **toutes** les technologies vanilla si
 `seed.meta.disable_vanilla_techs` était vrai. **Cette clé n'est jamais émise par
 le tool** (aucune occurrence dans `tool/` ni dans `mod/seed/seed.json`) : le bloc
 est donc inerte. La désactivation réelle du vanilla a lieu en
-`data-final-fixes.lua` (§5).
+`data-final-fixes.lua` ([runtime.md](runtime.md#moddata-final-fixeslua--neutralisation-du-vanilla)).
 
-## 4. `mod/data-updates.lua` — neuf blocs
+## `mod/data-updates.lua` — neuf blocs
 
-### 4.1 Réarmement des véhicules
+### Réarmement des véhicules
 
 `mod/data-updates.lua:17-75`, sur `seed.vehicle_armament`.
 
@@ -163,13 +163,13 @@ La **pool** des armes vient de la seed (`seed.pools.vehicle_weapons`,
 porter sa propre portée ; l'arme d'origine n'est jamais retirée mais n'est plus
 assignée à ce véhicule.
 
-### 4.2 Gabarits de ressource
+### Gabarits de ressource
 
 `mod/data-updates.lua:77-88` cherche un `resource` de catégorie `basic-solid`
 puis `basic-fluid` comme gabarits ; à défaut, `iron-ore` et `crude-oil`. Tous
 les patchs sont des clones de ces deux gabarits.
 
-### 4.3 Entités de ressource : une par ressource unique
+### Entités de ressource : une par ressource unique
 
 `mod/data-updates.lua:124-246`. Les patchs sont dédoublonnés par nom d'entité
 (`mod/data-updates.lua:126-133`) : deux patchs du même item partagent une seule
@@ -194,13 +194,13 @@ Pour chaque ressource unique :
 | `map_color` | 239-243 | Dérivé du hash : `(map_seed_hash × 131 + i × 47) % 101 + 30) / 255`, composantes 30..130 |
 
 `base_density = 0` est la charnière du modèle : **les gisements sont posés au
-runtime**, ce qui permet la pose exacte de `count` blocs (§6.6).
+runtime**, ce qui permet la pose exacte de `count` blocs ([runtime.md](runtime.md#purge-de-leau-vanilla)).
 
 Les deux `data:extend` sont protégés par `pcall` et logguent leur compte
 (`mod/data-updates.lua:248-262`) : une table invalide ne casse pas la
 data-stage.
 
-### 4.4 Lacs : couleur
+### Lacs : couleur
 
 `mod/data-updates.lua:264-393`, uniquement si `seed.map.lakes` est non vide.
 
@@ -219,7 +219,7 @@ Les seuils (`LAKE_MIN_LUM` 0.60, `LAKE_MIN_SAT` 0.35, `LAKE_MAX_LUM` 0.90) sont
 des **constantes locales** (`mod/data-updates.lua:282-284`), pas des clés de
 config : ce sont des choix de lisibilité, pas de gameplay.
 
-### 4.5 Lacs : tuiles et neutralisation de l'eau vanilla
+### Lacs : tuiles et neutralisation de l'eau vanilla
 
 Le modèle est en trois temps.
 
@@ -258,21 +258,21 @@ d'eau de nauvis reçoit `property_expression_names["tile:<nom>:probability"]` �
 > bordure » (lignes 531-537) est donc **du code inerte** — il ne s'exécute
 > jamais. À garder en tête, pas à corriger ici.
 
-### 4.6 Catégories de combustible unifiées
+### Catégories de combustible unifiées
 
 `mod/data-updates.lua:660-676` : **tout** brûleur vanilla accepte **toutes** les
 `fuel-category`. But : éviter un kit de départ donnant un combustible
 inutilisable. C'est une mutation globale de `data.raw`, donc elle touche aussi
 les prototypes d'autres mods — assumé et journalisé.
 
-### 4.7 Pompe offshore requalifiée
+### Pompe offshore requalifiée
 
 `mod/data-updates.lua:683-693` : la pompe vanilla **ne reçoit pas** de
 `resource_categories`. Elle pompe désormais une **tuile** de lac, sans
 électricité (`energy_source` void). Les patchs fluides restent, eux, minés par
 pumpjack. Seuls le nom et la description sont remplacés.
 
-### 4.8 Fluides génériques
+### Fluides génériques
 
 `mod/data-updates.lua:695-847`, trois helpers puis deux passes.
 
@@ -302,7 +302,7 @@ pumpjack. Seuls le nom et la description sont remplacés.
 > refuse de laisser passer : un dump pris en partie randomisée ressemblerait à
 > du contenu légitime (`exporter/control.lua:398-403`).
 
-### 4.9 Fluides assignés par la seed
+### Fluides assignés par la seed
 
 `mod/data-updates.lua:851-907`, sur `seed.building_fluid_assignments`.
 
@@ -316,7 +316,7 @@ pumpjack. Seuls le nom et la description sont remplacés.
 La seed fait autorité : ces assignations **remplacent** les choix par défaut de
 la passe 1, sauf pour les générateurs.
 
-## 5. `mod/data-final-fixes.lua` — neutralisation du vanilla
+## `mod/data-final-fixes.lua` — neutralisation du vanilla
 
 Exécuté après tous les autres mods : c'est le dernier mot.
 
@@ -344,9 +344,9 @@ même numérotation :
 Le même alignement vaut pour `randputf-lac-ctl-<i>` :
 `mod/data-updates.lua:489` et `tool/exporters/mod_seed.py:88-89`.
 
-## 6. `mod/control.lua` — le runtime
+## `mod/control.lua` — le runtime
 
-### 6.1 Cartographie des événements
+### Cartographie des événements
 
 | Événement | Ligne | Action |
 |-----------|-------|--------|
@@ -364,7 +364,7 @@ Il n'y a **pas** de `on_player_joined` : le réarmer viderait l'inventaire
 existant d'un joueur qui rejoint une partie en cours
 (`mod/control.lua:749`).
 
-### 6.2 Techs gratuites et activation des recettes
+### Techs gratuites et activation des recettes
 
 `mod/control.lua:687-703`, sur `seed.free_researches`. Pour chaque tech :
 `tech.researched = true`, puis **rejouage manuel des effets**
@@ -372,7 +372,7 @@ existant d'un joueur qui rejoint une partie en cours
 tech passée à `researched = true` après coup. C'est le seul endroit du mod où
 une recette `randputf-*` passe à `enabled = true` en dehors du jeu lui-même.
 
-### 6.3 Kit de départ
+### Kit de départ
 
 Trois chemins de distribution, un seul par événement.
 
@@ -408,7 +408,7 @@ les munitions vanilla du pistolet resteraient collées.
 > passent par la branche `player.insert`, pas par les inventaires du
 > personnage.
 
-### 6.4 Les deux filets du kit
+### Les deux filets du kit
 
 | Filet | Constantes | Rôle |
 |------|-----------|------|
@@ -420,7 +420,7 @@ anti-double-dépôt. `KIT_APPLIED[idx] = nil` est remis à zéro **uniquement** 
 `on_player_created` (`mod/control.lua:725`) : c'est ce qui distingue un spawn
 initial d'un respawn (`mod/control.lua:742-745`).
 
-### 6.5 Loot du crash site
+### Loot du crash site
 
 | Élément | Ligne | Détail |
 |---------|-------|--------|
@@ -437,7 +437,7 @@ RNG local au conteneur :
 (`mod/control.lua:67`) — le loot est donc **stable par conteneur**, indépendant de
 l'ordre de découverte.
 
-### 6.6 Purge de l'eau vanilla
+### Purge de l'eau vanilla
 
 | Élément | Ligne | Détail |
 |---------|-------|--------|
@@ -451,7 +451,7 @@ l'ordre de découverte.
 `false` désactive `correct_tiles` — le but est de **modifier** le terrain, pas de
 recorriger les bords.
 
-### 6.7 Lacs : flood-fill au runtime
+### Lacs : flood-fill au runtime
 
 | Fonction | Ligne | Rôle |
 |----------|-------|------|
@@ -473,7 +473,7 @@ La pose d'une `offshore-pump` sur une tuile fantôme déclenche un fill local da
 un rayon de 128 (`mod/control.lua:851-860`) : le joueur peut forcer le remplissage
 sans attendre la génération du chunk.
 
-### 6.8 Gisements au runtime
+### Gisements au runtime
 
 | Élément | Ligne | Détail |
 |---------|-------|--------|
@@ -511,7 +511,7 @@ Deux champs de hash décorrélés : `seed_a = well_seed` pour le wobble,
 item → la richesse est **par tuile**, soit `max(1, floor(richness / count))`.
 C'est pourquoi les deux branches de `apply_craft_quantity` sont distinctes.
 
-## 7. `exporter/control.lua` — le dump vanilla
+## `exporter/control.lua` — le dump vanilla
 
 Mod compagnon, hors chaîne randputF. Il produit `data/vanilla_dump.json`, la
 base que le tool Python consomme.
@@ -532,7 +532,7 @@ Trois pièges de compatibilité 2.0 sont documentés en commentaire :
 | `production_type` (2.0) vs `flow_direction` (1.x) | 151-154 | Les deux noms sont acceptés |
 | `get_supply_area_distance()` (méthode 2.0) | 332-337 | Appel protégé, sinon champ ignoré |
 
-### 7.1 Le garde-fou d'export
+### Le garde-fou d'export
 
 `exporter/control.lua:397-423`. Si **une seule** recette porte le préfixe
 `randputf-`, l'export est **refusé** : aucun fichier n'est écrit, un log
@@ -546,7 +546,7 @@ vanilla **mutées en place** : `fuel_value` des fluides passés à 200 kJ
 `fuel_categories` élargies (`mod/data-updates.lua:670`). Un tool qui relirait ce
 dump croirait ces mutations dans le jeu de base.
 
-## 8. Clés de seed consommées, par fichier
+## Clés de seed consommées, par fichier
 
 | Clé | `data.lua` | `data-updates.lua` | `data-final-fixes.lua` | `control.lua` |
 |-----|---|---|---|---|
@@ -577,7 +577,7 @@ Trois points à noter :
 - `difficulty` est injectée **à l'export** (`tool/exporters/mod_seed.py:53-58`) :
   elle n'existe jamais dans le `seed` que renvoie le pipeline.
 
-## 9. Ce qui est câblé mais inactif
+## Ce qui est câblé mais inactif
 
 | Cas | Emplacement | État |
 |-----|-------------|-------|
@@ -587,11 +587,7 @@ Trois points à noter :
 | `pools.vehicle_weapons` | `tool/generator/pipeline.py:441` | Exporté et documenté, mais **non consommé** en Lua : le mod n'utilise que `vehicle_armament` |
 | `extractor_timing` | `tool/generator/pipeline.py:462` | Idem : conservé pour l'audit et les tests, explicitement ignoré par le mod (commentaire ligne 458-461) |
 
-## 10. Lectures associées
+## Lectures associées
 
-- [`pipeline.md`](pipeline.md) — qui produit chaque clé.
-- [`seed.md`](seed.md) — la structure `seed.json`.
-- [`ressources.md`](ressources.md) — la pose des gisements et des lacs (§6).
-- [`starter.md`](starter.md) — le kit de départ (§7/§8).
-- [`nondeterminism.md`](nondeterminism.md) — les flux RNG dont dérivent les cartes.
-- [`witness.md`](witness.md) — le témoin md5 de ce mod assemblé.
+- **Parent** : [architecture.md](architecture.md) — architecture et outillage
+- **Concepts liés** : [pipeline.md](pipeline.md) ; [seed.md](seed.md) ; [ressources.md](ressources.md#les-ressources-au-sol) ; [starter.md](starter.md#la-phase-de-démarrage) ; [chaleur.md](chaleur.md#la-chaleur) ; [nondeterminism.md](nondeterminism.md) ; [witness.md](witness.md)

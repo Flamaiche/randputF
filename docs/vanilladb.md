@@ -1,6 +1,6 @@
 # VanillaDB — base de données normalisée du contenu vanilla
 
-## 1. Rôle du module et position dans le pipeline
+## Rôle du module et position dans le pipeline
 
 Le module `tool/common/db.py` fournit la **base de données normalisée** qui constitue la source de vérité en lecture pour toutes les phases du générateur. Elle convertit le `vanilla_dump.json` (export du jeu) en une structure interne (`VanillaDB`) utilisée par les autres composants du pipeline de génération.
 
@@ -14,21 +14,21 @@ Dans le pipeline de génération (`tool/generator/pipeline.py`), la fonction `lo
 3. Chronologie des jalons (pipeline.md:39‑50)
 ```
 
-## 2. Format d'entrée : `vanilla_dump.json` et métadonnées
+## Format d'entrée : `vanilla_dump.json` et métadonnées
 
 Le fichier `vanilla_dump.json` est le dump brut du jeu (version 2.0). Il contient les sections suivantes qui sont exploitées par `VanillaDB` :
 
 * **`meta`** – métadonnées du jeu, notamment `game_version_numeric` (ligne 161) qui détermine la `seed_value` (ligne 316).
-* **`items`** – tous les objets solides (armes, munitions, outils, packs de science, etc.). Chaque entrée est un `ItemDef` (voir §3).
-* **`fluids`** – tous les fluides (liquides, gaz, etc.). Chaque entrée est un `FluidDef` (voir §3).
+* **`items`** – tous les objets solides (armes, munitions, outils, packs de science, etc.). Chaque entrée est un `ItemDef` (voir [vanilladb.md](vanilladb.md#schéma-des-données)).
+* **`fluids`** – tous les fluides (liquides, gaz, etc.). Chaque entrée est un `FluidDef` (voir [vanilladb.md](vanilladb.md#schéma-des-données)).
 * **`entities`** – entités du monde (minéraux, biologiques, etc.), filtrées par `is_junk` (ligne 163).
 * **`recipes`** – recettes brutes du dump, chacune avec `name`, `category`, `ingredients`, `products` et `energy` (ligne 209‑216).
 
 La `seed_value` est extraite de `meta.game_version` (ou `meta.game_version_numeric` par défaut) et initialise le flux aléatoire utilisé par le pipeline (ligne 316).
 
-## 3. Schéma des données
+## Schéma des données
 
-### 3.1 `ItemDef` (item solide)
+### `ItemDef` (item solide)
 
 ```python
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ Champs clés :
 - **Propriétés de stackabilité** – `stack_size` (si > 1, empileable ; sinon déduit du type).
 - **Catégories** – `item_type`, `fuel_category`, `subgroup` (catégories de craft, énergie, etc.).
 
-### 3.2 `FluidDef` (fluide)
+### `FluidDef` (fluide)
 
 ```python
 @dataclass(frozen=True)
@@ -72,7 +72,7 @@ class FluidDef:
 
 Un fluide est identifié uniquement par son nom (la température n'est pas une dimension).
 
-### 3.3 `BuildingDef` (bâtiment)
+### `BuildingDef` (bâtiment)
 
 ```python
 @dataclass(frozen=True)
@@ -160,7 +160,7 @@ class BuildingDef:
     is_radar: bool = False
 ```
 
-#### 3.3.1 Pools dérivés
+#### Pools dérivés
 
 | Pool | Méthode | Description |
 |------|---------|-------------|
@@ -177,9 +177,9 @@ class BuildingDef:
 | `buildings_with_tag(tag)` | méthode | Bâtiments portant un tag donné. (lignes 412‑418). |
 | `extractors_for_medium(medium)` | méthode | Extracteurs du dump pour un milieu donné (item/fluid). (lignes 420‑430). |
 
-## 4. Prédicats de détection par capacités
+## Prédicats de détection par capacités
 
-### 4.1 `has_hidden_recipe(b: BuildingDef) -> bool`
+### `has_hidden_recipe(b: BuildingDef) -> bool`
 
 Détecte les bâtiments possédant une **recette cachée** (code de fabrication codé en dur, non accessible avant la transformation du mod). La détection est faite **par capacités intrinsèques** (aucune liste de noms) :
 
@@ -193,19 +193,19 @@ def has_hidden_recipe(b: "BuildingDef") -> bool:
         return False
     has_atelier_category = any(
         c in VALID_RECIPE_CATEGORIES for c in getattr(b, "crafting_categories", ())
-    )
+)
     if has_atelier_category:
         return False
     has_input = (
         getattr(b, "item_input_slots", 0) > 0
         or getattr(b, "fluid_inputs", 0) > 0
         or bool(getattr(b, "fuel_categories", ()))
-    )
+)
     has_output = (
         getattr(b, "item_output_slots", 0) > 0
         or getattr(b, "fluid_outputs", 0) > 0
         or bool(getattr(b, "fuel_residues", ()))
-    )
+)
     return has_input and has_output
 ```
 
@@ -214,7 +214,7 @@ def has_hidden_recipe(b: "BuildingDef") -> bool:
 - `nuclear-reactor` (item → résidu item) → `True`.
 - Un générateur classique (turbine, panneau solaire) → `False` car il n'a ni entrée ni sortie de type produit.
 
-### 4.2 `is_fixed_fluid_crafter(b: BuildingDef) -> bool`
+### `is_fixed_fluid_crafter(b: BuildingDef) -> bool`
 
 Sous‑ensemble de `has_hidden_recipe` où le générateur crée une **recette fluide → fluide** randomisée (boiler, heat‑exchanger). Les autres bâtiments à recette fixe (combusteurs à résidu, etc.) sont exclus.
 
@@ -225,10 +225,10 @@ def is_fixed_fluid_crafter(b: "BuildingDef") -> bool:
         and getattr(b, "is_crafter", False)
         and getattr(b, "fluid_inputs", 0) > 0
         and getattr(b, "fluid_outputs", 0) > 0
-    )
+)
 ```
 
-### 4.3 `is_fixed_crafter(b: BuildingDef) -> bool`
+### `is_fixed_crafter(b: BuildingDef) -> bool`
 
 Bâtiment à recette **fixe** pouvant héberger une recette randomisée. Inclut les bâtiments à recette fixe (boiler, heat‑exchanger) ET les générateurs/extracteurs/lab qui produisent un résidu (combustible → résidu item).
 
@@ -240,13 +240,13 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
             (getattr(b, "is_crafter", False) and (
                 getattr(b, "fluid_outputs", 0) > 0 or getattr(b, "item_output_slots", 0) > 0))
             or bool(getattr(b, "fuel_residues", ()))
-        )
-    )
+)
+)
 ```
 
-## 5. Tags orthogonaux cumulables et catégories
+## Tags orthogonaux cumulables et catégories
 
-### 5.1 Tags de rôle fonctionnel (cumulables)
+### Tags de rôle fonctionnel (cumulables)
 
 | Tag | Signification | Déterminé par | Consommé par |
 |------|---------------|---------------|--------------|
@@ -257,7 +257,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 | `is_extractor` | Extrait une ressource (minéral, fluide, solide) | `resource_categories`, `pumped_fluid` | `recipes`, `starter_chain`, `extractors_for_medium` |
 | `is_other` | Aucune capacité reconnue | = ¬(tous les rôles ci‑dessus) | `summarize_db` (uniquement) |
 
-### 5.2 Tags énergétiques & chaleur
+### Tags énergétiques & chaleur
 
 | Tag | Signification | Déterminé par | Consommé par |
 |------|---------------|---------------|--------------|
@@ -268,7 +268,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 | `is_heat_transport` | Pipe de chaleur | `type == 'heat-pipe'` | `recursive_phase` |
 | `is_heat_sink` | Consommateur de chaleur | `energy_type == 'heat'` | `recursive_phase` |
 
-### 5.3 Tags d'extraction
+### Tags d'extraction
 
 | Tag | Signification | Déterminé par | Consommé par |
 |------|---------------|---------------|--------------|
@@ -277,7 +277,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 | `is_offshore_pump` | Pompe d'eau | `is_water_extractor` (médium = eau) | `starter_chain`, `map_patches` |
 | `is_well_pump` | Pompe de fluide brut | `type == 'pump'` | `starter_chain` (patch water) |
 
-### 5.4 Tags de logistique & transport
+### Tags de logistique & transport
 
 | Tag | Signification | Déterminé par | Consommé par |
 |------|---------------|---------------|--------------|
@@ -293,7 +293,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 | `is_roboport` | Roboport (C3 ↔ roboport) | `type == 'roboport'` | – |
 | `is_robot` | Robot logistique/construction | `is_mounted_gun` absent, `type` dans les catégories robot | – |
 
-### 5.5 Tags spécialisés
+### Tags spécialisés
 
 | Tag | Signification | Déterminé par | Consommé par |
 |------|---------------|---------------|--------------|
@@ -313,9 +313,9 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 | `is_heat_sink` | Consommateur de chaleur (heat‑exchanger) | `energy_type == 'heat'` | `recursive_phase._ensure_heat_prereq` |
 | `is_boiler`, `is_heat_exchanger` | Distinction source vs transport de chaleur | – | – |
 
-## 6. Règles d'inférence
+## Règles d'inférence
 
-### 6.1 `is_stackable`
+### `is_stackable`
 
 Une entrée est **empilable** si son `stack_size` est supérieur à 1. Sinon, on se fie au type :
 
@@ -328,15 +328,15 @@ def is_stackable(self) -> bool:
 
 Les types non‑stackables (armure, arme, véhicule, etc.) sont toujours non‑empilables.
 
-### 6.2 `has_hidden_recipe` (rappel)
+### `has_hidden_recipe` (rappel)
 
-Comme décrit en §4.1, ce prédicat détecte les bâtiments à recette cachée. Il **ne compte jamais** la chaleur ou l'électricité : les réacteurs (item → résidu) et les boilers/heat‑exchangers sont considérés comme `has_hidden_recipe = True` mais **ne sont pas** des `is_fixed_fluid_crafter` (car ils ne produisent pas de fluide).
+Comme décrit en [vanilladb.md](vanilladb.md#has_hidden_recipeb-buildingdef---bool), ce prédicat détecte les bâtiments à recette cachée. Il **ne compte jamais** la chaleur ou l'électricité : les réacteurs (item → résidu) et les boilers/heat‑exchangers sont considérés comme `has_hidden_recipe = True` mais **ne sont pas** des `is_fixed_fluid_crafter` (car ils ne produisent pas de fluide).
 
-### 6.3 `is_fixed_fluid_crafter` (rappel)
+### `is_fixed_fluid_crafter` (rappel)
 
 Restreint `has_hidden_recipe` aux bâtiments qui créent une recette **fluide → fluide** randomisée (boiler, heat‑exchanger). Les autres bâtiments à recette fixe (combusteurs à résidu, générateurs, extracteurs) sont exclus.
 
-### 6.4 `is_fixed_crafter` (rappel)
+### `is_fixed_crafter` (rappel)
 
 Inclut les bâtiments à recette fixe pouvant recevoir une recette randomisée :
 - `is_crafter` + sortie fluide ou item
@@ -344,19 +344,19 @@ Inclut les bâtiments à recette fixe pouvant recevoir une recette randomisée�
 
 Ces bâtiments reçoivent effectivement une recette aléatoire lors de la génération.
 
-## 7. Notes d'implémentation
+## Notes d'implémentation
 
-### 7.1 `seed_value`
+### `seed_value`
 
 La `seed_value` est l'identifiant de la graine aléatoire qui guide toute la génération. Elle provient de `meta.game_version` (ou `meta.game_version_numeric` par défaut) dans le dump (ligne 161). La valeur est stockée dans `VanillaDB.seed_value` (ligne 316) et utilisée par le flux aléatoire partagé (`db.seed_value`) dans toutes les phases du pipeline (lignes 153, 151, 167, 177, 203, 215, 221).
 
-### 7.2 `fuel_residues` remplis après parse
+### `fuel_residues` remplis après parse
 
 Après le parsing du dump, les `fuel_residues` de chaque bâtiment sont calculés à partir des `burnt_result` des combustibles (lignes 379‑386). Ces résidus sont remplis **après** la création de la base `VanillaDB` et servent à :
 - Activer le tag `has_hidden_recipe` pour les bâtiments correspondants (ligne 224).
 - Alimenter `fuel_item_flow` et `fuel_residues` pour les méthodes de pool (lignes 399‑404).
 
-### 7.3 Relation avec `tags.md`
+### Relation avec `tags.md`
 
 Tous les tags définis dans `tool/common/tagsets.py` (section 1‑13 de `docs/tags.md`) sont appliqués sur les entités via les capacités intrinsèques. La base `VanillaDB` expose les méthodes de filtrage (`buildings_with_tag`, `extractors_for_medium`) qui correspondent aux sections du document de tags. L'audit (`tool/audit/tags.py`) vérifie l'orthogonalité et la cohérence des tags par rapport à ces règles.
 
@@ -364,3 +364,8 @@ Tous les tags définis dans `tool/common/tagsets.py` (section 1‑13 de `docs/
 
 *Document généré à partir de `tool/common/db.py` et `docs/tags.md`.*
 *Version 1.0 – 2026‑10‑02*
+
+## Lectures associées
+
+- **Parent** : [model.md](model.md) — le modèle randput
+- **Concepts liés** : [tags.md](tags.md) ; [modules.md](modules.md#toolparsersvanillapy--lentrée) (`tool/parsers/vanilla.py`) ; [chaleur.md](chaleur.md#la-chaleur)

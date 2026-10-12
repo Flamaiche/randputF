@@ -9,7 +9,7 @@ des deux côtés, sinon un écart de vocabulaire passe pour une erreur
 d'algorithme (et inversement). Ce document fixe la correspondance exacte afin
 qu'on parle toujours des mêmes choses.
 
-## 1. Table de correspondance seed → rejoueur
+## Table de correspondance seed → rejoueur
 
 | Concept | Générateur (seed) | Rejoueur (consomme tel quel) |
 |---|---|---|
@@ -22,7 +22,7 @@ qu'on parle toujours des mêmes choses.
 | jalon tardif | `seed["late_raws"].startup` / `.gated[{name, tier}]` | `late_tier[(kind, name)] = tier` ; tier = index de la chaîne des packs |
 | déclencheur prologue | `tech.craft_trigger` (item à fabriquer) | `_craft(trigger, 1)` avant les packs |
 
-## 2. La règle de MAÎTRISE (propre au rejoueur)
+## La règle de MAÎTRISE (propre au rejoueur)
 
 Un joueur n'a pas la recette « infinie » tant qu'il ne l'a pas **prouvée** :
 
@@ -47,7 +47,7 @@ Sorties du rapport (`ReplayReport`) :
   (`kind ∈ {"prereqs","trigger","cost","lab"}`) ;
 - `obtainable_items` / `obtainable_fluids` / `victory`.
 
-## 3. Écarts de vocabulaire CONNUS (à ne pas re-chercher)
+## Écarts de vocabulaire CONNUS (à ne pas re-chercher)
 
 1. **« extracteur »** — deux sens distincts : le générateur écrit
    `seed["extractor_timing"]` (passe C3 : timing de DÉBLOCAGE au fil de
@@ -65,7 +65,7 @@ Sorties du rapport (`ReplayReport`) :
    packs produisibles) ; la valeur de jalon d'une raw elle, est lue
    directement dans `late_raws.gated[].tier`.
 
-## 4. Garantie
+## Garantie
 
 Tout ce que le rejoueur sort parle des mêmes `id`/`name` que la seed : il ne
 consomme que `seed["recipes"]`, `seed["technologies"]`, `seed["map"]`,
@@ -73,3 +73,8 @@ consomme que `seed["recipes"]`, `seed["technologies"]`, `seed["map"]`,
 `seed["free_researches"]`, `seed["building_fluid_assignments"]` — tous générés
 par `generate_seed`. Une incohérence rejoueur↔jeu est donc une décision
 d'algorithme du générateur, pas un malentendu de vocabulaire.
+
+## Lectures associées
+
+- **Parent** : [solvabilite.md](solvabilite.md) — vérifications de solvabilité
+- **Concepts liés** : [solvabilite.md](solvabilite.md#rejoueur--fake-player--vérification-par-simulation) ; [seed.md](seed.md#seed-et-configuration) ; [runtime.md](runtime.md) ; [pipeline.md](pipeline.md#structure-de-la-seed-en-sortie)

@@ -2,7 +2,7 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 4. Architecture générale
+## Architecture générale
 
 Le système repose sur trois composants distincts :
 
@@ -19,7 +19,7 @@ Le système repose sur trois composants distincts :
 └─────────────────────┘      └──────────────────────────┘      └─────────────────┘
 ```
 
-### 4.1 Tool externe (Python)
+### Tool externe (Python)
 
 La génération complète est effectuée **hors du jeu**, par un outil Python.
 Raisons :
@@ -27,19 +27,19 @@ Raisons :
 - Factorio ne permet **pas** de modifier les ingrédients d'une recette au
   runtime via l'API : tout doit être construit en *data-stage*. Le tool écrit
   donc les fichiers que le mod consommera à ce moment-là ;
-- la **solvabilité** d'une seed (§15) est vérifiable hors du jeu, avant même
+- la **solvabilité** d'une seed ([invariants.md](invariants.md#règles-de-solvabilité)) est vérifiable hors du jeu, avant même
   de lancer Factorio — on refuse une seed injouable plutôt que de laisser le
   joueur tomber sur un blocage ;
 - Python est choisi pour sa simplicité de développement et de débogage.
 
-### 4.2 Formats de fichiers
+### Formats de fichiers
 
 - **YAML** pour les fichiers de configuration (lisibles, commentables) ;
 - **JSON** pour les données générées consommées par le mod (seed, graphe,
   définitions de recettes/techs) ;
 - d'autres formats pourront compléter si besoin.
 
-### 4.3 Mod Factorio
+### Mod Factorio
 
 En *data-stage*, le mod lit la configuration et la seed puis construit :
 
@@ -56,22 +56,23 @@ Au runtime (*control.lua*), le mod :
 - gère les déblocages progressifs, le kit de départ, les recherches
   gratuites.
 
-## 17. Pipeline technique
+## Pipeline technique
 
 Chaîne complète, de l'écriture d'une seed à une partie jouable :
 
 1. `config/defaults.yaml` — paramètres généraux (fourchettes, pondérations,
-   pools, récursion/armes montées, loot du site de crash §7) ; surcharges
-   utilisateur dans `config/user.yaml`, fusionnées puis validées (§Note config).
+   pools, récursion/armes montées, loot du site de crash [starter.md](starter.md#la-phase-de-démarrage)) ; surcharges
+   utilisateur dans `config/user.yaml`, fusionnées puis validées (Note config).
 2. Tool Python :
    1. parse les prototypes vanilla 2.0 (items beltables, fluides pipables,
       bâtiments avec leurs slots/directives par tier) ;
-   2. tire le graphe complet depuis la seed (phases §6 → §14) — en 2 passes
+   2. tire le graphe complet depuis la seed (phases [ressources.md](ressources.md#les-ressources-au-sol) → [tech.md](tech.md#fin-de-partie)) — en 2 passes
       sur la même référence RNG quand le jalonnement late raws est actif
-      (§6.3 : passe A = mesure de la dépendance, passe B = starter rejoué sur
+      ([pipeline.md](pipeline.md#arbitrage-des-passes-late-raws) : passe A = mesure de la dépendance,
+      passe B = starter rejoué sur
       le pool de démarrage dégradé, état vierge porté par
       `StarterConfig.deferred`) ;
-   3. vérifie les invariants de solvabilité (§15) ;
+   3. vérifie les invariants de solvabilité ([invariants.md](invariants.md#règles-de-solvabilité)) ;
    4. écrit `seed.json` (+ données associées) dans le dossier du mod.
 3. Mod Factorio, data-stage : lecture YAML/JSON → construction des entités
    ressources cachées, des recettes et de l'arbre technologique.
@@ -83,7 +84,7 @@ Cette section résume la chaîne ; la chronologie détaillée des jalons, les fl
 RNG et les points d'échec sont dans [`pipeline.md`](pipeline.md), et le
 développement du mod Lua fichier par fichier dans [`runtime.md`](runtime.md).
 
-## 18. Structure du projet
+## Structure du projet
 
 ```
 randputF/
@@ -105,7 +106,7 @@ randputF/
 │   │   ├── demo.py
 │   │   ├── png_icon.py        # génération d'icônes PNG (seed_graph)
 │   │   ├── rng.py             # make_seeded_rng : flux RNG déterministe par phase
-│   │   ├── tagsets.py         # ensembles de noms figés (source unique, tags.md §14)
+│   │   ├── tagsets.py         # ensembles de noms figés (source unique, tags.md)
 │   │   ├── weighted_picker.py
 │   │   ├── config.py          # les deux YAML : fusion profonde + validation stricte
 │   │   ├── assets.py          # résolution des assets (prototypes, icônes)
@@ -121,29 +122,29 @@ randputF/
 │   │   ├── map_patches.py       # phase 1 : ressources au sol
 │   │   ├── lakes.py             # phase 1bis : lacs de fluide
 │   │   ├── starter_chain.py     # phase 2 : chaîne initiale
-│   │   ├── building_fluids.py   # phase 2bis : fluides des bâtiments fixes (§6)
+│   │   ├── building_fluids.py   # phase 2bis : fluides des bâtiments fixes
 │   │   ├── recursive_phase.py   # phase 3 : récursion + balayage contenu
 │   │   ├── electricity.py       # phase 3 : résolution électricité
 │   │   ├── endgame_phase.py     # phase 4 : chaîne fusée
 │   │   ├── relay_phase.py       # relais ressources non-infinies + prologue
-│   │   ├── easeup_phase.py      # recettes alternatives crafts lourds (§9.3)
+│   │   ├── easeup_phase.py      # recettes alternatives crafts lourds
 │   │   ├── recipes.py           # primitives recettes (make_recipe, ensure_obtainable)
 │   │   ├── extractor_timing.py  # timing de déblocage C3 (+ boîte D4bis)
-│   │   ├── late_raws.py         # jalons late raws (§6.3) : plan passe A + dégradation
-│   │   ├── early_oracle.py      # watershed « obtenable avant le réseau » (§10ter)
+│   │   ├── late_raws.py         # jalons late raws (pipeline.md) : plan passe A + dégradation
+│   │   ├── early_oracle.py      # watershed « obtenable avant le réseau »
 │   │   ├── bootstrap_guard.py   # DIAGNOSTIC seul (tests) — plus une passe pipeline
 │   │   ├── usage_pass.py        # U1/U2 : rattachement d'usage, gardes anti-cycle
-│   │   ├── heat.py              # phase chaleur (triade source/transport/sink, §10bis)
+│   │   ├── heat.py              # phase chaleur (triade source/transport/sink, chaleur.md)
 │   │   ├── craft_quantity.py    # C1 : facteur multiplicatif sur les quantités
 │   │   ├── tech_tree.py         # arbre technologique linéaire
 │   │   └── wreck_loot.py        # loot du site de crash
 │   ├── prototypes/      # classes de config (RecipeConfig, RecursiveConfig…)
 │   │   ├── base.py             # PrototypeConfig (base)
-│   │   ├── recipes.py          # RecipeConfig (§9.2 : énergie, équilibre)
-│   │   ├── recursive.py        # RecursiveConfig (§9 : poids, armes montées §12.1)
-│   │   ├── starter.py          # StarterConfig (§7/§8 : ammo_count, inserter_chance, deferred)
-│   │   ├── relay.py            # RelayConfig (§9.5)
-│   │   ├── easeup.py           # EaseupConfig (§9.3)
+│   │   ├── recipes.py          # RecipeConfig (recettes.md : énergie, équilibre)
+│   │   ├── recursive.py        # RecursiveConfig (recettes.md : poids, armes montées combat.md)
+│   │   ├── starter.py          # StarterConfig (starter.md : ammo_count, inserter_chance, deferred)
+│   │   ├── relay.py            # RelayConfig
+│   │   ├── easeup.py           # EaseupConfig
 │   │   ├── craft_quantity.py   # CraftQuantityConfig (miroir du module generator)
 │   │   ├── usage.py            # UsageConfig (D2 : garantie d'usage dure)
 │   │   ├── difficulty_knobs.py # expérimental — testé, non branché
@@ -177,4 +178,10 @@ joueur et une pièce du système (lecture produit → ingrédient de la seed,
 icônes fidèles au jeu, autonomie du fichier).
 
 (La structure fine pourra évoluer pendant l'implémentation ; les rôles de
-haut niveau restent ceux décrits en §4.)
+haut niveau restent ceux décrits en [architecture.md](architecture.md#architecture-générale).)
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Enfant(s)** : [pipeline.md](pipeline.md) ; [modules.md](modules.md) ; [runtime.md](runtime.md) ; [graphe-interactif.md](graphe-interactif.md)
+- **Concepts liés** : [modules.md](modules.md) ; [seed.md](seed.md#seed-et-configuration) ; [config.md](config.md)

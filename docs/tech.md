@@ -2,7 +2,7 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 13. L'arbre technologique
+## L'arbre technologique
 
 - **État actuel assumé** : l'arbre est **linéaire**, mais **valide** — sans
   boucle, tout y est déblocable et tout y est géré automatiquement. Chaque
@@ -20,11 +20,15 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   de base, étendu en chaîne probabiliste** — 75 % de chance d'un 2e objet,
   65 % d'un 3e, 35 % d'un 4e, 15 % d'un 5e (le premier tirage raté stoppe le
   groupe, plafond strict de 5). Probabilités configurables via
-  `tree.group_chances` (§16). Les nœuds dédiés (sciences, pylônes, dispatch de
-  munitions, techs de prologue §7, endgame §14) conservent leur forme isolée,
+  `tree.group_chances` ([seed.md](seed.md#seed-et-configuration)). Les nœuds dédiés (sciences, pylônes, dispatch de
+  munitions, techs de prologue [starter.md](starter.md#la-phase-de-démarrage), endgame [tech.md](tech.md#fin-de-partie)) conservent leur forme isolée,
   capés à 5 aussi. Exception assumée : la **2e recherche gratuite du starter**
-  (§8) reste monolithe — elle débloque tout le bootstrap d'un coup (lab, packs,
+  ([starter.md](starter.md#la-chaîne-initiale-starter)) reste monolithe — elle débloque tout le bootstrap d'un coup (lab, packs,
   premiers bâtiments), c'est la nature même du booster de départ.
+
+  Le **groupement** d'objets dans une tech, les **nœuds isolés** (sciences,
+  pylônes, munitions, prologues, endgame) et le **dispatch** qui les répartit
+  sont détaillés dans le cas partagé [aiguillage.md](aiguillage.md#comment-les-éléments-rejoignent-larbre).
 - **Coûts de recherche** : le coût d'une recherche peut être un **matériau**
   arbitraire et pas seulement des packs de science (le jeu de base le permet,
   c'est juste rare). Point à ne surtout pas oublier : ce matériau doit être
@@ -33,34 +37,34 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 - **Cohérence des sciences** : chaque pack qui sert de coût possède une recette
   générée **et unlockée avant** la tech qui le consomme (production avant
   consommation, vérifié à la génération). Le lab étant garanti dès le starter
-  (§8), l'économie de packs est réellement consommable.
+  ([starter.md](starter.md#la-chaîne-initiale-starter)), l'économie de packs est réellement consommable.
 - **JAMAIS de ressource brute dans un pack** : la recette d'un science pack ne
   consomme aucune matière extraite du sol — ni patch posé en ressource, ni item
   environnemental (bois/pierre/poisson), ni fluide d'extraction (eau, pétrole
-  brut, vapeur — infinis ou non, §3). Elle se fabrique exclusivement à partir
+  brut, vapeur — infinis ou non, [model.md](model.md#terminologie)). Elle se fabrique exclusivement à partir
   d'intermédiaires craftés. Appliqué au tirage (starter, branche science,
-  balayage de contenu) et vérifié par l'invariant 7 (§15).
+  balayage de contenu) et vérifié par l'invariant 7 ([invariants.md](invariants.md#règles-de-solvabilité)).
 - **Coût systématique** : **toute tech récursive paie un coût en science pack**
   (bâtiments, armes, packs). Une tech gratuite en profondeur rendrait la
   progression triviale. Pour amorcer la filière, le **premier** science pack
   est rendu craftable et unlocké **gratuitement par le starter** (starter-
   transformation, façon red-science vanilla) — les techs de prologue
-  (`randputf-prologue-*`, §7) se débloquent, elles, par **hand-craft**
-  (cost vide, §9.3) d'un item **effectivement craftable dès le bootstrap** :
+  (`randputf-prologue-*`, [starter.md](starter.md#la-phase-de-démarrage)) se débloquent, elles, par **hand-craft**
+  (cost vide, [recettes.md](recettes.md#déblocage-sur-le-tas)) d'un item **effectivement craftable dès le bootstrap** :
   le pool des déclencheurs est limité aux produits des recettes des techs
   gratuites du starter (jamais aux recettes étendues ensuite par les autres
-  phases — §9.3), donc la quantité n'est jamais demandée avant d'être
+  phases — [recettes.md](recettes.md#déblocage-sur-le-tas)), donc la quantité n'est jamais demandée avant d'être
   fabricable ; seuls les science
   packs (items type tool) sont admis comme coût de recherche par le moteur ;
   chaque pack suivant se débloque en consommation du pack précédent, donc
   chaque tech a toujours un pack déjà produit vers lequel pointer.
 - **Garantie d'amorçage** : si le starter n'a pas pu seedé le premier pack
   (pool de packs non-obtenus vide), la phase récursive amorce quand même la
-  filière avec un pack du jeu — sinon une tech sans coût planterait (`§seed`).
-  Combiné à l'exclusion des packs du pool de patchs (§6), le pool de coût
+  filière avec un pack du jeu — sinon une tech sans coût planterait (`seed`).
+  Combiné à l'exclusion des packs du pool de patchs ([ressources.md](ressources.md#les-ressources-au-sol)), le pool de coût
   n'est jamais vide.
 - Les **science packs** eux-mêmes suivent les pourcentages d'obtention, comme
-  les bâtiments et tout le reste (§9.1).
+  les bâtiments et tout le reste ([recettes.md](recettes.md#tirages-pondérés)).
 - **Affichage du coût en nombre d'items** : le coût d'une tech s'affiche comme
   une **quantité de science packs** (le `count` de la recherche = nombre total
   d'items à fournir, `amount = 1` par pack), façon vanilla — la jauge de
@@ -73,7 +77,7 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
   **4 icônes** en grille 2×2, comme les techs multi-icônes vanilla ; chaque
   nœud montre ainsi clairement ce qu'il déverrouille.
 
-## 14. Fin de partie
+## Fin de partie
 
 Classique et inchangée :
 
@@ -82,7 +86,7 @@ Classique et inchangée :
   changent pas dans leur principe.
 
 Le randomizer doit garantir l'atteignabilité de la fusée pour toute seed
-acceptée (§15).
+acceptée ([invariants.md](invariants.md#règles-de-solvabilité)).
 
 **Phase endgame** : en base 2.0, `rocket-part` (recette vanilla
 exempte, jamais désactivée) consomme `processing-unit`, `low-density-structure`
@@ -95,7 +99,12 @@ fusée (et donc la victoire) serait inatteignable pour toutes les seeds.
 
 La phase endgame garantit aussi le **rocket-silo lui-même** : `rocket-part` se
 craft **dans** le silo. Si la récursion s'arrête sans déployer le silo, rien
-ne peut lancer de fusée ; l'item `rocket-silo` (jamais un patch, §6) reçoit
+ne peut lancer de fusée ; l'item `rocket-silo` (jamais un patch, [ressources.md](ressources.md#les-ressources-au-sol)) reçoit
 donc sa recette générée dans la même tech finale `randputf-endgame-rocket`, ou
 par sa tech récursive si la récursion l'a déjà déployé (chaque recette reste
-débloquée par une seule tech, §15).
+débloquée par une seule tech, [invariants.md](invariants.md#règles-de-solvabilité)).
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Concepts liés** : [recettes.md](recettes.md#la-phase-récursive) ; [aiguillage.md](aiguillage.md#comment-les-éléments-rejoignent-larbre) ; [starter.md](starter.md#la-phase-de-démarrage) ; [invariants.md](invariants.md#règles-de-solvabilité) ; [solvabilite.md](solvabilite.md)

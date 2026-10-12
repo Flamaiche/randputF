@@ -10,7 +10,7 @@ nommés. Les références `fichier:ligne` des algorithms sont dans
 
 ---
 
-## 1. Vue d'ensemble
+## Vue d'ensemble
 
 | Paquet | Rôle | Modules |
 |--------|------|---------|
@@ -27,7 +27,7 @@ nommés. Les références `fichier:ligne` des algorithms sont dans
 Les paquets `__init__.py` sont vides (5 fichiers, 0 ligne) : le tool est un
 **package à plat**, pas une hiérarchie de sous-domaines.
 
-## 2. État de branchement — les quatre statuts
+## État de branchement — les quatre statuts
 
 | Statut | Signification |
 |--------|---------------|
@@ -39,7 +39,7 @@ Les paquets `__init__.py` sont vides (5 fichiers, 0 ligne) : le tool est un
 Ce tableau est le point important du document : **deux tiers du code n'est pas
 sur le chemin d'une seed**.
 
-## 3. `tool/generator/` — les phases
+## `tool/generator/` — les phases
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
@@ -69,7 +69,7 @@ sur le chemin d'une seed**.
 > `extractor_timing`, donc son résultat est visible dans
 > `seed["extractor_timing"]`.
 
-## 4. `tool/prototypes/` — les objets de configuration
+## `tool/prototypes/` — les objets de configuration
 
 Tous dérivent de `PrototypeConfig` (`base.py`, 13 lignes).
 
@@ -101,7 +101,7 @@ passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 > quand on en a besoin »), mais résolu au niveau seed plutôt que par prototype.
 > Les deux coexistent ; seul le second est branché.
 
-## 5. `tool/common/` — le socle
+## `tool/common/` — le socle
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
@@ -116,7 +116,7 @@ passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 | `png_icon.py` | 183 | Accessoire | Recadrage des icônes Factorio pour le graphe HTML |
 | `weighted_picker.py` | 126 | Pipeline | Tirage pondéré à pourcentages ; utilisé par `prototypes/recipes.py` |
 
-### 5.1 `config.py` en détail
+### `config.py` en détail
 
 Seul module où la **validation** est une erreur et non un log.
 
@@ -136,7 +136,7 @@ le moteur existe, donc aucun module n'a besoin de valeur de secours
 (`tool/common/config.py:10-12`). Une clé obligatoire absente est un défaut de
 maintenance, pas une tolérance (`tool/common/config.py:418-423`).
 
-## 6. `tool/parsers/vanilla.py` — l'entrée
+## `tool/parsers/vanilla.py` — l'entrée
 
 608 lignes. Normalise `vanilla_dump.json` (produit par `exporter/control.lua`)
 vers `VanillaDB`.
@@ -148,7 +148,7 @@ vers `VanillaDB`.
 | Calcule les tags | Dérive `is_crafter`, `is_extractor`, `is_generator`… depuis les capacités |
 | Rejette un dump invalide | `ValueError` avec message → le CLI sort en 1 (`tool/__main__.py:57-59`) |
 
-## 7. `tool/validator/` — deux validations distinctes
+## `tool/validator/` — deux validations distinctes
 
 | Module | Lignes | Ce qu'il vérifie |
 |--------|--------|------------------|
@@ -164,7 +164,7 @@ C'est la distinction à retenir : une seed peut être structurellement valide et
 non solvable — et c'est le cas qui déclenche la reprise du CLI. Voir
 [`solvabilite.md`](solvabilite.md).
 
-## 8. `tool/audit/`
+## `tool/audit/`
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
@@ -175,7 +175,7 @@ non solvable — et c'est le cas qui déclenche la reprise du CLI. Voir
 s'exécute qu'à l'écriture (`tool/exporters/mod_seed.py:54`) : le calcul ne peut
 donc pas biaiser la construction.
 
-## 9. `tool/exporters/`
+## `tool/exporters/`
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
@@ -186,16 +186,16 @@ donc pas biaiser la construction.
 binaire externe. Son absence ne bloque jamais une génération
 (`tool/__main__.py:192-195`).
 
-## 10. `tool/replay/player.py` — le rejoueur
+## `tool/replay/player.py` — le rejoueur
 
 1073 lignes. Simule une partie complète sur la seed finale pour **prouver** la
 solvabilité. Ce n'est pas le validateur : c'est une preuve par simulation
-(1501/1501 victoires mesurées, `docs/solvabilite.md` §15ter).
+(1501/1501 victoires mesurées, [`docs/solvabilite.md`](solvabilite.md#rejoueur--fake-player--vérification-par-simulation)).
 
 Il est **accessoire** : la CLI ne l'expose pas comme commande. Il est appelé par
 la suite de tests et par les sweeps.
 
-## 11. `tool/__main__.py` — la CLI
+## `tool/__main__.py` — la CLI
 
 274 lignes, 5 commandes.
 
@@ -215,7 +215,7 @@ vanilla alternatif).
 (`tool/__main__.py:85-117`) — et **désactive** `randputf-exporter`, pour
 qu'aucun dump ne puisse être pris depuis une partie randomisée.
 
-## 12. Récapitulatif des statuts
+## Récapitulatif des statuts
 
 | Statut | Nombre | Modules |
 |--------|--------|---------|
@@ -229,9 +229,7 @@ documentent l'invariant qu'ils implémentaient. Les supprimer casserait des
 tests, pas des seeds — c'est le marqueur d'une fonctionnalité retirée du
 câblage mais non nettoyée.
 
-## 13. Lectures associées
+## Lectures associées
 
-- [`pipeline.md`](pipeline.md) — l'ordre réel d'appel de ces modules.
-- [`architecture.md`](architecture.md) — la structure du projet (§18).
-- [`developpement.md`](developpement.md) — environnement de dev, ajout d'une phase.
-- [`config.md`](config.md) — chaque clé de config et sa validation.
+- **Parent** : [architecture.md](architecture.md) — architecture et outillage
+- **Concepts liés** : [pipeline.md](pipeline.md) ; [architecture.md](architecture.md#structure-du-projet) ; [developpement.md](developpement.md) ; [config.md](config.md) ; [vanilladb.md](vanilladb.md)

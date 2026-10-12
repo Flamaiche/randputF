@@ -19,7 +19,7 @@ Retour : [README.md](../README.md).
 
 ---
 
-## 1. État des versions
+## État des versions
 
 **Publiée** — accessible publiquement, tag sur `master` :
 
@@ -44,7 +44,7 @@ sous ce numéro : le réemployer ne trompe personne, et c'est ce qui a été fai
 Le brouillon résiduel a été **supprimé** : la release v1.0.1 sera donc créée de
 zéro par le workflow (chemin `create`), et non reprise d'un brouillon avec une
 date et un corps périmés. Un `draft` réapparu pour cette version signalerait
-un reliquat : le supprimer avant le tag (cf. checklist §3).
+un reliquat : le supprimer avant le tag (cf. checklist [release.md](release.md#checklist-de-publication-procédure)).
 
 **Écart assumé sur la numérotation** : la configuration à deux YAML est un
 changement visible par l'utilisateur (un fichier supprimé, des surcharges à
@@ -54,13 +54,13 @@ semver reprend ses droits — un changement visible par l'utilisateur prend un
 chiffre mineur (1.1.0), un correctif de documentation ou de test un numéro de
 patch.
 
-## 2. Release v1.0.1 : EN PRÉPARATION
+## Release v1.0.1 : EN PRÉPARATION
 
 Porte le système de configuration à deux YAML et la refonte documentaire. Elle
 sortira au tag `v1.0.1`, créé **par le workflow** au moment où `master`
-reçoit le travail de `dev` (cf. §3 — ce n'est pas un merge, voir l'encadré).
+reçoit le travail de `dev` (cf. [release.md](release.md#checklist-de-publication-procédure) — ce n'est pas un merge, voir l'encadré).
 
-### 2.1 Titre et note
+### Titre et note
 
 Le titre et la note sont **dans [`notes/v1.0.1.md`](../notes/v1.0.1.md)** —
 première ligne = titre, reste = note « highlights ». `release.yml` les publie
@@ -70,7 +70,7 @@ tels quels ; ne pas les recopier ici.
 1.0.1 — Documentation mise à jour et configuration en deux YAML
 ```
 
-### 2.2 Faits vérifiés (pour ne rien inventer dans la note)
+### Faits vérifiés (pour ne rien inventer dans la note)
 
 - Témoin seed 5 de la v1.0.1 : `ce428c2140ec7031f9604637ecf70cbc`. Il **change**
   au bump de version (préfixe racine du zip `randputF_<version>`) alors que le
@@ -80,10 +80,10 @@ tels quels ; ne pas les recopier ici.
 - Fichiers de config : `config/settings.yaml` (supprimé) ->
   `config/defaults.yaml` + `config/user.yaml`.
 - Sources pour le détail : `docs/DEVIANCES.md` (bugs/bilan seed par seed),
-  `docs/solvabilite.md` (preuves 1501/1501, invariants §15),
+  `docs/solvabilite.md` (preuves 1501/1501) et [`docs/invariants.md`](invariants.md#règles-de-solvabilité),
   `docs/nondeterminism.md` (déterminisme), `config/user.yaml` (surcharges).
 
-## 3. Checklist de publication (procédure)
+## Checklist de publication (procédure)
 
 Le bump de version se fait **dans `dev`** (seule branche de travail) :
 `mod/info.json` (source de vérité) et `pyproject.toml` au même moment —
@@ -124,12 +124,12 @@ La release est la **promotion `dev` → `master`**, décidée par le mainteneur.
 - [ ] **Vérifier l'arbre propre avant de committer** : un `output/`, un
       `randputF_*` ou un `mod-list.json` laissé par un run antérieur peut faire
       passer un test en local alors qu'il échoue en CI. Ce n'est pas
-      hypothétique : c'est exactement ce qui a masqué le bug décrit en §4.
+      hypothétique : c'est exactement ce qui a masqué le bug décrit en [release.md](release.md#ce-que-la-v101-a-appris-tentative-du-2026-10-01-jamais-publiée).
       Relancer la suite depuis un arbre propre :
       `rm -rf output randputF_* mod-list.json && python -m pytest`.
 - [ ] **Promouvoir `master`** — *réservé au mainteneur, seul moment où la
       branche bouge* : `git push origin dev:master --force` (le `--force` n'est
-      nécessaire que pour cette première promotion, cf. l'encadré §3 ; ensuite
+      nécessaire que pour cette première promotion, cf. l'encadré [release.md](release.md#checklist-de-publication-procédure) ; ensuite
       un simple `git push origin dev:master` suffit). Ce push **déclenche la
       release** : build du wheel, témoin, zip attaché, tag `v<version>` créé sur
       le commit promu, **publication automatique** du titre et de la note depuis
@@ -139,7 +139,7 @@ La release est la **promotion `dev` → `master`**, décidée par le mainteneur.
       bump casse les versions codées en dur).
 - [ ] Aucun push sans décision explicite du mainteneur.
 
-## 4. Ce que la v1.0.1 a appris (tentative du 2026-10-01, jamais publiée)
+## Ce que la v1.0.1 a appris (tentative du 2026-10-01, jamais publiée)
 
 La première v1.0.1 est restée en brouillon, mais les quatre problems rencontrés
 ont été corrigés dans le code — ils sont la raison de l'état actuel.
@@ -158,7 +158,7 @@ ont été corrigés dans le code — ils sont la raison de l'état actuel.
   une attente (`tests/test_witness.py`, `tests/test_cli_install.py`). Ils lisent
   maintenant `MOD_NAME_VERSIONED`. Le second passait en local par un artefact
   résiduel (`output/randputF_1.0.0` d'un run antérieur) — d'où la règle
-  « relancer depuis un arbre propre » en §3.
+  « relancer depuis un arbre propre » en [release.md](release.md#checklist-de-publication-procédure).
 
 ### Ce que `release.yml` fait, dans l'ordre
 
@@ -187,12 +187,12 @@ publication :
 
 Le titre et le corps sont lus dans `notes/v<version>.md`, jamais recopiés.
 
-## 5. Suite des releases
+## Suite des releases
 
 **Modèle de branches** : `dev` porte le travail en cours et **la vérité** ;
 `master` porte le **dernier état publié**. Le passage de l'un à l'autre est la
 release elle-même : pousser `dev` sur `master` déclenche le build et la
-publication (§3). Conséquence à avoir en tête : le tag v1.0.0 reste accessible
+publication ([release.md](release.md#checklist-de-publication-procédure)). Conséquence à avoir en tête : le tag v1.0.0 reste accessible
 par son nom mais n'est pas dans l'ascendance de `master` — le tag reste la
 référence pour cette version.
 
@@ -212,3 +212,7 @@ qui a été écarté part dans les docs :
 - parcours / corrections seed par seed -> `CHANGELOG.md` ;
 - référence de configuration -> `docs/config.md` ;
 - construction du graphe interactif -> `docs/graphe-interactif.md`.
+
+## Lectures associées
+
+- **Concepts liés** : [CHANGELOG.md](../CHANGELOG.md) ; [witness.md](witness.md#ce-qui-est-garanti) ; [developpement.md](developpement.md) ; [solvabilite.md](solvabilite.md#rejoueur--fake-player--vérification-par-simulation)

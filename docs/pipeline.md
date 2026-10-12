@@ -10,7 +10,7 @@ rédaction. Les numéros de ligne bougent : vérifier avant de citer.
 
 ---
 
-## 1. Objet et périmètre
+## Objet et périmètre
 
 | Question | Réponse |
 |----------|---------|
@@ -20,7 +20,7 @@ rédaction. Les numéros de ligne bougent : vérifier avant de citer.
 | Le pipeline est-il déterministe ? | Oui, à triplet `(dump vanilla, config, seed_value)` identique — voir [`nondeterminism.md`](nondeterminism.md) |
 | Le pipeline valide-t-il ? | Oui, mais **après** construction : la validation (`tool/generator/pipeline.py:412`) n'échoue jamais la génération, elle loggue |
 
-## 2. Les trois fonctions d'orchestration
+## Les trois fonctions d'orchestration
 
 Tout le pipeline tient dans trois fonctions de `tool/generator/pipeline.py`.
 
@@ -31,12 +31,12 @@ Tout le pipeline tient dans trois fonctions de `tool/generator/pipeline.py`.
 | `_finalize_pipeline` | `tool/generator/pipeline.py:269` | Suffixe : récursion → fusée → usage → relais → prologue → ease-up → techs → validation → assemblage | `seed` complet |
 
 `_build_prefix` et `_finalize_pipeline` existent **pour** le rejeu des late raws
-(§6.2/§6.3) : le gating exige de rejouer le préfixe *depuis avant le starter*, pas
+([pipeline.md](pipeline.md#arbitrage-des-passes-late-raws)) : le gating exige de rejouer le préfixe *depuis avant le starter*, pas
 seulement la récursion — voir `tool/generator/pipeline.py:38-45`.
 
-## 3. Chronologie des jalons
+## Chronologie des jalons
 
-### 3.1 Préparation
+### Préparation
 
 | # | Jalon | Appel exact | Effet |
 |---|-------|-------------|-------|
@@ -44,7 +44,7 @@ seulement la récursion — voir `tool/generator/pipeline.py:38-45`.
 | 1 | Distribution de la config | `tool/generator/pipeline.py:146-151` — `recipes`, `starter_chain`, `recursive_phase`, `relay_phase`, `tech_tree`, `easeup_phase` `.set_config(cfg)` | Chaque module lit ses réglages via `default_value` ; aucun module n'a de valeur de secours codée en dur (`tool/common/config.py:10-12`) |
 | 2 | Flux RNG principal | `tool/generator/pipeline.py:153` — `map_patches.make_rng(db.seed_value)` | Flux partagé par toutes les phases qui reçoivent `rng` en paramètre |
 
-### 3.2 Tirages de carte (avant le préfixe)
+### Tirages de carte (avant le préfixe)
 
 | # | Jalon | Appel exact | Entrée → sortie | RNG |
 |---|-------|-------------|-----------------|-----|
@@ -61,7 +61,7 @@ Tirages internes des lacs : `count = rng.randint(low, high)`
 (`tool/generator/lakes.py:70`), richesse par `rng.randint`
 (`tool/generator/lakes.py:75`).
 
-### 3.3 Préfixe rejouable (`_build_prefix`, 8 jalons)
+### Préfixe rejouable (`_build_prefix`, 8 jalons)
 
 | # | Jalon | Ligne | Action | Entrée → sortie |
 |---|-------|-------|--------|-----------------|
@@ -73,7 +73,7 @@ Tirages internes des lacs : `count = rng.randint(low, high)`
 | 10 | **Phase 2bis** — Fluides de bâtiments | `tool/generator/pipeline.py:108` — `building_fluids.assign_building_fluids(rng, db, starter.state, lake_res)` | `{bâtiment: {input, output?}}`. Fusionné avec les assignations de l'électricité, la clé faisant autorité (`tool/generator/pipeline.py:113-115`) |
 | 11 | **Phase 1ter** — Gisements | `tool/generator/pipeline.py:121` — `map_patches.assign_patch_gisements(patches, db.seed_value, cfg)` | Centre, rayon, `well_seed`, `count` par patch. Flux `randputF:wells:` (`tool/generator/map_patches.py:238`) |
 | 12 | **Phase 1ter-bis** — Nonfinite | `tool/generator/pipeline.py:127` — `map_patches.apply_nonfinite_randomisation(patches, db.seed_value, cfg)` | Richesse/rayon/count × facteurs. Flux `randputF:nonfinite:` (`tool/generator/map_patches.py:328`) |
-| 13 | **Instantané gelé `base`** | `tool/generator/pipeline.py:131` — `copy.deepcopy(starter.state)` | `base` est la **source exclusive du pool** des recettes relais (§9.3) et ease-up. Après cette ligne, plus rien n'y écrit |
+| 13 | **Instantané gelé `base`** | `tool/generator/pipeline.py:131` — `copy.deepcopy(starter.state)` | `base` est la **source exclusive du pool** des recettes relais ([recettes.md](recettes.md#déblocage-sur-le-tas)) et ease-up. Après cette ligne, plus rien n'y écrit |
 
 > `patches` et `lake_list` sont modifiés **en place** par le jalon 6. L'appelant
 > doit passer des copies — c'est ce que font les **quatre** appels de
@@ -81,7 +81,7 @@ Tirages internes des lacs : `count = rng.randint(low, high)`
 > sur `list(pre_patches)` / `list(pre_lake_list)`. Le jalon 14b et 14e rejouent
 > ainsi le préfixe depuis le même état.
 
-### 3.4 Arbitrage des passes (late raws)
+### Arbitrage des passes (late raws)
 
 | # | Jalon | Ligne | Action |
 |---|-------|-------|--------|
@@ -97,9 +97,9 @@ le `cfg["starter"]["deferred"]` diffère. C'est ce qui rend le rejeu déterminis
 
 > La copie défensive de `cfg` (14e) est un correctif de non-déterminisme *intra-processus* :
 > sans elle, `deferred` fuyait vers la seed suivante du même process (régression
-> seed 1269) — voir `nondeterminism.md` §7.
+> seed 1269) — voir [`nondeterminism.md`](nondeterminism.md#dépendance-à-lordre-dun-même-processus-multi-seeds-sweeps--corrigé).
 
-### 3.5 Suffixe (`_finalize_pipeline`, 12 jalons)
+### Suffixe (`_finalize_pipeline`, 12 jalons)
 
 | # | Jalon | Ligne | Action | Sortie |
 |---|-------|-------|--------|--------|
@@ -113,11 +113,11 @@ le `cfg["starter"]["deferred"]` diffère. C'est ce qui rend le rejeu déterminis
 | 22 | **Phase 4quater** — Timing extracteurs | `tool/generator/pipeline.py:383` — `extractor_timing.apply_extractor_timing(db, starter, all_tech_steps, seed_value=..., patch_resources=..., lake_resources=...)` | « Juste-au-besoin » : `kept` / `moved` / `random`. Flux `randputf:extractor-timing:` (`tool/generator/extractor_timing.py:457`) |
 | 23 | Ré-application de la garantie d'usage | `tool/generator/pipeline.py:396` | Les relais et ease-up ont été créés **après** la passe primaire ; leurs bâtiments d'hébergement peuvent être profonds. Passe idempotente, sur l'ordre final |
 | 24 | **Phase 6** — Validation | `tool/generator/pipeline.py:412-427` — `pipeline_validator.validate_pipeline(state, technologies, db, patch_resources, lake_resources)` | **Loggue** (`log.warning` / `log.info`), ne lève pas. Recettes validées = `starter.recipes + recursive_phase.recipes_to_seed()` |
-| 25 | Assemblage de la seed | `tool/generator/pipeline.py:430-485` | Voir §4 |
+| 25 | Assemblage de la seed | `tool/generator/pipeline.py:430-485` | Voir [pipeline.md](pipeline.md#structure-de-la-seed-en-sortie) |
 | 26 | Replan late raws | `tool/generator/pipeline.py:496-498` | Le plan exporté est **remesuré sur la seed finale**, pas sur la seed de mesure A : le trigger de la 1re tech payante et le rapport C3 de B peuvent différer de A |
 | 27 | **Phase 6bis** — Quantités de craft | `tool/generator/pipeline.py:505` — `craft_quantity.apply_craft_quantity(seed, cfg)` | Post-assemblage, flux `randputF:craft_quantity:` (`tool/generator/craft_quantity.py:34`). Inerte si `craft_quantity.enabled` est faux |
 
-## 4. Structure de la seed en sortie
+## Structure de la seed en sortie
 
 Assemblée à `tool/generator/pipeline.py:430-485`.
 
@@ -144,7 +144,7 @@ Assemblée à `tool/generator/pipeline.py:430-485`.
 La clé `difficulty` est injectée **à l'export**, jamais dans le pipeline
 (`tool/exporters/mod_seed.py:53-58`).
 
-## 5. Les flux RNG du pipeline
+## Les flux RNG du pipeline
 
 Fabrique unique : `make_seeded_rng` (`tool/common/rng.py:15-23`), qui construit
 `random.Random(f"{prefix}{seed_value}")`.
@@ -165,7 +165,7 @@ Deux flux sont **positionnés et rejoués** plutôt que recréés : le flux prin
 via `getstate()`/`setstate()` aux jalons 14b/14d/14e. C'est le mécanisme qui
 permet aux deux passes de partir du même point.
 
-## 6. Invariants du pipeline
+## Invariants du pipeline
 
 | Invariant | Garanti par | Test |
 |-----------|-------------|------|
@@ -178,7 +178,7 @@ permet aux deux passes de partir du même point.
 | L'ordre des modules ne fuit pas entre deux seeds du même process | reset des globals en tête de `expand_recursive` (`tool/generator/recursive_phase.py:121-127`) | `tests/test_seed_graph.py` |
 | La victoire reste possible (chaîne fusée non bloquée) | jalon 16 | `tests/test_witness.py` |
 
-## 7. État global des modules
+## État global des modules
 
 `recursive_phase` est le seul module à état global significatif
 (`tool/generator/recursive_phase.py:38-49`) : `_tech_steps`,
@@ -191,7 +191,7 @@ isolée, mais **une graine par appel** l'est aussi : les lectures publiques
 `steps()` (ligne 585), `recipes_to_seed()` (591), `vehicle_armament()` (344) ne
 sont valides qu'immédiatement après `expand_recursive`.
 
-## 8. Chemin d'échec et reprise du CLI
+## Chemin d'échec et reprise du CLI
 
 `randputf generate` (`tool/__main__.py:140`) ne fait pas confiance à la
 validation logguée : il relance `validate_seed` (`tool/validator/solver.py:15`,
@@ -203,10 +203,7 @@ indépendante de `pipeline_validator`) et **retente avec une graine dérivée**.
 | `--seed` absent | Base = `int(time.time() * 1000)` re-tirée au début de la boucle (`tool/__main__.py:158`) |
 | 10 tentatives infructueuses | `sys.exit(2)` après impression des 10 premiers problèmes (`tool/__main__.py:163-166`) |
 
-## 9. Lectures associées
+## Lectures associées
 
-- [`architecture.md`](architecture.md) — vue d'ensemble du dépôt et de la data-stage.
-- [`nondeterminism.md`](nondeterminism.md) — les flux RNG, les pièges corrigés, les gardes.
-- [`seed.md`](seed.md) — la structure `seed.json` et le sens de chaque champ.
-- [`solvabilite.md`](solvabilite.md) — `pipeline_validator` (structure) vs `solver` (solvabilité).
-- [`DEVIANCES.md`](DEVIANCES.md) — écarts assumés, dont le raccourci de gating inerte.
+- **Parent** : [architecture.md](architecture.md) — architecture et outillage
+- **Concepts liés** : [modules.md](modules.md) ; [nondeterminism.md](nondeterminism.md) ; [seed.md](seed.md) ; [solvabilite.md](solvabilite.md) ; [invariants.md](invariants.md#règles-de-solvabilité) ; [DEVIANCES.md](DEVIANCES.md)
