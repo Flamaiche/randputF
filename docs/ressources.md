@@ -2,7 +2,7 @@
 
 Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
-## 6. Les ressources au sol
+## Les ressources au sol
 
 Au spawn, la carte est entièrement re-décidée :
 
@@ -17,7 +17,7 @@ Au spawn, la carte est entièrement re-décidée :
   c'est totalement aléatoire ;
 - l'abondance (richesse) des patchs est également variable ;
 - **Patchs item et fluides** : tous posés au sol par le mod **au runtime**
-  (pose explicite des gisements, §6.5), le mapgen n'en dessine plus aucun.
+  (pose explicite des gisements, [ressources.md](ressources.md#pose-explicite-des-gisements-runtime)), le mapgen n'en dessine plus aucun.
   La seed fournit pour chaque patch un **centre** (serré au spawn), un **rayon
   de dispersion** et un **nombre de blocs/puits adapté au kind** : les **fluides**
   gardent quelques puits éparpillés (`wells_per_patch`, défaut 3..8 - un
@@ -48,11 +48,11 @@ Au spawn, la carte est entièrement re-décidée :
     servent alors de matière première de démarrage, en particulier pour
     **fabriquer les extracteurs** (on débloque la fabrication du pumpjack / de
     la perceuse avant toute ressource au sol).
-- les items « briques garanties » ne sont **jamais** des patchs : lab (§8),
-  les 3 ingrédients de la fusée et le rocket-silo (§14). Ce sont des recettes
+- les items « briques garanties » ne sont **jamais** des patchs : lab ([starter.md](starter.md#la-chaîne-initiale-starter)),
+  les 3 ingrédients de la fusée et le rocket-silo ([tech.md](tech.md#fin-de-partie)). Ce sont des recettes
   générées et unlockées par une tech précise ; si un tel item tombait au sol,
   la recette garantie n'existerait pas et l'invariant d'endgame serait cassé.
-- les **science packs** ne sont **jamais** des patchs (§13) : leur économie
+- les **science packs** ne sont **jamais** des patchs ([tech.md](tech.md#larbre-technologique)) : leur économie
   repose sur le craft (chaque pack se fabrique, jamais extrait du sol). Posé
   au sol, un pack briserait la filière de coût des techs — le premier pack,
   seedé par le starter, n'aurait pas de recette et les techs récursives n'auraient
@@ -62,7 +62,11 @@ Conséquence structurelle : plus aucune plaque de fer/cuivre/charbon ni gisement
 de pétrole classique n'est garantie au sol — le joueur découvre à chaque
 partie de quoi son monde est fait.
 
-### 6.5 Pose explicite des gisements (runtime)
+Les **trois formes** d'une ressource brute (patch d'items, patch de fluide, lac
+de fluide), leur support physique et leur extracteur sont récapitulés dans le
+cas partagé [ressources-brutes.md](ressources-brutes.md#les-formes-dune-ressource-brute).
+
+### Pose explicite des gisements (runtime)
 
 Tous les patchs — **item ET fluide** — n'utilisent plus le
 `resource-autoplace` vanilla (qui produisait des gisements réguliers/alignés) :
@@ -116,7 +120,7 @@ la richesse totale est multipliée par un facteur aléatoire `richness_factor`
 **ITEM**, `count` est systématiquement réévalué via
 `item_field_tiles(radius, well_seed)` : le champ posé reste exactement le
 disque bruité déterministe, seul le ratio `richness/count` par tuile varie.
-L'identité (kind + ressource) n'est jamais touchée (tirée par §6).
+L'identité (kind + ressource) n'est jamais touchée (tirée par [ressources.md](ressources.md#les-ressources-au-sol)).
 
 En `data-updates`, ces entités ont `autoplace` avec `base_density = 0` : le
 mapgen ne les instancie jamais (spécification requise — le moteur refuse un
@@ -137,3 +141,9 @@ transférer de la chaleur) mais leur chaleur n'est pas considérée comme une
 transformation du fluide. Un fluide chauffé ou refroidi reste ce fluide ; seul
 un changement de nom (eau → vapeur) constitue une autre ressource, et il passe
 alors par une recette classique, jamais par un simple écart de température.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md)
+- **Enfant(s)** : [ressources-brutes.md](ressources-brutes.md) — les formes d'une raw et leur extraction
+- **Concepts liés** : [starter.md](starter.md#la-phase-de-démarrage) ; [seed.md](seed.md#seed-et-configuration) ; [runtime.md](runtime.md#gisements-au-runtime) ; [chaleur.md](chaleur.md#la-chaleur)

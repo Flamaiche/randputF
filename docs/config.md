@@ -12,11 +12,11 @@ Ils sont fusionnés en profondeur puis **validés** avant chaque génération. L
 configuration fusionnée est toujours complète : le moteur n'invente jamais de
 valeur de secours.
 
-Retour : [README.md](../README.md) · [seed.md](seed.md) (§16).
+Retour : [README.md](../README.md) · [seed.md](seed.md).
 
 ---
 
-## 1. Principes
+## Principes
 
 1. **Source unique.** Toute valeur vient de `config/defaults.yaml`. Le moteur
    l'utilise via `config.default_value(...)`, jamais par un littéral dupliqué.
@@ -32,7 +32,7 @@ Retour : [README.md](../README.md) · [seed.md](seed.md) (§16).
    gisements, invariants de solvabilité) ne sont pas dans le YAML : voir
    [nondeterminism.md](nondeterminism.md).
 
-## 2. Exemple de surcharge
+## Exemple de surcharge
 
 `config/user.yaml` n'écrit que ce que tu changes. Chemin du dossier mods pour un
 install Steam flatpak :
@@ -44,7 +44,7 @@ paths:
 
 Toute la section `map`, `recursive`, `tree`… reste celle des defaults.
 
-## 3. Sections
+## Sections
 
 16 sections, plus la racine `factorio_version` (17 entrées de premier niveau).
 Les sections marquées **inertes** sont
@@ -65,9 +65,9 @@ surchargé pour installer dans Factorio.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `patches_min` / `patches_max` | 3 / 8 | Nombre **total** de gisements posés au sol, items + fluides confondus, tiré une fois dans la fourchette (§6). Le tirage est sans remise : une ressource n'apparaît qu'une fois sur la carte |
+| `patches_min` / `patches_max` | 3 / 8 | Nombre **total** de gisements posés au sol, items + fluides confondus, tiré une fois dans la fourchette ([ressources.md](ressources.md#les-ressources-au-sol)). Le tirage est sans remise : une ressource n'apparaît qu'une fois sur la carte |
 | `richness_item` / `richness_fluid` | [400000, 1500000] / [100000, 600000] | Richesse d'un champ |
-| `wells_per_patch` | [3, 8] | Blocs/puits par gisement (§6.5) |
+| `wells_per_patch` | [3, 8] | Blocs/puits par gisement ([ressources.md](ressources.md#pose-explicite-des-gisements-runtime)) |
 | `item_patch_radius` | [9, 17] | Rayon du champ item (mapgen) |
 | `cluster_radius` | [9, 16] | Dispersion des puits fluides autour du centre |
 | `first_center_dist` | 25 | Distance du 1er gisement au spawn |
@@ -77,7 +77,7 @@ surchargé pour installer dans Factorio.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `free_researches_count` | [1, 2] | **Inerte** (non lue). Le nombre est fixé par `starter_chain.build_tech_steps` (§7) |
+| `free_researches_count` | [1, 2] | **Inerte** (non lue). Le nombre est fixé par `starter_chain.build_tech_steps` ([starter.md](starter.md#la-phase-de-démarrage)) |
 | `ammo_count` | 50 | Munitions du kit |
 | `inserter_chance` | 0.5 | Probabilité d'un inserter dans le kit |
 | `spawn_fuel_count` | 50 | Combustible du starter (burner) |
@@ -91,7 +91,7 @@ Poids par catégorie (`weight_transformer` 30, `weight_extractor` 15,
 (`[character, lab]`), `max_iterations` (120), `stall_threshold` (10), cadence des
 pylônes (`dist_marks`, `dist_guaranteed`), bornes `recipes_per_building_min/max`,
 `tech_count_min/max`, `science_cost_min/max`, `companions` (paires d'items
-jamais dissociées), et les **armes montées** (§12.1) : `armed_vehicles`,
+jamais dissociées), et les **armes montées** ([combat.md](combat.md#armes-montées-randomisées)) : `armed_vehicles`,
 `vehicle_weapons`, `vehicle_slots_min/max`, `vehicle_slots_with_replacement`,
 `vehicle_range_base_size`, `vehicle_range_scale`.
 
@@ -111,12 +111,12 @@ Poids du nombre d'ingrédients / résultats, `energies` + `energy_per_ingredient
 ### `relay`
 
 `prefix` (`randputf-relay-`) et `max_dispatch_steps` (3) : recettes relais des
-ressources non-infinies (§9.5).
+ressources non-infinies ([recettes.md](recettes.md#relais-des-ressources-non-infinies)).
 
 ### `easeup`
 
 `prefix`, `max_recipes` (8), `depth_threshold` (5), `unlocks_per_tech` (5) :
-recettes alternatives pour les crafts trop lourds (§9.3).
+recettes alternatives pour les crafts trop lourds ([recettes.md](recettes.md#déblocage-sur-le-tas)).
 
 ### `usage`
 
@@ -151,15 +151,20 @@ Facteurs de quantité par recette (B3), `enabled: false`.
 Exclusions et pondérations réservées, sans consommateur dans le moteur. Les
 exclusions effectives sont traduites en pools exportées dans la seed.
 
-## 4. Sections commentées mais non câblées
+## Sections commentées mais non câblées
 
 En pied de `defaults.yaml`, deux blocs sont commentés : `difficulty`
 (`randputf difficulty`) et `rare_resources`. Ils ne sont pas câblés au
 pipeline ; les surcharger n'a aucun effet tant qu'ils ne le sont pas.
 
-## 5. Où sont lues les valeurs
+## Où sont lues les valeurs
 
 `pipeline.generate_seed` normalise la config via
 `tool.common.config.full_config`, puis la passe aux prototypes dataclass
 (`tool/prototypes/*.py`) et aux générateurs. `randputf difficulty` consomme la
 même config que `generate`.
+
+## Lectures associées
+
+- **Parent** : [seed.md](seed.md) — seed et configuration
+- **Concepts liés** : [seed.md](seed.md#seed-et-configuration) ; [modules.md](modules.md#configpy-en-détail) (`tool/common/config.py`) ; [architecture.md](architecture.md#tool-externe-python)

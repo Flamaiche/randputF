@@ -10,7 +10,7 @@ Retour : [docs/README.md](README.md).
 
 ---
 
-## 1. Ce que c'est
+## Ce que c'est
 
 Un nœud par item/fluide, une arête par **dépendance de craft** (produit →
 ingrédient) étiquetée par la **quantité** nécessaire au craft (`amount`). Le
@@ -25,7 +25,7 @@ Il accompagne l'export `--out` (`.venv/bin/python -m tool generate --out …`),
 déterminisme (voir [witness.md](witness.md) : le `<svg>` embarque une version
 de Graphviz).
 
-## 2. Construction, étape par étape
+## Construction, étape par étape
 
 1. **Collecte des nœuds** : chaque item/fluide du graphe devient un nœud ; la
    structure produit → ingrédient des recettes de la seed définit les arêtes.
@@ -48,7 +48,7 @@ de Graphviz).
 5. **Assemblage HTML** : le SVG, les infos de nœuds, les recettes et les
    technos sont injectés dans un gabarit (`_HTML_TEMPLATE`).
 
-## 3. Le côté interactif (le JS embarqué)
+## Le côté interactif (le JS embarqué)
 
 Le fichier est **un seul document** : le JS intégré gère :
 
@@ -60,7 +60,7 @@ Le fichier est **un seul document** : le JS intégré gère :
 Les données injectées (`info`, `recips`, `techs`) sont du JSON sérialisé dans
 le HTML, construit depuis la seed.
 
-## 4. Déterminisme de la sortie
+## Déterminisme de la sortie
 
 Le `seed.graph.html` **n'est pas couvert par le témoin** d'octet-pour-octet
 (le `<svg>` porte un commentaire de version de Graphviz qui varie d'une
@@ -69,7 +69,7 @@ produisent le même graphe *logique* (mêmes nœuds, mêmes arêtes), même si l
 SVG n'est pas bit-à-bit identique. C'est explicitement la limite documentée du
 témoin.
 
-## 5. Pourquoi une doc de conception ici
+## Pourquoi une doc de conception ici
 
 Le graphe est à la fois une **sortie joueur** (README) et une **pièce du
 système** (comment on lit la seed, structure produit → ingrédient, icônes
@@ -77,3 +77,8 @@ fidèles au jeu). La revue documentaire pointait cet angle mort ; ce document
 le couvre. Il ne remplace pas la lecture utilisateur du README.
 
 Retour : [docs/README.md](README.md).
+
+## Lectures associées
+
+- **Parent** : [architecture.md](architecture.md) — architecture et outillage
+- **Concepts liés** : [seed.md](seed.md#seed-et-configuration) ; [witness.md](witness.md#ce-qui-est-exclu-du-témoin) ; [runtime.md](runtime.md#les-cinq-fichiers-lua)
