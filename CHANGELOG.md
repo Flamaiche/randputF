@@ -13,9 +13,10 @@ vocabulaire du projet (gating, §16 de `seed.md`), pas une faute.
 
 ## v1.0.1
 
-Configuration en deux YAML et parcours joueur. Le contenu du mod pour une seed
-donnée est inchangé ; ce sont la configuration, l'installation et la doc qui
-bougent.
+Configuration en deux YAML, parcours joueur et deux correctifs de contenu
+(auto-sélection des fours, difficulté comparée à vanilla). La configuration,
+l'installation et la doc bougent ; le contenu du mod ne change que pour les
+seeds touchées par le correctif d'auto-sélection.
 
 ### ⚠️ Changement de configuration — migration requise
 
@@ -42,10 +43,33 @@ lisent tout depuis le YAML.
 
 ### Déterminisme vérifiable
 
-- **Témoin** : `randputf witness --seed 5 --expect ce428c2140ec7031f9604637ecf70cbc`.
-  Le contenu du mod pour la seed 5 est inchangé depuis la v1.0.0, mais le
-  témoin **change** au bump : le zip de référence a pour racine
-  `randputF_<version>`, qui fait partie des entrées hachées.
+- `randputf witness --seed 5 --expect 4f4bde847babcc6a5557a6633b08f6ce`.
+  Le témoin **change** au bump (le préfixe racine du zip `randputF_<version>`
+  entre dans le hachage) **et** ici parce que la seed 5 est touchée par le
+  correctif d'auto-sélection (voir « Recettes »). Les sorties HTML
+  (`seed.graph.html`, `seed.difficulty.html`) sont **exclues** du témoin,
+  comme le graphe de production l'était déjà.
+
+### Recettes — auto-sélection des fours
+
+- Les fours (`stone-furnace`, `steel-furnace`, `electric-furnace`) et le
+  `rocket-silo` n'ont pas d'écran de choix de recette : à ingrédients égaux,
+  Factorio retient la **première** recette du prototype et rendait la suivante
+  **inatteignable**. Le générateur impose désormais des **ingrédients
+  disjoints** par bâtiment auto-sélection : re-tirage à la création
+  (`recipes.py`) et correction en aval dans la passe d'usage
+  (`usage_pass._correct_auto_select` — déplacement, retrait d'ingrédient ou
+  passage en craft manuel). Validé sur **2000 seeds** (zéro recette ombragée),
+  tests `test_auto_select_ingredients_disjoints` et
+  `test_auto_select_repli_four_1slot`.
+
+### Difficulté comparée à vanilla
+
+- `randputf compare` génère une seed et écrit `seed.difficulty.html` : la
+  **courbe de difficulté cumulée** (ressources brutes par tech) de la seed
+  superposée à une baseline **vanilla** dérivée du dump. La même sortie est
+  écrite pendant `generate` quand le dump porte les technologies. Le calcul
+  reste **à l'export**, jamais sur le chemin de génération.
 
 ### Documentation
 
@@ -56,6 +80,10 @@ lisent tout depuis le YAML.
   `runtime.md`, `vanilladb.md`), `docs/config.md`, `docs/witness.md`,
   `docs/release.md` (procédure de publication). `docs/architecture.md` §18
   remis à jour contre le code réel.
+- **Auto-sélection & difficulté** : `docs/invariants.md` (invariant n°8),
+  `docs/recettes.md`, `docs/tags.md`, `docs/vanilladb.md` (champ `auto_select`),
+  `docs/pipeline.md` et `docs/modules.md` (graphe de difficulté), et
+  `docs/graphe-interactif.md` (les deux sorties HTML).
 - `README_EN.md` aligné sur le README français.
 
 ### Outillage

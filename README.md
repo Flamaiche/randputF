@@ -22,9 +22,10 @@ par page parente, ses enfants au détail) — commencez par
 2. [Configuration : `config/defaults.yaml`](#configuration--configdefaultsyaml)
 3. [Ce que produit une génération](#ce-que-produit-une-génération)
 4. [Le graphe interactif](#le-graphe-interactif)
-5. [Dépannage / FAQ](#dépannage--faq)
-6. [Système de dev (dump vanilla)](#système-de-dev-dump-vanilla)
-7. [Structure du projet](#structure-du-projet)
+5. [La difficulté](#la-difficulté)
+6. [Dépannage / FAQ](#dépannage--faq)
+7. [Système de dev (dump vanilla)](#système-de-dev-dump-vanilla)
+8. [Structure du projet](#structure-du-projet)
 
 ---
 
@@ -189,12 +190,14 @@ randputF_<version>/
 ├── seed/
 │   ├── seed.json          # la seed générée : gisements, recettes, techs, pools
 │   └── seed.lua           # la même seed au format Lua, chargée par le mod
-└── seed.graph.html        # graphe de production interactif (voir plus bas)
+├── seed.graph.html        # graphe de production interactif (voir plus bas)
+└── seed.difficulty.html   # difficulté de la seed vs vanilla (voir plus bas)
 ```
 
 `seed.graph.html` est **autonome mais lourd** (~7,2 Mo : les icônes vanilla sont
 embarquées en base64). À ouvrir **en local**, pas à héberger : chaque génération
-le régénère.
+le régénère. `seed.difficulty.html` est écrit quand le dump porte les
+technologies (voir « La difficulté »).
 
 La sortie est **déterministe** : une même seed produit exactement le même mod
 (octet-pour-octet), vérifié par les tests **entre processus** (y compris pour
@@ -234,6 +237,26 @@ Navigation :
 > Le graphe n'est généré que par `generate` sans `--install`. Avec
 > `--install`, le mod est copié tel quel (sans le graphe) ; relancez
 > `generate --seed <n>` sans `--install` pour obtenir `seed.graph.html`.
+
+## La difficulté
+
+Chaque génération écrit aussi **`seed.difficulty.html`** (quand le dump vanilla
+embarque les technologies) : une courbe de la **difficulté cumulée** de ta seed,
+tech par tech, superposée à celle d'une partie **vanilla**. La difficulté se
+mesure en **ressources brutes** (gisements au sol, items environnementaux,
+fluides d'extraction) qu'il faut avoir investies pour arriver à chaque point —
+c'est l'ardoise affichée par `randputf difficulty`.
+
+L'écart entre les deux courbes montre à quel point le mod allonge (ou non) la
+progression par rapport au jeu de base. Pour la produire seule, ou pour
+consulter les totaux en console :
+
+```bash
+randputf compare --seed 5
+```
+
+`compare` requiert le **dump vanilla avec les technologies** — comme
+`generate`, il bascule sur `--demo` sur une erreur explicite.
 
 ## Dépannage / FAQ
 
@@ -320,13 +343,13 @@ randputF/
 ├── data/
 │   └── vanilla_dump.json # dump des prototypes vanilla
 ├── tool/                # générateur externe Python (python -m tool)
-│   ├── __main__.py      # CLI : parse, audit, difficulty, generate
+│   ├── __main__.py      # CLI : parse, audit, difficulty, compare, generate, witness
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
-│   ├── audit/           # audit des tags bâtiments/items
+│   ├── audit/           # audit des tags bâtiments/items + difficulté
 │   ├── parsers/         # extraction des prototypes vanilla
 │   ├── generator/       # moteur de tirage & graphe (phases, passe A/B)
 │   ├── prototypes/      # classes de configuration
-│   ├── exporters/       # écriture seed.json / seed.lua / graphe
+│   ├── exporters/       # écriture seed.json / seed.lua / graphes HTML
 │   ├── replay/          # rejoueur de seed (audit externe)
 │   └── validator/       # vérification de solvabilité
 ├── tools/               # scripts dev (classify_late_raws, audits par paquet)

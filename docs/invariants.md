@@ -9,8 +9,8 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 ## Règles de solvabilité
 
-Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifiés par le
-tool externe avant validation d'une seed (`pipeline_validator.py`) :
+Cinq invariants majeurs, plus trois vérifications complémentaires, tous vérifiés par le
+tool avant validation d'une seed (`pipeline_validator.py`, tests et contraintes câblées) :
 
 1. **Anti-cycle** : aucun maillon ne peut dépendre de sa propre production.
 
@@ -50,6 +50,14 @@ tool externe avant validation d'une seed (`pipeline_validator.py`) :
    produibles par le joueur au moment de sa place dans l'arbre. Simulation de la
    progression : on parcourt les techs dans l'ordre, on ajoute les produits débloqués au
    pool, et on vérifie que chaque coût est couvert.
+8. **Entrées disjointes par bâtiment auto-sélection** : deux recettes hébergées sur un
+   même bâtiment `auto_select` (fours, `rocket-silo`) doivent avoir des ensembles
+   d'ingrédients **disjoints** — sinon Factorio retient la première venue et laisse la
+   suivante inatteignable (recette morte). Garanti à la création par le re-tirage
+   d'ingrédients (`recipes.py`) et en aval par la passe `usage_pass._correct_auto_select`
+   (déplacement, retrait d'ingrédient ou craft manuel). Détail :
+   [recettes.md](recettes.md#auto-sélection-ne-pas-ombrager-une-recette) ; tests
+   `test_auto_select_ingredients_disjoints` et `test_auto_select_repli_four_1slot`.
 
 Une seed qui viole l'un de ces invariants est rejetée et régénérée par le tool, jamais
 livrée au joueur. La **vérification** de ces invariants (oracle early, diagnostic

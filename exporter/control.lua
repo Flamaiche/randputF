@@ -254,6 +254,38 @@ local function non_empty(list)
   return list and #list > 0 and list or nil
 end
 
+-- Nom d'une reference : chaine brute ou prototype portant .name. Renvoie nil si
+-- l'objet ne porte pas de nom exploitable (jamais d'erreur).
+local function ref_name(value)
+  if type(value) == "string" then
+    return value
+  end
+  local name = probe(value, "name")
+  if type(name) == "string" then
+    return name
+  end
+  return nil
+end
+
+-- Il n'existe aucune propriete booleenne « auto-select » : l'interface se deduit
+-- de la capacite. Une machine de craft n'expose le SELECTEUR de recette (choix
+-- manuel du joueur) que si c'est une assembling-machine SANS recette figee.
+-- Toutes les autres -- fours, silo, assembleuses a fixed_recipe, ajouts moddes --
+-- recoivent leur recette sans intervention du joueur : soit une recette unique,
+-- soit l'auto-selection d'apres l'item insere (a ingredients egaux, c'est la
+-- PREMIERE recette du prototype qui gagne). On ne code donc AUCUN nom d'entite
+-- en dur : on teste la presence du selecteur sur l'interface CraftingMachine.
+-- Les entites non posables (personnage : menu de craft) sont exclues.
+local function auto_selects_recipe(proto)
+  if probe(proto, "items_to_place_this") == nil then
+    return false
+  end
+  if proto.type == "assembling-machine" and probe(proto, "fixed_recipe") == nil then
+    return false
+  end
+  return true
+end
+
 local function dump_entities()
   local out = {}
   for _, proto in pairs(prototypes.entity) do
@@ -266,6 +298,10 @@ local function dump_entities()
       local count = probe(proto, "ingredient_count")
       if count then
         entry.ingredient_count = count
+      end
+      -- Selection automatique de la recette (voir auto_selects_recipe).
+      if auto_selects_recipe(proto) then
+        entry.auto_select = true
       end
     end
 
@@ -394,6 +430,79 @@ local function dump_recipes()
   return out
 end
 
+-- Arbre de recherche vanilla : coût des packs (unit), prérequis et effets.
+-- Sert de RÉFÉRENCE (baseline) pour comparer la difficulté d'une seed
+-- randomisée (mêmes champs que ``seed["technologies"]`` côté outil Python).
+local function dump_technologies()
+  local out = {}
+  for _, proto in pairs(prototypes.technology) do
+    local entry = {}
+    -- Le runtime n'expose PAS TechnologyUnit : ni `unit`, ni `unit.time`. On
+    -- lit les trois champs à plat (research_unit_*). `time` est mappé sur
+    -- l'énergie par unité (research_unit_energy) : seule notion de coût
+    -- unitaire disponible au runtime (le calcul de difficulté n'en dépend pas).
+    local unit_count = probe(proto, "research_unit_count")
+    local unit_energy = probe(proto, "research_unit_energy")
+    local unit_ings = probe(proto, "research_unit_ingredients")
+    if unit_count ~= nil or unit_energy ~= nil or unit_ings ~= nil then
+      local ingredients = {}
+      if unit_ings then
+        for _, ing in ipairs(unit_ings) do
+          table.insert(ingredients, {
+            type = probe(ing, "type"),
+            name = probe(ing, "name"),
+            amount = probe(ing, "amount"),
+          })
+        end
+      end
+      entry.unit = {
+        count = unit_count,
+        time = unit_energy,
+        ingredients = ingredients,
+      }
+    end
+    -- `prerequisites` est un DICTIONNAIRE nom→prototype au runtime (pas un
+    -- tableau) : les CLÉS sont les identifiants de techno.
+    local prereq_map = probe(proto, "prerequisites")
+    if prereq_map then
+      local prereqs = {}
+      for name in pairs(prereq_map) do
+        if type(name) == "string" then
+          table.insert(prereqs, name)
+        end
+      end
+      if #prereqs > 0 then
+        entry.prerequisites = prereqs
+      end
+    end
+    local effects = {}
+    local list = probe(proto, "effects")
+    if list then
+      for _, eff in ipairs(list) do
+        table.insert(effects, {
+          type = probe(eff, "type"),
+          recipe = ref_name(probe(eff, "recipe")),
+          technology = ref_name(probe(eff, "technology")),
+          item = ref_name(probe(eff, "item")),
+        })
+      end
+    end
+    if #effects > 0 then
+      entry.effects = effects
+    end
+    local trigger = probe(proto, "research_trigger")
+    if trigger then
+      entry.research_trigger = {
+        type = probe(trigger, "type"),
+        item = ref_name(probe(trigger, "item")),
+        count = probe(trigger, "count"),
+      }
+    end
+    out[proto.name] = entry
+  end
+  return out
+end
+
 script.on_init(function()
   -- Garde-fou : un export depuis une partie où randputF est actif écrirait un
   -- dump pollué — recettes randputf-* ajoutées, mais surtout des valeurs
@@ -428,6 +537,7 @@ script.on_init(function()
     fluids = dump_fluids(),
     entities = dump_entities(),
     recipes = dump_recipes(),
+    technologies = dump_technologies(),
   }
   local ok, err = pcall(function()
     helpers.write_file("randputF/vanilla_dump.json", helpers.table_to_json(payload))

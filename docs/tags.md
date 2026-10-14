@@ -145,6 +145,24 @@ fluide→fluide, la SOURCE et le TRANSPORT manquants sont débloqués dans des
 techs **isolées strictement antérieures** (jamais fusionnées avec la tech du
 consommateur). Aucun sink dans le pool → modèle parfaitement inerte.
 
+## Bâtiment à sélection automatique (`auto_select`)
+
+`auto_select` n'est **pas** dérivé par l'outil : c'est un **fait du prototype
+vanilla**, posé par l'extracteur (`exporter/control.lua`, `auto_selects_recipe()`)
+et transmis tel quel (`BuildingDef.auto_select`). Il marque les bâtiments
+**sans écran de choix de recette**, qui prennent la recette d'après l'item
+inséré : les quatre fours + le `rocket-silo`.
+
+| Champ | Signification | Exemples (vanilla) | Consommé par |
+|-------|---------------|--------------------|--------------|
+| `auto_select` | Bâtiment qui choisit seul sa recette (pas d'écran de sélection) | stone-furnace, steel-furnace, electric-furnace, rocket-silo | `recipes` (tirage anti-conflit), `usage_pass` (`_correct_auto_select`) |
+
+À ingrédients égaux, la **première** recette hébergée gagne : deux recettes
+auto-sélectionnées sur un même bâtiment doivent donc avoir des ingrédients
+**disjoints** (sinon recette morte). C'est la règle de solvabilité n°8
+([invariants.md](invariants.md#règles-de-solvabilité)) et le sujet de
+[recettes.md](recettes.md#auto-sélection-ne-pas-ombrager-une-recette).
+
 ## Extraction (raffinement d'`is_extractor`)
 
 `pumpjack` a `type == 'mining-drill'` dans le dump : détection par

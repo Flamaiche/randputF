@@ -81,7 +81,7 @@ def build_ease_up_recipes(
     eased_products: set[str] = set()
     seen_recipes = {r["name"] for r in state.recipes}
     for kind, name in candidates:
-        recipe = _make_ease_recipe(rng, db, base, kind, name, eased_products)
+        recipe = _make_ease_recipe(rng, db, base, kind, name, eased_products, state)
         if recipe is None or recipe["name"] in seen_recipes:
             continue
         state.recipes.append(recipe)
@@ -318,6 +318,7 @@ def _make_ease_recipe(
     kind: str,
     name: str,
     eased_products: set[str],
+    state: ProgressionState | None = None,
 ) -> dict | None:
     """Recette alternative d'un produit lourd, tirée du pool gelé de début.
 
@@ -325,6 +326,10 @@ def _make_ease_recipe(
     un ease-up compile uniquement avec ce qui est déjà obtenable dès le
     départ. Ingrédients interdits : environnementaux + produit lui-même +
     produits déjà ease-up (anti-cycle §8).
+
+    ``state`` (état VIVANT) sert uniquement à l'anti-collision des bâtiments à
+    auto-sélection (four) : la recette ease-up atterrit dans l'état réel, pas
+    dans l'instantané gelé ``base``.
     """
     forbidden = set(ENVIRONMENTAL_ITEMS) | eased_products | {name}
     eligible = [entry for entry in base.pool() if entry[1] not in forbidden]
@@ -342,6 +347,7 @@ def _make_ease_recipe(
             frozenset(forbidden),
             recipe_name=f"{_config.prefix}{name}",
             building_whitelist=frozenset(base.unlocked_buildings),
+            conflict_state=state,
         )
     except ValueError:
         return None

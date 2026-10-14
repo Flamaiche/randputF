@@ -74,7 +74,12 @@ from tool.generator.recipes import (
     _item_for_building,
     _recipe_category,
 )
-from tool.generator.usage_pass import _fits, _hosting_cycle, _self_hosted
+from tool.generator.usage_pass import (
+    _auto_select_conflict,
+    _fits,
+    _hosting_cycle,
+    _self_hosted,
+)
 
 log = logging.getLogger(__name__)
 
@@ -339,6 +344,8 @@ def _regenerate_extractor_recipe(
         if _self_hosted(db, building, baked):
             continue
         if _hosting_cycle(db, state, building, baked):
+            continue
+        if _auto_select_conflict(state, building, baked):
             continue
         if not _fits(building, baked):
             continue

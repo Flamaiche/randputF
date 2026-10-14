@@ -31,7 +31,7 @@ Retour : [README.md](../README.md).
 
 | Version | Note | Contenu | Témoin seed 5 |
 |---|---|---|---|
-| v1.0.1 | [`notes/v1.0.1.md`](../notes/v1.0.1.md) | Config à deux YAML + refonte documentaire. | `ce428c2140ec7031f9604637ecf70cbc` |
+| v1.0.1 | [`notes/v1.0.1.md`](../notes/v1.0.1.md) | Config à deux YAML, refonte documentaire, auto-sélection des fours corrigée. | `4f4bde847babcc6a5557a6633b08f6ce` |
 
 **Les notes publiées sont gelées** : elles décrivent l'état de leur tag. La note
 v1.0.0 parle de `config/settings.yaml`, qui existe bien dans `v1.0.0`. Ne pas
@@ -72,10 +72,10 @@ tels quels ; ne pas les recopier ici.
 
 ### Faits vérifiés (pour ne rien inventer dans la note)
 
-- Témoin seed 5 de la v1.0.1 : `ce428c2140ec7031f9604637ecf70cbc`. Il **change**
-  au bump de version (préfixe racine du zip `randputF_<version>`) alors que le
-  contenu du mod pour la seed 5 est inchangé depuis la v1.0.0. Ne jamais
-  reprendre l'ancien md5 tel quel.
+- Témoin seed 5 de la v1.0.1 : `4f4bde847babcc6a5557a6633b08f6ce`. Il **change**
+  au bump de version (préfixe racine du zip `randputF_<version>`) **et** parce
+  que la seed 5 est affectée par le correctif d'auto-sélection (disjonction des
+  ingrédients par four). Ne jamais reprendre un ancien md5 tel quel.
 - Tests : 722.
 - Fichiers de config : `config/settings.yaml` (supprimé) ->
   `config/defaults.yaml` + `config/user.yaml`.
