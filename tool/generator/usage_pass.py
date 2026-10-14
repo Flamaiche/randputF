@@ -46,7 +46,12 @@ from __future__ import annotations
 import logging
 
 from tool.common.db import SLOT_ITEM, SLOT_FLUID, VanillaDB, has_hidden_recipe
-from tool.generator.recipes import _is_atelier, _item_for_building, _recipe_category
+from tool.generator.recipes import (
+    _auto_select_occupied_ingredients,
+    _is_atelier,
+    _item_for_building,
+    _recipe_category,
+)
 from tool.prototypes.usage import UsageConfig
 
 log = logging.getLogger(__name__)
@@ -106,6 +111,15 @@ def _self_hosted(db: VanillaDB, building, recipe: dict) -> bool:
         return False
     res = (recipe.get("results") or [{}])[0]
     return res.get("type") == SLOT_ITEM and res.get("name") == item.name
+
+
+def _auto_select_conflict(state, building, recipe: dict) -> bool:
+    """Le bâtiment à auto-sélection (four) héberge déjà un ingrédient de
+    ``recipe`` : l'y déplacer créerait une recette ambiguë au craft."""
+    if not getattr(building, "auto_select", False):
+        return False
+    names = {ing.get("name") for ing in recipe.get("ingredients", [])}
+    return bool(names & _auto_select_occupied_ingredients(state, building.name))
 
 
 def _hosting_cycle(db: VanillaDB, state, building, recipe: dict) -> bool:
@@ -225,11 +239,16 @@ def _claim_index(steps: list[dict], name: str) -> int | None:
 
 
 def _reorder_claim(
-    state, steps: list[dict], recipe_name: str, building_name: str
+    state, steps: list[dict], recipe_name: str, building_name: str, *, force: bool = False
 ) -> str:
     """Repli U2 — « précéder B » : décale le claim d'unlock de ``recipe_name``
     sur le step qui débloque ``building_name`` (unlock ≈ égalités, l'invariant
     U2 devient une égalité). Ne touche pas au graphe de fabrication.
+
+    ``force=True`` court-circuite le garde-fou « item consommé avant le
+    bâtiment » : réservé au cas où l'item de R reste fabricable tôt par une
+    AUTRE recette (recette jumelle — original environnemental d'un relais), donc
+    repousser le claim de R ne rend aucune recette injouable.
 
     Retourne ``"done"`` si le reorder a eu lieu, sinon un motif d'échec :
     - ``"none"`` : pas de claim déplaçable (cas dégénéré) ;
@@ -257,6 +276,8 @@ def _reorder_claim(
             ing.get("type") != SLOT_FLUID and ing.get("name") == item
             for ing in other.get("ingredients", [])
         ):
+            if force:
+                break  # recette jumelle : l'item reste fabricable tôt
             return f"consumed:{other['name']}"
     # Déplace le claim : retire de l'étape d'origine, pose sur celle de B.
     s_recipe_step = steps[s_recipe]
@@ -272,6 +293,206 @@ def _reorder_claim(
     target = steps[s_building]
     target.setdefault("unlocks_recipes", []).append(recipe_name)
     return "done"
+
+
+def _product_of(recipe: dict) -> tuple:
+    """(type, nom) du premier résultat d'une recette (clé produit)."""
+    res = recipe.get("results") or [{}]
+    return (res[0].get("type"), res[0].get("name"))
+
+
+def _has_twin(state, recipe: dict) -> bool:
+    """Vrai si une AUTRE recette produit le même item/fluide (recette jumelle —
+    ex. l'original environnemental d'un relais). Garantit que différer
+    l'unlock de ``recipe`` ne rend pas son produit introuvable tôt."""
+    prod = _product_of(recipe)
+    return any(r is not recipe and _product_of(r) == prod for r in state.recipes)
+
+
+def _auto_select_conflicts(db: VanillaDB, state) -> list[tuple[str, str, list[dict]]]:
+    """Conflits d'auto-sélection : ``(bâtiment, ingrédient, [recettes])`` pour
+    chaque atelier à auto-sélection hébergeant ≥ 2 recettes de seed partageant
+    un ingrédient (la première recette du prototype l'emporterait, la seconde
+    serait inatteignable)."""
+    out: list[tuple[str, str, list[dict]]] = []
+    for bname, recipes in _hosted_map(state).items():
+        building = db.buildings.get(bname)
+        if building is None or not getattr(building, "auto_select", False):
+            continue
+        by_ing: dict[str, list[dict]] = {}
+        for recipe in recipes:
+            for ing in recipe.get("ingredients", []):
+                by_ing.setdefault(ing.get("name"), []).append(recipe)
+        for ing, rs in by_ing.items():
+            if ing is not None and len(rs) >= 2:
+                out.append((bname, ing, rs))
+    return out
+
+
+def _auto_select_target(
+    db: VanillaDB,
+    state,
+    recipe: dict,
+    source_name: str,
+    unlock: dict[str, int],
+    free: set[str],
+    kit: set[str],
+):
+    """Meilleur atelier alternatif (hors ``source_name``) pour ``recipe`` sans
+    conflit d'auto-sélection. Préférence : non-auto-sélection, puis unlock le
+    plus tôt, puis nom (déterminisme). ``None`` si aucun atelier valable.
+
+    ``_hosting_cycle`` est ignoré pour une recette à recette jumelle : le
+    produit reste fabricable par sa jumelle (original environnemental), donc
+    l'héberger dans un bâtiment qui le consomme ne referme pas de vraie
+    boucle."""
+    twin = _has_twin(state, recipe)
+    best = None
+    for name, other in sorted(db.buildings.items()):
+        if name == source_name:
+            continue
+        if has_hidden_recipe(other) or not _is_atelier(other):
+            continue
+        _r_self = _self_hosted(db, other, recipe)
+        _r_pre = not _prepower_ok(other, recipe, free)
+        _r_cyc = (not twin) and _hosting_cycle(db, state, other, recipe)
+        _r_as = _auto_select_conflict(state, other, recipe)
+        _r_fit = not _fits(other, recipe)
+        if _r_self or _r_pre or _r_cyc or _r_as or _r_fit:
+            continue
+        i_other = 0 if name in kit else unlock.get(f"randputf-{name}")
+        if i_other is None and name not in state.unlocked_buildings:
+            continue
+        score = (
+            bool(getattr(other, "auto_select", False)),
+            i_other if i_other is not None else 10**9,
+            name,
+        )
+        if best is None or score < best[0]:
+            best = (score, other)
+    return best[1] if best else None
+
+
+def _correct_auto_select(
+    db: VanillaDB,
+    state,
+    unlock: dict[str, int],
+    free: set[str],
+    kit: set[str],
+    steps: list[dict],
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Auto-sélection (four) : un atelier à auto-sélection ne peut héberger deux
+    recettes partageant un ingrédient. Déplace une des recettes en conflit vers
+    un atelier alternatif sans conflit (jamais de recette perdue), puis recale
+    son claim d'unlock sur celui de son nouveau bâtiment (le produit reste
+    fabricable avant par sa recette jumelle). Déterministe, borné — chaque
+    déplacement supprime ≥ 1 conflit (cible vérifiée sans conflit).
+
+    Replis quand aucun atelier alternatif sans conflit n'existe :
+    - retirer l'ingrédient en conflit (recette multi-ingrédients) ;
+    - renvoyer une recette starter gratuite au craft manuel (retrait d'hôte).
+
+    Retourne (déplacées, claims réordonnés, ingrédients retirés,
+    recettes renvoyées au craft manuel)."""
+    moved: list[str] = []
+    reordered: list[str] = []
+    trimmed: list[str] = []
+    handcrafted: list[str] = []
+    for _ in range(256):
+        conflicts = _auto_select_conflicts(db, state)
+        if not conflicts:
+            break
+        _bname, _ing, recipes = min(conflicts, key=lambda c: (c[0], c[1]))
+        # Préfère déplacer une recette JUMELLE (produit fourni par une autre
+        # recette) : différer son unlock reste sûr. Sinon par nom (stabilité).
+        recipes = sorted(recipes, key=lambda r: (not _has_twin(state, r), r["name"]))
+        progressed = False
+        for recipe in recipes:
+            target = _auto_select_target(
+                db, state, recipe, recipe.get("crafted_in"), unlock, free, kit
+            )
+            if target is None:
+                continue
+            i_target = 0 if target.name in kit else unlock.get(f"randputf-{target.name}")
+            i_recipe = unlock.get(recipe["name"])
+            # Une recette SANS jumelle ne peut être différée que si sa cible
+            # n'arrive pas après elle (sinon son produit serait introuvable tôt).
+            if (
+                not _has_twin(state, recipe)
+                and i_target is not None
+                and i_recipe is not None
+                and i_target > i_recipe
+            ):
+                continue
+            _rehome(recipe, target)
+            moved.append(recipe["name"])
+            reason = _reorder_claim(
+                state, steps, recipe["name"], target.name, force=_has_twin(state, recipe)
+            )
+            if reason == "done":
+                reordered.append(recipe["name"])
+            progressed = True
+            break
+        if not progressed:
+            # Repli 1 : aucun atelier alternatif sans conflit (bâtiment saturé,
+            # seule option déverrouillée tôt). On retire l'ingrédient en conflit
+            # d'une des recettes — même esprit que le repli « suppression des
+            # fluides » de `_make_recipe` : la recette reste fabricable (plus
+            # simple), on ne perd jamais de produit, et l'ordre/claims ne
+            # bougent pas. On garde ≥ 1 ingrédient par recette.
+            victim = _trim_conflict_ingredient(recipes, _ing)
+            if victim is not None:
+                trimmed.append(victim["name"])
+                progressed = True
+            else:
+                # Repli 2 : recette mono-ingrédient (four 1-slot). Si elle fait
+                # partie des recettes STARTER gratuites (fabriquées à la main),
+                # on lui retire son hôte : elle redevient une recette de craft
+                # manuel, donc plus aucun conflit d'auto-sélection. La recette
+                # reste fabricable (le craft à la main est une voie valide).
+                manual = _handcraft_starter_recipe(recipes, free)
+                if manual is None:
+                    break
+                handcrafted.append(manual["name"])
+                progressed = True
+    return moved, reordered, trimmed, handcrafted
+
+
+def _handcraft_starter_recipe(recipes, free):
+    """Passe une recette starter gratuite en craft manuel (retire ``crafted_in``
+    et ``category``). Déterministe (nom). Retourne la recette modifiée ou
+    ``None`` si aucune des recettes en conflit n'est starter-gratuite."""
+    candidates = sorted(
+        (r for r in recipes if r["name"] in free), key=lambda r: r["name"]
+    )
+    if not candidates:
+        return None
+    recipe = candidates[0]
+    recipe.pop("crafted_in", None)
+    recipe.pop("category", None)
+    return recipe
+
+
+def _trim_conflict_ingredient(recipes, ingredient):
+    """Retire ``ingredient`` de la recette la plus fournie qui en garde ≥ 1
+    autre. Déterministe (nombre d'ingrédients décroissant, puis nom). Retourne
+    la recette modifiée ou ``None`` si aucune ne peut être allégée."""
+    candidates = sorted(
+        (
+            r
+            for r in recipes
+            if any(i["name"] == ingredient for i in r["ingredients"])
+            and len(r["ingredients"]) > 1
+        ),
+        key=lambda r: (-len(r["ingredients"]), r["name"]),
+    )
+    if not candidates:
+        return None
+    victim = candidates[0]
+    victim["ingredients"] = [
+        i for i in victim["ingredients"] if i["name"] != ingredient
+    ]
+    return victim
 
 
 def _correct_u2(
@@ -320,6 +541,8 @@ def _correct_u2(
             if _self_hosted(db, other, recipe) or not _prepower_ok(other, recipe, free):
                 continue
             if _hosting_cycle(db, state, other, recipe):
+                continue
+            if _auto_select_conflict(state, other, recipe):
                 continue
             if has_hidden_recipe(other) or not _is_atelier(other):
                 continue
@@ -413,6 +636,8 @@ def _correct_u1(
                 continue
             if _hosting_cycle(db, state, building, recipe):
                 continue
+            if _auto_select_conflict(state, building, recipe):
+                continue
             if len(hosted.get(source, [])) <= 1:
                 continue  # la source garde ≥ 1 recette
             if not _fits(building, recipe):
@@ -482,30 +707,50 @@ def enforce_usage(
     cfg = UsageConfig.from_config(config)
     if not cfg.enabled:
         return {"u2_basculees": 0, "u2_reordonees": [], "u1_rattachees": [],
-                "removed": [], "warnings": []}
+                "removed": [], "warnings": [], "auto_select_deplacees": [],
+                "auto_select_ingredients_retires": [],
+                "auto_select_craft_manuel": []}
 
     kit = _kit_buildings(starter, db, cfg)
     unlock, free = _unlock_proxy(
         ordered_steps, starter_steps=len(starter.tech_steps)
     )
 
-    # U2 d'abord (les bascules peuvent créer des bâtiments morts, réparées
-    # ensuite par U1), puis U1 (rattachement). Déterministe.
-    u2, reordered = _correct_u2(db, state, unlock, free, kit, ordered_steps)
+    # Auto-sélection d'abord : résout les conflits four (deux recettes à
+    # ingrédient commun sur un même bâtiment) en déplaçant une recette vers un
+    # atelier alternatif ; U2/U1 voient ensuite l'hébergement corrigé.
+    moved, as_reordered, as_trimmed, as_handcrafted = _correct_auto_select(
+        db, state, unlock, free, kit, ordered_steps
+    )
+
+    # U2 — ordre strict bâtiment/usage ; U1 — usage non-nul.
+    shipped, reordered = _correct_u2(db, state, unlock, free, kit, ordered_steps)
     attached, removed, warnings = _correct_u1(
         db, state, unlock, free, kit, cfg.terminal_buildings, ordered_steps
     )
+    reordered = as_reordered + reordered
 
     report = {
-        "u2_basculees": u2,
+        "u2_basculees": shipped,
         "u2_reordonees": reordered,
         "u1_rattachees": attached,
         "removed": removed,
         "warnings": warnings,
+        "auto_select_deplacees": moved,
+        "auto_select_ingredients_retires": as_trimmed,
+        "auto_select_craft_manuel": as_handcrafted,
     }
-    if u2 or reordered or attached or removed:
-        log.info("[randputF] usage_pass: %d U2 basculées, %d U2 réordonnées, %d U1 rattachées, %d retirées",
-                 u2, len(reordered), len(attached), len(removed))
+    if (
+        shipped or reordered or attached or removed or moved or as_trimmed
+        or as_handcrafted
+    ):
+        log.info(
+            "[randputF] usage_pass: %d auto-sélection déplacées, %d ingrédients "
+            "retirés, %d craft manuel (auto-sélection), %d U2 basculées, "
+            "%d U2 réordonnées, %d U1 rattachées, %d retirées",
+            len(moved), len(as_trimmed), len(as_handcrafted), shipped,
+            len(reordered), len(attached), len(removed),
+        )
     for warning in warnings:
         log.warning("[randputF] usage_pass warning: %s", warning)
     return report

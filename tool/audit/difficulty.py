@@ -91,6 +91,7 @@ def unit_costs(
     produit sans recette (non brut) est compté comme feuille de secours.
     """
     memo: dict[str, Counter[str]] = {}
+    visiting: set[str] = set()
 
     def cost(product: str) -> Counter[str]:
         """Coût unitaire brut de ``product`` (mémoïsé) : lui-même si brut,
@@ -101,17 +102,24 @@ def unit_costs(
             return memo[product]
         if product in memo:
             return memo[product]
+        if product in visiting:
+            # Cycle (le graphe PRIMAIRE d'une seed est un DAG garanti ; une
+            # baseline vanilla, elle, peut boucler : kovarex, coal-liquefaction).
+            # On casse en traitant le produit comme une feuille.
+            return Counter({product: 1.0})
         recipe = _primary_recipe(by_product, product)
         if recipe is None:
             memo[product] = Counter({product: 1.0})
             return memo[product]
         produced = _produced_amount(recipe, product)
+        visiting.add(product)
         acc: Counter[str] = Counter()
         for ing in recipe.get("ingredients", []):
             scale = float(ing.get("amount", 1)) / produced
             sub = cost(ing["name"])
             for k, v in sub.items():
                 acc[k] += v * scale
+        visiting.discard(product)
         memo[product] = acc
         return acc
 
@@ -167,6 +175,114 @@ def compute_difficulty(seed: dict) -> DifficultyReport:
 
     report.raw_totals = totals
     return report
+
+
+def _tech_sequence(seed: dict) -> tuple[dict[str, dict], list[str]]:
+    """Ordre de progression d'une seed (ou d'une baseline vanilla) : la
+    ``progression_order`` trie les techs connues, puis un parcours topologique
+    des prérequis comble les manquantes. Renvoie ``(tmap, ordered)``."""
+    tmap = {t["id"]: t for t in (seed.get("technologies") or []) if t.get("id")}
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for tid in seed.get("progression_order") or []:
+        if tid in tmap and tid not in seen:
+            ordered.append(tid)
+            seen.add(tid)
+    missing = set(tmap) - seen
+    while missing:
+        frontier = [
+            t for t in missing
+            if all(p in seen for p in (tmap[t].get("prerequisites") or []))
+        ]
+        if not frontier:  # prérequis hors périmètre / cycle : on tranche par nom
+            frontier = sorted(missing)
+        frontier.sort(key=lambda t: (tmap[t].get("localised_name") or t))
+        for tid in frontier:
+            ordered.append(tid)
+            seen.add(tid)
+            missing.discard(tid)
+    return tmap, ordered
+
+
+def _recipe_products(seed: dict) -> dict[str, list[str]]:
+    """Index recette → produits (noms), pour attribuer les déblocages par tech."""
+    out: dict[str, list[str]] = {}
+    for recipe in seed.get("recipes") or []:
+        prods = [res.get("name") for res in recipe.get("results") or [] if res.get("name")]
+        if prods:
+            out[recipe.get("name", "")] = prods
+    return out
+
+
+def _expand_to_raw(
+    costs: dict[str, Counter[str]], bill: Counter[str]
+) -> Counter[str]:
+    """Décompose un besoin de produits (``bill`` : produit → quantité) en
+    ressources brutes via les coûts unitaires."""
+    raw: Counter[str] = Counter()
+    for product, qty in bill.items():
+        for key, value in costs.get(product, Counter()).items():
+            raw[key] += value * qty
+    return raw
+
+
+def difficulty_series(seed: dict) -> list[dict]:
+    """Série de difficulté par tech, dans l'ordre de progression.
+
+    Chaque point porte : le rang, l'id/le nom de la tech, le coût brut de SA
+    recherche (``raw``), le cumul depuis le début (``cumulative``) et la liste
+    des produits qu'elle débloque (``products`` = « items à crafter »). Un point
+    final « Fusée » ferme la chaîne (silo + 100 rocket-part + satellite), de
+    sorte que le cumul final égale ``compute_difficulty(seed).total``.
+    """
+    report = compute_difficulty(seed)
+    tmap, ordered = _tech_sequence(seed)
+    prodmap = _recipe_products(seed)
+
+    cumulative: Counter[str] = Counter()
+    series: list[dict] = []
+    for index, tid in enumerate(ordered, 1):
+        tech = tmap[tid]
+        raw = _expand_to_raw(report.unit_costs, report.spent_per_tech.get(tid, Counter()))
+        cumulative.update(raw)
+        products: list[str] = []
+        seen: set[str] = set()
+        for eff in tech.get("effects") or []:
+            if eff.get("type") != "unlock-recipe":
+                continue
+            for product in prodmap.get(eff.get("recipe", ""), []):
+                if product not in seen:
+                    seen.add(product)
+                    products.append(product)
+        series.append({
+            "num": index,
+            "id": tid,
+            "name": tech.get("localised_name") or tid,
+            "raw": dict(raw),
+            "raw_total": sum(raw.values()),
+            "cumulative": dict(cumulative),
+            "cumulative_total": sum(cumulative.values()),
+            "products": products,
+        })
+
+    launch_bill: Counter[str] = Counter({
+        "rocket-silo": 1.0,
+        "rocket-part": float(ROCKET_PARTS_TO_LAUNCH),
+        "satellite": 1.0,
+    })
+    launch_raw = _expand_to_raw(report.unit_costs, launch_bill)
+    cumulative.update(launch_raw)
+    series.append({
+        "num": len(series) + 1,
+        "id": "randputf-rocket",
+        "name": "Lancement (fusée)",
+        "raw": dict(launch_raw),
+        "raw_total": sum(launch_raw.values()),
+        "cumulative": dict(cumulative),
+        "cumulative_total": sum(cumulative.values()),
+        "products": ["rocket-part"],
+    })
+    return series
 
 
 def summarize_difficulty(report: DifficultyReport) -> str:

@@ -1,10 +1,11 @@
-# Le graphe interactif (`seed.graph.html`)
+# Les graphes HTML (`seed.graph.html`, `seed.difficulty.html`)
 
-À côté de `seed/seed.json`, l'export `--out` produit **une** sortie
-supplémentaire : `seed.graph.html`, un **graphe de production cliquable et
-autonome** de la seed. Ce document explique comment il est construit ; le
-mode d'emploi est côté utilisateur (README racine, section « Le graphe
-interactif »).
+À côté de `seed/seed.json`, l'export `--out` produit des sorties
+supplémentaires : `seed.graph.html`, un **graphe de production cliquable et
+autonome** de la seed, et — quand le dump porte les technologies —
+`seed.difficulty.html`, la **comparaison de difficulté vanilla vs mod**. Ce
+document explique comment ils sont construits ; le mode d'emploi est côté
+utilisateur (README racine, section « Le graphe interactif »).
 
 Retour : [docs/README.md](README.md).
 
@@ -59,6 +60,32 @@ Le fichier est **un seul document** : le JS intégré gère :
 
 Les données injectées (`info`, `recips`, `techs`) sont du JSON sérialisé dans
 le HTML, construit depuis la seed.
+
+## Le graphe de difficulté (`seed.difficulty.html`)
+
+À côté du graphe de production, `randputf generate` écrit
+`seed.difficulty.html` dans le dossier du mod **quand le dump porte les
+technologies** (`randputf compare` produit le même HTML, nommé
+`seed.difficulty.<seed>.html` dans `output/`). C'est une **courbe de difficulté
+cumulée** : en abscisse la progression (une tech par point, suivie d'un point
+« Lancement (fusée) »), en ordonnée le **total de ressources brutes** déjà
+investies pour arriver là.
+
+- La difficulté est calculée par `tool/audit/difficulty.py`
+  (`compute_difficulty`, puis `difficulty_series` pour la courbe point par
+  point) : chaque tech rapporte ses coûts de recherche **réduits à leurs
+  ressources brutes** (patch au sol, item environnemental, fluide
+  d'extraction) en remontant le graphe primaire des recettes.
+- Deux courbes sont superposées : la seed **mod** et une baseline **vanilla**
+  dérivée du même dump (`vanilla_seed_from_dump`) — les recherches vanilla
+  débloquent des recettes réelles, donc la baseline a une difficulté propre.
+  L'écart entre les deux courbes est l'effet du mod sur le coût cumulé.
+- Le calcul est **conditionné à l'export** : comme `difficulty` dans
+  `seed.json`, il ne biaise jamais la construction de la seed
+  (`mod_seed.py` l'injecte à l'écriture).
+- Le fichier est **autonome** (SVG + données sérialisées dans le HTML) et
+  n'est **pas** couvert par le témoin de déterminisme, pour la même raison que
+  `seed.graph.html`.
 
 ## Déterminisme de la sortie
 

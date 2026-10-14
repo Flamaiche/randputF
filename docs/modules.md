@@ -14,14 +14,14 @@ nommés. Les références `fichier:ligne` des algorithms sont dans
 
 | Paquet | Rôle | Modules |
 |--------|------|---------|
-| `tool/__main__.py` | CLI : 5 commandes | 1 |
+| `tool/__main__.py` | CLI : 6 commandes | 1 |
 | `tool/parsers/` | Lecture du dump vanilla | 1 |
 | `tool/common/` | Socle : config, base, RNG, tags, version, witness | 9 |
 | `tool/generator/` | Les phases de génération | 22 |
 | `tool/prototypes/` | Objets de configuration par phase | 11 |
 | `tool/validator/` | Validation structurelle et solvabilité | 2 |
 | `tool/audit/` | Tags et difficulté | 2 |
-| `tool/exporters/` | Écriture des artefacts | 2 |
+| `tool/exporters/` | Écriture des artefacts | 3 |
 | `tool/replay/` | Rejoueur « fake player » | 1 |
 
 Les paquets `__init__.py` sont vides (5 fichiers, 0 ligne) : le tool est un
@@ -50,16 +50,16 @@ sur le chemin d'une seed**.
 | `electricity.py` | 277 | Pipeline | Phase 3 : générateur fonctionnel, réparations |
 | `recursive_phase.py` | 1242 | Pipeline | Phase 4 : récursion pondérée, coverage, véhicules |
 | `endgame_phase.py` | 75 | Pipeline | Chaîne de la fusée intable |
-| `usage_pass.py` | 510 | Pipeline | Garantie d'usage dure (U1, U2) |
-| `relay_phase.py` | 276 | Pipeline | Recettes propres pour les environnementales |
-| `easeup_phase.py` | 346 | Pipeline | Recettes alternatives pour crafts lourds |
+| `usage_pass.py` | 755 | Pipeline | Garantie d'usage dure (U1, U2) + passe auto-sélection |
+| `relay_phase.py` | 277 | Pipeline | Recettes propres pour les environnementales |
+| `easeup_phase.py` | 352 | Pipeline | Recettes alternatives pour crafts lourds |
 | `tech_tree.py` | 318 | Pipeline | Arbre technologique linéaire |
-| `extractor_timing.py` | 570 | Pipeline | Déblocage juste-au-besoin des extracteurs |
+| `extractor_timing.py` | 577 | Pipeline | Déblocage juste-au-besoin des extracteurs |
 | `late_raws.py` | 354 | Conditionnel | Jalons de ressources ; inerte si `late_raws.enabled` est faux |
 | `craft_quantity.py` | 51 | Conditionnel | Phase 6bis ; inerte si `craft_quantity.enabled` est faux |
 | `wreck_loot.py` | 64 | Pipeline | Loi de loot du crash site |
 | `building_fluids.py` | 111 | Pipeline | Fluides des bâtiments à comportement fixe |
-| `recipes.py` | 805 | Pipeline | Primitives partagées : `ProgressionState`, `ensure_obtainable`, `make_recipe` |
+| `recipes.py` | 890 | Pipeline | Primitives partagées : `ProgressionState`, `ensure_obtainable`, `make_recipe`, anti-conflit auto-sélection |
 | `early_oracle.py` | 144 | Pipeline | Watershed obtenable sans électricité |
 | `bootstrap_guard.py` | 172 | Accessoire | Diagnostic SCC du graphe — appelé par `extractor_timing`, donc **sur le chemin** d'une seed, mais comme garde |
 | `heat.py` | 38 | Pipeline | Partition source / transport / consommateur ; importé par `recursive_phase` |
@@ -106,7 +106,7 @@ passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
 | `config.py` | 489 | Pipeline | Fusion defaults + surcharges, **schéma strict**, `ConfigError` |
-| `db.py` | 430 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
+| `db.py` | 436 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
 | `rng.py` | 22 | Pipeline | `make_seeded_rng` — **fabrique unique** des flux RNG |
 | `tagsets.py` | 119 | Pipeline | Ensembles de noms figés (D3), source unique par ensemble |
 | `version.py` | 36 | Accessoire | `VERSION`, `FACTORIO_VERSION`, `MOD_NAME_VERSIONED` — lus depuis `mod/info.json` |
@@ -169,7 +169,7 @@ non solvable — et c'est le cas qui déclenche la reprise du CLI. Voir
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
 | `tags.py` | 262 | Accessoire | Audit des tags de bâtiments et d'items (invariant C8) ; exit 1 si violation |
-| `difficulty.py` | 181 | Pipeline (à l'export) | Ardoise de ressources brutes ; **injectée dans la seed à l'export** |
+| `difficulty.py` | 297 | Pipeline (à l'export) | Ardoise de ressources brutes ; **injectée dans la seed à l'export** ; fournit aussi la courbe `difficulty_series` |
 
 `compute_difficulty` est le seul audit sur le chemin d'une seed, et il ne
 s'exécute qu'à l'écriture (`tool/exporters/mod_seed.py:54`) : le calcul ne peut
@@ -181,10 +181,13 @@ donc pas biaiser la construction.
 |--------|--------|--------|------|
 | `mod_seed.py` | 126 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` |
 | `seed_graph.py` | 1719 | Accessoire | Graphe HTML interactif ; **optionnel** (Graphviz absent → ignoré sans erreur) |
+| `difficulty_graph.py` | 255 | Accessoire | Graphe HTML de difficulté (mod vs vanilla) ; écrit `seed.difficulty.html` |
 
 `seed_graph.py` est le plus gros fichier du tool et le seul à dépendre d'un
-binaire externe. Son absence ne bloque jamais une génération
-(`tool/__main__.py:192-195`).
+binaire externe (**Graphviz**, pour le rendu `.dot → SVG`). `difficulty_graph.py`
+construit son SVG **en Python pur** (aucune dépendance externe) à partir de la
+seed et d'une baseline vanilla dérivée du dump. Aucun des deux ne bloque une
+génération.
 
 ## `tool/replay/player.py` — le rejoueur
 
@@ -197,15 +200,19 @@ la suite de tests et par les sweeps.
 
 ## `tool/__main__.py` — la CLI
 
-274 lignes, 5 commandes.
+268 lignes, 6 commandes.
 
 | Commande | Ligne | Rôle | Sortie |
 |----------|-------|------|--------|
-| `parse` | 120 | Charge et résume la base vanilla | Résumé texte |
-| `audit` | 126 | Audite les tags | exit 1 si violation |
-| `difficulty` | 198 | Génère puis affiche l'ardoise | Tableau texte |
-| `generate` | 140 | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
-| `witness` | 210 | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
+| `parse` | 62 | Charge et résume la base vanilla | Résumé texte |
+| `audit` | 68 | Audite les tags | exit 1 si violation |
+| `generate` | 98 | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
+| `compare` | 154 | Génère puis compare la difficulté à la baseline vanilla | `seed.difficulty.<seed>.html` + totaux |
+| `difficulty` | 184 | Génère puis affiche l'ardoise | Tableau texte |
+| `witness` | 196 | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
+
+Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
+vanilla alternatif).
 
 Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
 vanilla alternatif).
@@ -215,13 +222,17 @@ vanilla alternatif).
 (`tool/__main__.py:85-117`) — et **désactive** `randputf-exporter`, pour
 qu'aucun dump ne puisse être pris depuis une partie randomisée.
 
+`compare` (et la comparaison de `generate`) exige un dump **avec les
+technologies** et bascule en `--demo` sur une erreur explicite : la baseline
+vanilla ne peut pas être synthétique.
+
 ## Récapitulatif des statuts
 
 | Statut | Nombre | Modules |
 |--------|--------|---------|
 | Pipeline | 19 + 1 socle + 9 prototypes | `generator/*` sauf les 2 conditionnels et le guard |
 | Conditionnel | 2 | `late_raws.py`, `craft_quantity.py` |
-| Accessoire | 8 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `solver` |
+| Accessoire | 9 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `difficulty_graph`, `solver` |
 | Non branché | 3 | `prototypes/difficulty_knobs`, `prototypes/progressive_extractors`, `prototypes/rare_resources` |
 
 Les trois modules non branchés sont **testés** : leurs tests passent et

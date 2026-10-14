@@ -313,6 +313,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     supply_area = e.get("supply_area_distance")
     pumping_speed = e.get("pumping_speed")
     pumped_fluid = e.get("pumped_fluid")
+    # Capacité posée par l'extracteur : machine à auto-sélection de recette
+    # (interface sans sélecteur). Jamais recalculée ici.
+    auto_select = bool(e.get("auto_select"))
 
     fluidboxes = e.get("fluidboxes") or {}
     fluid_in = int(fluidboxes.get("input", 0) or 0)
@@ -539,6 +542,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         is_refinery=is_refinery,
         is_centrifuge=is_centrifuge,
         is_rocket_parts_crafter=is_rocket_parts_crafter,
+        auto_select=auto_select,
         is_boiler=is_boiler,
         is_heat_exchanger=is_heat_exchanger,
         is_solar=is_solar,

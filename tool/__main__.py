@@ -9,6 +9,10 @@ from pathlib import Path
 
 from tool.common.db import VanillaDB
 from tool.common.version import VERSION
+from tool.exporters.difficulty_graph import (
+    vanilla_seed_from_dump,
+    write_difficulty_graph_html,
+)
 from tool.exporters.seed_graph import write_seed_graph_html
 from tool.parsers.vanilla import summarize_db
 from tool.service import (
@@ -75,6 +79,15 @@ def cmd_audit(args: argparse.Namespace) -> None:
     sys.exit(0 if report.ok else 1)
 
 
+def _vanilla_seed_from_path(dump_path: str) -> dict | None:
+    """« Seed » vanilla dérivée du dump (``None`` si absent/sans technologies)."""
+    try:
+        dump = json.loads(Path(dump_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return vanilla_seed_from_dump(dump)
+
+
 def _report_retry(attempt: int, seed_value: int, issues: list[str]) -> None:
     """Trace une tentative dérivée. La seed N+1… est déterministe : ce n'est
     donc jamais l'horloge qui remplace silencieusement la graine demandée."""
@@ -128,6 +141,44 @@ def cmd_generate(args: argparse.Namespace) -> None:
             print(f"Graphe interactif (cliquable) exporté dans {html_path}")
         else:
             print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
+
+        vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
+        if vanilla_seed is not None:
+            diff_path = mod_path / "seed.difficulty.html"
+            write_difficulty_graph_html(seed, vanilla_seed, diff_path)
+            print(f"Comparaison de difficulté vanilla vs mod exportée dans {diff_path}")
+        else:
+            print("Comparaison vanilla ignorée : dump sans technologies (relancer l'exporter).")
+
+
+def cmd_compare(args: argparse.Namespace) -> None:
+    """Génère une seed puis écrit le HTML comparant sa difficulté à la baseline
+    vanilla (dump requis, technologies incluses)."""
+    if args.demo:
+        sys.exit("La comparaison nécessite le dump vanilla (pas --demo).")
+    db = _load_db(False, Path(args.dump))
+    cfg = _load_config()
+    db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
+    seed = generate_seed(db, config=cfg)
+
+    vanilla_seed = _vanilla_seed_from_path(args.dump)
+    if vanilla_seed is None:
+        sys.exit(
+            "Dump sans technologies : relance l'exporter dans Factorio puis "
+            "remplace data/vanilla_dump.json (voir README, système de dev)."
+        )
+
+    out_dir = Path(args.out) if args.out else OUTPUT_DIR
+    path = out_dir / f"seed.difficulty.{db.seed_value}.html"
+    write_difficulty_graph_html(seed, vanilla_seed, path)
+
+    vanilla_total = compute_difficulty(vanilla_seed).total
+    mod_total = compute_difficulty(seed).total
+    ratio = (mod_total / vanilla_total) if vanilla_total else 0.0
+    print(f"Seed {db.seed_value} — difficulté comparée (ressources brutes) :")
+    print(f"  vanilla : {vanilla_total:12.0f}")
+    print(f"  mod     : {mod_total:12.0f}   (×{ratio:.2f} vs vanilla)")
+    print(f"HTML : {path}")
 
 
 def cmd_difficulty(args: argparse.Namespace) -> None:
@@ -184,6 +235,14 @@ def main(argv: list[str] | None = None) -> None:
     p_diff.add_argument("--seed", type=int, default=None,
                         help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_diff.set_defaults(func=cmd_difficulty)
+
+    p_cmp = sub.add_parser("compare", help="Compare la difficulte d'une seed a la baseline vanilla (HTML)")
+    p_cmp.add_argument("--demo", action="store_true", help="Utilise une base synthetique (incompatible)")
+    p_cmp.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
+    p_cmp.add_argument("--seed", type=int, default=None,
+                       help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
+    p_cmp.add_argument("--out", default=None, help="Dossier de sortie du HTML (defaut: output/)")
+    p_cmp.set_defaults(func=cmd_compare)
 
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")

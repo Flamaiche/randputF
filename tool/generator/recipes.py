@@ -42,6 +42,12 @@ from tool.common.tagsets import FLUID_RECIPE_CATEGORIES
 
 _config = RecipeConfig()
 
+# Nombre de re-tirages d'ingrédients pour éviter un conflit d'auto-sélection
+# (four sans écran de choix) : on bannit les ingrédients déjà hébergés par le
+# bâtiment visé. Borné — pool épuisé, on accepte le dernier tirage (comportement
+# historique) plutôt que de perdre la recette.
+_AUTO_SELECT_RESAMPLE_ATTEMPTS = 4
+
 
 def set_config(config: dict) -> None:
     """Branche la config ``recipes`` (proto) sur le module, en cache global."""
@@ -262,6 +268,7 @@ def _make_recipe(
     handcraft: bool = False,
     force_building=None,
     finite_materials: bool = False,
+    conflict_state: "ProgressionState | None" = None,
 ) -> dict:
     """Tire une recette brute pour ``product_name``.
 
@@ -355,22 +362,51 @@ def _make_recipe(
         # condamnerait à être unlocké APRÈS son premier usage ({unlock B} tardif).
         max_fluid_ing = 0
         fluid_eligible = []
-    n_fluid_ing = min(rng.randint(0, min(len(fluid_eligible), max_fluid_ing)), max_ingredients)
-    if needs_fluid_out and n_fluid_ing == 0:
+    n_fluid_target = min(rng.randint(0, min(len(fluid_eligible), max_fluid_ing)), max_ingredients)
+    if needs_fluid_out and n_fluid_target == 0:
         # Sortie fluide sans entrée fluide autorisée (ex. chaudière), mais on
         # garde au moins un fluide d'entrée quand c'est possible.
-        n_fluid_ing = min(1, min(len(fluid_eligible), max_fluid_ing))
-    n_item_ing = min(max_ingredients - n_fluid_ing, len(item_eligible))
-    ingredients = (
-        rng.sample(fluid_eligible, n_fluid_ing)
-        + _sample_items_weighed(rng, db, item_eligible, n_item_ing, state)
-    )
-    rng.shuffle(ingredients)
+        n_fluid_target = min(1, min(len(fluid_eligible), max_fluid_ing))
+    n_item_target = min(max_ingredients - n_fluid_target, len(item_eligible))
 
-    building = _pick_building(
-        rng, db, state, n_item_ing, n_fluid_ing, needs_fluid_out, product_name,
-        exclude_buildings, building_whitelist, force_building=force_building,
-    )
+    # Auto-sélection (four) : le premier tirage est inchangé ; si le bâtiment
+    # visé héberge déjà un de nos ingrédients, on bannit les siens et on
+    # re-tire (note IDEES : « retirer de l'échantillonneur »). Borné : pool
+    # épuisé → on garde le dernier tirage (jamais de recette perdue).
+    occ_state = conflict_state if conflict_state is not None else state
+    ban: set[str] = set()
+    n_item_ing = n_item_target
+    n_fluid_ing = n_fluid_target
+    ingredients: list[tuple[str, str]] = []
+    building = None
+    for _attempt in range(_AUTO_SELECT_RESAMPLE_ATTEMPTS):
+        fluid_pool = [e for e in fluid_eligible if e[1] not in ban]
+        item_pool = [e for e in item_eligible if e[1] not in ban]
+        if _attempt and not fluid_pool and not item_pool:
+            break  # pool épuisé : on conserve le tirage précédent
+        n_fluid_ing = min(n_fluid_target, len(fluid_pool))
+        n_item_ing = min(n_item_target, len(item_pool))
+        ingredients = (
+            rng.sample(fluid_pool, n_fluid_ing)
+            + _sample_items_weighed(rng, db, item_pool, n_item_ing, state)
+        )
+        rng.shuffle(ingredients)
+        building = _pick_building(
+            rng, db, state, n_item_ing, n_fluid_ing, needs_fluid_out, product_name,
+            exclude_buildings, building_whitelist, force_building=force_building,
+            ingredient_names=frozenset(name for _, name in ingredients),
+            conflict_state=conflict_state,
+        )
+        if building is None:
+            break
+        occupied = _auto_select_occupied_ingredients(occ_state, building.name)
+        if not (occupied & {name for _, name in ingredients}):
+            break
+        # Bannit UNIQUEMENT les ingrédients en conflit (pas tout l'occupé du
+        # bâtiment) : sur un pool réduit (relais) bannir tout l'occupé épuise
+        # l'échantillonneur et on garderait le tirage en conflit.
+        ban |= occupied & {name for _, name in ingredients}
+
     if building is None and needs_fluid_out:
         raise ValueError(
             f"recette {product_name} sans bâtiment mais avec des fluides : "
@@ -388,6 +424,8 @@ def _make_recipe(
         building = _pick_building(
             rng, db, state, n_item_ing, 0, False, product_name, exclude_buildings,
             building_whitelist, force_building=force_building,
+            ingredient_names=frozenset(name for _, name in ingredients),
+            conflict_state=conflict_state,
         )
 
     recipe = _bake_recipe(rng, db, state, product_kind, product_name, ingredients, recipe_name,
@@ -643,6 +681,27 @@ def _weighted_choice(rng: random.Random, weighted: list[tuple[int, int]]) -> int
     return rng.choices(values, weights=weights, k=1)[0]
 
 
+def _auto_select_occupied_ingredients(
+    state: ProgressionState, building_name: str
+) -> frozenset[str]:
+    """Ingrédients déjà hébergés par le bâtiment ``building_name`` (recettes
+    ``crafted_in``). Un bâtiment à AUTO-SÉLECTION (four : pas d'écran de choix)
+    prend la première recette satisfaite d'après l'item inséré : deux recettes
+    à ingrédient commun y sont ambiguës, la seconde inatteignable. On lit
+    ``state.recipes`` à chaque appel plutôt que de tenir un cache, pour rester
+    exact après les passes qui déplacent des recettes
+    (``usage_pass._rehome``)."""
+    used: set[str] = set()
+    for recipe in state.recipes:
+        if recipe.get("crafted_in") != building_name:
+            continue
+        for ing in recipe.get("ingredients") or ():
+            name = ing.get("name")
+            if name is not None:
+                used.add(name)
+    return frozenset(used)
+
+
 def _pick_building(
     rng: random.Random,
     db: VanillaDB,
@@ -654,6 +713,8 @@ def _pick_building(
     exclude_buildings: frozenset[str],
     whitelist: frozenset[str] | None = None,
     force_building=None,
+    ingredient_names: frozenset[str] = frozenset(),
+    conflict_state: "ProgressionState | None" = None,
 ):
     def fits(b) -> bool:
         """Bâtiment candidat comme atelier pour la recette en cours :
@@ -679,6 +740,29 @@ def _pick_building(
     def blocked(b) -> bool:
         """Vrai si le bâtiment (artefact) est objectivement indisponible ici."""
         return _blocked_building(db, state, b.name)
+
+    def conflict(b) -> bool:
+        """Bâtiment à auto-sélection hébergeant déjà un de nos ingrédients :
+        la recette serait ambiguë au craft (la première du prototype gagne)."""
+        return (
+            getattr(b, "auto_select", False)
+            and bool(ingredient_names)
+            and bool(
+                _auto_select_occupied_ingredients(
+                    conflict_state if conflict_state is not None else state, b.name
+                )
+                & ingredient_names
+            )
+        )
+
+    def pick(candidates: list):
+        """Choix parmi les candidats en PRÉFÉRANT ceux sans conflit
+        d'auto-sélection (à défaut seulement, on accepte un conflit : jamais de
+        recette perdue). À conflit nul, l'ordre et le tirage sont inchangés."""
+        if not candidates:
+            return None
+        free = [b for b in candidates if not conflict(b)]
+        return rng.choice(free if free else candidates)
 
     if force_building is not None:
         # Transformateur à recette fixe (§6/§10) : la recette reste hébergée
@@ -706,7 +790,7 @@ def _pick_building(
             ),
             key=lambda b: b.name,
         )
-        return rng.choice(candidates) if candidates else None
+        return pick(candidates)
 
     candidates = sorted(
         (
@@ -716,8 +800,9 @@ def _pick_building(
         ),
         key=lambda b: b.name,
     )
-    if candidates:
-        return rng.choice(candidates)
+    chosen = pick(candidates)
+    if chosen is not None:
+        return chosen
 
     candidates = sorted(
         (
@@ -727,9 +812,9 @@ def _pick_building(
         ),
         key=lambda b: b.name,
     )
-    if not candidates:
+    building = pick(candidates)
+    if building is None:
         return None
-    building = rng.choice(candidates)
     _unlock_building(rng, db, state, building, product_name, exclude_buildings)
     return building
 

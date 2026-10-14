@@ -14,13 +14,13 @@ Retour : [README.md](../README.md) · [nondeterminism.md](nondeterminism.md).
 
 ```bash
 pip install .
-randputf witness --seed 5 --expect ce428c2140ec7031f9604637ecf70cbc
+randputf witness --seed 5 --expect 4f4bde847babcc6a5557a6633b08f6ce
 ```
 
 Le témoin de la version courante (1.0.1) est :
 
 ```
-ce428c2140ec7031f9604637ecf70cbc
+4f4bde847babcc6a5557a6633b08f6ce
 ```
 
 > Le hash ci-dessus est celui de la **v1.0.1**, la version courante du dépôt.
@@ -106,7 +106,9 @@ mod installé portera toujours ce nom.
 `seed.graph.html` est **exclu** du zip de référence (`WITNESS_EXCLUDED`). Raison :
 le `<svg>` embarqué porte un commentaire de version de Graphviz, qui varie d'une
 machine à l'autre ; le graphe est régénérable et ne porte pas la garantie de
-l'octet. Le reste du mod (y compris `seed.json`, `seed.lua`) est couvert.
+l'octet. `seed.difficulty.html` (graphe HTML de difficulté comparée à vanilla)
+est **exclu** pour la même raison : sortie régénérable, étrangère à la garantie
+de l'octet. Le reste du mod (y compris `seed.json`, `seed.lua`) est couvert.
 
 ## Relation avec le déterminisme de la seed
 

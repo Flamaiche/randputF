@@ -108,6 +108,7 @@ class BuildingDef:
     fuel_residues: frozenset[str] = frozenset()
     directives: dict = field(default_factory=dict)
     has_hidden_recipe: bool = False
+    auto_select: bool = False
     is_power_pole: bool = False
     is_beacon: bool = False
     is_accumulator: bool = False
@@ -243,6 +244,32 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 )
 )
 ```
+
+## Tags orthogonaux cumulables et catégories
+
+### `auto_select` (bâtiment à sélection automatique)
+
+Champ booléen **posé par l'extracteur** (`exporter/control.lua`,
+`auto_selects_recipe()`, transmis en `entry.auto_select`), jamais recalculé côté
+outil : c'est le prototype vanilla qui fait foi. Il est vrai pour les bâtiments
+**sans écran de choix de recette**, qui prennent d'eux-mêmes la recette d'après
+l'item inséré : les quatre fours (`stone-furnace`, `steel-furnace`,
+`electric-furnace`) et le `rocket-silo`.
+
+Cette propriété est un **discriminant de solvabilité** : à ingrédients égaux,
+Factorio retient la **première** recette du prototype et les suivantes
+deviennent inatteignables. Le générateur en tient compte à deux endroits :
+
+- à la création, `recipes.py` (`_auto_select_occupied_ingredients`,
+  re-tirage `_AUTO_SELECT_RESAMPLE_ATTEMPTS`) évite d'héberger sur un même
+  bâtiment auto-sélection deux recettes aux ingrédients qui se recoupent ;
+- en aval, la passe `usage_pass._correct_auto_select` déplace ou, en dernier
+  recours, retire l'ingrédient en conflit / passe la recette en craft manuel —
+  voir [recettes.md](recettes.md#auto-sélection-ne-pas-ombrager-une-recette).
+
+**Vrai** : `stone-furnace`, `steel-furnace`, `electric-furnace`, `rocket-silo`.
+**Faux** : tous les ateliers à écran de choix (assembleurs, fours électriques
+de mods, chem-plant, centrifuge…). Consommé par `recipes` et `usage_pass`.
 
 ## Tags orthogonaux cumulables et catégories
 

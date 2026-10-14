@@ -65,6 +65,57 @@ def test_pas_de_recette_orpheline(seeds):
         assert not orphans, f"seed {s}: orphelines {orphans}"
 
 
+def test_auto_select_ingredients_disjoints(seeds):
+    """Un bâtiment à auto-sélection (four : aucun écran de choix) prend la
+    première recette satisfaite d'après l'item inséré : deux recettes à
+    ingrédient commun y seraient ambiguës, la seconde inatteignable. On impose
+    donc des entrées disjointes par bâtiment ``auto_select``."""
+    auto = {
+        b.name for b in DB.buildings.values() if getattr(b, "auto_select", False)
+    }
+    for s, seed in seeds.items():
+        seen: dict[str, dict[str, str]] = {}
+        for r in seed["recipes"]:
+            building = r.get("crafted_in")
+            if building not in auto:
+                continue
+            used = seen.setdefault(building, {})
+            for ing in r["ingredients"]:
+                name = ing["name"]
+                assert name not in used, (
+                    f"seed {s}: {building} héberge déjà {name} "
+                    f"({used[name]}) — conflit avec {r['name']}"
+                )
+                used[name] = r["name"]
+
+
+def test_auto_select_repli_four_1slot():
+    """Seeds 455/847/1240 : deux recettes starter gratuites MONO-ingrédient
+    partageaient un four 1-slot (stone/steel-furnace) et aucun atelier
+    alternatif sans conflit n'existait (bâtiments électriques interdits avant
+    l'électricité). Le repli renvoie l'une des recettes au craft manuel ; les
+    entrées des bâtiments auto-sélection restent disjointes."""
+    auto = {
+        b.name for b in DB.buildings.values() if getattr(b, "auto_select", False)
+    }
+    for s in (455, 847, 1240):
+        db = copy.deepcopy(DB)
+        db.seed_value = s
+        seed = generate_seed(db)
+        seen: dict[str, dict[str, str]] = {}
+        for r in seed["recipes"]:
+            building = r.get("crafted_in")
+            if building not in auto:
+                continue
+            used = seen.setdefault(building, {})
+            for ing in r["ingredients"]:
+                assert ing["name"] not in used, (
+                    f"seed {s}: {building} héberge déjà {ing['name']} "
+                    f"({used[ing['name']]}) — conflit avec {r['name']}"
+                )
+                used[ing["name"]] = r["name"]
+
+
 def test_contenu_reseau_differe_apres_contenu_passif(seeds):
     """§7/§8 : dans le balayage de couverture, les items dépendant du réseau
     (tourelle laser, radar, combinator, lampe) sont DEFERRÉS après le contenu

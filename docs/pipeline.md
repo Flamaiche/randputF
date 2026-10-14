@@ -105,13 +105,13 @@ le `cfg["starter"]["deferred"]` diffère. C'est ce qui rend le rejeu déterminis
 |---|-------|-------|--------|--------|
 | 15 | **Phase 4** — Récursion pondérée | `tool/generator/pipeline.py:292` — `recursive_phase.expand_recursive(rng, db, patches, starter, lake_res, late_plan=...)` | Coverage items, armes de véhicules, packs science, bâtiments fluidiques. Peuple les pas de techs du module |
 | 16 | **Phase 4ter** — Chaîne fusée | `tool/generator/pipeline.py:299` — `endgame_phase.ensure_rocket_chain(rng, db, starter.state)` | Passe **avant** les relais : aucun ingrédient environnemental n'entre dans les recettes de fusée |
-| 17 | **Phase 4ter-bis** — Garantie d'usage dure | `tool/generator/pipeline.py:308` — `usage_pass.enforce_usage(db, starter.state, starter, steps, cfg)` | Corrige U1 (usage non nul) et U2 (bâtiment débloqué avant son premier usage). Ne touche que `crafted_in`/`category` |
+| 17 | **Phase 4ter-bis** — Garantie d'usage dure | `tool/generator/pipeline.py:308` — `usage_pass.enforce_usage(db, starter.state, starter, steps, cfg)` | Corrige U1 (usage non nul), U2 (bâtiment débloqué avant son premier usage) **et les conflits d'auto-sélection** (`_correct_auto_select`, avant U2/U1). Ne touche que `crafted_in`/`category` (et, en repli d'auto-sélection, un ingrédient ou un unlock) |
 | 18 | **Phase 4bis** — Relais | `tool/generator/pipeline.py:320` — `relay_phase.build_relay_recipes(rng, db, starter.state, base)` | Recettes « propres » pour les produits qui consommaient du environnemental. Pool d'ingrédients et bâtiments pris depuis `base` |
 | 19 | **Phase 4ter** — Techs de prologue | `tool/generator/pipeline.py:336` — `relay_phase.consolidate_intro_steps(relay_phase.dispatch_relay_steps(relays, rng), trigger_candidates, rng)` | ≤ 5 unlocks par tech. Déclencheur = **hand-craft** d'un item du bootstrap : `unit` vide, `research_trigger` au craft |
 | 20 | **Ease-up** | `tool/generator/pipeline.py:357` — `easeup_phase.build_ease_up_recipes(easeup_rng, db, starter.state, base, ..., steps_rng=easeup_rng)` | Recettes alternatives pour les crafts trop lourds. Détection sur le graphe **final** |
 | 21 | **Phase 5** — Arbre technologique | `tool/generator/pipeline.py:371-373` puis `404` — `tech_tree.build_linear_tech_tree(all_tech_steps, rng, db)` | Ordre : techs starter gratuites → prologue → ease-up → récursif → fusée. Les seules gratuites sont celles du starter (`tool/generator/pipeline.py:409`) |
 | 22 | **Phase 4quater** — Timing extracteurs | `tool/generator/pipeline.py:383` — `extractor_timing.apply_extractor_timing(db, starter, all_tech_steps, seed_value=..., patch_resources=..., lake_resources=...)` | « Juste-au-besoin » : `kept` / `moved` / `random`. Flux `randputf:extractor-timing:` (`tool/generator/extractor_timing.py:457`) |
-| 23 | Ré-application de la garantie d'usage | `tool/generator/pipeline.py:396` | Les relais et ease-up ont été créés **après** la passe primaire ; leurs bâtiments d'hébergement peuvent être profonds. Passe idempotente, sur l'ordre final |
+| 23 | Ré-application de la garantie d'usage | `tool/generator/pipeline.py:396` | Les relais et ease-up ont été créés **après** la passe primaire ; leurs bâtiments d'hébergement peuvent être profonds. Passe idempotente (U1/U2 + auto-sélection), sur l'ordre final |
 | 24 | **Phase 6** — Validation | `tool/generator/pipeline.py:412-427` — `pipeline_validator.validate_pipeline(state, technologies, db, patch_resources, lake_resources)` | **Loggue** (`log.warning` / `log.info`), ne lève pas. Recettes validées = `starter.recipes + recursive_phase.recipes_to_seed()` |
 | 25 | Assemblage de la seed | `tool/generator/pipeline.py:430-485` | Voir [pipeline.md](pipeline.md#structure-de-la-seed-en-sortie) |
 | 26 | Replan late raws | `tool/generator/pipeline.py:496-498` | Le plan exporté est **remesuré sur la seed finale**, pas sur la seed de mesure A : le trigger de la 1re tech payante et le rapport C3 de B peuvent différer de A |
@@ -142,7 +142,10 @@ Assemblée à `tool/generator/pipeline.py:430-485`.
 | `building_fluid_assignments` | 481 | `{bâtiment: {input, output?}}` | Fusion : **les assignations du récursif écrasent** celles de `building_fluids` |
 
 La clé `difficulty` est injectée **à l'export**, jamais dans le pipeline
-(`tool/exporters/mod_seed.py:53-58`).
+(`tool/exporters/mod_seed.py:53-58`). Le **graphe de difficulté**
+`seed.difficulty.html` (comparaison à la baseline vanilla) est lui aussi écrit
+**à l'export**, à côté de `seed.graph.html` — voir
+[graphe-interactif.md](graphe-interactif.md#le-graphe-de-difficulté-seeddifficultyhtml).
 
 ## Les flux RNG du pipeline
 
@@ -173,6 +176,7 @@ permet aux deux passes de partir du même point.
 | Aucun produit promis n'est re-baké après le gel | `starter.promises` + `ensure_obtainable`/`make_recipe` | `tests/test_pipeline_invariants.py` |
 | `base` n'est jamais écrit après le gel | `copy.deepcopy` au jalon 13 ; seules des copies en sont lues | `tests/test_pipeline_invariants.py` |
 | Les recettes du starter sont unlockées, jamais orphelines | rejeu des techs au jalon 8 | `tests/test_pipeline_invariants.py` |
+| Entrées disjointes par bâtiment auto-sélection | tirage anti-conflit (création) + `usage_pass._correct_auto_select` (jalon 17) | `test_auto_select_ingredients_disjoints`, `test_auto_select_repli_four_1slot` |
 | La seed est byte-à-byte identique entre processus | `tests/test_determinism.py:50` (seeds 1337 et 1299, `PYTHONHASHSEED` 0/1) | — |
 | La seed ne dépend pas de sa position dans un même process | copie défensive de `cfg` au jalon 14e | `test_seed_1757_gating_inerte_victoire_comme_baseline` |
 | L'ordre des modules ne fuit pas entre deux seeds du même process | reset des globals en tête de `expand_recursive` (`tool/generator/recursive_phase.py:121-127`) | `tests/test_seed_graph.py` |

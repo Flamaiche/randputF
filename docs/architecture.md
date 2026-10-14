@@ -100,7 +100,7 @@ randputF/
 ├── data/                # dump des prototypes vanilla
 │   └── vanilla_dump.json
 ├── tool/                # générateur externe Python
-│   ├── __main__.py      # CLI : parse, audit, generate
+│   ├── __main__.py      # CLI : parse, audit, difficulty, compare, generate, witness
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker, config
 │   │   ├── db.py
 │   │   ├── demo.py
@@ -153,7 +153,8 @@ randputF/
 │   │   └── progressive_extractors.py # expérimental — testé, non branché
 │   ├── exporters/       # écriture seed.json / seed.lua / locale / graphe
 │   │   ├── mod_seed.py         # seed.json + seed.lua
-│   │   └── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   │   ├── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   │   └── difficulty_graph.py # comparaison vanilla vs mod (seed.difficulty.html)
 │   ├── replay/          # audit externe : rejoueur de seed (player.py)
 │   └── validator/       # vérification de solvabilité
 │       ├── pipeline_validator.py  # 7 checks sur ProgressionState
@@ -176,6 +177,13 @@ interactif ») et pour sa **construction** dans
 [graphe-interactif.md](graphe-interactif.md) : c'est à la fois une sortie
 joueur et une pièce du système (lecture produit → ingrédient de la seed,
 icônes fidèles au jeu, autonomie du fichier).
+
+Le **graphe de difficulté** (`seed.difficulty.html`, exporté par
+`tool/exporters/difficulty_graph.py` — commande `randputf compare`, ou à titre
+indicatif pendant `generate`) superpose la courbe de difficulté de la seed
+(cumul des ressources brutes par tech, via `tool/audit/difficulty.py`) à celle
+d'une baseline **vanilla** dérivée du dump. Il est décrit dans
+[graphe-interactif.md](graphe-interactif.md#le-graphe-de-difficulté-seeddifficultyhtml).
 
 (La structure fine pourra évoluer pendant l'implémentation ; les rôles de
 haut niveau restent ceux décrits en [architecture.md](architecture.md#architecture-générale).)

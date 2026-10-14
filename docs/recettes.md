@@ -52,6 +52,39 @@ consommer un flux stupide. Effet : les quantités consommées tendent vers les
 quantités produites (« on n'accumule pas ce qu'on ne se sert pas »), sans
 jamais changer le pool atteignable (donc sans casser la solvabilité [invariants.md](invariants.md#règles-de-solvabilité)).
 
+### Auto-sélection : ne pas ombrager une recette
+
+Certains bâtiments n'ont **pas d'écran de choix de recette** : ils prennent
+d'eux-mêmes la recette d'après l'item inséré (`BuildingDef.auto_select`,
+[vanilladb.md](vanilladb.md#auto_select-bâtiment-à-sélection-automatique)). Ce
+sont les fours (`stone-furnace`, `steel-furnace`, `electric-furnace`) et le
+`rocket-silo`. Or, à ingrédients égaux, Factorio retient la **première** recette
+du prototype : si un même bâtiment héberge deux recettes aux **mêmes
+ingrédients**, la seconde est **inatteignable** (recette morte, jamais
+sélectionnable).
+
+Le générateur garantit donc que, pour chaque bâtiment `auto_select`, les
+recettes de la seed qui l'utilisent ont des **ensembles d'ingrédients
+disjoints**. Deux niveaux :
+
+- **à la création** — `recipes.py` suit les ingrédients déjà occupés par
+  bâtiment (`_auto_select_occupied_ingredients`) : `_pick_building` préfère un
+  bâtiment compatible sans conflit, sinon un re-tirage borné des ingrédients
+  (`_AUTO_SELECT_RESAMPLE_ATTEMPTS = 4`) écarte l'ingrédient partagé (ban
+  **ciblé** — bannir tout l'occupé épuiserait le pool des recettes singleton) ;
+- **en aval** — la passe `usage_pass._correct_auto_select` rattrape ce que le
+  tirage n'a pas su éviter (four verrouillé avant un atelier concurrent, etc.) :
+  elle **déplace** la recette vers un bâtiment équivalent sans conflit, ou, à
+  défaut, **retire l'ingrédient en conflit** d'une recette multi-ingrédients
+  (`_trim_conflict_ingredient`, garde ≥ 1) ou passe une **recette starter
+  gratuite** en craft manuel (`_handcraft_starter_recipe`). Elle s'exécute dans
+  `enforce_usage`, **avant** U2 puis U1.
+
+L'invariant — *entrées disjointes par bâtiment auto-sélection* — est vérifié
+sur 2000 seeds (zéro recette ombragée) et couvert par
+`test_auto_select_ingredients_disjoints` et `test_auto_select_repli_four_1slot`
+([invariants.md](invariants.md#règles-de-solvabilité)).
+
 ### Déblocage sur le tas
 
 Puisque toutes les ressources sont plus ou moins déblocables :
