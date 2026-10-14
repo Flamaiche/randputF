@@ -272,6 +272,7 @@ def _make_relay_recipe(
             frozenset(forbidden),
             recipe_name=f"{_config.prefix}{product['name']}",
             building_whitelist=frozenset(base.unlocked_buildings),
+            conflict_state=state,
         )
     except ValueError:
         return None

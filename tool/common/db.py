@@ -221,6 +221,12 @@ class BuildingDef:
     # dump (boiler/heat-exchanger et équivalents de mod). Sert à soustraire ces
     # bâtiments du pool des ateliers et à assigner une recette fixe.
     has_hidden_recipe: bool = False
+    # Machine SANS sélecteur de recette (l'interface se déduit de la capacité) :
+    # elle prend sa recette seule, d'après l'item inséré. À ingrédients égaux,
+    # c'est la PREMIÈRE recette du prototype qui gagne — un bâtiment qui
+    # auto-sélectionne ne doit donc pas héberger deux recettes ambiguës. Posé par
+    # l'extracteur (``entry.auto_select``), jamais recalculé côté outil.
+    auto_select: bool = False
     # --- Tags §1 : raffinement des rôles (docs/tags.md §1.1) ---
     is_power_pole: bool = False       # poteau électrique (type electric-pole + supply_area)
     is_beacon: bool = False           # module de transmission d'effet (type beacon)

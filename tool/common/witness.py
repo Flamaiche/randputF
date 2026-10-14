@@ -12,6 +12,8 @@ Pitfalls évités ici (tous mesurés en réel, pas supposés) :
   par chemin relatif canonique ;
 - ``seed.graph.html`` embarque un commentaire de version Graphviz dans son
   ``<svg>`` → exclu du témoin (régénérable, il ne porte pas la garantie) ;
+- ``seed.difficulty.html`` est lui aussi une sortie régénérable (graphes HTML
+  comparés à vanilla) → exclu, comme le graphe de production ;
 - la DÉFLATION n'est PAS stable d'une machine/version à l'autre : mesuré,
   zlib 1.3.1.zlib-ng (Python 3.14) et 1.3.2 (Python 3.12) compressent le même
   octet en deux blocs différents → le témoin n'utilise que des entrées
@@ -36,7 +38,7 @@ from pathlib import Path
 from tool.common.version import MOD_NAME_VERSIONED
 
 # Entrées exclues du témoin (voir docstring).
-WITNESS_EXCLUDED = {"seed.graph.html"}
+WITNESS_EXCLUDED = {"seed.graph.html", "seed.difficulty.html"}
 
 # Timestamp figé des entrées du zip (Indiana Jones : 1980-01-01) et mode 0644.
 _ZIP_DATE = (1980, 1, 1, 0, 0, 0)

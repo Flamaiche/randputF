@@ -106,7 +106,9 @@ mod installé portera toujours ce nom.
 `seed.graph.html` est **exclu** du zip de référence (`WITNESS_EXCLUDED`). Raison :
 le `<svg>` embarqué porte un commentaire de version de Graphviz, qui varie d'une
 machine à l'autre ; le graphe est régénérable et ne porte pas la garantie de
-l'octet. Le reste du mod (y compris `seed.json`, `seed.lua`) est couvert.
+l'octet. `seed.difficulty.html` (graphe HTML de difficulté comparée à vanilla)
+est **exclu** pour la même raison : sortie régénérable, étrangère à la garantie
+de l'octet. Le reste du mod (y compris `seed.json`, `seed.lua`) est couvert.
 
 ## Relation avec le déterminisme de la seed
 
