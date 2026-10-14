@@ -181,7 +181,7 @@ donc pas biaiser la construction.
 |--------|--------|--------|------|
 | `mod_seed.py` | 126 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` |
 | `seed_graph.py` | 1719 | Accessoire | Graphe HTML interactif ; **optionnel** (Graphviz absent → ignoré sans erreur) |
-| `difficulty_graph.py` | 255 | Accessoire | Graphe HTML de difficulté (mod vs vanilla) ; écrit `seed.difficulty.html` |
+| `difficulty_graph.py` | 500 | Accessoire | Graphe HTML **interactif** de difficulté (mod vs vanilla) ; écrit `seed.difficulty.html` |
 
 `seed_graph.py` est le plus gros fichier du tool et le seul à dépendre d'un
 binaire externe (**Graphviz**, pour le rendu `.dot → SVG`). `difficulty_graph.py`

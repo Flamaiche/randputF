@@ -247,6 +247,10 @@ mesure en **ressources brutes** (gisements au sol, items environnementaux,
 fluides d'extraction) qu'il faut avoir investies pour arriver à chaque point —
 c'est l'ardoise affichée par `randputf difficulty`.
 
+Le graphe est **interactif** : survole une tech pour lire, dans les deux séries,
+son coût propre, son cumul et les items qu'elle débloque (clic pour épingler) ;
+la légende masque une courbe, et les tableaux sous le graphe renvoient au point.
+
 L'écart entre les deux courbes montre à quel point le mod allonge (ou non) la
 progression par rapport au jeu de base. Pour la produire seule, ou pour
 consulter les totaux en console :

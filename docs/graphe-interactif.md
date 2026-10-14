@@ -87,6 +87,25 @@ investies pour arriver là.
   n'est **pas** couvert par le témoin de déterminisme, pour la même raison que
   `seed.graph.html`.
 
+### Lecture interactive (`seed.difficulty.html`)
+
+Le SVG est écrit **en Python pur** (aucune dépendance externe, contrairement à
+`seed.graph.html` qui exige Graphviz) et embarque une petite couche JS :
+
+- **Survol d'une colonne** (une zone transparente par indice de tech) : un
+  repère vertical s'affiche et une **infobulle** donne, pour les deux séries à
+  la fois, le numéro et le nom de la tech, son coût propre, le coût cumulé et
+  les items débloqués ; l'écart mod − vanilla est ajouté quand les deux courbes
+  existent à cet indice.
+- **Clic** : épingle l'infobulle (re-clic pour détacher ; un clic dans le vide
+  ferme).
+- **Légende cliquable** : masque/affiche chaque série (courbe + points) ; la
+  valeur masquée disparaît aussi de l'infobulle.
+- **Tableaux par tech** (juste en dessous) : le survol d'une ligne met le point
+  en évidence, le clic y amène la vue.
+- Les données injectées (`points`, `labels`, `colors`) sont du JSON sérialisé :
+  aucune géométrie n'est recalculée côté JS.
+
 ## Déterminisme de la sortie
 
 Le `seed.graph.html` **n'est pas couvert par le témoin** d'octet-pour-octet

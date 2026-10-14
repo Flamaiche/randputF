@@ -70,6 +70,11 @@ lisent tout depuis le YAML.
   superposée à une baseline **vanilla** dérivée du dump. La même sortie est
   écrite pendant `generate` quand le dump porte les technologies. Le calcul
   reste **à l'export**, jamais sur le chemin de génération.
+- Le graphe est **interactif** : survoler une tech affiche un repère et une
+  infobulle (numéro, nom, coût propre, cumul, items débloqués, écart
+  mod − vanilla) ; un clic épingle ; la légende masque/affiche une série ; les
+  tableaux par tech mettent le point correspondant en évidence. SVG généré en
+  Python pur, aucune dépendance externe.
 
 ### Documentation
 
