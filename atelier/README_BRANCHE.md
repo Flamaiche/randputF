@@ -1,30 +1,22 @@
-# Description des branches (randputF)
+# Travail sur cette branche : `feature/craft-moyens`
 
-Ce fichier explique à quoi sert chaque branche du dépôt. Il est mis à jour
-sur chaque branche pour refléter son objectif propre.
+Quand vous arrivez sur cette branche, lisez ce fichier en priorité pour savoir quoi faire.
 
-## Branche actuelle : `doc`
+## Objectif
 
-**Objectif : revoir et refaire toute la documentation.**
+Travailler sur **le nombre de craft et les moyens** (ressources, bâtiments, flux, équilibrage).
 
-- Mettre à jour tous les fichiers de `docs/` pour les rendre précis,
-  lisibles et actionnables (pas de généralités, pas de gros pavés).
-- Corriger les divergences entre le code et la documentation
-  (`nondeterminism.md`, `config.md`, `architecture.md`, etc.).
-- Compléter les contrats de module (`VanillaDB`, `EarlyOracle`,
-  `ProgressionState`, phases du pipeline, runtime Lua, etc.).
-- Garantir que le témoin de déterminisme reste cohérent.
+## À faire (ordre indicatif)
 
-## Autres branches
+1. **Inventaire actuel** : lister tous les crafts existants (recettes, bâtiments, inputs/outputs) dans `tool/generator/recipes.py`, `tool/generator/recursive_phase.py`, `mod/data.lua`.
+2. **Nombre de craft** : définir / ajuster le nombre de crafts par ressource, par bâtiment, par phase (starter, récursif, endgame).
+3. **Moyens** : vérifier que chaque craft a un bâtiment capable (atelier, extracteur, générateur, etc.) et que les moyens de production sont cohérents avec la demande.
+4. **Équilibrage** : s'assurer qu'aucun craft n'est bloquant ou surpuissant ; ajuster les poids, les coûts, les déblocages.
+5. **Tests** : ajouter / mettre à jour les tests de pipeline pour valider les nouveaux crafts et moyens.
+6. **Doc** : mettre à jour `docs/recettes.md`, `docs/ressources.md`, `docs/tech.md` si le comportement change.
 
-| Branche | Objectif |
-|---------|----------|
-| `dev` | Travail en cours du code (générateur, pipeline, Lua, tests). |
-| `master` | Historique intégré, releases taguées (`v1.0.0`, `v1.0.1`). |
-| `feature/craft-moyens` | Travail sur le nombre de craft et les moyens (à partir de `doc`). |
+## Règles
 
-## Convention
-
-Chaque branche possède sa propre copie de ce fichier (ou le met à jour)
-pour indiquer clairement à quoi elle sert, afin d'éviter les écarts entre
-ce qui est annoncé et ce qui est réellement fait sur la branche.
+- Ne pas toucher au témoin de déterminisme (`v1.0.0`, `v1.0.1`) sauf si un test dédié le valide.
+- Tout changement de recette ou de bâtiment doit passer par la CI (tests + rejoueur).
+- Si une divergence avec `docs/` apparaît, la corriger sur cette branche ou ouvrir une issue sur `doc`.
