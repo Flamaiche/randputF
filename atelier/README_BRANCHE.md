@@ -21,9 +21,7 @@ sur chaque branche pour refléter son objectif propre.
 |---------|----------|
 | `dev` | Travail en cours du code (générateur, pipeline, Lua, tests). |
 | `master` | Historique intégré, releases taguées (`v1.0.0`, `v1.0.1`). |
-| `doc-restructure` | Restructuration de l'arbre de lecture des docs. |
-| `feature/exporter-auto-select` | Correction de l'auto-sélection des fours (déjà résolu). |
-| `feature/1.1.0` | Préparation de la version 1.1.0 (craft, moyens, etc.). |
+| `feature/craft-moyens` | Travail sur le nombre de craft et les moyens (à partir de `doc`). |
 
 ## Convention
 
