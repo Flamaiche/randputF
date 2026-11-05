@@ -106,35 +106,6 @@ local function dump_fluids()
   return out
 end
 
-local function energy_source_info(proto)
-  local info = {}
-  local ok, source = pcall(function()
-    return proto.energy_source
-  end)
-  if not ok or source == nil then
-    return info
-  end
-  local ok_type, source_type = pcall(function()
-    return source.type
-  end)
-  if ok_type then
-    info.type = source_type
-  end
-  if source_type == "burner" then
-    local ok_fuel, categories = pcall(function()
-      return source.fuel_categories
-    end)
-    if ok_fuel and categories then
-      local list = {}
-      for _, category in ipairs(categories) do
-        table.insert(list, category)
-      end
-      info.fuel_categories = list
-    end
-  end
-  return info
-end
-
 local function fluidbox_info(proto)
   local inputs = 0
   local outputs = 0
@@ -188,10 +159,6 @@ local function string_list(list)
     end
   end
   return out
-end
-
-local function non_empty(list)
-  return list and #list > 0 and list or nil
 end
 
 -- En 2.0 il n'y a PAS de propriete generique energy_source : chaque type
@@ -266,6 +233,15 @@ local function dump_entities()
       local count = probe(proto, "ingredient_count")
       if count then
         entry.ingredient_count = count
+      end
+      -- Vitesse de craft : necessaire au rapport de complexite
+      -- (temps reel = energy / crafting_speed). En 2.1 la valeur n'est pas
+      -- exposee comme champ : c'est la methode get_crafting_speed().
+      local ok_speed, speed = pcall(function()
+        return proto.get_crafting_speed()
+      end)
+      if ok_speed and speed then
+        entry.crafting_speed = speed
       end
     end
 
@@ -384,8 +360,17 @@ local function dump_recipes()
     for _, product in ipairs(proto.products) do
       table.insert(products, {type = product.type, name = product.name, amount = product.amount})
     end
+    -- 2.1 n'expose pas toujours ``category`` sur LuaRecipePrototype : on
+    -- sonde sans erreur, puis on retombe sur ``categories`` ou "crafting".
+    local category = probe(proto, "category")
+    if category == nil then
+      local categories = probe(proto, "categories")
+      if categories and #categories > 0 then
+        category = categories[1]
+      end
+    end
     out[proto.name] = {
-      category = proto.category,
+      category = category or "crafting",
       energy = proto.energy,
       ingredients = ingredients,
       products = products,

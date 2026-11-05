@@ -304,6 +304,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     energy_type = energy_src.get("type") or ""
     craft_categories = tuple(e.get("crafting_categories") or ())
     resource_categories = tuple(e.get("resource_categories") or ())
+    raw_speed = e.get("crafting_speed")
+    crafting_speed = float(raw_speed) if raw_speed is not None else None
+    productivity = float(e.get("productivity") or 0.0)
     lab_inputs = e.get("lab_inputs") or []
     rocket_parts = e.get("rocket_parts_required")
     target_temp = e.get("target_temperature")
@@ -574,6 +577,8 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         has_rocket_parts=bool(rocket_parts),
         crafting_categories=craft_categories,
         resource_categories=resource_categories,
+        crafting_speed=crafting_speed,
+        productivity=productivity,
         energy_type=energy_type,
         fuel_categories=tuple(energy_src.get("fuel_categories") or ()),
         pumped_fluid=pumped_fluid,

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from tool.common.db import VanillaDB
 from tool.common.version import VERSION
+from tool.exporters.complexity_graph import write_complexity_html
 from tool.exporters.seed_graph import write_seed_graph_html
 from tool.parsers.vanilla import summarize_db
 from tool.service import (
@@ -128,6 +129,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
             print(f"Graphe interactif (cliquable) exporté dans {html_path}")
         else:
             print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
+        cx_path = mod_path / "seed.complexity.html"
+        write_complexity_html(seed, cx_path, db)
+        print(f"Rapport de complexité exporté dans {cx_path}")
 
 
 def cmd_difficulty(args: argparse.Namespace) -> None:

@@ -196,6 +196,11 @@ class BuildingDef:
     has_rocket_parts: bool = False
     crafting_categories: tuple[str, ...] = ()
     resource_categories: tuple[str, ...] = ()
+    # None = champ absent du dump (ancien export) : le rapport de complexité
+    # applique alors son repli vanilla. Dès que l'exporteur émet la valeur,
+    # elle fait foi.
+    crafting_speed: float | None = None
+    productivity: float = 0.0
     energy_type: str = "burner"
     fuel_categories: tuple[str, ...] = ()
     item_input_slots: int = 0
