@@ -1,33 +1,22 @@
 # Documentation randputF
 
-Cette documentation est la **référence de conception** du randomizer. Elle
-décrit l'ensemble des mécanismes du système, leur justification et les règles
-qu'ils respectent. Pour installer et jouer, voir le [README](../README.md).
+Ce document sert de **référence de conception** pour le randomizer. Il détaille la mécanique globale du système, ses justifications et ses règles applicables. Pour installer le mod et jouer, consulte le [README](../README.md).
 
-## Concept général
+## 1. Concept général
 
-Dans Factorio classique, bien des éléments sont toujours les mêmes. randputF
-supprime ce réflexe : **à chaque partie, rien de ce que le joueur connaît n'est
-garanti**.
+Dans Factorio vanilla, les repères restent identiques d'une partie à l'autre. randputF rompt ces habitudes : **à chaque génération, aucun acquis du joueur n'est garanti**.
 
-À chaque génération :
+Chaque partie réinvente :
 
-- **Ressources au sol** : un nombre et des types aléatoires, choisis parmi
-  tout ce que le jeu peut transporter (items sur tapis, fluides dans les tuyaux).
-- **Bâtiments** : extraction, transformation et transport sont choisis pour
-  s'adapter à ces ressources.
-- **Recettes** : elles relient les éléments entre eux, générées aléatoirement.
-- **Arbre technologique** : lui aussi est généré pour ce monde.
-- **Kit de départ** : fourni aléatoirement.
+- **Ressources au sol** : quantités et types choisis au hasard parmi l'ensemble des éléments transportables du jeu (items sur tapis, fluides en tuyau).
+- **Bâtiments** : machines d'extraction, de transformation et de transport sélectionnées pour s'adapter à ces ressources.
+- **Recettes** : générées aléatoirement pour lier l'ensemble des éléments.
+- **Arbre technologique** : intégralement reconstruit pour le monde généré.
+- **Kit de départ** : attribué de manière aléatoire.
 
-**Principe : le randput** (randomisation des entrées/sorties). Un slot d'entrée
-ou de sortie d'un type donné (item ou fluide) peut recevoir n'importe quel
-élément de ce type. Un bâtiment capable de produire/sortir un item peut donc
-sortir n'importe quel item ; un bâtiment manipulant des fluides peut manipuler
-n'importe quel fluide. Le contenu change, la structure reste : c'est ce qui
-garantit un monde cohérent et jouable.
+**Principe : le randput** (randomisation des entrées/sorties). Un emplacement d'entrée ou de sortie d'un type donné (item ou fluide) accepte n'importe quel élément de ce type. Un bâtiment qui produit un item peut donc sortir n'importe quel item ; une machine gérant des fluides peut traiter n'importe quel fluide. La structure globale est conservée mais le contenu varie : c'est ce qui garantit un monde cohérent et jouable.
 
-## Périmètre et cible
+## 2. Périmètre et cible
 
 | Élément | Décision |
 |---|---|
@@ -36,70 +25,37 @@ garantit un monde cohérent et jouable.
 | Mods tiers | **Hors scope v1.** Le randomizer cible le jeu vanilla seul. Le support de contenu de mods tiers (Krastorio, Py, etc.) fera l'objet d'un projet séparé, bien plus tardif |
 | Fin de partie | Classique : **lancement de la fusée** = victoire. Les technologies infinies restent disponibles ensuite, inchangées dans leur principe |
 
-Ces choix sont volontairement conservateurs pour garder un moteur robuste.
+Ces choix délibérément conservateurs garantissent la robustesse du moteur.
 
-## Arbre de lecture
+## Ordre de lecture conseillé
 
-Racine : ce README. Chaque **parent** expose un concept large ; ses **enfants**
-(indentés) n'ajoutent que du détail — un mécanisme, une valeur, une définition. Lire
-l'arbre de haut en bas donne d'abord le concept de bout en bout, puis le niveau de détail
-du code. Pour installer et jouer : [README racine](../README.md).
-
-- [model.md](model.md) — le modèle randput : terminologie et classification des bâtiments
-  - [tags.md](tags.md) — (détail) les tags de `BuildingDef`/`ItemDef`
-  - [vanilladb.md](vanilladb.md) — (détail) le dump vanilla et les prédicats de détection
-- [ressources.md](ressources.md) — les ressources au sol
-  - [ressources-brutes.md](ressources-brutes.md) — (partagé avec `starter`) les formes d'une raw et leur extraction
-- [starter.md](starter.md) — la phase de démarrage
-  - [amorcage.md](amorcage.md) — (partagé avec `recettes`/`energie`/`tech`) les règles d'amorçage
-- [recettes.md](recettes.md) — la phase récursive
-  - [aiguillage.md](aiguillage.md) — (partagé avec `tech`/`combat`) pourcentages, groupement, dispatch
-- [energie.md](energie.md) — électricité
-  - [chaleur.md](chaleur.md) — (partagé avec `tags`) le milieu chaleur
-- [combat.md](combat.md) — combat et transports avancés
-- [tech.md](tech.md) — arbre technologique et fin de partie
-- [solvabilite.md](solvabilite.md) — vérifications de solvabilité
-  - [invariants.md](invariants.md) — (partagé avec `recettes`/`tech`/`ressources`) les 7 invariants
-  - [nomenclature-rejoueur.md](nomenclature-rejoueur.md) — (détail) vocabulaire seed ↔ rejoueur
-- [seed.md](seed.md) — seed, déterminisme, configuration
-  - [config.md](config.md) — (détail) clés de configuration
-  - [nondeterminism.md](nondeterminism.md) — (détail) sources de non-déterminisme
-    - [witness.md](witness.md) — (détail) le témoin de déterminisme
-- [architecture.md](architecture.md) — architecture et outillage
-  - [pipeline.md](pipeline.md) — (détail) chronologie de génération
-  - [modules.md](modules.md) — (détail) outillage Python
-  - [runtime.md](runtime.md) — (détail) le mod Lua
-  - [graphe-interactif.md](graphe-interactif.md) — (détail) génération de `seed.graph.html`
-
-Un doc peut **mentionner** d'autres concepts sans en être un enfant : le starter, par
-exemple, touche aux ressources, aux recettes, à l'énergie et aux techs. Chaque page liste
-donc en fin de document son **parent**, ses **enfants** et ses **concepts liés**.
-
-Notes de chantier (hors arbre) : [DEVIANCES.md](DEVIANCES.md),
-[developpement.md](developpement.md), [release.md](release.md),
-[CHANGELOG.md](../CHANGELOG.md).
+1. [Terminologie](model.md#3-terminologie)
+2. [Modèle randput (bâtiments)](model.md#5-le-modèle-randput--classification-des-bâtiments) — fondation du moteur
+3. [Ressources au sol](ressources.md#6-les-ressources-au-sol) — patches
+4. [Phase de démarrage](starter.md#7-la-phase-de-démarrage) (lacs de fluide) et [chaîne initiale](starter.md#8-la-chaîne-initiale-starter)
+5. [Phase récursive](recettes.md#9-la-phase-récursive) — tirages, recettes, relais
+6. [Électricité](energie.md#10-lélectricité) et [Chaleur](energie.md#10bis-la-chaleur)
+7. [Combat/armement](combat.md#11-combat-et-armement) et [Transports avancés](combat.md#12-transports-avancés)
+8. [Arbre technologique](tech.md#13-larbre-technologique) et [Fin de partie](tech.md#14-fin-de-partie)
+9. [Règles de solvabilité](solvabilite.md#15-règles-de-solvabilité) — invariants
+10. [Rejoueur (vérification par simulation)](solvabilite.md#15ter-rejoueur--fake-player--vérification-par-simulation) — preuve (1501/1501 victoires)
 
 ## Index des documents
 
 ### Conception
 
-| Document | Contenu |
-|---|---|
-| [model.md](model.md) | Terminologie ; classification des bâtiments (types fonctionnels, slots typés, directives) |
-| [ressources.md](ressources.md) | Patches posés au sol, lacs de fluide, pose runtime déterministe |
-| [ressources-brutes.md](ressources-brutes.md) | Formes d'une raw (patch item, patch fluide, lac), support, extraction, milieu |
-| [starter.md](starter.md) | Kit de départ, techs gratuites, site de crash, lacs ; chaîne initiale (extraction → transformation → transport) |
-| [amorcage.md](amorcage.md) | Règles d'amorçage : ce qui doit être fabricable dès le kit, jalons, prologue |
-| [recettes.md](recettes.md) | Phase récursive : tirages pondérés, recettes, déblocage sur le tas, relais, balayage de couverture |
-| [aiguillage.md](aiguillage.md) | Aiguillage partagé : pourcentages de tirage, groupement de techs, dispatch des munitions |
-| [energie.md](energie.md) | Électricité : déclenchement, générateurs, ruptures |
-| [chaleur.md](chaleur.md) | Milieu chaleur : triade source/transport/sink |
-| [combat.md](combat.md) | Armes, munitions, transports avancés, armes montées randomisées |
-| [tech.md](tech.md) | Arbre technologique linéaire, fin de partie (fusée) |
-| [solvabilite.md](solvabilite.md) | Bootstrap sûr (graphe initial correct par construction), rejoueur « fake player » (1501/1501) |
-| [invariants.md](invariants.md) | Les sept invariants de solvabilité que le générateur doit respecter |
-| [seed.md](seed.md) | Seed, déterminisme, configuration consommée |
-| [architecture.md](architecture.md) | Architecture générale, pipeline technique, structure du projet |
+| Document | Sections | Contenu |
+|---|---|---|
+| [model.md](model.md) | §3, §5 | Terminologie ; classification des bâtiments (types fonctionnels, slots typés, directives) |
+| [ressources.md](ressources.md) | §6 | Patches posés au sol, pose runtime déterministe |
+| [starter.md](starter.md) | §7, §8 | Kit de départ, techs gratuites, site de crash, lacs de fluide ; chaîne initiale (extraction → transformation → transport) |
+| [recettes.md](recettes.md) | §9 | Phase récursive : tirages pondérés, recettes, déblocage sur le tas, relais, balayage de couverture |
+| [energie.md](energie.md) | §10, §10bis | Électricité (déclenchement, générateurs, ruptures) et chaleur (triade source/transport/sink) |
+| [combat.md](combat.md) | §11, §12 | Armes, munitions, transports avancés, armes montées randomisées |
+| [tech.md](tech.md) | §13, §14 | Arbre technologique linéaire, fin de partie (fusée) |
+| [solvabilite.md](solvabilite.md) | §10ter, §15, §15ter | Bootstrap sûr (graphe initial correct par construction), invariants de solvabilité, rejoueur « fake player » (1501/1501) |
+| [seed.md](seed.md) | §16 | Seed, déterminisme, configuration consommée |
+| [architecture.md](architecture.md) | §4, §17, §18 | Architecture générale, pipeline technique, structure du projet |
 
 ### Références
 
@@ -112,10 +68,10 @@ Notes de chantier (hors arbre) : [DEVIANCES.md](DEVIANCES.md),
 | [witness.md](witness.md) | Témoin de déterminisme : périmètre, exclusions, mise à jour au bump |
 | [release.md](release.md) | Procédure de publication et état des versions (ce qui est publié, ce qui est en préparation) |
 | [graphe-interactif.md](graphe-interactif.md) | Génération de `seed.graph.html` (nœuds, arêtes, icônes) |
-| [modules.md](modules.md) | Le outillage Python : une passe par module et son statut de branchement (branché / testé non branché / diagnostic) |
+| [modules.md](modules.md) | L'outillage Python : une passe par module et son statut de branchement (branché / testé non branché / diagnostic) |
 | [pipeline.md](pipeline.md) | Chronologie de génération : fonctions d'orchestration, jalons, flux RNG, invariants, chemin d'échec |
 | [vanilladb.md](vanilladb.md) | `VanillaDB` : format du dump vanilla, schéma des données, prédicats de détection, inférences |
-| [runtime.md](runtime.md) | Le mod Lua : les cinq fichiers, le contrat `seed` → Lua, les clés consommées, le câblé-inactif |
+| [runtime.md](runtime.md) | Le mod Lua : les cinq fichiers, le contrat `seed` → Lua, les clés consommées, ce qui est câblé mais inactif (§9) |
 
 ### Notes de chantier
 

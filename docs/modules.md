@@ -1,5 +1,7 @@
 # Modules du tool — inventaire et rôle
 
+Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+
 Ce document liste **tous** les modules Python du package `tool`, ce qu'ils font,
 qui les appelle, et — pour chacun — s'ils sont **branchés** au pipeline,
 **accessoires**, ou **non branchés**.
@@ -10,24 +12,26 @@ nommés. Les références `fichier:ligne` des algorithms sont dans
 
 ---
 
-## Vue d'ensemble
+## 1. Vue d'ensemble
 
 | Paquet | Rôle | Modules |
 |--------|------|---------|
-| `tool/__main__.py` | CLI : 6 commandes | 1 |
+| `tool/__main__.py` | CLI : 5 commandes | 1 |
 | `tool/parsers/` | Lecture du dump vanilla | 1 |
-| `tool/common/` | Socle : config, base, RNG, tags, version, witness | 9 |
-| `tool/generator/` | Les phases de génération | 22 |
-| `tool/prototypes/` | Objets de configuration par phase | 11 |
+| `tool/common/` | Socle : config, base, RNG, tags, version, witness | 10 |
+| `tool/generator/` | Les phases de génération | 20 |
+| `tool/prototypes/` | Objets de configuration par phase | 12 |
 | `tool/validator/` | Validation structurelle et solvabilité | 2 |
 | `tool/audit/` | Tags et difficulté | 2 |
-| `tool/exporters/` | Écriture des artefacts | 3 |
+| `tool/exporters/` | Écriture des artefacts | 2 |
 | `tool/replay/` | Rejoueur « fake player » | 1 |
 
-Les paquets `__init__.py` sont vides (5 fichiers, 0 ligne) : le tool est un
-**package à plat**, pas une hiérarchie de sous-domaines.
+Les `__init__.py` des sous-domaines sont vides (7 fichiers, 0 ligne) et
+`tool/prototypes/` n'en a même pas (namespace package implicite) ; seul
+`tool/__init__.py` porte une docstring de module. Le tool est un **package à
+plat**, pas une hiérarchie de sous-domaines.
 
-## État de branchement — les quatre statuts
+## 2. État de branchement — les quatre statuts
 
 | Statut | Signification |
 |--------|---------------|
@@ -39,37 +43,37 @@ Les paquets `__init__.py` sont vides (5 fichiers, 0 ligne) : le tool est un
 Ce tableau est le point important du document : **deux tiers du code n'est pas
 sur le chemin d'une seed**.
 
-## `tool/generator/` — les phases
+## 3. `tool/generator/` — les phases
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
 | `pipeline.py` | 506 | Pipeline | Orchestration : `generate_seed`, `_build_prefix`, `_finalize_pipeline` |
 | `map_patches.py` | 343 | Pipeline | Phase 1 : ressources au sol, gisements, nonfinite |
-| `lakes.py` | 75 | Pipeline | Lacs de fluide |
+| `lakes.py` | 76 | Pipeline | Lacs de fluide |
 | `starter_chain.py` | 651 | Pipeline | Phase 2 : chaîne initiale, kit, techs gratuites |
 | `electricity.py` | 277 | Pipeline | Phase 3 : générateur fonctionnel, réparations |
 | `recursive_phase.py` | 1242 | Pipeline | Phase 4 : récursion pondérée, coverage, véhicules |
-| `endgame_phase.py` | 75 | Pipeline | Chaîne de la fusée intable |
-| `usage_pass.py` | 755 | Pipeline | Garantie d'usage dure (U1, U2) + passe auto-sélection |
+| `endgame_phase.py` | 76 | Pipeline | Chaîne de la fusée intable |
+| `usage_pass.py` | 511 | Pipeline | Garantie d'usage dure (U1, U2) |
 | `relay_phase.py` | 277 | Pipeline | Recettes propres pour les environnementales |
-| `easeup_phase.py` | 352 | Pipeline | Recettes alternatives pour crafts lourds |
+| `easeup_phase.py` | 347 | Pipeline | Recettes alternatives pour crafts lourds |
 | `tech_tree.py` | 318 | Pipeline | Arbre technologique linéaire |
-| `extractor_timing.py` | 577 | Pipeline | Déblocage juste-au-besoin des extracteurs |
-| `late_raws.py` | 354 | Conditionnel | Jalons de ressources ; inerte si `late_raws.enabled` est faux |
-| `craft_quantity.py` | 51 | Conditionnel | Phase 6bis ; inerte si `craft_quantity.enabled` est faux |
-| `wreck_loot.py` | 64 | Pipeline | Loi de loot du crash site |
-| `building_fluids.py` | 111 | Pipeline | Fluides des bâtiments à comportement fixe |
-| `recipes.py` | 890 | Pipeline | Primitives partagées : `ProgressionState`, `ensure_obtainable`, `make_recipe`, anti-conflit auto-sélection |
-| `early_oracle.py` | 144 | Pipeline | Watershed obtenable sans électricité |
-| `bootstrap_guard.py` | 172 | Accessoire | Diagnostic SCC du graphe — appelé par `extractor_timing`, donc **sur le chemin** d'une seed, mais comme garde |
-| `heat.py` | 38 | Pipeline | Partition source / transport / consommateur ; importé par `recursive_phase` |
+| `extractor_timing.py` | 571 | Pipeline | Déblocage juste-au-besoin des extracteurs |
+| `late_raws.py` | 355 | Conditionnel | Jalons de ressources ; inerte si `late_raws.enabled` est faux |
+| `craft_quantity.py` | 52 | Conditionnel | Phase 6bis ; inerte si `craft_quantity.enabled` est faux |
+| `wreck_loot.py` | 65 | Pipeline | Loi de loot du crash site |
+| `building_fluids.py` | 112 | Pipeline | Fluides des bâtiments à comportement fixe |
+| `recipes.py` | 805 | Pipeline | Primitives partagées : `ProgressionState`, `ensure_obtainable`, `make_recipe` |
+| `early_oracle.py` | 145 | Pipeline | Watershed obtenable sans électricité |
+| `bootstrap_guard.py` | 173 | Accessoire | Diagnostic SCC du graphe — appelé par `extractor_timing`, donc **sur le chemin** d'une seed, mais comme garde |
+| `heat.py` | 39 | Pipeline | Partition source / transport / consommateur ; importé par `recursive_phase` |
 
 > `bootstrap_guard.py` est le seul module « guard » du tool : il ne construit
 > rien, il **diagnostique** les cycles du graphe. Il est appelé depuis
 > `extractor_timing`, donc son résultat est visible dans
 > `seed["extractor_timing"]`.
 
-## `tool/prototypes/` — les objets de configuration
+## 4. `tool/prototypes/` — les objets de configuration
 
 Tous dérivent de `PrototypeConfig` (`base.py`, 13 lignes).
 
@@ -83,40 +87,40 @@ passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 
 | Module | Lignes | Statut | Domaine |
 |--------|--------|--------|---------|
-| `base.py` | 13 | Socle | `PrototypeConfig` : accès typé au config fusionné |
-| `recipes.py` | 144 | Pipeline | `RecipeConfig` — poids, énergie, équilibrage |
-| `recursive.py` | 149 | Pipeline | `RecursiveConfig` — poids par catégorie, distances, véhicules |
-| `starter.py` | 41 | Pipeline | `StarterConfig` — dont `deferred`, la porte du rejeu late raws |
-| `relay.py` | 32 | Pipeline | `RelayConfig` — préfixe, pas de dispatch |
-| `easeup.py` | 41 | Pipeline | `EaseupConfig` — seuil de profondeur, unlocks par tech |
-| `usage.py` | 54 | Pipeline | `UsageConfig` — bâtiments terminaux, exemptions du kit |
+| `base.py` | 14 | Socle | `PrototypeConfig` : accès typé au config fusionné |
+| `recipes.py` | 145 | Pipeline | `RecipeConfig` — poids, énergie, équilibrage |
+| `recursive.py` | 150 | Pipeline | `RecursiveConfig` — poids par catégorie, distances, véhicules |
+| `starter.py` | 42 | Pipeline | `StarterConfig` — dont `deferred`, la porte du rejeu late raws |
+| `relay.py` | 33 | Pipeline | `RelayConfig` — préfixe, pas de dispatch |
+| `easeup.py` | 42 | Pipeline | `EaseupConfig` — seuil de profondeur, unlocks par tech |
+| `usage.py` | 55 | Pipeline | `UsageConfig` — bâtiments terminaux, exemptions du kit |
 | `craft_quantity.py` | 148 | Pipeline | `CraftQuantityConfig` — mode symétrique/asymétrique |
 | `nonfinite_randomisation.py` | 118 | Pipeline | `NonfiniteConfig` — facteurs de richesse/rayon/count |
-| `difficulty_knobs.py` | 100 | **Non branché** | Knobs de difficulté par seed — testé, jamais importé |
-| `progressive_extractors.py` | 114 | **Non branché** | Ancien prototype d'extracteurs progressifs — remplacé par `extractor_timing` |
-| `rare_resources.py` | 136 | **Non branché** | Mode exploration « ressources rares » — aucun sélecteur de mode dans le CLI |
+| `difficulty_knobs.py` | 101 | **Non branché** | Knobs de difficulté par seed — testé, jamais importé |
+| `progressive_extractors.py` | 115 | **Non branché** | Ancien prototype d'extracteurs progressifs — remplacé par `extractor_timing` |
+| `rare_resources.py` | 137 | **Non branché** | Mode exploration « ressources rares » — aucun sélecteur de mode dans le CLI |
 
 > `progressive_extractors.py` est le **prédécesseur** de
 > `tool/generator/extractor_timing.py` : même invariant (« l'extracteur arrive
 > quand on en a besoin »), mais résolu au niveau seed plutôt que par prototype.
 > Les deux coexistent ; seul le second est branché.
 
-## `tool/common/` — le socle
+## 5. `tool/common/` — le socle
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
-| `config.py` | 489 | Pipeline | Fusion defaults + surcharges, **schéma strict**, `ConfigError` |
-| `db.py` | 436 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
-| `rng.py` | 22 | Pipeline | `make_seeded_rng` — **fabrique unique** des flux RNG |
-| `tagsets.py` | 119 | Pipeline | Ensembles de noms figés (D3), source unique par ensemble |
-| `version.py` | 36 | Accessoire | `VERSION`, `FACTORIO_VERSION`, `MOD_NAME_VERSIONED` — lus depuis `mod/info.json` |
-| `witness.py` | 85 | Accessoire | md5 canonique du mod assemblé |
-| `assets.py` | 58 | Accessoire | Résolution de `mod/`, `data/`, `config/` en dépôt comme en wheel |
+| `config.py` | 490 | Pipeline | Fusion defaults + surcharges, **schéma strict**, `ConfigError` |
+| `db.py` | 430 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
+| `rng.py` | 23 | Pipeline | `make_seeded_rng` — **fabrique unique** des flux RNG |
+| `tagsets.py` | 120 | Pipeline | Ensembles de noms figés (D3), source unique par ensemble |
+| `version.py` | 37 | Accessoire | `VERSION`, `FACTORIO_VERSION`, `MOD_NAME_VERSIONED` — lus depuis `mod/info.json` |
+| `witness.py` | 86 | Accessoire | md5 canonique du mod assemblé |
+| `assets.py` | 59 | Accessoire | Résolution de `mod/`, `data/`, `config/` en dépôt comme en wheel |
 | `demo.py` | 179 | Accessoire | Base vanilla synthétique : `randputf --demo` |
-| `png_icon.py` | 183 | Accessoire | Recadrage des icônes Factorio pour le graphe HTML |
+| `png_icon.py` | 184 | Accessoire | Recadrage des icônes Factorio pour le graphe HTML |
 | `weighted_picker.py` | 126 | Pipeline | Tirage pondéré à pourcentages ; utilisé par `prototypes/recipes.py` |
 
-### `config.py` en détail
+### 5.1 `config.py` en détail
 
 Seul module où la **validation** est une erreur et non un log.
 
@@ -136,7 +140,7 @@ le moteur existe, donc aucun module n'a besoin de valeur de secours
 (`tool/common/config.py:10-12`). Une clé obligatoire absente est un défaut de
 maintenance, pas une tolérance (`tool/common/config.py:418-423`).
 
-## `tool/parsers/vanilla.py` — l'entrée
+## 6. `tool/parsers/vanilla.py` — l'entrée
 
 608 lignes. Normalise `vanilla_dump.json` (produit par `exporter/control.lua`)
 vers `VanillaDB`.
@@ -146,93 +150,82 @@ vers `VanillaDB`.
 | Ignore les objets randputF | `_RANDPUTF_PREFIX = "randputf-"` (`tool/parsers/vanilla.py:61`) — un dump pollué est filtré, pas refusé |
 | Empile les doublons | Rejette les noms déjà préfixés plutôt que de créer `randputf-randputf-…` |
 | Calcule les tags | Dérive `is_crafter`, `is_extractor`, `is_generator`… depuis les capacités |
-| Rejette un dump invalide | `ValueError` avec message → le CLI sort en 1 (`tool/__main__.py:57-59`) |
+| Rejette un dump invalide | `DumpInvalidError` avec message → le CLI sort en 1 (`tool/__main__.py:53-55`) |
 
-## `tool/validator/` — deux validations distinctes
+## 7. `tool/validator/` — deux validations distinctes
 
 | Module | Lignes | Ce qu'il vérifie |
 |--------|--------|------------------|
-| `pipeline_validator.py` | 533 | **Structure** : le graphe est-il cohérent ? Stats, issues, warnings |
+| `pipeline_validator.py` | 537 | **Structure** : le graphe est-il cohérent ? Stats, issues, warnings |
 | `solver.py` | 84 | **Solvabilité** : la seed est-elle finissable ? Liste de problèmes |
 
 Le pipeline appelle le validateur **structurel** et ne fait qu'**logger**
 (`tool/generator/pipeline.py:412-427`). Le CLI appelle le **solver** et
 **retente avec une graine dérivée** jusqu'à 10 fois
-(`tool/__main__.py:160-169`).
+(`MAX_ATTEMPTS = 10`, `tool/service.py:50`).
 
 C'est la distinction à retenir : une seed peut être structurellement valide et
 non solvable — et c'est le cas qui déclenche la reprise du CLI. Voir
 [`solvabilite.md`](solvabilite.md).
 
-## `tool/audit/`
+## 8. `tool/audit/`
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
-| `tags.py` | 262 | Accessoire | Audit des tags de bâtiments et d'items (invariant C8) ; exit 1 si violation |
-| `difficulty.py` | 297 | Pipeline (à l'export) | Ardoise de ressources brutes ; **injectée dans la seed à l'export** ; fournit aussi la courbe `difficulty_series` |
+| `tags.py` | 263 | Accessoire | Audit des tags de bâtiments et d'items (invariant C8) ; exit 1 si violation |
+| `difficulty.py` | 182 | Pipeline (à l'export) | Ardoise de ressources brutes ; **injectée dans la seed à l'export** |
 
 `compute_difficulty` est le seul audit sur le chemin d'une seed, et il ne
 s'exécute qu'à l'écriture (`tool/exporters/mod_seed.py:54`) : le calcul ne peut
 donc pas biaiser la construction.
 
-## `tool/exporters/`
+## 9. `tool/exporters/`
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
 | `mod_seed.py` | 126 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` |
-| `seed_graph.py` | 1719 | Accessoire | Graphe HTML interactif ; **optionnel** (Graphviz absent → ignoré sans erreur) |
-| `difficulty_graph.py` | 500 | Accessoire | Graphe HTML **interactif** de difficulté (mod vs vanilla) ; écrit `seed.difficulty.html` |
+| `seed_graph.py` | 1720 | Accessoire | Graphe HTML interactif ; **optionnel** (Graphviz absent → ignoré sans erreur) |
 
 `seed_graph.py` est le plus gros fichier du tool et le seul à dépendre d'un
-binaire externe (**Graphviz**, pour le rendu `.dot → SVG`). `difficulty_graph.py`
-construit son SVG **en Python pur** (aucune dépendance externe) à partir de la
-seed et d'une baseline vanilla dérivée du dump. Aucun des deux ne bloque une
-génération.
+binaire externe. Son absence ne bloque jamais une génération
+(`tool/__main__.py:127-130`).
 
-## `tool/replay/player.py` — le rejoueur
+## 10. `tool/replay/player.py` — le rejoueur
 
-1073 lignes. Simule une partie complète sur la seed finale pour **prouver** la
+1074 lignes. Simule une partie complète sur la seed finale pour **prouver** la
 solvabilité. Ce n'est pas le validateur : c'est une preuve par simulation
-(1501/1501 victoires mesurées, [`docs/solvabilite.md`](solvabilite.md#rejoueur--fake-player--vérification-par-simulation)).
+(1501/1501 victoires mesurées, `docs/solvabilite.md` §15ter).
 
 Il est **accessoire** : la CLI ne l'expose pas comme commande. Il est appelé par
 la suite de tests et par les sweeps.
 
-## `tool/__main__.py` — la CLI
+## 11. `tool/__main__.py` — la CLI
 
-268 lignes, 6 commandes.
+209 lignes, 5 commandes.
 
 | Commande | Ligne | Rôle | Sortie |
 |----------|-------|------|--------|
-| `parse` | 62 | Charge et résume la base vanilla | Résumé texte |
-| `audit` | 68 | Audite les tags | exit 1 si violation |
-| `generate` | 98 | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
-| `compare` | 154 | Génère puis compare la difficulté à la baseline vanilla | `seed.difficulty.<seed>.html` + totaux |
-| `difficulty` | 184 | Génère puis affiche l'ardoise | Tableau texte |
-| `witness` | 196 | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
-
-Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
-vanilla alternatif).
+| `parse` | 58 | Charge et résume la base vanilla | Résumé texte |
+| `audit` | 64 | Audite les tags | exit 1 si violation |
+| `difficulty` | 133 | Génère puis affiche l'ardoise | Tableau texte |
+| `generate` | 85 | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
+| `witness` | 145 | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
 
 Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
 vanilla alternatif).
 
 `generate` a une option propre : `--install`, qui copie le mod dans
 `paths.factorio_mods` et met à jour `mod-list.json`
-(`tool/__main__.py:85-117`) — et **désactive** `randputf-exporter`, pour
+(`tool/__main__.py:106-120`) — et **désactive** `randputf-exporter`, pour
 qu'aucun dump ne puisse être pris depuis une partie randomisée.
 
-`compare` (et la comparaison de `generate`) exige un dump **avec les
-technologies** et bascule en `--demo` sur une erreur explicite : la baseline
-vanilla ne peut pas être synthétique.
-
-## Récapitulatif des statuts
+## 12. Récapitulatif des statuts
 
 | Statut | Nombre | Modules |
 |--------|--------|---------|
-| Pipeline | 19 + 1 socle + 9 prototypes | `generator/*` sauf les 2 conditionnels et le guard |
+| Pipeline | 33 | 17 phases `generator/*` ; 5 `common` (`config`, `db`, `rng`, `tagsets`, `weighted_picker`) ; 8 prototypes ; `pipeline_validator` ; `audit/difficulty` (à l'export) ; `exporters/mod_seed` |
 | Conditionnel | 2 | `late_raws.py`, `craft_quantity.py` |
-| Accessoire | 9 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `difficulty_graph`, `solver` |
+| Accessoire | 10 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `solver`, `player`, `bootstrap_guard` |
 | Non branché | 3 | `prototypes/difficulty_knobs`, `prototypes/progressive_extractors`, `prototypes/rare_resources` |
 
 Les trois modules non branchés sont **testés** : leurs tests passent et
@@ -240,7 +233,9 @@ documentent l'invariant qu'ils implémentaient. Les supprimer casserait des
 tests, pas des seeds — c'est le marqueur d'une fonctionnalité retirée du
 câblage mais non nettoyée.
 
-## Lectures associées
+## 13. Lectures associées
 
-- **Parent** : [architecture.md](architecture.md) — architecture et outillage
-- **Concepts liés** : [pipeline.md](pipeline.md) ; [architecture.md](architecture.md#structure-du-projet) ; [developpement.md](developpement.md) ; [config.md](config.md) ; [vanilladb.md](vanilladb.md)
+- [`pipeline.md`](pipeline.md) — l'ordre réel d'appel de ces modules.
+- [`architecture.md`](architecture.md) — la structure du projet (§18).
+- [`developpement.md`](developpement.md) — environnement de dev, ajout d'une phase.
+- [`config.md`](config.md) — chaque clé de config et sa validation.

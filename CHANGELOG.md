@@ -13,10 +13,12 @@ vocabulaire du projet (gating, §16 de `seed.md`), pas une faute.
 
 ## v0.0.1
 
-Configuration en deux YAML, parcours joueur et deux correctifs de contenu
-(auto-sélection des fours, difficulté comparée à vanilla). La configuration,
-l'installation et la doc bougent ; le contenu du mod ne change que pour les
-seeds touchées par le correctif d'auto-sélection.
+Le mod ne change pas : pour une seed donnée, le contenu généré est identique
+au caractère près — le seul écart entre `v0.0.0` et `v0.0.1` dans `mod/` est le
+numéro de version de `info.json`, et `data/` n'a pas bougé. Ce sont la
+configuration, l'installation et la documentation qui changent.
+
+90 commits, 57 fichiers, +4 229 / −756 lignes.
 
 ### ⚠️ Changement de configuration — migration requise
 
@@ -43,60 +45,38 @@ lisent tout depuis le YAML.
 
 ### Déterminisme vérifiable
 
-- `randputf witness --seed 5 --expect c9566134864507d900f65806ade277d9`.
-  Le témoin **change** au bump (le préfixe racine du zip `randputF_<version>`
-  entre dans le hachage) **et** ici parce que la seed 5 est touchée par le
-  correctif d'auto-sélection (voir « Recettes »). Les sorties HTML
-  (`seed.graph.html`, `seed.difficulty.html`) sont **exclues** du témoin,
-  comme le graphe de production l'était déjà.
-
-### Recettes — auto-sélection des fours
-
-- Les fours (`stone-furnace`, `steel-furnace`, `electric-furnace`) et le
-  `rocket-silo` n'ont pas d'écran de choix de recette : à ingrédients égaux,
-  Factorio retient la **première** recette du prototype et rendait la suivante
-  **inatteignable**. Le générateur impose désormais des **ingrédients
-  disjoints** par bâtiment auto-sélection : re-tirage à la création
-  (`recipes.py`) et correction en aval dans la passe d'usage
-  (`usage_pass._correct_auto_select` — déplacement, retrait d'ingrédient ou
-  passage en craft manuel). Validé sur **2000 seeds** (zéro recette ombragée),
-  tests `test_auto_select_ingredients_disjoints` et
-  `test_auto_select_repli_four_1slot`.
-
-### Difficulté comparée à vanilla
-
-- `randputf compare` génère une seed et écrit `seed.difficulty.html` : la
-  **courbe de difficulté cumulée** (ressources brutes par tech) de la seed
-  superposée à une baseline **vanilla** dérivée du dump. La même sortie est
-  écrite pendant `generate` quand le dump porte les technologies. Le calcul
-  reste **à l'export**, jamais sur le chemin de génération.
-- Le graphe est **interactif** : survoler une tech affiche un repère et une
-  infobulle (numéro, nom, coût propre, cumul, items débloqués, écart
-  mod − vanilla) ; un clic épingle ; la légende masque/affiche une série ; les
-  tableaux par tech mettent le point correspondant en évidence. SVG généré en
-  Python pur, aucune dépendance externe.
+- **Témoin** : `randputf witness --seed 5 --expect c9566134864507d900f65806ade277d9`.
+  Le contenu du mod pour la seed 5 est inchangé depuis la v0.0.0, mais le
+  témoin **change** au bump : le zip de référence a pour racine
+  `randputF_<version>`, qui fait partie des entrées hachées.
 
 ### Documentation
 
-- **Parcours joueur** : voie rapide sans Python, tableau des dossiers `mods`,
-  section dépannage / FAQ (mod invisible, warning des fours, seed
-  injouable, retrouver sa seed, erreur de config).
-- **Conception** : index `docs/` complété (`modules.md`, `pipeline.md`,
-  `runtime.md`, `vanilladb.md`), `docs/config.md`, `docs/witness.md`,
-  `docs/release.md` (procédure de publication). `docs/architecture.md` §18
-  remis à jour contre le code réel.
-- **Auto-sélection & difficulté** : `docs/invariants.md` (invariant n°8),
-  `docs/recettes.md`, `docs/tags.md`, `docs/vanilladb.md` (champ `auto_select`),
-  `docs/pipeline.md` et `docs/modules.md` (graphe de difficulté), et
-  `docs/graphe-interactif.md` (les deux sorties HTML).
-- `README_EN.md` aligné sur le README français.
+- **Treize documents écrits ou remis à niveau**, ~3 000 lignes, organisés en trois
+  étages pour que la lecture s'arrête où le besoin s'arrête : *Jouer* (README,
+  note de release) → *Comprendre* (`docs/README.md` puis chaque mécanisme) →
+  *Développer* (pipeline, modules, runtime, VanillaDB, témoin).
+- **Nouveaux** : `docs/config.md`, `docs/DEVIANCES.md`, `docs/witness.md`,
+  `docs/pipeline.md`, `docs/modules.md`, `docs/vanilladb.md`, `docs/runtime.md`,
+  `docs/graphe-interactif.md`, `docs/release.md`, `README_EN.md` (anglais),
+  `CHANGELOG.md` (qui n'existait pas avant 0.0.1).
+- **Réécrits** : le parcours joueur du `README.md` (voie rapide sans Python,
+  dossier `mods` par système, dépannage), l'index `docs/README.md`, et la
+  section 18 de `docs/architecture.md`, qui décrivait une arborescence devenue
+  obsolète.
+- La note de release 0.0.1 a été refaite pour ouvrir sur ce qui change
+  réellement pour le joueur, la seule action requise, l'installation, la
+  documentation, et pour **déclarer explicitement ce que la version ne couvre
+  pas** (interface graphique, `.exe`, mods tiers, nouvelle mécanique).
 
 ### Outillage
 
 - La publication est **automatique** : la promotion `dev` → `master` déclenche le
   build, le témoin, le zip et la publication de la note. Plus de tag à créer à
-  la main. La suite de tests est exécutée **dans** le job de publication : une
-  release ne peut plus sortir sur des tests rouges.
+  la main. Le tag est créé par le workflow, explicitement, **après** les tests
+  et la construction, et pointe sur le commit promu.
+- La suite de tests est exécutée **dans** le job de publication : une release ne
+  peut plus sortir sur des tests rouges. Le job installe `".[dev]`, comme la CI.
 - Le zip de release exclut `seed.graph.html` (vue de debug de 5 Mo, déjà écartée
   du témoin) : 5,2 Mo → 52 Ko.
 - Les tests ne dépendent plus de la version en dur : ils lisent
@@ -106,10 +86,13 @@ lisent tout depuis le YAML.
   de comportement** : c'est un déplacement de code, pour que la future
   IG ne puisse pas diverger de la CLI — si elle réimplémentait la génération,
   le témoin ne garantirait plus rien pour le joueur qui passe par elle.
+- `atelier/` est versionné mais marqué `export-ignore` : il est sauvegardé et
+  historisé, et ne peut entrer dans aucun livrable.
 
 ### Garanties mesurées
 
-- **722 tests** verts.
+- **722 tests** verts, exécutés avant chaque publication (274 fonctions de test
+  paramétrées).
 - **1501/1501** parties rejouées victorieuses (seeds 0-1500), rejoueur « fake
   player » ; invariants de solvabilité garantis pour toute seed acceptée.
 - Balayages 0-2000 à **2000/2000** victoires, avertissement des fours inclus.
