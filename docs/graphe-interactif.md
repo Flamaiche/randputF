@@ -163,5 +163,5 @@ Retour : [docs/README.md](README.md).
 
 - **Parent** : [architecture.md](architecture.md) — architecture et outillage
 - **Concepts liés** : [seed.md](seed.md#seed-et-configuration) ;
-  [witness.md](witness.md#ce-qui-est-exclu-du-témoin) ;
-  [runtime.md](runtime.md#les-cinq-fichiers-lua)
+  [witness.md](witness.md#4-ce-qui-est-exclu-du-témoin) ;
+  [runtime.md](runtime.md#1-les-cinq-fichiers-lua)
