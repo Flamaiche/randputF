@@ -30,7 +30,9 @@ Résultats du rapport (`ReplayReport`) :
 - `mastered` / `mastered_tier` : items dont la recette a atteint le seuil de 10×sortie, accompagnés du palier (`_current_tier`) correspondant.
 - `never_masterable` : sorties de recettes débloquées qui restent non prouvées en fin de partie (seuil de 10×sortie jamais atteint). Cet indicateur évalue la couverture de la jouabilité.
 - `blocker{tech, kind, item}` : toute première technologie restée non recherchée (`kind ∈ {"prereqs","trigger","cost","lab"}`).
-- `obtainable_items` / `obtainable_fluids` / `victory`.
+- `obtainable_items` / `obtainable_fluids` / `victory` / `launch_products_obtainable` (produits de lancement — science spatiale — récupérables).
+
+`victory` n'est pas une convention vanilla : elle se déduit des faits du dump via `db.rocket_chain` (voir `docs/vanilladb.md` §6.7) — bâtiments de lancement + ingrédients des recettes de fusée fabricables, produits de lancement récupérés.
 
 ## 3. Écarts de vocabulaire CONNUS (à ne pas re-chercher)
 

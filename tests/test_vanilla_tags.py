@@ -113,7 +113,7 @@ def test_dump_reel_comptes_par_tags():
     assert len(db.buildings_with_tag("is_generator")) == 6
     assert len(db.buildings_with_tag("is_distribution")) == 5
     assert len(db.buildings_with_tag("is_extractor")) == 5
-    assert len(db.buildings_with_tag("is_other")) == 509
+    assert len(db.buildings_with_tag("is_other")) == 513
 
 
 def test_dump_reel_tags_s1_roles():

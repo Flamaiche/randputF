@@ -32,3 +32,6 @@ mod-list.json
 # Candidats de reecriture IA, jamais versionnes
 atelier/revues/
 atelier/README_BRANCHE.md
+
+# Exporteur : dossiers de build generes depuis exporter/ (sources versionnees)
+exporter/randputf-exporter_*/

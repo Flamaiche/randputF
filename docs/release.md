@@ -17,7 +17,7 @@ Publiée — accessible publiquement, tag sur `master` :
 | Version | Tag | Contenu | Témoin seed 5 |
 |---|---|---|---|
 | v0.0.0 | `v0.0.0` → `a1719b9e17659d141c95d617508c5a7a11a331fb` | Première release publique. Config `settings.yaml`. | `f41e065e606ce24c8855d458c661988f` |
-| v0.0.1 | `v0.0.1` → `4f28fa6272e2da58868a4cee6d4022957143cb82` (sur `master`) | Config à deux YAML + refonte documentaire. | `c9566134864507d900f65806ade277d9` |
+| v0.0.1 | `v0.0.1` → `4f28fa6272e2da58868a4cee6d4022957143cb82` (sur `master`) | Config à deux YAML + refonte documentaire ; mod inchangé. | `c9566134864507d900f65806ade277d9` |
 
 En préparation — aucune : la 0.0.2 est reportée.
 
@@ -29,17 +29,21 @@ Réutilisation du numéro 0.0.1 : une première v0.0.1 a été préparée le 202
 
 ## 2. Release v0.0.1 : PUBLIÉE
 
-Elle intègre le système de configuration à deux YAML et la refonte documentaire. Elle est sortie le 2026-10-04 : le workflow a créé le tag `v0.0.1` sur le commit `4f28fa6` promu sur `master` (cf. §3 — il ne s'agit pas d'un merge, voir l'encadré).
+Elle intègre le système de configuration à deux YAML et la refonte
+documentaire. Elle est sortie le 2026-10-04 : le workflow a créé le tag
+`v0.0.1` sur le commit `4f28fa6272e2da58868a4cee6d4022957143cb82` promu sur
+`master` (cf. §3 — il ne s'agit pas d'un merge, voir l'encadré). Le mod
+lui-même ne change pas par rapport à la v0.0.0.
 
 ### 2.1 Titre et note
 
 Le titre et la note figurent dans [`notes/v0.0.1.md`](../notes/v0.0.1.md) — première ligne = titre, reste = note « highlights ». `release.yml` les publie tels quels ; ne les recopie pas ici.
 
 ```
-0.0.1 — Le mod ne change pas. Tout ce qui l'entoure, oui.
+0.0.1 — Documentation mise à jour et configuration en deux YAML
 ```
 
-### 2.2 Faits vérifiés (pour ne rien inventer dans la note)
+### 2.2 Faits vérifiés (état publié — pour ne rien inventer dans la note)
 
 - Témoin seed 5 de la v0.0.1 : `c9566134864507d900f65806ade277d9`. Il change au bump de version (préfixe racine du zip `randputF_<version>`) alors que le contenu du mod pour la seed 5 reste inchangé depuis la v0.0.0. Ne reprends jamais l'ancien md5 tel quel.
 - Tests : 722.
@@ -81,7 +85,7 @@ Il s'agit du script réel du job, et non d'un résumé — s'en écarter brise l
 2. Installer le paquet avec ses extras de dev (`pip install ".[dev]"`, comme `ci.yml`) — le job lance `pytest` immédiatement après.
 3. `pytest -q` — les tests sont bloquants : une release ne peut sortir sur une suite rouge. Cela garantit qu'un bump de version ne brise rien en silence.
 4. `randputf witness --seed 5` — vérifie que la génération aboutit (sans `--expect` : la CI porte la valeur figée, cf. `docs/witness.md`).
-5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `randputF_<version>/` uniquement. `seed.graph.html` est exclu du zip (vue de debug de 7,2 Mo, déjà écartée du témoin) : 52 Ko sans lui, ~7,2 Mo avec.
+5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `randputF_<version>/` uniquement. `seed.graph.html` est exclu du zip (vue de debug de 7,2 Mo, déjà écartée du témoin) : ~880 Ko de fichiers -> 103 Ko zippés.
 6. Créer le tag explicitement : `git tag "$TAG" "$GITHUB_SHA"` puis `git push origin "$TAG"`. Le tag est ainsi créé après les tests et le build, et pointe exactement sur le commit promu.
 7. Publier : si la release existe déjà (brouillon), `gh release upload --clobber` puis `gh release edit --draft=false` — `gh release edit` ne publie pas de lui-même. Sinon `gh release create` avec le zip en asset.
 
@@ -93,7 +97,7 @@ Modèle de branches : `dev` porte le travail en cours et la vérité ; `master` 
 
 Numérotation : semver. Tout changement visible par l'utilisateur (fichier de config supprimé, valeur par défaut modifiée, migration requise) -> numéro mineur (0.1.0). Correctif de documentation, de test ou de typos -> numéro de patch (0.0.2).
 
-Titre de release : pas de doublon avec le nom du dépôt. Format `<version> — <ce que la release apporte>`, par exemple `0.0.1 — Le mod ne change pas. Tout ce qui l'entoure, oui.`. La liste des releases de GitHub affiche ce titre ; y réinsérer « randputF » est inutile.
+Titre de release : pas de doublon avec le nom du dépôt. Format `<version> — <ce que la release apporte>`, par exemple `0.0.1 — Documentation mise à jour et configuration en deux YAML`. La liste des releases de GitHub affiche ce titre ; y réinsérer « randputF » est inutile.
 
 Format de note « highlights », 3-5 puces par version, le détail technique écarté rejoignant les documentations dédiées :
 - témoin / canonisation binaire -> `docs/witness.md` ;

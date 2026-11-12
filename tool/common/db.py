@@ -126,10 +126,12 @@ class ItemDef:
     ammo_category: str = ""
     # Type brut du dump (source de vérité : "item", "gun", "armor", ...).
     item_type: str = ""
-    # Combustible : catégorie de fuel et RÉSIDU de combustion (l'item produit
-    # quand le combustible est brûlé, ex. réacteur : uranium-fuel-cell →
-    # depleted-uranium-fuel-cell). Rempli quand le dump a été régénéré avec
-    # l'exporter ; sinon vide.
+    # Combustible : catégorie(s) de fuel et RÉSIDU de combustion (l'item
+    # produit quand le combustible est brûlé, ex. réacteur :
+    # uranium-fuel-cell → depleted-uranium-fuel-cell). ``fuel_categories``
+    # est la liste complète (Factorio >= 2.1.20) ; ``fuel_category`` en est
+    # la première catégorie (repli unique des dumps plus anciens).
+    fuel_categories: tuple[str, ...] = ()
     fuel_category: str = ""
     burnt_result: str | None = None
     # Stack size réel (0 = inconnu : dump non régénéré). Quand il est connu,
@@ -196,6 +198,11 @@ class BuildingDef:
     has_rocket_parts: bool = False
     crafting_categories: tuple[str, ...] = ()
     resource_categories: tuple[str, ...] = ()
+    # None = champ absent du dump (ancien export) : le rapport de complexité
+    # applique alors son repli vanilla. Dès que l'exporteur émet la valeur,
+    # elle fait foi.
+    crafting_speed: float | None = None
+    productivity: float = 0.0
     energy_type: str = "burner"
     fuel_categories: tuple[str, ...] = ()
     item_input_slots: int = 0
@@ -328,6 +335,11 @@ class VanillaDB:
     # sans capacite reconnue. Conserve pour requalification ulterieure.
     excluded_items: dict[str, dict] = field(default_factory=dict)
     excluded_fluids: dict[str, dict] = field(default_factory=dict)
+    # Chaîne de lancement dérivée des FAITS du dump (rocket_parts_required,
+    # catégories de craft, rocket_launch_products) — voir
+    # tool.parsers.vanilla.rocket_chain_from_dump. Vide si la base ne
+    # contient aucune fusée : le rejoueur n'invente pas de condition.
+    rocket_chain: dict = field(default_factory=dict)
 
     def beltable_items(self) -> list[ItemDef]:
         """Items solides posables sur tapis (hors outils), triés par nom."""
@@ -371,14 +383,14 @@ class VanillaDB:
 
     def fuels_for(self, b: "BuildingDef") -> list[ItemDef]:
         """Combustibles qu'un bâtiment PEUT brûler : items avec fuel_value dont
-        la catégorie appartient aux ``fuel_categories`` (correspondance PAR
-        CATÉGORIE, rien en dur)."""
+        AU MOINS UNE catégorie appartient aux ``fuel_categories`` du bâtiment
+        (correspondance PAR CATÉGORIE, rien en dur)."""
         if not getattr(b, "fuel_categories", ()):
             return []
         accepted = set(b.fuel_categories)
         return sorted(
             (i for i in self.items.values()
-             if i.fuel_value and (i.fuel_category or "") in accepted),
+             if i.fuel_value and accepted & set(i.fuel_categories)),
             key=lambda i: i.name,
         )
 

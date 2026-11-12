@@ -10,16 +10,35 @@ TOUJOURS valide — le mod était alors déposé à la racine du dépôt (plus u
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
 from tool.common.version import MOD_NAME_VERSIONED
 
 
-def test_install_factorio_mods_vide_retombe_sur_output():
+@pytest.fixture
+def empty_user_config(tmp_path: Path):
+    """Isole le test des surcharges réelles de ``config/user.yaml``."""
+    user = ROOT / "config" / "user.yaml"
+    backup = None
+    if user.exists():
+        backup = tmp_path / "user.yaml"
+        shutil.copy2(user, backup)
+        user.unlink()
+    try:
+        yield
+    finally:
+        if backup is not None:
+            shutil.copy2(backup, user)
+
+
+def test_install_factorio_mods_vide_retombe_sur_output(empty_user_config):
     out = subprocess.run(
         [sys.executable, "-m", "tool", "generate", "--seed", "5", "--install"],
         cwd=ROOT,

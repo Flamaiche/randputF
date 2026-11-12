@@ -99,7 +99,7 @@ boiler ET heat-exchanger partagent le type `'boiler'` dans le dump : on les dist
 
 ## 6. Extraction (raffinement d'`is_extractor`)
 
-`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium eau (le dump n'expose pas `pumped_fluid`).
+`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium eau — le `pumped_fluid` n'est plus porté par le dump (0.1.5) : il est résolu côté Python par `inject_pumped_fluids` (fluidbox de sortie des sources pures, sinon chaîne de tuiles ; `docs/vanilladb.md` §6.5).
 
 | Tag | Déterminé par | Consommé par |
 |-----|---------------|--------------|
@@ -202,8 +202,8 @@ Tags sur `ItemDef`, décidés par type brut du dump (`item_type`), sous-groupe e
 | `is_ammo` | `item_type == 'ammo'` | `_dispatch_vehicle_ammo` (§12.1), `starter_chain` (kit) |
 | `is_gun` | `item_type == 'gun'` | `map_patches` (exclusion `_excludable_items`), audit — `_dispatch_vehicle_ammo` lit `is_ammo`/`ammo_category`, jamais `is_gun` |
 | `is_armor` | `item_type == 'armor'` | documenté, non consommé (usage en vue) |
-| `is_tool` | `item_type == 'tool'` | `beltable_items` (db.py:332 — l'exclut du transport, des pools et des patchs), audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
-| `is_science_pack` | `subgroup == 'science-pack'` — RAFFINAGE d'`is_tool` (les packs SONT de type tool) | `starter_chain`, `map_patches` (exclusion), `recursive_phase`, `easeup_phase`, validator, audit, tests |
+| `is_tool` | `item_type == 'tool'` OU fait-pack de science (`science_pack_names`) | `beltable_items` — l'exclut du transport, des pools et des patchs ; audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
+| `is_science_pack` | FAITS : `science_pack_names()` = coûts `unit.ingredients` des techs ∪ `lab_inputs` des labs (le `subgroup` « science-pack » n'est plus consulté — `space-science-pack` n'est dans aucun coût de tech, seulement dans les labs) | `starter_chain`, `map_patches` (exclusion), `recursive_phase`, `easeup_phase`, validator, audit, tests |
 | `is_handheld_gun` (propriété) | `is_gun` ET hors `VEHICLE_GUNS` (armes montées) | `VEHICLE_GUNS` (soft list, gap `is_mounted_gun`) |
 | `is_stackable` (propriété) | `stack_size > 1` du dump ; sinon déduit du type (`NON_STACKABLE_ITEM_TYPES`) | clamp des produits/ingrédients (§9.6) |
 

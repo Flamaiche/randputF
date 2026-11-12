@@ -164,11 +164,41 @@ def test_seed7_rejouable_apres_c3_item_ingredient(seeds):
 
 
 def test_victoire_donne_les_items_fusee(seeds):
+    """La chaîne de lancement est DÉRIVÉE des faits du dump
+    (db.rocket_chain) : les items exigés par la victoire sont obtenables
+    sur toutes les seeds gagnantes — sans aucun nom en dur côté test."""
     for seed_value in WINNING:
         db = copy.deepcopy(DB)
         db.seed_value = seed_value
         report = rp.play(db, seeds[seed_value])
-        assert set(rp.VICTORY_ITEMS) <= report.obtainable_items, seed_value
+        assert set(db.rocket_chain["victory_items"]) <= report.obtainable_items, seed_value
+
+
+def test_le_joueur_fabrique_reellement_la_chaine(seeds):
+    """Le rejoueur ne se contente pas d'une OBTENABILITÉ de fin : il a
+    VRAIMENT fabriqué la chaîne de lancement DÉRIVÉE du dump (silo +
+    ingrédients des recettes de fusée), un bâtiment de recherche, et
+    récupéré les produits de lancement quand la seed les exige.
+
+    Dans une seed modpack, ``space-science-pack`` n'est pas un produit de
+    lancement mais une RECETTE générée (ex. utility-pack + rocket-launcher) :
+    « récupérer les packs » = les fabriquer jusqu'à la maîtrise (10×) pour
+    payer les techs et les recettes aval qui les consomment."""
+    for seed_value in WINNING:
+        db = copy.deepcopy(DB)
+        db.seed_value = seed_value
+        seed = seeds[seed_value]
+        fp = rp.FakePlayer(db, seed)
+        report = fp.play()
+        assert report.victory, seed_value
+        labs = sorted(b.name for b in db.buildings.values() if b.is_research)
+        assert labs, "la base doit exposer un bâtiment de recherche (is_research)"
+        chain = db.rocket_chain
+        for item in (*chain["victory_items"], labs[0]):
+            assert fp.had[item] > 0, (seed_value, item)
+        for product in chain["launch_products"]:
+            assert fp.had[product] > 0, (seed_value, product)
+            assert product in fp.mastered, (seed_value, product)
 
 
 def test_closure_est_un_point_fixe_deterministe(seeds):

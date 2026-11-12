@@ -27,7 +27,7 @@ Les invariants §15 raisonnent sur l'ORDRE (unlock avant usage) et les CYCLES �
 - **électricité** : disponible dès qu'un générateur (`produces_electricity`) obtenable PEUT TOURNER — fluide de lac assigné en entrée (`building_fluid_assignments`) s'il en consomme, combustible s'il brûle, solaire/hors-réseau autonome — et qu'un pylône est obtenable ;
 - **ateliers** : une recette ne tourne que si son `crafted_in` est obtenable et alimenté (électricité / combustible / chaîne chaleur source+transport pour les bâtiments en énergie `heat`) ; sans `crafted_in` → craft à la main ;
 - **recherche** : les techs gratuites (`free_researches`) sont déjà recherchées ; chaque tech suivante est recherchée dès que son coût (packs) ou son `craft_trigger` (prologue §7) est **produisible à ce moment** ;
-- **victoire** : chaîne fusée atteignable en fin de parcours (silo + processing-unit + low-density-structure + rocket-fuel, §14).
+- **victoire** : chaîne de lancement **dérivée des faits du dump** (`db.rocket_chain`, `rocket_chain_from_dump` — bâtiment à `rocket_parts_required` + ingrédients de ses recettes de fusée) atteignable en fin de parcours, ET produits de lancement (science spatiale) réellement récupérables. Aucun nom d'item n'est en dur côté rejoueur : un mod qui remplace la fusée reste vérifié tel quel (§14 côté générateur).
 
 C'est un audit EXTERNE (n'accède qu'à la seed finale) : ne modifie jamais la génération. Le balayage `tools/audit_playthrough.py <lo> <hi>` affiche le taux de victoires et, pour chaque échec, la **première tech bloquante** + un bordereau d'explication multi-étapes (l'item manquant, remonté jusqu'à sa source).
 
