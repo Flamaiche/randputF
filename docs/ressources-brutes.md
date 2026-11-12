@@ -24,12 +24,12 @@ Trois conséquences structurent tout le reste :
   terre pour l'un, **tuile** d'eau pour l'autre. Le moteur en déduit **deux
   extracteurs** distincts : pumpjack (électrique) et pompe offshore (énergie void).
   C'est ce qui rend un générateur à vapeur **amorçable sans électricité** dès que la
-  seed tire au moins un lac (voir [energie.md](energie.md#lélectricité)).
+  seed tire au moins un lac (voir [energie.md](energie.md#10-lélectricité)).
 - **Une amorce par type d'extracteur** : le kit de départ fournit l'item de chaque
   extracteur utile (une foreuse par type de sol ; côté fluides, un pumpjack pour les
   patchs et une pompe offshore pour les lacs). Le kit ne rend pas la suite faisable
   par sa dotation : c'est l'**unlock** qui la rend faisable (voir
-  [starter.md](starter.md#la-phase-de-démarrage), déblocage « juste-au-besoin »).
+  [starter.md](starter.md#7-la-phase-de-démarrage), déblocage « juste-au-besoin »).
 - **La richesse se lit par forme** : un patch d'item répartit sa richesse **totale par
   tuile** posée ; un patch de fluide conserve un **rendement par puits** ; un lac a une
   richesse de forme (taille/densité) mais un **volume illimité**.
@@ -37,8 +37,8 @@ Trois conséquences structurent tout le reste :
 La **pose** de chaque forme (tirage sans remise, disque bruité des champs d'items,
 puits éparpillés des fluides, fantôme puis remplissage des lacs) est détaillée dans
 [ressources.md](ressources.md#les-ressources-au-sol) ; la mécanique runtime du lac est dans
-[starter.md](starter.md#la-phase-de-démarrage) (point 5) ; la **chaîne initiale** qui consomme ces formes est en
-[starter.md](starter.md#la-chaîne-initiale-starter).
+[starter.md](starter.md#7-la-phase-de-démarrage) (point 5) ; la **chaîne initiale** qui consomme ces formes est en
+[starter.md](starter.md#8-la-chaîne-initiale-starter).
 
 ---
 

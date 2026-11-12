@@ -202,7 +202,7 @@ Tags sur `ItemDef`, décidés par type brut du dump (`item_type`), sous-groupe e
 | `is_ammo` | `item_type == 'ammo'` | `_dispatch_vehicle_ammo` (§12.1), `starter_chain` (kit) |
 | `is_gun` | `item_type == 'gun'` | `map_patches` (exclusion `_excludable_items`), audit — `_dispatch_vehicle_ammo` lit `is_ammo`/`ammo_category`, jamais `is_gun` |
 | `is_armor` | `item_type == 'armor'` | documenté, non consommé (usage en vue) |
-| `is_tool` | `item_type == 'tool'` | `beltable_items` (db.py:329 — l'exclut du transport, des pools et des patchs), audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
+| `is_tool` | `item_type == 'tool'` | `beltable_items` (db.py:332 — l'exclut du transport, des pools et des patchs), audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
 | `is_science_pack` | `subgroup == 'science-pack'` — RAFFINAGE d'`is_tool` (les packs SONT de type tool) | `starter_chain`, `map_patches` (exclusion), `recursive_phase`, `easeup_phase`, validator, audit, tests |
 | `is_handheld_gun` (propriété) | `is_gun` ET hors `VEHICLE_GUNS` (armes montées) | `VEHICLE_GUNS` (soft list, gap `is_mounted_gun`) |
 | `is_stackable` (propriété) | `stack_size > 1` du dump ; sinon déduit du type (`NON_STACKABLE_ITEM_TYPES`) | clamp des produits/ingrédients (§9.6) |

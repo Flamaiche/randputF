@@ -2,6 +2,16 @@
 
 Ce document sert de **référence de conception** pour le randomizer. Il détaille la mécanique globale du système, ses justifications et ses règles applicables. Pour installer le mod et jouer, consulte le [README](../README.md).
 
+## Par où commencer : tu veux X → lis Y
+
+Trois étages : on s'arrête où le besoin s'arrête.
+
+| Étage | Pour qui | Tu veux… | Lis… |
+|---|---|---|---|
+| **1. Jouer** | tout le monde | installer, lancer une partie, dépanner | [README racine](../README.md), [note de version](../notes/v0.0.1.md) |
+| **2. Comprendre** | curieux (~1 h) | saisir le concept, le modèle, les garanties | [Concept](#1-concept-général) → [Modèle randput](model.md#5-le-modèle-randput--classification-des-bâtiments) → [Ressources](ressources.md#6-les-ressources-au-sol) → [Recettes](recettes.md#9-la-phase-récursive) → [Arbre tech](tech.md#13-larbre-technologique) → [Solvabilité](solvabilite.md#15-règles-de-solvabilité) |
+| **3. Développer** | développeurs | pipeline, modules, dump, runtime, config, témoin, dérives | [Architecture](architecture.md) → [Pipeline](pipeline.md) → [Modules](modules.md) → [VanillaDB](vanilladb.md) → [Runtime](runtime.md) → [Config](config.md) → [Témoin](witness.md) → [Déviations](DEVIANCES.md) |
+
 ## 1. Concept général
 
 Dans Factorio vanilla, les repères restent identiques d'une partie à l'autre. randputF rompt ces habitudes : **à chaque génération, aucun acquis du joueur n'est garanti**.
@@ -48,12 +58,17 @@ Ces choix délibérément conservateurs garantissent la robustesse du moteur.
 |---|---|---|
 | [model.md](model.md) | §3, §5 | Terminologie ; classification des bâtiments (types fonctionnels, slots typés, directives) |
 | [ressources.md](ressources.md) | §6 | Patches posés au sol, pose runtime déterministe |
+| [ressources-brutes.md](ressources-brutes.md) | §6 | Formes, support et extracteur des ressources brutes (cas partagé ressources/starter) |
 | [starter.md](starter.md) | §7, §8 | Kit de départ, techs gratuites, site de crash, lacs de fluide ; chaîne initiale (extraction → transformation → transport) |
+| [amorcage.md](amorcage.md) | §7, §9 | Règles d'amorçage : bootstrap craftable, déblocage sur le tas, besoin avant l'élément |
 | [recettes.md](recettes.md) | §9 | Phase récursive : tirages pondérés, recettes, déblocage sur le tas, relais, balayage de couverture |
+| [aiguillage.md](aiguillage.md) | §9, §13 | Comment un élément rejoint une tech : tirages, groupement, nœuds isolés |
 | [energie.md](energie.md) | §10, §10bis | Électricité (déclenchement, générateurs, ruptures) et chaleur (triade source/transport/sink) |
+| [chaleur.md](chaleur.md) | §10bis | Chaleur : triade source/transport/sink, garantie « à la volée » |
 | [combat.md](combat.md) | §11, §12 | Armes, munitions, transports avancés, armes montées randomisées |
 | [tech.md](tech.md) | §13, §14 | Arbre technologique linéaire, fin de partie (fusée) |
 | [solvabilite.md](solvabilite.md) | §10ter, §15, §15ter | Bootstrap sûr (graphe initial correct par construction), invariants de solvabilité, rejoueur « fake player » (1501/1501) |
+| [invariants.md](invariants.md) | §15 | Invariants de solvabilité énoncés une seule fois |
 | [seed.md](seed.md) | §16 | Seed, déterminisme, configuration consommée |
 | [architecture.md](architecture.md) | §4, §17, §18 | Architecture générale, pipeline technique, structure du projet |
 

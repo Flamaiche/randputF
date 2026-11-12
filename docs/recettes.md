@@ -99,3 +99,14 @@ Fonctionnalité optionnelle (section `craft_quantity:` de la configuration, dés
 - `mode: asymmetric` → un facteur indépendant par ligne (générant plus de chaos) ;
 - bornes par défaut définies à `factor_min: 0.5` et `factor_max: 3.0`, avec un minimum absolu `amount_min: 1` unité par ingrédient et par résultat ;
 - **les noms, étapes, ordre et structure demeurent inchangés**. La solvabilité (§15) s'appuyant uniquement sur la structure et non sur les montants, cette passe ne peut altérer les garanties : elle modifie exclusivement l'économie (coûts supérieurs ou inférieurs) sans toucher à l'atteignabilité.
+
+### 9.9 Auto-sélection : ne pas ombrager une recette
+
+Certains bâtiments **auto-sélectionnent** leur recette à partir des ingrédients présents (fours, `rocket-silo`) : Factorio retient la **première** recette dont les ingrédients sont disponibles. Si deux recettes hébergées sur un même bâtiment `auto_select` partagent un ingrédient, la seconde peut devenir **inatteignable** — une recette morte, jamais craftable en pratique.
+
+La garantie est double :
+
+- **à la création** : `recipes.py` re-tire les ingrédients tant que deux recettes d'un même bâtiment auto-sélectionnable ne sont pas **disjointes** ;
+- **en aval** : la passe `usage_pass._correct_auto_select` déplace la recette, retire l'ingrédient en conflit, ou la bascule en craft manuel.
+
+Vérifié par `test_auto_select_ingredients_disjoints` et `test_auto_select_repli_four_1slot` ; l'invariant est énoncé dans [invariants.md](invariants.md#règles-de-solvabilité) (règle 8).

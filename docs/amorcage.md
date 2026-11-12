@@ -13,16 +13,16 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 
 ### Bootstrap craftable à la main
 
-Les premières recettes (la chaîne initiale, [starter.md](starter.md#la-chaîne-initiale-starter)) sont
+Les premières recettes (la chaîne initiale, [starter.md](starter.md#8-la-chaîne-initiale-starter)) sont
 **craftables à la main** : ingrédients solides, sans catégorie ni atelier, donc
 disponibles avant toute électricité. Le **premier générateur électrique** et le
-**pylône d'amorçage** suivent la même règle ([energie.md](energie.md#lélectricité)) : leurs
+**pylône d'amorçage** suivent la même règle ([energie.md](energie.md#10-lélectricité)) : leurs
 ingrédients **bannissent tout item** dont la fabrication passe par un atelier
 électrique. Seuls restent ceux obtenus sans réseau : ressource brute (patch minerais),
 kit, environnement, ou recette dans un atelier non-électrique ou à la main. Les recettes
 bootstrap **doublent le coût de leurs ingrédients non infinis**
 (bois/pierre/poisson), faisant de la sortie du bootstrap un objectif économique
-([recettes.md](recettes.md#relais-des-ressources-non-infinies)).
+([recettes.md](recettes.md#95-relais-des-ressources-non-infinies)).
 
 ### Déblocage « sur le tas »
 
@@ -46,7 +46,7 @@ compare `unlocked_buildings` avant/après l'élément puis ajoute tout nouveau b
 `step_buildings`/`unlocks_buildings` de la tech, avec déduplication et ordre conservé. Le
 mécanisme couvre **l'ensemble** des déblocages d'ateliers sur le tas, quel que soit
 l'élément (aucune recette orpheline mesurée sur 200 seeds). Le validateur signale tout
-écart sans rejeter la seed ([tech.md](tech.md#larbre-technologique), item 6 de
+écart sans rejeter la seed ([tech.md](tech.md#13-larbre-technologique), item 6 de
 [invariants.md](invariants.md#règles-de-solvabilité)).
 
 ### Techs gratuites et techs de prologue
@@ -81,7 +81,7 @@ Le fil rouge de l'amorçage : **aucun élément ne doit être débloqué avant s
 prérequis**. C'est la même garantie que « extracteur avant besoin »
 ([ressources-brutes.md](ressources-brutes.md#les-formes-dune-ressource-brute)) et « source+transport chaleur avant
 le sink » ([chaleur.md](chaleur.md#la-chaleur)). Elle est assurée à la création (oracle
-early, [solvabilite.md](solvabilite.md#vérificateur-en-profondeur-bootstrap-sûr)), pas par une passe de rattrapage.
+early, [solvabilite.md](solvabilite.md#10ter-vérificateur-en-profondeur-bootstrap-sûr)), pas par une passe de rattrapage.
 
 ---
 

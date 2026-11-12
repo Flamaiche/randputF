@@ -16,7 +16,7 @@ Chaque catégorie (bâtiments, armes, science packs, transports avancés…) dis
 **pourcentage d'obtention** qui dépend du **type du bâtiment** et du **nombre total de
 bâtiments** déjà présents dans la partie. Plus la progression avance, plus le pool
 s'élargit. Les science packs suivent ces mêmes pourcentages
-([recettes.md](recettes.md#tirages-pondérés), [tech.md](tech.md#larbre-technologique)).
+([recettes.md](recettes.md#91-tirages-pondérés), [tech.md](tech.md#13-larbre-technologique)).
 
 ### Groupement en une tech
 
@@ -25,7 +25,7 @@ chaîne probabiliste : **75 %** pour un 2e objet, **65 %** pour un 3e, **35 %** 
 4e, **15 %** pour un 5e — le premier tirage échoué arrête le groupe (plafond 5 via
 `tree.max_per_tech`, probabilités via `tree.group_chances`, [seed.md](seed.md#seed-et-configuration)). Les nœuds **dédiés** (sciences, munitions, techs de
 prologue, endgame) restent isolés, et un nœud monolithe existe pour la 2e recherche
-gratuite du starter ([tech.md](tech.md#larbre-technologique)).
+gratuite du starter ([tech.md](tech.md#13-larbre-technologique)).
 
 ### Nœuds isolés et dispatch
 
@@ -35,24 +35,24 @@ juste après** leur déclencheur, par un patron commun (le « dispatch ») :
 - **Munitions d'arme de poing** : chaque arme est liée à un type de munitions. Si une
   arme débloquée n'a **aucune** munition compatible disponible, une munition est générée
   et débloquée dans la **même tech** — une arme n'est jamais inutile. Si une munition
-  compatible existe déjà, rien n'est ajouté ([combat.md](combat.md#combat-et-armement)).
+  compatible existe déjà, rien n'est ajouté ([combat.md](combat.md#11-combat-et-armement)).
 - **Munitions de véhicule** : lors de la création de la tech d'un véhicule, le générateur
   vérifie les munitions de ses armes (via `ammo_category`) ; celles qui n'ont pas encore
   de recette sont créées et **dispatchées dans jusqu'à 3 techs isolées qui suivent** celle
   du véhicule (`randputf-ammo-<véhicule>-<munition>`), payées par des packs déjà
   débloqués. Les munitions déjà présentes ne sont pas recalculées
-  ([combat.md](combat.md#armes-montées-randomisées)).
+  ([combat.md](combat.md#121-armes-montées-randomisées)).
 - **Compagnons** : les produits liés (roboport + robots, panneau solaire + accumulateur)
   reçoivent des **techs isolées juste APRÈS la tech du produit**, à ±3 techs
-  ([recettes.md](recettes.md#garantie-de-compagnons)).
+  ([recettes.md](recettes.md#97-garantie-de-compagnons)).
 - **Prologue** : les recettes relais sont regroupées en techs de prologue isolées juste
-  après les free techs du starter ([starter.md](starter.md#la-phase-de-démarrage), [recettes.md](recettes.md#relais-des-ressources-non-infinies)).
+  après les free techs du starter ([starter.md](starter.md#7-la-phase-de-démarrage), [recettes.md](recettes.md#95-relais-des-ressources-non-infinies)).
 - **Cadence des pylônes** : 3 pôles verrouillés sont forcés dans la phase récursive et
-  **ne fusionnent jamais** deux de leurs steps ([recettes.md](recettes.md#cadence-garantie-des-pylônes)) — même
-  règle pour les armes ([combat.md](combat.md#combat-et-armement)).
+  **ne fusionnent jamais** deux de leurs steps ([recettes.md](recettes.md#94-cadence-garantie-des-pylônes)) — même
+  règle pour les armes ([combat.md](combat.md#11-combat-et-armement)).
 
 L'assignation des armes montées (copie d'arme par véhicule, portée scalée, pool cachée)
-est, elle, décrite dans [combat.md](combat.md#armes-montées-randomisées).
+est, elle, décrite dans [combat.md](combat.md#121-armes-montées-randomisées).
 
 ---
 
