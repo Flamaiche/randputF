@@ -16,9 +16,18 @@ import random
 
 import pytest
 
+from conftest import dump_has_fuel_categories
 from tool.common.demo import build_demo_db
 from tool.generator.building_fluids import assign_building_fluids
 from tool.generator.recipes import ProgressionState, _is_fixed_recipe_transformer
+
+# Le réacteur nucléaire dépend de ``fuel_categories`` sur les items : absent
+# d'un dump exporté avant le fix 2.1.20, les tests couvrant son routage sont
+# sautés (ré-exporter avec l'exporter corrigé).
+NEEDS_FUEL_CATEGORIES = pytest.mark.skipif(
+    not dump_has_fuel_categories(),
+    reason="dump sans fuel_categories sur les items : ré-exporter avec l'exporter corrigé",
+)
 
 
 def test_steam_engine_recoit_un_fluide_du_lac():
@@ -121,6 +130,7 @@ def test_sans_lac_aucune_assignation():
     assert result == {}
 
 
+@NEEDS_FUEL_CATEGORIES
 def test_tag_large_devoile_toutes_les_machines_a_recette_fixe():
     """§10 : ``has_hidden_recipe`` dévoile les bâtiments « qui ont
     une recette cachée » = une VRAIE recette (entrée item/fluide/combustible ET
@@ -151,6 +161,7 @@ def test_tag_large_devoile_toutes_les_machines_a_recette_fixe():
         assert not has_hidden_recipe(db.buildings[name]), name
 
 
+@NEEDS_FUEL_CATEGORIES
 def test_reacteur_entree_combustible_residu_est_la_sortie():
     """Le réacteur a une entrée ET une sortie : entrée = combustible
     (``fuel_categories``), sortie ITEM = le RÉSIDU du combustible brûlé
@@ -250,6 +261,7 @@ def _make_item_fixed_transformer(db) -> "BuildingDef":
     return crafter
 
 
+@NEEDS_FUEL_CATEGORIES
 def test_reacteur_est_routé_vers_recette_item():
     """Extension : le réacteur nucléaire (recette cachée
     item → item via ses résidus de combustion ``fuel_residues``) est désormais

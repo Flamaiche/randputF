@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 
 from tool.audit.difficulty import difficulty_series
+from tool.exporters.html_ui import th as _th
 from tool.parsers.vanilla import load_db_from_dump
 
 # Gisements bruts de vanilla (l'outil ne pose aucun patch ici : ce sont les
@@ -239,20 +240,36 @@ def _table(series: list[dict], label: str, color: str, cls: str) -> str:
     rows = []
     for point in series:
         products = ", ".join(point.get("products") or [])
+        item_count = len(point.get("products") or [])
+        raw = point.get("raw_total", 0.0)
+        cum = point["cumulative_total"]
         rows.append(
             f'<tr class="trow {cls}" data-i="{point["num"] - 1}">'
-            f'<td class="n">{point["num"]}</td>'
-            f'<td>{html.escape(point["name"])}</td>'
-            f'<td class="num">{len(point.get("products") or [])}</td>'
-            f'<td class="num">{html.escape(_fmt(point.get("raw_total", 0.0)))}</td>'
-            f'<td class="num">{html.escape(_fmt(point["cumulative_total"]))}</td>'
-            f'<td class="prod">{html.escape(products)}</td>'
+            f'<td class="n" data-key="num" data-value="{point["num"]}">{point["num"]}</td>'
+            f'<td data-key="name">{html.escape(point["name"])}</td>'
+            f'<td class="num" data-key="items" data-value="{item_count}">{item_count}</td>'
+            f'<td class="num" data-key="raw" data-value="{raw}">'
+            f'{html.escape(_fmt(raw))}</td>'
+            f'<td class="num" data-key="cum" data-value="{cum}">'
+            f'{html.escape(_fmt(cum))}</td>'
+            f'<td class="prod" data-key="products">{html.escape(products)}</td>'
             "</tr>"
         )
     return (
         f'<div class="col"><h2 style="color:{color}">{html.escape(label)}</h2>'
-        '<table><thead><tr><th>#</th><th>tech</th><th>items</th>'
-        '<th>coût</th><th>cumul</th><th>items à crafter (débloqués)</th></tr></thead>'
+        '<table data-table><thead><tr>'
+        + _th("#", "num", "num", "Ordre de progression de la technologie.")
+        + _th("tech", "name", "text", "Nom de la technologie.")
+        + _th("items", "items", "num", "Nombre d'items débloqués par la tech.")
+        + _th("coût", "raw", "num", "Coût propre de la tech en ressources brutes.")
+        + _th("cumul", "cum", "num", "Coût cumulé en ressources brutes.")
+        + _th(
+            "items à crafter (débloqués)",
+            "products",
+            "text",
+            "Items que la technologie débloque (à crafter ensuite).",
+        )
+        + '</tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table></div>'
     )
 
@@ -460,15 +477,23 @@ const DATA = {data_json};
 """
 
 
-def write_difficulty_graph_html(
+# CSS du document comparatif, réutilisé tel quel par le rapport complet.
+DIFFICULTY_CSS = (
+    _TEMPLATE.split("<style>", 1)[1]
+    .split("</style>", 1)[0]
+    .replace("{{", "{")
+    .replace("}}", "}")
+)
+
+
+def render_difficulty_graph_html(
     mod_seed: dict,
     vanilla_seed: dict,
-    path: Path,
     *,
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
-) -> Path:
-    """Écrit le HTML comparatif. Lève ``ValueError`` si pas de séries."""
+) -> str:
+    """Rend le HTML comparatif (chaîne). Lève ``ValueError`` si pas de séries."""
     vanilla_series = difficulty_series(vanilla_seed)
     mod_series = difficulty_series(mod_seed)
     if not vanilla_series or not mod_series:
@@ -482,7 +507,7 @@ def write_difficulty_graph_html(
         vanilla_series, mod_series, vanilla_label, mod_label,
         _VANILLA_COLOR, _MOD_COLOR,
     )
-    doc = _TEMPLATE.format(
+    return _TEMPLATE.format(
         vanilla_color=_VANILLA_COLOR,
         mod_color=_MOD_COLOR,
         vanilla_total=html.escape(_fmt(vanilla_total)),
@@ -494,6 +519,31 @@ def write_difficulty_graph_html(
         data_json=data_json,
         tables=_table(vanilla_series, vanilla_label, _VANILLA_COLOR, "v")
         + _table(mod_series, mod_label, _MOD_COLOR, "m"),
+    )
+
+
+def difficulty_table_html(seed: dict, *, label: str = "seed") -> str:
+    """Tableau de difficulté d'une seule série (sans comparaison)."""
+    series = difficulty_series(seed)
+    if not series:
+        return '<p class="muted">Aucune donnée de difficulté.</p>'
+    return _table(series, label, _MOD_COLOR, "m")
+
+
+def write_difficulty_graph_html(
+    mod_seed: dict,
+    vanilla_seed: dict,
+    path: Path,
+    *,
+    mod_label: str = "seed (mod)",
+    vanilla_label: str = "vanilla",
+) -> Path:
+    """Écrit le HTML comparatif. Lève ``ValueError`` si pas de séries."""
+    doc = render_difficulty_graph_html(
+        mod_seed,
+        vanilla_seed,
+        mod_label=mod_label,
+        vanilla_label=vanilla_label,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(doc, encoding="utf-8")

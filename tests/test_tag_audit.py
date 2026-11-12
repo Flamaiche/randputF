@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from conftest import dump_has_fuel_categories
 from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 from tool.common.demo import build_demo_db
 from tool.common.db import has_hidden_recipe, is_fixed_crafter
@@ -17,7 +20,15 @@ DUMP_PATH = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json
 
 DUMP = json.loads(DUMP_PATH.read_text(encoding="utf-8"))
 
+# Le réacteur nucléaire dépend de ``fuel_categories`` sur les items : absent
+# d'un dump exporté avant le fix 2.1.20, l'audit du routage est sauté.
+NEEDS_FUEL_CATEGORIES = pytest.mark.skipif(
+    not dump_has_fuel_categories(),
+    reason="dump sans fuel_categories sur les items : ré-exporter avec l'exporter corrigé",
+)
 
+
+@NEEDS_FUEL_CATEGORIES
 def test_audit_vanilla_aucune_violation():
     db = load_db_from_dump(DUMP)
     report = audit_building_tags(db)
@@ -28,6 +39,7 @@ def test_audit_vanilla_aucune_violation():
     assert item_report.items_checked > 0
 
 
+@NEEDS_FUEL_CATEGORIES
 def test_audit_toute_recette_cachee_routée():
     db = load_db_from_dump(DUMP)
     for name, b in db.buildings.items():

@@ -151,6 +151,167 @@ def _check_dump_integrity(dump: dict) -> None:
             )
 
 
+def _resolve_pumped_fluid(entry: dict, layer_fluids: dict[str, set[str]]) -> str | None:
+    """Fluide pompe par une entite, depuis les FAITS du dump uniquement :
+
+    1. filtre d'une fluidbox de sortie declaree par le prototype ;
+    2. chainage par tuiles : couches requises par les regles de placement
+       (``tile_buildability_rules``) -> tuiles portant ces couches -> leur
+       champ ``fluid`` (doc du jeu : « The fluid offshore pump produces on
+       this tile »).
+
+    Plusieurs fluides distincts => ambigu, aucun nom invente.
+
+    Un CONVERTISSEUR n'extrait pas : ses filtres decrivent sa production
+    (boiler : water en entree, steam en sortie). La resolution ne s'applique
+    donc qu'aux sources pures, sans boite de fluide en entree."""
+    boxes = entry.get("fluidboxes") or {}
+    if not isinstance(boxes, dict) or int(boxes.get("input", 0) or 0) > 0:
+        return None
+    detail = boxes.get("detail") or {}
+    if isinstance(detail, dict):
+        for box in detail.values():
+            if not isinstance(box, dict):
+                continue
+            if box.get("production_type") in ("output", "input-output"):
+                filt = box.get("filter")
+                if filt:
+                    return str(filt)
+    fluids: set[str] = set()
+    for rule in entry.get("tile_buildability_rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        for layer in rule.get("required_tiles") or []:
+            fluids |= layer_fluids.get(str(layer), set())
+    if len(fluids) == 1:
+        return fluids.pop()
+    return None
+
+
+def inject_pumped_fluids(dump: dict) -> dict:
+    """Resout et pose ``pumped_fluid`` sur chaque entite du dump, en place.
+
+    Le dump 0.1.5+ n'embarque plus de ``pumped_fluid`` (fin du litteral
+    historique de l'exporter) : la valeur est RECALCULEE depuis les filtres
+    et les tuiles. Idempotent : rejouer sur un dump deja resolu redonne les
+    memes valeurs."""
+    tiles = dump.get("tiles")
+    if not isinstance(tiles, dict):
+        tiles = {}
+    layer_fluids: dict[str, set[str]] = {}
+    for tile in tiles.values():
+        if not isinstance(tile, dict):
+            continue
+        fluid = tile.get("fluid")
+        if not fluid:
+            continue
+        for layer in tile.get("collision_layers") or []:
+            layer_fluids.setdefault(str(layer), set()).add(str(fluid))
+    entities = dump.get("entities")
+    if not isinstance(entities, dict):
+        return dump
+    for entry in entities.values():
+        if not isinstance(entry, dict):
+            continue
+        resolved = _resolve_pumped_fluid(entry, layer_fluids)
+        if resolved:
+            entry["pumped_fluid"] = resolved
+        else:
+            entry.pop("pumped_fluid", None)
+    return dump
+
+
+def science_pack_names(dump: dict) -> set[str]:
+    """Items/fluides qui font AVANCER les recherches (faits du dump).
+
+    Un pack de science est ce que le jeu CONSOMME pour chercher :
+    - ingredient d'unite d'une technologie (pack coute par une tech,
+      y compris modde) ;
+    - accepte par un lab (``lab_inputs``) — un lab a ``lab_inputs`` vide
+      accepte tout, seules les techs le couvrent alors.
+
+    Aucune convention de subgroup (l'heuristique historique
+    ``subgroup == "science-pack"`` etait une convention vanilla) : un pack
+    modde dans un subgroup quelconque est reconnu des qu'une recherche
+    ou un lab l'exige."""
+    techs = dump.get("technologies") or {}
+    entries = (
+        techs.values()
+        if isinstance(techs, dict)
+        else [t for t in techs if isinstance(t, dict)]
+    )
+    names: set[str] = set()
+    for tech in entries:
+        unit = tech.get("unit")
+        ingredients = unit.get("ingredients") if isinstance(unit, dict) else None
+        for ingredient in ingredients or []:
+            if isinstance(ingredient, dict) and ingredient.get("name"):
+                names.add(str(ingredient["name"]))
+    for entry in (dump.get("entities") or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        for name in entry.get("lab_inputs") or []:
+            names.add(str(name))
+    return names
+
+
+def rocket_chain_from_dump(dump: dict) -> dict:
+    """Chaîne de lancement DÉRIVÉE des faits du dump (aucun nom en dur).
+
+    Le joueur « devine » comment gagner, comme il le ferait en jeu :
+    - un bâtiment de lancement se reconnaît à ``rocket_parts_required``
+      (il assemble des pièces de fusée) ;
+    - ses catégories de craft désignent les recettes de fusée (leurs
+      ingrédients + le bâtiment = ce qu'il faut fabriquer pour lancer ;
+      les pseudo-recettes de paramétrage, sans ingrédients, ne comptent
+      pas) ;
+    - les produits de lancement (science spatiale et équivalents moddés)
+      viennent des ``rocket_launch_products`` des items et entités.
+
+    Retourne ``{launch_buildings, rocket_recipes, victory_items,
+    launch_products}`` — tout dérivé, donc correct pour tout mod qui
+    respecte ces faits, quel que soit le nom de ses items."""
+    entities = dump.get("entities") or {}
+    recipes = dump.get("recipes") or {}
+    launch_buildings = sorted(
+        name
+        for name, entry in entities.items()
+        if isinstance(entry, dict) and entry.get("rocket_parts_required")
+    )
+    categories: set[str] = set()
+    for name in launch_buildings:
+        entry = entities[name]
+        if isinstance(entry, dict):
+            categories |= {str(c) for c in entry.get("crafting_categories") or []}
+    victory_items: set[str] = set(launch_buildings)
+    rocket_recipes: list[str] = []
+    for name, recipe in recipes.items():
+        if not isinstance(recipe, dict) or str(recipe.get("category")) not in categories:
+            continue
+        ingredients = recipe.get("ingredients") or []
+        if not ingredients:
+            continue  # pseudo-recette de paramétrage : rien à fabriquer
+        rocket_recipes.append(str(name))
+        for ing in ingredients:
+            if isinstance(ing, dict) and ing.get("name"):
+                victory_items.add(str(ing["name"]))
+    launch_products: set[str] = set()
+    sections = [entities, dump.get("items") or {}]
+    for section in sections:
+        for entry in section.values():
+            if not isinstance(entry, dict):
+                continue
+            for product in entry.get("rocket_launch_products") or []:
+                if isinstance(product, dict) and product.get("name"):
+                    launch_products.add(str(product["name"]))
+    return {
+        "launch_buildings": launch_buildings,
+        "rocket_recipes": sorted(rocket_recipes),
+        "victory_items": sorted(victory_items),
+        "launch_products": sorted(launch_products),
+    }
+
+
 def load_db_from_dump(dump: dict) -> VanillaDB:
     """Construit la VanillaDB depuis le dump du mod compagnon : items/fluides
     post-filtre junk, bâtiments taggés (§9), recettes. ``seed_value`` hérite
@@ -159,6 +320,9 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
     _check_dump_integrity(dump)
     meta = dump.get("meta", {})
     db = VanillaDB(seed_value=int(meta.get("game_version_numeric", 0)))
+    inject_pumped_fluids(dump)
+    science = science_pack_names(dump)
+    db.rocket_chain = rocket_chain_from_dump(dump)
 
     for name, entry in (dump.get("items") or {}).items():
         if is_junk(name):
@@ -166,6 +330,15 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             continue
         itype = entry.get("type", "item")
         subgroup = _safe_group(entry)
+        # Catégories de combustible — détection automatique du format du dump :
+        # - Factorio >= 2.1.20 : ``fuel_categories`` (tableau) ;
+        # - Factorio < 2.1.20 : ``fuel_category`` (string unique).
+        # Les deux cohabitent dans l'exporter (il émet les deux) ; le modèle
+        # garde la liste complète et sa première catégorie en repli.
+        fuel_categories = tuple(entry.get("fuel_categories") or ())
+        if not fuel_categories and entry.get("fuel_category"):
+            fuel_categories = (entry["fuel_category"],)
+        fuel_category = fuel_categories[0] if fuel_categories else ""
         db.items[name] = ItemDef(
             name=name,
             subgroup=subgroup,
@@ -174,11 +347,15 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             is_ammo=itype == "ammo",
             is_gun=itype == "gun",
             is_armor=itype == "armor",
-            is_science_pack=subgroup == "science-pack",
-            is_tool=itype == "tool",
+            is_science_pack=name in science,
+            # 2.1.20 : les packs de science passent de ``tool`` à ``item``.
+            # ``is_tool`` reste le rôle (consommable de recherche), pas le
+            # type : tout ce qu'une recherche consomme a ce rôle.
+            is_tool=itype == "tool" or name in science,
             ammo_category=entry.get("ammo_category") or "",
             item_type=itype,
-            fuel_category=entry.get("fuel_category") or "",
+            fuel_categories=fuel_categories,
+            fuel_category=fuel_category,
             burnt_result=entry.get("burnt_result"),
             stack_size=int(entry.get("stack_size") or 0),
             # --- Tags §9 : items (docs/tags.md §12) ---
@@ -304,6 +481,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     energy_type = energy_src.get("type") or ""
     craft_categories = tuple(e.get("crafting_categories") or ())
     resource_categories = tuple(e.get("resource_categories") or ())
+    raw_speed = e.get("crafting_speed")
+    crafting_speed = float(raw_speed) if raw_speed is not None else None
+    productivity = float(e.get("productivity") or 0.0)
     lab_inputs = e.get("lab_inputs") or []
     rocket_parts = e.get("rocket_parts_required")
     target_temp = e.get("target_temperature")
@@ -348,11 +528,15 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     # Poteaux electriques : distribution du reseau.
     is_distribution = bool(supply_area)
     # Un extracteur CREE sa ressource depuis le monde : fluides sortants sans
-    # entree (offshore-pump, pumpjack) ou categories de minage.
+    # entree (offshore-pump, pumpjack) ou categories de minage. En 2.1,
+    # ``pumping_speed`` a disparu de l'offshore-pump : une source 'void' avec
+    # une sortie fluide reste structurellement un extracteur.
+    is_void_fluid_source = energy_type == "void" and fluid_in == 0 and fluid_out > 0
     is_extractor = bool(
         resource_categories
         or pumped_fluid
         or (pumping_speed is not None and fluid_in == 0 and fluid_out > 0)
+        or is_void_fluid_source
     )
     # Aucune capacite reconnue : range en "other", jamais perdu.
     is_other = not (is_research or is_crafter or is_generator or is_distribution or is_extractor)
@@ -578,6 +762,8 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         has_rocket_parts=bool(rocket_parts),
         crafting_categories=craft_categories,
         resource_categories=resource_categories,
+        crafting_speed=crafting_speed,
+        productivity=productivity,
         energy_type=energy_type,
         fuel_categories=tuple(energy_src.get("fuel_categories") or ()),
         pumped_fluid=pumped_fluid,

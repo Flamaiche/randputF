@@ -94,7 +94,7 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
       results = results,
     }
     if recipe_seed.category and data.raw["recipe-category"][recipe_seed.category] then
-      recipe_def.category = recipe_seed.category
+      recipe_def.categories = {recipe_seed.category}
     end
     -- crafted_in : restreint la recette au bâtiment précis (2.0).
     if recipe_seed.crafted_in then
@@ -103,7 +103,7 @@ for _, recipe_seed in ipairs(seed.recipes or {}) do
       local crafter = find_entity_proto(recipe_seed.crafted_in)
       if crafter then
         local cats = crafter.crafting_categories or {}
-        local needed = recipe_def.category or "crafting"
+        local needed = (recipe_def.categories and recipe_def.categories[1]) or "crafting"
         local has_cat = false
         for _, c in ipairs(cats) do
           if c == needed then has_cat = true break end

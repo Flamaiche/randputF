@@ -2,45 +2,39 @@
 
 import argparse
 import json
-import shutil
 import sys
 import time
 from pathlib import Path
 
+from tool.audit.difficulty import compute_difficulty, summarize_difficulty
+from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 from tool.common.db import VanillaDB
-from tool.common.version import VERSION
+from tool.common.witness import witness_md5
+from tool.exporters.complexity_graph import write_complexity_html
 from tool.exporters.difficulty_graph import (
     vanilla_seed_from_dump,
     write_difficulty_graph_html,
 )
+from tool.exporters.dump_html import write_dump_html
+from tool.exporters.mod_seed import build_vanilla_seed
+from tool.exporters.report import write_full_report
 from tool.exporters.seed_graph import write_seed_graph_html
+from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import summarize_db
 from tool.service import (
     DUMP_PATH_DEFAULT,
-    MAX_ATTEMPTS,
     OUTPUT_DIR,
     DumpInvalidError,
     DumpMissingError,
-    RandputfError,
     SeedUnplayableError,
     build_mod,
     current_seed,
     generate_with_retry,
-    install_mod,
-    load_config,
-    load_db,
 )
 from tool.service import build_mod as _build_mod
 from tool.service import install_mod as _install_mod
 from tool.service import load_config as _load_config
 from tool.service import load_db as _load_db_raising
-
-from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
-from tool.audit.difficulty import compute_difficulty, summarize_difficulty
-from tool.common.witness import witness_md5
-from tool.generator.pipeline import generate_seed
-
-from tool.service import MOD_SOURCE
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
@@ -141,6 +135,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
             print(f"Graphe interactif (cliquable) exporté dans {html_path}")
         else:
             print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
+        cx_path = mod_path / "seed.complexity.html"
+        write_complexity_html(seed, cx_path, db)
+        print(f"Rapport de complexité exporté dans {cx_path}")
 
         vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
         if vanilla_seed is not None:
@@ -181,6 +178,120 @@ def cmd_compare(args: argparse.Namespace) -> None:
     print(f"HTML : {path}")
 
 
+def cmd_report(args: argparse.Namespace) -> None:
+    """Génère le rapport complet (complexité, difficulté, partie simulée) du
+    dump vanilla, puis résume et contrôle les données lues.
+
+    Sert d'outil de validation du dump : avertit si des items sont fournis en
+    externe, si les tags ou les temps de minage manquent, etc."""
+    dump_path = Path(args.dump)
+    try:
+        dump = json.loads(dump_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        sys.exit(f"Dump illisible ({dump_path}) : {err}")
+
+    seed = build_vanilla_seed(dump)
+    if not seed.get("technologies"):
+        sys.exit(
+            "Dump sans technologies : relance l'exporter dans Factorio puis "
+            "remplace le dump (voir README, système de dev)."
+        )
+
+    game_version = (dump.get("meta") or {}).get("game_version", "inconnue")
+    out = Path(args.out) if args.out else OUTPUT_DIR / "vanilla.report.html"
+    result = write_full_report(
+        seed,
+        out,
+        None,
+        vanilla_seed=seed,
+        dump=dump,
+        title=f"Factorio vanilla {game_version} — rapport complet",
+        playthrough_title=f"Factorio vanilla {game_version} — partie simulée",
+    )
+
+    analysis = result["analysis"]
+    stats = analysis.get("item_stats") or {}
+    print(f"Dump    : {dump_path} (Factorio {game_version})")
+    print(f"Entrées : {len(stats)} items/fluides simulés")
+    print(f"Crafts  : {analysis.get('total_crafts', 0)}")
+    print(f"Minage  : {analysis.get('mining_seconds', 0)} s")
+    buildings = analysis.get("buildings") or []
+    print(f"Bâtiments : {', '.join(buildings) or '—'}")
+
+    external = analysis.get("external_items") or []
+    if external:
+        print(f"[ATTENTION] fournis en externe : {', '.join(external)}")
+    else:
+        print("[OK] aucun item fourni en externe")
+
+    mined = [name for name, stat in stats.items() if stat.get("mined", 0) > 0]
+    if mined and not analysis.get("mining_seconds"):
+        print("[ATTENTION] temps de minage absent du dump (mineable_properties) : relance l'exporter")
+
+    entities = dump.get("entities") or {}
+    pumps = [
+        name
+        for name, entity in entities.items()
+        if isinstance(entity, dict)
+        and (
+            entity.get("type") == "offshore-pump"
+            or entity.get("pumping_speed") is not None
+        )
+        and not entity.get("pumped_fluid")
+    ]
+    if pumps:
+        print(
+            f"[ATTENTION] pumped_fluid absent ({', '.join(pumps[:5])}) : "
+            "relance l'exporter récent"
+        )
+    # Produits de lancement : source de vérité = l'ITEM lancé (ex. satellite,
+    # ItemWithInventoryPrototype::rocket_launch_products) ; repli : le silo.
+    launch_products_sources = [
+        entry.get("rocket_launch_products")
+        for entry in (dump.get("items") or {}).values()
+        if isinstance(entry, dict) and entry.get("rocket_launch_products")
+    ]
+    silo = entities.get("rocket-silo") or {}
+    if isinstance(silo, dict) and silo.get("rocket_launch_products"):
+        launch_products_sources.append(silo["rocket_launch_products"])
+    if not launch_products_sources:
+        print("[ATTENTION] produits de lancement absents : relance l'exporter récent")
+
+    untagged = [row["name"] for row in result["rows"] if row["tags"] == "—"]
+    if untagged:
+        print(f"[ATTENTION] sans tag : {', '.join(untagged[:10])}")
+    else:
+        print("[OK] tous les items/fluides ont un tag")
+
+    prog = result.get("progression") or {}
+    print(
+        f"[OK] chaîne de progression : {prog.get('count', 0)} items/fluides "
+        f"({prog.get('packs', 0)} packs de science)"
+    )
+
+    space = stats.get("space-science-pack")
+    if space is not None:
+        print(
+            f"[OK] space science : {space.get('crafts', 0)} lancement(s), "
+            f"{space.get('produced', 0)} packs"
+        )
+    print(f"Rapport : {out}")
+
+
+def cmd_dump(args: argparse.Namespace) -> None:
+    """Écrit le navigateur HTML du dump (notre Factoriopedia) : inventaire
+    A→Z de toutes les tables, tuiles, entités, items/fluides, recettes,
+    technologies — avec filtre de recherche global."""
+    dump_path = Path(args.dump)
+    try:
+        dump = json.loads(dump_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        sys.exit(f"Dump illisible ({dump_path}) : {err}")
+    out = Path(args.out) if args.out else OUTPUT_DIR / "vanilla.dump.html"
+    path = write_dump_html(dump, out)
+    print(f"Navigateur du dump : {path}")
+
+
 def cmd_difficulty(args: argparse.Namespace) -> None:
     """Génère une seed et affiche son ardoise de difficulté (recettes
     primaires, DAG)."""
@@ -215,7 +326,7 @@ def cmd_witness(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Point d'entrée CLI ``randputf`` (parse / audit / generate /
-    difficulty)."""
+    difficulty / report)."""
     parser = argparse.ArgumentParser(prog="randputf", description="Generateur de seeds randputF")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -243,6 +354,26 @@ def main(argv: list[str] | None = None) -> None:
                        help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_cmp.add_argument("--out", default=None, help="Dossier de sortie du HTML (defaut: output/)")
     p_cmp.set_defaults(func=cmd_compare)
+
+    p_report = sub.add_parser(
+        "report", help="Genere le rapport complet du dump vanilla (HTML + resume/controles)"
+    )
+    p_report.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
+    p_report.add_argument(
+        "--out", default=None,
+        help="Chemin du HTML (defaut: output/vanilla.report.html)",
+    )
+    p_report.set_defaults(func=cmd_report)
+
+    p_dump = sub.add_parser(
+        "dump", help="Navigateur HTML du dump : inventaire A→Z, tuiles, entités…"
+    )
+    p_dump.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
+    p_dump.add_argument(
+        "--out", default=None,
+        help="Chemin du HTML (defaut: output/vanilla.dump.html)",
+    )
+    p_dump.set_defaults(func=cmd_dump)
 
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")

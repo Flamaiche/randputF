@@ -16,8 +16,12 @@ REJOUE la partie comme un joueur qui découvre la seed :
     (fluide de lac assigné en entrée s'il en consomme, combustible s'il brûle)
     et qu'un pylône est obtenable.
 
-La partie est gagnable ssi la chaîne fusée (silo + processing-unit +
-low-density-structure + rocket-fuel) est atteignable en fin de parcours.
+La partie est gagnable ssi la chaîne de lancement — DÉRIVÉE des faits du
+dump via ``db.rocket_chain`` (bâtiment à ``rocket_parts_required``, ses
+recettes de fusée et leurs ingrédients, produits de lancement) — est
+atteignable en fin de parcours. Aucun nom d'item n'est en dur : le joueur
+« devine » comment obtenir les choses, comme en jeu, et un mod qui
+remplace la chaîne fusée reste vérifié tel quel.
 
 C'est un audit EXTERNE : il ne modifie pas la génération. Une seed qui rate la
 victoire révèle un softlock réel (électricité, extraction, timing d'unlock…)
@@ -31,15 +35,6 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 
 from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_FLUID, SLOT_ITEM, VanillaDB
-
-# Items attendus pour « lancer une fusée » (recette vanilla exempte, §14) :
-# rocket-part se craft dans le silo avec ces 3 ingrédients.
-VICTORY_ITEMS = (
-    "rocket-silo",
-    "processing-unit",
-    "low-density-structure",
-    "rocket-fuel",
-)
 
 MAX_DEPTH = 5          # profondeur de l'explication d'un blocage
 UNKNOWN, ENV, KIT = "unknown", "environment", "kit"
@@ -75,7 +70,7 @@ class ReplayReport:
     blocker: Blocker | None = None
     power_available: bool = False
     power_generator: str | None = None
-    satellite_obtainable: bool = False
+    launch_products_obtainable: bool = False
     obtainable_items: set[str] = field(default_factory=set)
     obtainable_fluids: set[str] = field(default_factory=set)
     researched_order: list[str] = field(default_factory=list)
@@ -102,6 +97,16 @@ class FakePlayer:
         self.recipes: list[dict] = seed["recipes"]
         self.techs: list[dict] = seed["technologies"]
         self.free: set[str] = set(seed.get("free_researches") or [])
+        # Chaîne de lancement dérivée des faits du dump (voir
+        # ``rocket_chain_from_dump``) : le joueur « devine » la victoire
+        # au lieu d'attendre des noms vanilla en dur.
+        chain: dict = getattr(db, "rocket_chain", None) or {}
+        self.victory_items: list[str] = list(chain.get("victory_items") or [])
+        self.launch_products: list[str] = list(chain.get("launch_products") or [])
+        # Bâtiments de recherche (consomment les packs) : tags, pas noms.
+        self.research_buildings: set[str] = {
+            b.name for b in db.buildings.values() if b.is_research
+        }
         self.items_by_name: dict[str, list[str]] = {}
         for r in self.recipes:
             for res in r.get("results") or []:
@@ -334,8 +339,10 @@ class FakePlayer:
         buildings = list(self.db.buildings.values())
         entries: list[tuple[str, list[dict]]] = []
         for la in map_.get("lakes") or []:
+            # Candidats par TAGS du dump (aucun nom en dur) : une base sans
+            # pompe offshore ne peut tout simplement pas pomper ce lac.
             cand = [b.name for b in buildings if getattr(b, "is_offshore_pump", False)]
-            for name in cand or ["offshore-pump"]:
+            for name in cand:
                 entries.append((name, [{"type": SLOT_FLUID, "name": la["resource"]}]))
         for p in map_.get("patches") or []:
             res, kind = p["resource"], p.get("kind")
@@ -348,9 +355,8 @@ class FakePlayer:
                 b.name for b in buildings
                 if getattr(b, "is_pumpjack", False) or getattr(b, "is_well_pump", False)
             ]
-            fallback, t = "pumpjack", SLOT_FLUID
-            for name in cand or [fallback]:
-                entries.append((name, [{"type": t, "name": res}]))
+            for name in cand:
+                entries.append((name, [{"type": SLOT_FLUID, "name": res}]))
         return entries
 
     def _unlocks_of(self, tech: dict) -> set[str]:
@@ -850,9 +856,13 @@ class FakePlayer:
             self.fluids_obtainable = fluids
             self._invalidate_caches()
             report.power_available, report.power_generator = power, generator
-            # Le lab reçoit les packs (garanti au starter, §8) — garde-fou.
-            if "lab" not in items:
-                report.blocker = Blocker(tech_id, "lab", "lab")
+            # Un bâtiment de recherche (consomme les packs) est-il obtenable ?
+            # Garde-fou : tags dérivés du dump (is_research), pas un nom en dur.
+            if not (self.research_buildings & items):
+                report.blocker = Blocker(
+                    tech_id, "lab",
+                    min(self.research_buildings) if self.research_buildings else "(aucun lab)",
+                )
                 break
             # Transaction façon joueur : on ne dépense que si TOUTE la tech est
             # abordable (déclencheur + packs). En cas d'échec, on restaure
@@ -881,7 +891,9 @@ class FakePlayer:
         self.fluids_obtainable = fluids
         report.power_available, report.power_generator = power, generator
         report.obtainable_items, report.obtainable_fluids = items, fluids
-        report.satellite_obtainable = "satellite" in items
+        # Produits de lancement (science spatiale et équivalents moddés) :
+        # dérivés des faits, récupérables via la fermeture obtenable.
+        report.launch_products_obtainable = all(p in items for p in self.launch_products)
         report.mastered = sorted(self.mastered)
         report.mastered_tier = dict(self.mastered_tier)
         report.never_masterable = sorted(
@@ -895,10 +907,13 @@ class FakePlayer:
                 and not self._raw_infinite_now(res["name"])
             }
         )
+        # Victoire : chaîne de lancement DÉRIVÉE (db.rocket_chain) — silo,
+        # ingrédients des recettes de fusée et produits de lancement —
+        # réellement fabricables une fois l'arbre consommé.
         report.victory = (
             report.all_techs_researched
-            and "satellite" in items
-            and all(self._craft(v, 1) for v in VICTORY_ITEMS)
+            and all(self._craft(v, 1) for v in self.victory_items)
+            and all(self._craft(p, 1) for p in self.launch_products)
         )
         return report
 

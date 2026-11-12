@@ -4,7 +4,13 @@
 
 Le module `tool/common/db.py` centralise la **base de données normalisée**, source de vérité pour toutes les phases du générateur. Il convertit le `vanilla_dump.json` en une structure interne, `VanillaDB`, exploitée par le pipeline.
 
-Définie dans `tool/parsers/vanilla.py` (lignes 154‑226) et appelée par `tool/generator/pipeline.py`, la fonction `load_db_from_dump()` initialise l'objet `VanillaDB` à partir du dump : items, fluides, bâtiments taggés par capacités, recettes, puis pools dérivés. Cette base est ensuite transmise à `randputf` pour la génération.
+Définie dans `tool/parsers/vanilla.py` (`load_db_from_dump`) et appelée par `tool/generator/pipeline.py`, la fonction `load_db_from_dump()` initialise l'objet `VanillaDB` à partir du dump : items, fluides, bâtiments taggés par capacités, recettes, puis pools dérivés. Avant le parse, trois enrichissements **par les faits** (le dump ne porte que du brut, aucun calculLua) :
+
+* `inject_pumped_fluids(dump)` — résout le `pumped_fluid` des extracteurs d'eau (§6.5) ;
+* `science_pack_names(dump)` — les packs de science, unis par faits (coûts de techs + lab_inputs) ;
+* `rocket_chain_from_dump(dump)` — la chaîne de lancement (§6.7), stockée dans `VanillaDB.rocket_chain`.
+
+Cette base est ensuite transmise à `randputf` pour la génération.
 
 ```
 # Position dans le pipeline
@@ -16,15 +22,17 @@ Définie dans `tool/parsers/vanilla.py` (lignes 154‑226) et appelée par `tool
 
 ## 2. Format d'entrée : `vanilla_dump.json` et métadonnées
 
-Le `vanilla_dump.json` (version 2.0) fournit les données brutes exploitées par `VanillaDB` :
+Le `vanilla_dump.json` (exporter randputf **0.1.5**, jeu 2.1.24) fournit les données brutes exploitées par `VanillaDB` — du brut factuel uniquement, aucune interprétation côté Lua :
 
-* **`meta`** – métadonnées : `game_version` est exportée (ex. « 2.0.77 ») ; `game_version_numeric` est absente, d'où `seed_value = 0` par défaut (ligne 161).
-* **`items`** – objets solides (armes, munitions, outils, science), filtrés par `is_junk` (lignes 163‑166). Chaque entrée est un `ItemDef` (§3).
-* **`fluids`** – fluides (liquides, gaz), filtrés par `is_junk` (lignes 191‑194). Chaque entrée est un `FluidDef` (§3).
-* **`entities`** – entités du monde, filtrées par `is_junk` (lignes 200‑204) puis taggées par capacités (`tag_parse_entity`).
-* **`recipes`** – recettes brutes avec `name`, `category`, `ingredients`, `products` et `energy` (lignes 209‑216).
+* **`meta`** – métadonnées : `game_version` (ex. « 2.1.24 ») ; `game_version_numeric` est absente, d'où `seed_value = 0` par défaut (§7.1).
+* **`items`** / **`fluids`** – objets solides et fluides, filtrés par `is_junk` (§3).
+* **`entities`** – entités du monde, filtrées par `is_junk` puis taggées par capacités (`tag_parse_entity`). Chacune peut porter `tile_buildability_rules` (règles de placement : `required_tiles` / `colliding_tiles` / `remove_on_collision`, voir §6.5).
+* **`recipes`** – recettes brutes avec `name`, `category`, `ingredients`, `products` et `energy`.
+* **`technologies`** – arbre de recherche (prérequis, effets, `unit`).
+* **`inventory`** – inventaire complet A→Z du jeu : 39 tables par type de prototype (`item`, `entity`, `fluid`, `tile`, `recipe`, `technology`, …).
+* **`tiles`** – 52 tuiles, chacune avec ses `collision_layers` et éventuellement son `fluid` (ex. `water`).
 
-La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` (ligne 316) pour initialiser les flux aléatoires du pipeline (§1).
+La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` pour initialiser les flux aléatoires du pipeline (§1).
 
 ## 3. Schéma des données
 
@@ -44,6 +52,7 @@ class ItemDef:
     is_tool: bool = False
     ammo_category: str = ""
     item_type: str = ""
+    fuel_categories: tuple[str, ...] = ()
     fuel_category: str = ""
     burnt_result: str | None = None
     stack_size: int = 0
@@ -54,10 +63,11 @@ class ItemDef:
 ```
 
 Champs clés :
-- **Identification** – `name` et `subgroup` (lignes 117‑119).
+- **Identification** – `name` et `subgroup`.
 - **Placement** – `place_result` (où l'item est posé).
-- **Combustion** – `fuel_value` (valeur énergétique).
-- **Tags** – `is_environmental`, `is_virtual_item`, `is_module`, `is_capsule_throwable` (lignes 117‑143).
+- **Combustion** – `fuel_value` (valeur énergétique), `fuel_categories` (liste complète, Factorio ≥ 2.1.20) et `fuel_category` (première catégorie, repli).
+- **Tags** – `is_environmental`, `is_virtual_item`, `is_module`, `is_capsule_throwable`.
+- **Science** – `is_science_pack` et `is_tool` : dérivés des FAITS via `science_pack_names()` (coûts `unit.ingredients` des techs ∪ `lab_inputs` des labs), pas du `subgroup` (§6.4).
 - **Stack** – `stack_size` (définit l'empilement).
 - **Catégories** – `item_type`, `fuel_category`, `subgroup`.
 
@@ -102,6 +112,8 @@ class BuildingDef:
     fluid_inputs: int = 0
     fluid_outputs: int = 0
     item_output_slots: int = 0
+    # pumped_fluid : fluide pompé par un extracteur d'eau — RÉSOLU côté
+    # Python (inject_pumped_fluids, §6.5) ; le dump 0.1.5 ne le porte plus.
     pumped_fluid: str | None = None
     produces_heat: bool = False
     produces_electricity: bool = False
@@ -176,18 +188,18 @@ class BuildingDef:
 
 | Pool | Méthode | Description |
 |------|---------|-------------|
-| `beltable_items` | `VanillaDB.beltable_items()` | Items solides posables sur tapis, HORS outils (`not is_tool`), triés par nom (lignes 326‑331). |
-| `pipable_fluids` | `VanillaDB.pipable_fluids()` | TOUS les fluides du dump, triés par nom (lignes 333‑335). |
-| `extraction_only_fluids` | `VanillaDB.extraction_only_fluids` | Fluides sans recette de production directe (eau, pétrole brut, vapeur) ; barillage exclu (cycle fluide → baril → fluide) (lignes 338‑350). |
-| `raw_resources` | `VanillaDB.raw_resources(patch_resources)` | Patches posés + `ENVIRONMENTAL_ITEMS` + `extraction_only_fluids` (lignes 352‑357). |
-| `fuel_items` | `VanillaDB.fuel_items()` | Items combustibles triés (lignes 359‑365). |
-| `fuels_for(b)` | méthode | Combustibles compatibles par bâtiment (lignes 366‑378). |
-| `fuel_residues(b)` | méthode | Résidus de combustion (lignes 379‑386). |
-| `fuel_item_flow(b)` | méthode | Flux normalisé : combustible vers résidu (lignes 387‑404). |
-| `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item (lignes 399‑404). |
-| `fuel_fluids()` | méthode | Fluides combustibles triés (lignes 405‑411). |
-| `buildings_with_tag(tag)` | méthode | Bâtiments possédant le tag (lignes 412‑418). |
-| `extractors_for_medium(medium)` | méthode | Extracteurs par milieu (lignes 420‑430). |
+| `beltable_items` | `VanillaDB.beltable_items()` | Items solides posables sur tapis, HORS outils (`not is_tool`), triés par nom. |
+| `pipable_fluids` | `VanillaDB.pipable_fluids()` | TOUS les fluides du dump, triés par nom. |
+| `extraction_only_fluids` | `VanillaDB.extraction_only_fluids` | Fluides sans recette de production directe (eau, pétrole brut, vapeur) ; barillage exclu (cycle fluide → baril → fluide). |
+| `raw_resources` | `VanillaDB.raw_resources(patch_resources)` | Patches posés + `ENVIRONMENTAL_ITEMS` + `extraction_only_fluids`. |
+| `fuel_items` | `VanillaDB.fuel_items()` | Items combustibles triés (`fuel_value` non nul). |
+| `fuels_for(b)` | méthode | Combustibles compatibles par bâtiment. |
+| `fuel_residues(b)` | méthode | Résidus de combustion. |
+| `fuel_item_flow(b)` | méthode | Flux normalisé : combustible vers résidu. |
+| `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item. |
+| `fuel_fluids()` | méthode | Fluides combustibles triés. |
+| `buildings_with_tag(tag)` | méthode | Bâtiments possédant le tag. |
+| `extractors_for_medium(medium)` | méthode | Extracteurs par milieu. |
 
 ## 4. Prédicats de détection par capacités
 
@@ -275,7 +287,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 - `is_offshore_pump` : Pompe d'eau.
 - `is_well_pump` : Pompe de fluide.
 
-Précisions d'extraction (vanilla.py:462‑465) : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = le seul extracteur `medium == 'water'` ; `is_well_pump` = `type == 'pump'`.
+Précisions d'extraction : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = `is_water_extractor` (le seul extracteur de milieu `water` du vanilla) ; `is_well_pump` = `type == 'pump'`. Le `medium` se déduit du `pumped_fluid` résolu (§6.5) puis des catégories de ressource.
 
 ### 5.4 Tags de logistique & transport
 - `is_belt`, `is_splitter`, `is_inserter` : Logistique de flux.
@@ -287,7 +299,7 @@ Précisions d'extraction (vanilla.py:462‑465) : `is_mining_drill` = `type == '
 - `is_power_pole` : Pylône électrique (`type == 'electric-pole'` ; l'ancien `is_beam_pole` a disparu au chantier D3).
 - `is_beacon` : Transmission d'effet.
 - `is_accumulator` : Stockage électrique.
-- `is_energy_storage` : Stockage d'énergie — le dump n'exporte pas `buffer_capacity`, tag rabattu sur `is_accumulator` (vanilla.py:394‑397).
+- `is_energy_storage` : Stockage d'énergie — le dump n'exporte pas `buffer_capacity`, tag rabattu sur `is_accumulator`.
 - `is_offgrid` : Production hors réseau.
 - `consumes_electricity` : Consommation électrique.
 - `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` : Extracteurs par milieu.
@@ -309,17 +321,41 @@ Restreint `has_hidden_recipe` aux ateliers `is_crafter` à entrée ET sortie flu
 ### 6.4 `is_fixed_crafter`
 Inclut les bâtiments à recette fixe pouvant recevoir une recette randomisée : un atelier `is_crafter` avec sortie (fluide ou item), OU un bâtiment à résidu de combustible (`fuel_residues` non vide — le réacteur item → résidu item).
 
+### 6.5 `pumped_fluid` (résolution Python depuis 0.1.5)
+L'exporter 0.1.5 ne porte plus le littéral `pumped_fluid` : le dump ne contient que des faits, la résolution est testable côté Python (`inject_pumped_fluids`, idempotente, injectée par `load_db_from_dump` ET `build_vanilla_seed`). Pour chaque entité :
+
+1. **Fluidbox de sortie** — si l'entité est une **source pure** (`fluidboxes.input == 0`, ex. offshore-pump : rien → fluide), le fluide de sa seule fluidbox de sortie la désigne. La porte « source pure » évite de confondre un convertisseur (boiler, heat-exchanger : fluide → fluide) avec un extracteur.
+2. **Chaîne de tuiles** — sinon, ses `tile_buildability_rules` exigent des couches (`required_tiles`) ; les tuiles portant ces couches exposent leur `fluid` ; **un seul fluide distinct** doit en émerger, sinon `None` (ambiguïté = rien inventé, l'entité part en « external » avec avertissement). `colliding_tiles` peut être `{}` (dict vide) — robuste via `or []`.
+
+Exemple vanilla : l'offshore-pump exige la couche `water_tile` ; la tuile `water` porte cette couche et le fluide `water` → `pumped_fluid = "water"`. Une tuile peut porter une couche SANS fluide (water-wube) : la chaîne s'arrête proprement. Le `medium` suit : `pumped_fluid` résolu → `medium = "water"` (§5.3).
+
+### 6.6 `science_pack_names` (packs par les faits)
+Union des ingrédients de coût des technologies (`unit.ingredients`, formes dict ET listes gérées) et des entrées des labs (`lab_inputs`). Vanilla : 7 packs — `space-science-pack` n'est dans AUCUN coût de tech, il n'est reconnu que par les `lab_inputs`. C'est ce jeu de faits (pas le `subgroup` « science-pack ») qui alimente `ItemDef.is_science_pack`/`is_tool` et le tag `is_progression` du seed.
+
+### 6.7 `rocket_chain_from_dump` (chaîne de lancement)
+La chaîne de victoire est **dérivée des faits** et stockée dans `VanillaDB.rocket_chain` — aucun nom d'item n'est codé en dur, un mod qui remplace la fusée reste vérifié :
+
+* **bâtiments de lancement** — entités avec `rocket_parts_required` (elles assemblent des pièces de fusée) ;
+* **recettes de fusée** — recettes des catégories de craft de ces bâtiments, en ignorant les pseudo-recettes de paramétrage (sans ingrédients) ;
+* **`victory_items`** — les bâtiments de lancement + les ingrédients de ces recettes ;
+* **`launch_products`** — les `rocket_launch_products` des items et entités (science spatiale et équivalents moddés).
+
+Vanilla : `rocket-silo` + `rocket-part` (catégorie `rocket-building`) → silo + processing-unit + low-density-structure + rocket-fuel ; produit `space-science-pack`. Le rejoueur s'en sert pour sa condition de victoire (docs/solvabilite.md).
+
 ## 7. Notes d'implémentation
 
 ### 7.1 `seed_value`
-Identifiant de la graine guidant toute la génération, lu depuis `meta.game_version_numeric` (défaut 0 sinon, vanilla.py:161) et stocké dans `VanillaDB.seed_value` (ligne 316). Le dump livré n'exporte que `game_version` : `seed_value` vaut donc 0 à l'entrée, puis est surchargé par le CLI (`randputf gen --seed` ou, par défaut, l'horodatage courant).
+Identifiant de la graine guidant toute la génération, lu depuis `meta.game_version_numeric` (défaut 0 sinon) et stocké dans `VanillaDB.seed_value`. Le dump livré n'exporte que `game_version` : `seed_value` vaut donc 0 à l'entrée, puis est surchargé par le CLI (`randputf gen --seed` ou, par défaut, l'horodatage courant).
 
 ### 7.2 `fuel_residues`
-Les résidus (`burnt_result` des combustibles du bâtiment) sont calculés à la fin du parse (vanilla.py:223‑225) : ils dépendent de la base items, indisponible à la volée. Ils alimentent `fuel_item_flow` et `has_fuel_item_flow`, et estampent `has_hidden_recipe` (§4.1) — le réacteur est ainsi révélé sans liste de noms.
+Les résidus (`burnt_result` des combustibles du bâtiment) sont calculés à la fin du parse (`load_db_from_dump`) : ils dépendent de la base items, indisponible à la volée. Ils alimentent `fuel_item_flow` et `has_fuel_item_flow`, et estampent `has_hidden_recipe` (§4.1) — le réacteur est ainsi révélé sans liste de noms.
 
 ### 7.3 Relation avec `tags.md`
 Les TAGS sont calculés PAR CAPACITÉS dans `tool/parsers/vanilla.py` (`tag_parse_entity`) — aucune liste de noms. `tool/common/tagsets.py` ne porte que les ENSEMBLES FIGÉS (ENVIRONMENTAL_ITEMS, VEHICLE_GUNS, ROCKET_CHAIN…, docs/tags.md §14) ; `tool/common/db.py` les re-exporte pour compatibilité. L'audit (`tool/audit/tags.py`) vérifie orthogonalité et cohérence de ces règles.
 
+### 7.4 Chaîne de lancement côté rejoueur
+`VanillaDB.rocket_chain` (§6.7) est consommée par le rejoueur (`tool/replay/player.py`) comme condition de victoire : tous les `victory_items` fabricables + tous les `launch_products` récupérés, une fois l'arbre de recherche consommé. Aucun nom vanilla n'y figure : la victoire se déduit des faits, comme un joueur qui découvre la seed.
+
 ---
 *Document généré à partir de `tool/common/db.py`, `tool/parsers/vanilla.py` et `docs/tags.md`.*
-*Version 1.1 – 2026‑10‑07*
+*Version 1.2 – 2026‑11‑11 (dump exporter 0.1.5)*

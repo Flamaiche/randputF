@@ -112,10 +112,10 @@ def test_export_late_raws_present_seulement_si_gating():
     avec un jalon ``tier`` entier ≥ 0) ; la seed historique n'exporte pas la
     clé (comportement rejoueur inchangé). Seed choisie non-inerte (jalon > 0)
     SOUS la config par défaut de la pipeline (defaults.yaml)."""
-    base = generate_seed(db_for(7), {}, validate=False)
+    base = generate_seed(db_for(9), {}, validate=False)
     assert not base.get("late_raws")
 
-    gated = generate_seed(db_for(7), GATING, validate=False)
+    gated = generate_seed(db_for(9), GATING, validate=False)
     lr = gated.get("late_raws")
     assert lr is not None
     assert lr.get("gated")
@@ -182,13 +182,13 @@ def test_gating_change_effectivement_le_graphe_quand_active():
     """Une seed NON-inerte (jalons > 0) diffère de la seed historique : le
     ré-bakage de la passe B déplace la première consommation des raws gatées
     vers leur jalon. (Inverse : gating inerte = seed historique, cf.
-    test_gating_inerte_rend_la_seed_historique.) Seed 7 NON-inerte sous la
+    test_gating_inerte_rend_la_seed_historique.) Seed 9 NON-inerte sous la
     config par défaut (defaults.yaml = richesse effective)."""
-    db = db_for(7)
+    db = db_for(9)
     base = generate_seed(db, {}, validate=False)
     gated = generate_seed(db, GATING, validate=False)
     lr = gated.get("late_raws") or {}
-    assert lr.get("gated"), "seed 7 sans raw gatée"
+    assert lr.get("gated"), "seed 9 sans raw gatée"
     assert any(info["tier"] >= 1 for info in lr["gated"].values())
     assert base != gated
 
@@ -198,7 +198,7 @@ def test_gating_inerte_rend_la_seed_historique():
     la seed gatée est byte-identique à la seed historique. Rejouer la passe B
     ne ferait que changer l'arbre sans changer la disponibilité (régression
     seed 1757 : défaite en gaté à la tech 21, victoire 89/89 en baseline)."""
-    for seed_value in (1, 2):
+    for seed_value in (2, 3):
         db = db_for(seed_value)
         base = generate_seed(db, {}, validate=False)
         gated = generate_seed(db, GATING, validate=False)

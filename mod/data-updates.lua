@@ -840,6 +840,10 @@ do
   local fv = 0
   for _, proto in pairs(data.raw.fluid or {}) do
     proto.fuel_value = "200kJ"
+    -- 2.1 borne la temperature au max_temperature du fluide ; en 2.0 la
+    -- limite n'existait pas. On la relève pour que tout fluide puisse
+    -- traverser un boiler/chauffe-eau sans erreur de setup.
+    proto.max_temperature = math.max(proto.max_temperature or proto.default_temperature or 0, 1000)
     fv = fv + 1
   end
   log("[randputF] generator burns_fluid: " .. burners .. " generators, "

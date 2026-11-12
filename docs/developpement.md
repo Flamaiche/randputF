@@ -31,7 +31,7 @@ L'installation standard via `pip install .` inclut les assets (`mod/`, `data/`, 
 
 L'outil ne devine rien : il utilise un **dump JSON des prototypes** extrait de votre jeu par le mod compagnon `exporter/` :
 
-1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.0/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
+1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.5/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
 2. **Désactivez `randputF` pour cet export** sous peine de rejet par l'exporter. Lancez Factorio quelques secondes : le jeu génère `script-output/randputF/vanilla_dump.json` dans votre dossier utilisateur.
 3. Déplacez ce fichier vers `data/vanilla_dump.json` dans le projet.
 4. Cet exporter est un outil de transition. Il sera intégré au mod principal ou supprimé.

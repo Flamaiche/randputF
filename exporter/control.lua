@@ -35,19 +35,113 @@ local function prototypes_dict(key)
   return nil
 end
 
+-- Inventaire A->Z : noms de tous les prototypes, table par table. La liste
+-- des cles suit l'API LuaPrototypes (structurelle, comme un dispatch de
+-- type) ; une table absente d'une version donnee est simplement omise.
+local PROTOTYPE_TABLES = {
+  "entity", "item", "fluid", "tile", "equipment", "damage", "virtual_signal",
+  "equipment_grid", "recipe", "technology", "decorative", "particle",
+  "autoplace_control", "mod_setting", "custom_input", "ammo_category",
+  "named_noise_expression", "named_noise_function", "item_subgroup",
+  "item_group", "fuel_category", "resource_category", "achievement",
+  "module_category", "equipment_category", "trivial_smoke", "shortcut",
+  "recipe_category", "quality", "surface_property", "space_location",
+  "space_connection", "custom_event", "active_trigger", "asteroid_chunk",
+  "collision_layer", "font", "map_gen_preset", "style",
+}
+
+local function dump_inventory()
+  local out = {}
+  for _, key in ipairs(PROTOTYPE_TABLES) do
+    local dict = prototypes_dict(key)
+    if dict then
+      local names = {}
+      local ok = pcall(function()
+        for name in pairs(dict) do
+          if type(name) == "string" then
+            table.insert(names, name)
+          end
+        end
+      end)
+      if ok then
+        table.sort(names)
+        out[key] = names
+      end
+    end
+  end
+  return out
+end
+
+-- Tuiles : couches de collision + fluide declare. Doc du jeu sur
+-- LuaTilePrototype.fluid : "The fluid offshore pump produces on this tile,
+-- if any" -- donnee brute, lue par le tool pour resoudre le fluide pompe.
+local function dump_tiles()
+  local out = {}
+  local ok_tiles, tiles = pcall(function()
+    return prototypes.tile
+  end)
+  if not ok_tiles or tiles == nil then
+    return out
+  end
+  for name, proto in pairs(tiles) do
+    local layers = {}
+    pcall(function()
+      local mask = proto.collision_mask
+      if mask and mask.layers then
+        for layer in pairs(mask.layers) do
+          if type(layer) == "string" then
+            table.insert(layers, layer)
+          end
+        end
+      end
+    end)
+    table.sort(layers)
+    local fluid = nil
+    pcall(function()
+      if proto.fluid then
+        fluid = proto.fluid.name
+      end
+    end)
+    local entry = {collision_layers = layers}
+    if fluid then
+      entry.fluid = fluid
+    end
+    out[name] = entry
+  end
+  return out
+end
+
 local function dump_all_items()
   local out = {}
   for _, proto in pairs(prototypes.item) do
     local entry = {
       type = proto.type,
+      -- Tag d'affichage : Factorio classe les packs de science en "tool",
+      -- mais le rapport les presente comme des items. On garde ``type`` brut
+      -- pour la logique future et on expose ``display_type`` pour l'affichage.
+      display_type = "item",
       subgroup = proto.subgroup and proto.subgroup.name or "",
       place_result = proto.place_result and proto.place_result.name or nil,
       fuel_value = fuel_value_of(proto),
       stack_size = stack_size_of(proto),
     }
-    -- Combustible : catégorie fuel + résidu de combustion (sortie du générateur).
+    -- Combustible : catégorie(s) fuel + résidu de combustion (sortie du
+    -- générateur). En 2.1.20, ``fuel_category`` devient ``fuel_categories``.
     pcall(function()
-      if proto.fuel_category then
+      local categories = proto.fuel_categories
+      if type(categories) == "table" then
+        local names = {}
+        for _, category in ipairs(categories) do
+          table.insert(names, category)
+        end
+        if #names > 0 then
+          entry.fuel_categories = names
+          entry.fuel_category = names[1]
+        end
+      end
+    end)
+    pcall(function()
+      if not entry.fuel_category and proto.fuel_category then
         entry.fuel_category = proto.fuel_category
       end
     end)
@@ -73,6 +167,29 @@ local function dump_all_items()
         entry.ammo_category = params.ammo_categories[1]
       end
     end)
+    -- Produits de lancement (ItemWithInventoryPrototype, ex. satellite) :
+    -- envoyer cet item en orbite produit ces items. C'est LA source de
+    -- vérité des packs de science spatiale (pas le silo).
+    -- NB : acces direct aux champs (pas de ref_name/probe, hors de portee
+    -- lexicale ici car definis plus bas dans le fichier).
+    pcall(function()
+      local products = proto.rocket_launch_products
+      if type(products) == "table" and #products > 0 then
+        local dump_products = {}
+        for _, product in ipairs(products) do
+          local name = product.name or product[1]
+          if type(name) == "string" then
+            table.insert(dump_products, {
+              name = name,
+              amount = product.amount,
+            })
+          end
+        end
+        if #dump_products > 0 then
+          entry.rocket_launch_products = dump_products
+        end
+      end
+    end)
     out[proto.name] = entry
   end
   for _, key in ipairs({"gun", "ammo", "tool", "capsule", "module", "armor"}) do
@@ -82,6 +199,7 @@ local function dump_all_items()
         if not out[proto.name] then
           out[proto.name] = {
             type = proto.type,
+            display_type = "item",
             subgroup = proto.subgroup and proto.subgroup.name or "",
             place_result = nil,
             fuel_value = fuel_value_of(proto),
@@ -99,40 +217,12 @@ local function dump_fluids()
   for _, proto in pairs(prototypes.fluid) do
     out[proto.name] = {
       type = "fluid",
+      display_type = "fluid",
       fuel_value = fuel_value_of(proto),
       default_temperature = proto.default_temperature,
     }
   end
   return out
-end
-
-local function energy_source_info(proto)
-  local info = {}
-  local ok, source = pcall(function()
-    return proto.energy_source
-  end)
-  if not ok or source == nil then
-    return info
-  end
-  local ok_type, source_type = pcall(function()
-    return source.type
-  end)
-  if ok_type then
-    info.type = source_type
-  end
-  if source_type == "burner" then
-    local ok_fuel, categories = pcall(function()
-      return source.fuel_categories
-    end)
-    if ok_fuel and categories then
-      local list = {}
-      for _, category in ipairs(categories) do
-        table.insert(list, category)
-      end
-      info.fuel_categories = list
-    end
-  end
-  return info
 end
 
 local function fluidbox_info(proto)
@@ -188,10 +278,6 @@ local function string_list(list)
     end
   end
   return out
-end
-
-local function non_empty(list)
-  return list and #list > 0 and list or nil
 end
 
 -- En 2.0 il n'y a PAS de propriete generique energy_source : chaque type
@@ -303,6 +389,15 @@ local function dump_entities()
       if auto_selects_recipe(proto) then
         entry.auto_select = true
       end
+      -- Vitesse de craft : necessaire au rapport de complexite
+      -- (temps reel = energy / crafting_speed). En 2.1 la valeur n'est pas
+      -- exposee comme champ : c'est la methode get_crafting_speed().
+      local ok_speed, speed = pcall(function()
+        return proto.get_crafting_speed()
+      end)
+      if ok_speed and speed then
+        entry.crafting_speed = speed
+      end
     end
 
     -- Capacite d'extraction : categories de ressources minables.
@@ -315,22 +410,86 @@ local function dump_entities()
       end
     end
 
-    -- Capacite de pompage (offshore-pump, pump).
+    -- Ressource (gisement) ou arbre : proprietes de minage (temps, produits,
+    -- fluide requis). Le dump ne garde sinon que le type seul et l'outil
+    -- Python devrait deviner temps et rendement : on exporte la source de
+    -- verite (les arbres donnent le bois, minage a la main).
+    if proto.type == "resource" or proto.type == "tree" then
+      local props = probe(proto, "mineable_properties")
+      if props then
+        local products = {}
+        local raw_products = probe(props, "products")
+        if raw_products then
+          pcall(function()
+            for _, product in ipairs(raw_products) do
+              table.insert(products, {
+                type = probe(product, "type"),
+                name = ref_name(probe(product, "name")),
+                amount = probe(product, "amount"),
+              })
+            end
+          end)
+        end
+        entry.mineable_properties = {
+          minable = probe(props, "minable"),
+          mining_time = probe(props, "mining_time"),
+          required_fluid = ref_name(probe(props, "required_fluid")),
+          fluid_amount = probe(props, "fluid_amount"),
+          products = products,
+        }
+      end
+    end
+
+    -- Capacite de pompage (offshore-pump, pump). En 2.1, ``pumping_speed``
+    -- peut etre absent : on expose quand meme le fluide pompe.
     local pspeed = probe(proto, "pumping_speed")
     if pspeed then
       entry.pumping_speed = pspeed
-      local fluid = probe(proto, "fluid")
-      pcall(function()
-        if fluid then
-          entry.pumped_fluid = fluid.name
-        end
-      end)
     end
-
+    -- Fluide pompe DEPUIS LA CARTE : offshore-pump uniquement. Une vraie
+    -- source (comme un gisement), pas un convertisseur : la chaudiere ou la
+    -- machine a vapeur portent aussi un fluide mais ne pompent rien.
     -- Fluides : boites d'entree/sortie avec filtres eventuels.
     local inputs, outputs, details = fluidbox_info(proto)
     if inputs > 0 or outputs > 0 then
       entry.fluidboxes = {input = inputs, output = outputs, detail = details}
+    end
+
+    -- Regles de placement sur tuiles (couches requises/collident), brutes :
+    -- la resolution du fluide pompe par tuiles se fait cote Python.
+    local rules = {}
+    local ok_rules = pcall(function()
+      local raw_rules = proto.tile_buildability_rules
+      if raw_rules then
+        for _, rule in ipairs(raw_rules) do
+          local required = {}
+          local colliding = {}
+          if rule.required_tiles and rule.required_tiles.layers then
+            for layer in pairs(rule.required_tiles.layers) do
+              if type(layer) == "string" then
+                table.insert(required, layer)
+              end
+            end
+          end
+          if rule.colliding_tiles and rule.colliding_tiles.layers then
+            for layer in pairs(rule.colliding_tiles.layers) do
+              if type(layer) == "string" then
+                table.insert(colliding, layer)
+              end
+            end
+          end
+          table.sort(required)
+          table.sort(colliding)
+          local r = {required_tiles = required, colliding_tiles = colliding}
+          if rule.remove_on_collision then
+            r.remove_on_collision = true
+          end
+          table.insert(rules, r)
+        end
+      end
+    end)
+    if ok_rules and #rules > 0 then
+      entry.tile_buildability_rules = rules
     end
 
     -- Energie consommee : source (burner/electric/fluid/heat/void) + usage.
@@ -392,6 +551,33 @@ local function dump_entities()
       entry.rocket_parts_required = rpr
     end
 
+    -- Produits d'un lancement : le silo ne passe pas par une recette, donc la
+    -- sortie (ex. packs de science spatiale) doit venir du prototype. On sonde
+    -- les noms connus ; si aucun n'existe, l'outil Python garde sa constante.
+    if proto.type == "rocket-silo" then
+      local launch_products = {}
+      for _, prop in ipairs({"rocket_launch_products", "rocket_products"}) do
+        local list = probe(proto, prop)
+        if list then
+          pcall(function()
+            for _, product in ipairs(list) do
+              table.insert(launch_products, {
+                type = probe(product, "type"),
+                name = ref_name(probe(product, "name")),
+                amount = probe(product, "amount"),
+              })
+            end
+          end)
+          if #launch_products > 0 then
+            break
+          end
+        end
+      end
+      if #launch_products > 0 then
+        entry.rocket_launch_products = launch_products
+      end
+    end
+
     -- Lien inverse : quels items placent cette entite.
     local itp = probe(proto, "items_to_place_this")
     if itp then
@@ -420,8 +606,17 @@ local function dump_recipes()
     for _, product in ipairs(proto.products) do
       table.insert(products, {type = product.type, name = product.name, amount = product.amount})
     end
+    -- 2.1 n'expose pas toujours ``category`` sur LuaRecipePrototype : on
+    -- sonde sans erreur, puis on retombe sur ``categories`` ou "crafting".
+    local category = probe(proto, "category")
+    if category == nil then
+      local categories = probe(proto, "categories")
+      if categories and #categories > 0 then
+        category = categories[1]
+      end
+    end
     out[proto.name] = {
-      category = proto.category,
+      category = category or "crafting",
       energy = proto.energy,
       ingredients = ingredients,
       products = products,
@@ -490,13 +685,46 @@ local function dump_technologies()
     if #effects > 0 then
       entry.effects = effects
     end
+    -- Déclencheur de recherche (craft-item, mine-entity, send-item-to-orbit…).
+    -- Les champs varient selon le type : on garde tout ce qui existe, sinon
+    -- les techs « mine-entity » perdent leur cible (ex. uranium-mining).
     local trigger = probe(proto, "research_trigger")
-    if trigger then
-      entry.research_trigger = {
-        type = probe(trigger, "type"),
-        item = ref_name(probe(trigger, "item")),
-        count = probe(trigger, "count"),
-      }
+    if type(trigger) == "table" then
+      local trig = {type = trigger.type}
+      local item = trigger.item
+      if type(item) == "string" then
+        trig.item = item
+      elseif type(item) == "table" then
+        trig.item = item.name or item[1]
+      end
+      local count = trigger.count
+      if type(count) == "number" then
+        trig.count = count
+      elseif type(count) == "table" then
+        trig.count = count.min or count[1] or 1
+      end
+      if type(trigger.entities) == "table" then
+        local entities = {}
+        for _, name in ipairs(trigger.entities) do
+          if type(name) == "string" then
+            table.insert(entities, name)
+          end
+        end
+        trig.entities = entities
+      end
+      if type(trigger.fluid) == "string" then
+        trig.fluid = trigger.fluid
+      end
+      if type(trigger.amount) == "number" then
+        trig.amount = trigger.amount
+      end
+      local entity = trigger.entity
+      if type(entity) == "string" then
+        trig.entity = entity
+      elseif type(entity) == "table" then
+        trig.entity = entity.name or entity[1]
+      end
+      entry.research_trigger = trig
     end
     out[proto.name] = entry
   end
@@ -533,6 +761,8 @@ script.on_init(function()
 
   local payload = {
     meta = {game_version = script.active_mods["base"]},
+    inventory = dump_inventory(),
+    tiles = dump_tiles(),
     items = dump_all_items(),
     fluids = dump_fluids(),
     entities = dump_entities(),

@@ -183,33 +183,48 @@ donc pas biaiser la construction.
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
-| `mod_seed.py` | 126 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` |
-| `seed_graph.py` | 1720 | Accessoire | Graphe HTML interactif ; **optionnel** (Graphviz absent → ignoré sans erreur) |
+| `mod_seed.py` | 482 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` ; fournit la baseline vanilla (`build_vanilla_seed`) et `tag_progression` aux rapports |
+| `seed_graph.py` | 1719 | Accessoire | Graphe de production HTML (`seed.graph.html`) ; **optionnel** (Graphviz absent → ignoré sans erreur) |
+| `complexity_graph.py` | 1382 | Accessoire | Rapport de complexité de la seed (`seed.complexity.html`, SVG Python pur) ; `analyze_playthrough` partagé avec les rapports vanilla |
+| `difficulty_graph.py` | 550 | Accessoire | Courbe de difficulté cumulée mod vs vanilla (`seed.difficulty.html`, commande `compare`) |
+| `vanilla_complexity.py` | 406 | Accessoire | Rapport « partie simulée » du dump vanilla (section de `randputf report`) |
+| `dump_html.py` | 396 | Accessoire | Navigateur HTML du dump (`randputf dump`) |
+| `report.py` | 119 | Accessoire | Rapport complet du dump vanilla : assemble complexité + difficulté + partie simulée (`randputf report`) |
+| `html_ui.py` | 34 | Accessoire | Helpers HTML partagés (CSS, infobulles, JS) |
 
 `seed_graph.py` est le plus gros fichier du tool et le seul à dépendre d'un
-binaire externe. Son absence ne bloque jamais une génération
-(`tool/__main__.py:127-130`).
+binaire externe (`dot`). Son absence ne bloque jamais une génération
+(`cmd_generate`). Les autres vues HTML sont en SVG Python pur : aucune
+dépendance, ouverture hors ligne (détail dans
+[graphe-interactif.md](graphe-interactif.md)).
 
 ## 10. `tool/replay/player.py` — le rejoueur
 
-1074 lignes. Simule une partie complète sur la seed finale pour **prouver** la
+1088 lignes. Simule une partie complète sur la seed finale pour **prouver** la
 solvabilité. Ce n'est pas le validateur : c'est une preuve par simulation
 (1501/1501 victoires mesurées, `docs/solvabilite.md` §15ter).
+
+Sa condition de victoire est **dérivée des faits** (`db.rocket_chain`,
+`rocket_chain_from_dump` — voir `docs/vanilladb.md` §6.7) : aucun nom d'item
+vanilla n'y est en dur ; le garde-fou « lab » passe par le tag `is_research`.
 
 Il est **accessoire** : la CLI ne l'expose pas comme commande. Il est appelé par
 la suite de tests et par les sweeps.
 
 ## 11. `tool/__main__.py` — la CLI
 
-209 lignes, 5 commandes.
+399 lignes, 8 commandes.
 
-| Commande | Ligne | Rôle | Sortie |
-|----------|-------|------|--------|
-| `parse` | 58 | Charge et résume la base vanilla | Résumé texte |
-| `audit` | 64 | Audite les tags | exit 1 si violation |
-| `difficulty` | 133 | Génère puis affiche l'ardoise | Tableau texte |
-| `generate` | 85 | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
-| `witness` | 145 | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
+| Commande | Rôle | Sortie |
+|----------|------|--------|
+| `parse` | Charge et résume la base vanilla | Résumé texte |
+| `audit` | Audite les tags (invariants C8) | exit 1 si violation |
+| `difficulty` | Génère puis affiche l'ardoise | Tableau texte |
+| `compare` | Compare la difficulté d'une seed à la baseline vanilla (HTML) | `output/` HTML |
+| `report` | Rapport complet du dump vanilla : chaîne de progression, tags, contrôles | `output/vanilla.report.html` + résumé |
+| `dump` | Navigateur HTML du dump : inventaire A→Z, tuiles, entités, items, recettes, techs, recherche globale | `output/vanilla.dump.html` |
+| `generate` | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
+| `witness` | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
 
 Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
 vanilla alternatif).
@@ -225,7 +240,7 @@ qu'aucun dump ne puisse être pris depuis une partie randomisée.
 |--------|--------|---------|
 | Pipeline | 33 | 17 phases `generator/*` ; 5 `common` (`config`, `db`, `rng`, `tagsets`, `weighted_picker`) ; 8 prototypes ; `pipeline_validator` ; `audit/difficulty` (à l'export) ; `exporters/mod_seed` |
 | Conditionnel | 2 | `late_raws.py`, `craft_quantity.py` |
-| Accessoire | 10 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `solver`, `player`, `bootstrap_guard` |
+| Accessoire | 16 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `solver`, `player`, `bootstrap_guard` ; vues HTML : `complexity_graph`, `difficulty_graph`, `vanilla_complexity`, `dump_html`, `report`, `html_ui` |
 | Non branché | 3 | `prototypes/difficulty_knobs`, `prototypes/progressive_extractors`, `prototypes/rare_resources` |
 
 Les trois modules non branchés sont **testés** : leurs tests passent et

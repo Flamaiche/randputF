@@ -134,9 +134,15 @@ randputF/
 │   │   ├── nonfinite_randomisation.py # A1 — BRANCHÉ (map_patches.apply_nonfinite_randomisation)
 │   │   ├── rare_resources.py   # expérimental — testé, non branché
 │   │   └── progressive_extractors.py # expérimental — testé, non branché
-│   ├── exporters/       # écriture seed.json / seed.lua / locale / graphe
-│   │   ├── mod_seed.py         # seed.json + seed.lua
-│   │   └── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   ├── exporters/       # écriture seed.json / seed.lua / locale / vues HTML
+│   │   ├── mod_seed.py         # seed.json + seed.lua + locale
+│   │   ├── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   │   ├── complexity_graph.py # rapport de complexité (seed.complexity.html)
+│   │   ├── difficulty_graph.py # courbe de difficulté vs vanilla (seed.difficulty.html)
+│   │   ├── vanilla_complexity.py # partie simulée du dump vanilla (report)
+│   │   ├── report.py           # rapport complet du dump vanilla (report)
+│   │   ├── dump_html.py        # navigateur du dump (dump)
+│   │   └── html_ui.py          # helpers HTML partagés
 │   ├── replay/          # audit externe : rejoueur de seed (player.py)
 │   └── validator/       # vérification de solvabilité
 │       ├── pipeline_validator.py  # 7 checks sur ProgressionState

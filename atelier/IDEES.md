@@ -158,4 +158,79 @@ recouvrement partiel (deux recettes satisfiables à la fois) que « entrées
 disjointes » couvre aussi, au prix d'un pool plus contraint ; traité par le
 même re-tirage au niveau de l'ingrédient.
 
+## Taxonomie `medium` : nommer les milieux « lake » et « deposit »
 
+**Pourquoi.** Le champ `medium` des extracteurs (docs/tags.md §6) décrit le
+**milieu** d'où l'on tire : `water` = un plan d'eau (offshore-pump),
+`fluid` = un gisement de fluide (pumpjack), `ground` = le sol (drill).
+Ce sont des labels de taxonomie modpack, mais `water` entre en collision
+avec le **nom de fluide** vanilla : « medium = water » se lit « pompe le
+fluide water » alors que le sens est « tire d'un lac » — lac qui, dans
+randputF, peut contenir n'importe quel fluide pipable (docs/starter.md :
+un fluide par lac tiré, l'eau vanilla est effacée de la carte). `fluid`
+est tout aussi ambigu (quel fluide ?).
+
+**Correction retenue.** Vocabulaire anglais, cohérent avec le reste de la
+taxonomie : `water` → `lake`, `fluid` → `deposit`, `ground` inchangé.
+Renommer aussi les **booléens dérivés** — `is_water_extractor` →
+`is_lake_extractor`, `is_fluid_extractor` → `is_deposit_extractor`
+(`is_ground_extractor` inchangé) : « water extractor » est doublement faux,
+le lac ne contient pas forcément de l'eau. Le champ et les booléens ne
+sortent jamais du Python (aucune occurrence dans `mod/`, `config/` ni les
+JSON générés) : renommage interne, sans compatibilité disque.
+
+**Étendue.**
+- `tool/parsers/vanilla.py` : affectation du medium (~399-408), booléens
+  dérivés (~427-429), `is_offshore_pump = is_water_extractor` (~486),
+  résumé (~617) ;
+- `tool/common/db.py` : champ (~180), booléens + commentaires (~244-246),
+  `extractors_for_medium` (~433) ;
+- `tool/common/demo.py` (~120-126) — au passage, incohérence réelle : le
+  pumpjack de la démo porte `medium="ground"` alors que le parseur vanilla
+  lui donne `fluid` (catégorie `basic-fluid`) ; à corriger du même coup ;
+- `tool/generator/starter_chain.py` (~199, 365) : littéraux `"ground"` ;
+- `tool/audit/tags.py` (~33-37) : messages d'audit mentionnant les mediums ;
+- tests : `test_vanilla_tags.py` (~148-149, 262, 272) ;
+- docs : `docs/tags.md` (~36, 215, 218), `docs/vanilladb.md` (~82, 190, 278).
+
+
+## Câbler le rejoueur dans `generate` (garde de sortie)
+
+**Pourquoi.** Le rejoueur prouve la solvabilité par simulation mais n'est
+branché nulle part dans la génération : `generate_with_retry`
+(`tool/service.py`) s'arrête au validateur statique
+(`validate_seed`/`validate_pipeline`). La preuve vit seulement dans les
+sweeps et la suite de tests (1501/1501 victoires mesurées).
+
+**Recommandation (non approuvée).** Dernier garde après la validation
+statique : `FakePlayer(db, seed).play()` sur la seed retenue ; défaite →
+essai suivant, comme les autres rejets. Coût : une rejouée par seed
+acceptée (~1 s mesuré). Bénéfice : plus AUCUNE seed injouable ne peut
+sortir, même si un invariant statique vient à manquer une dérive. À
+décider : budget max d'essais (aujourd'hui 10) suffisant si le rejoueur
+ajoute des rejets ?
+
+**État.** Refusé implicitement jusqu'ici (le rejoueur est un audit
+externe, volontairement hors du chemin de génération). À rouvrir le jour
+où l'interface graphique expose `generate` directement.
+
+## Noms vanilla en dur côté outil — état du chantier
+
+Principe : l'outil ne doit porter **aucun nom d'item vanilla** ; tout se
+dérive des faits du dump. Avancement (2026-11-11) :
+
+- **Nettoyé** — `tool/replay/player.py` : `VICTORY_ITEMS` et le littéral
+  `"satellite"` supprimés (victoire = `db.rocket_chain` dérivée :
+  `rocket_parts_required` → recettes de fusée → ingrédients, produits de
+  lancement par `rocket_launch_products`) ; garde-fou lab par tag
+  `is_research` ; fallbacks `"offshore-pump"`/`"pumpjack"` de
+  `_infer_extractors` retirés (candidats par tags uniquement, une base
+  sans pompe ne pompe plus rien).
+- **Restants, par design** — `tool/common/tagsets.py` (`ROCKET_CHAIN`,
+  `ENVIRONMENTAL_ITEMS`, `VEHICLE_GUNS` : choix de conception consignés
+  docs/tags.md §14) et `tool/generator/endgame_phase.py` (le générateur
+  MODPACK garantit la chaîne §14 — il fabrique un mod vanilla-randomisé,
+  pas un mod pour d'autres mods).
+- **Restants, à reprendre** — `tool/audit/difficulty.py`,
+  `tool/common/demo.py` (base synthétique de test : tolérable mais à
+  aligner sur les faits si le dump change), `tool/exporters/seed_graph.py`.

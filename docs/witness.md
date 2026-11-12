@@ -12,17 +12,19 @@ Retour : [README.md](../README.md) · [nondeterminism.md](nondeterminism.md).
 
 ```bash
 pip install .
-randputf witness --seed 5 --expect c9566134864507d900f65806ade277d9
+randputf witness --seed 5 --expect 0e767f5d91c3d0e7838e0c75c0dbd064
 ```
 
-L'empreinte de la version actuelle (0.0.1) s'établit ainsi :
+L'empreinte de l'état courant du dépôt (seed 5) s'établit ainsi :
 
 ```
-c9566134864507d900f65806ade277d9
+0e767f5d91c3d0e7838e0c75c0dbd064
 ```
 
-> Ce hash correspond à la **v0.0.1**, la version courante sur le dépôt.
-> Il **change à chaque bump de version** (le dossier racine de l'archive intègre `randputF_<version>`, voir §3.4), même si le contenu du mod ne change pas.
+> Ce hash correspond à **l'état courant du dépôt** (v0.0.2 en préparation,
+> dump vanilla de l'exporter 0.1.5). Il **change à chaque bump de version** (le
+> dossier racine de l'archive intègre `randputF_<version>`, voir §3.4), même si
+> le contenu du mod ne change pas.
 > Pour la version que vous testez, lisez l'empreinte consignée dans `.github/workflows/ci.yml`, qui est toujours à jour.
 
 L'instruction `witness --seed 5` assemble le mod lié à la seed 5 avant d'en calculer le md5 canonique. L'option `--expect <hash>` effectue la comparaison et produit une erreur en cas d'écart. Sans `--expect`, la commande se contente de générer et d'afficher le témoin.
