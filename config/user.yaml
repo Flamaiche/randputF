@@ -21,7 +21,3 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # (fichier vide : 100 % defaults tant que rien n'est renseigné)
-
-paths:
-  # ~/.var/app/com.valvesoftware.Steam/.factorio/mods).
-  factorio_mods: "~/.var/app/com.valvesoftware.Steam/.factorio/mods"
