@@ -145,7 +145,10 @@ class ItemDef:
 
     @property
     def is_handheld_gun(self) -> bool:
-        """Arme utilisable à pied (hors armes montées sur véhicule/spidertron)."""
+        """Indique si l'item est une arme utilisable à pied.
+
+        Retourne ``True`` pour les items ``is_gun`` qui ne figurent pas dans ``VEHICLE_GUNS`` ; les armes montées sur véhicule ou spidertron sont exclues.
+        """
         return self.is_gun and self.name not in VEHICLE_GUNS
 
     @property
@@ -161,8 +164,10 @@ class ItemDef:
 
 @dataclass(frozen=True)
 class FluidDef:
-    """Un fluide est identifie par son nom uniquement :
-    la temperature n'est pas une dimension ici."""
+    """Fluide du dump, identifié uniquement par son nom.
+
+    ``name`` est l'identifiant Factorio et ``fuel_value`` sa valeur combustible éventuelle (``None`` si non combustible). La température n'est volontairement pas une dimension : deux températures d'un même fluide partagent la même entrée.
+    """
 
     name: str
     fuel_value: float | None = None
@@ -311,8 +316,10 @@ class BuildingDef:
 
 @dataclass
 class RecipeRef:
-    """Recette brute du dump : nom, catégorie, ingrédients, produits et
-    temps d'énergie — lue directement depuis ``vanilla_dump.json``."""
+    """Recette brute lue dans ``vanilla_dump.json``.
+
+    ``name``/``category`` identifient la recette, ``ingredients`` et ``products`` sont des tuples ``(type, nom, montant)`` (``item``/``fluid``) et ``energy`` porte le temps de craft en secondes. Aucune normalisation n'est appliquée : les faits du dump restent la source de vérité.
+    """
     name: str
     category: str = ""
     ingredients: tuple = ()
@@ -342,14 +349,20 @@ class VanillaDB:
     rocket_chain: dict = field(default_factory=dict)
 
     def beltable_items(self) -> list[ItemDef]:
-        """Items solides posables sur tapis (hors outils), triés par nom."""
+        """Retourne les items solides posables sur tapis.
+
+        Exclut les outils (dont les packs de science) et trie le résultat par nom. La liste est dérivée de ``self.items`` et ne filtre pas selon la taille de stack.
+        """
         return sorted(
             (i for i in self.items.values() if not i.is_tool),
             key=lambda i: i.name,
         )
 
     def pipable_fluids(self) -> list[FluidDef]:
-        """Fluides pipables du dump, triés par nom."""
+        """Retourne tous les fluides pipables du dump, triés par nom.
+
+        La liste est dérivée de ``self.fluids`` ; le filtrage par usage (extraction, barillage) est laissé aux pools spécialisées.
+        """
         return sorted(self.fluids.values(), key=lambda f: f.name)
 
     @property
@@ -375,7 +388,10 @@ class VanillaDB:
         return frozenset(patch_resources) | set(ENVIRONMENTAL_ITEMS) | self.extraction_only_fluids
 
     def fuel_items(self) -> list[ItemDef]:
-        """Items à valeur combustible, triés par nom."""
+        """Retourne les items combustibles, triés par nom.
+
+        Un item est retenu dès que ``fuel_value`` est non nul, indépendamment de ses catégories de carburant ; ``fuels_for`` affine ensuite par bâtiment.
+        """
         return sorted(
             (i for i in self.items.values() if i.fuel_value),
             key=lambda i: i.name,
@@ -421,15 +437,20 @@ class VanillaDB:
         return flow["input"] is not None and bool(flow["outputs"])
 
     def fuel_fluids(self) -> list[FluidDef]:
-        """Fluides à valeur combustible, triés par nom."""
+        """Retourne les fluides combustibles, triés par nom.
+
+        Un fluide est retenu dès que ``fuel_value`` est non nul ; sert aux bâtiments alimentés en fluide.
+        """
         return sorted(
             (f for f in self.fluids.values() if f.fuel_value),
             key=lambda f: f.name,
         )
 
     def buildings_with_tag(self, tag: str) -> list[BuildingDef]:
-        """Bâtiments portant un TAG donné. Un bâtiment multi-tags apparaît dans
-        CHAQUE catégorie qu'il porte."""
+        """Retourne les bâtiments portant un tag donné.
+
+        ``tag`` est un attribut booléen de ``BuildingDef`` (``is_crafter``, ``is_extractor``…). Un bâtiment multi-tags apparaît dans chaque catégorie ; le résultat est trié par nom.
+        """
         return sorted(
             (b for b in self.buildings.values() if getattr(b, tag, False)),
             key=lambda b: b.name,

@@ -108,8 +108,10 @@ INVARIANTS = (
 
 @dataclass
 class AuditReport:
-    """Résultat de l'audit de tags : violations d'invariants bâtiments/items,
-    comptage par tag, entités sans rôle routé."""
+    """Résultat complet de l'audit de tags.
+
+    Agrège les violations bâtiments/items, les compteurs par tag, les entités sans rôle et les items environnementaux/virtuels produits à tort. `ok` résume l'absence de violation.
+    """
     violations: list[str] = field(default_factory=list)
     tag_counts: dict[str, int] = field(default_factory=dict)
     untagged: list[str] = field(default_factory=list)
@@ -122,13 +124,18 @@ class AuditReport:
 
     @property
     def ok(self) -> bool:
-        """Vrai si l'audit ne relève aucune violation (bâtiments ni items)."""
+        """Indique si l'audit de tags est sans violation.
+
+        Retourne ``True`` quand ni ``violations`` (bâtiments) ni ``item_violations`` (items) ne contiennent d'entrée, ``False`` sinon. Aucun paramètre ; ne tient pas compte des simples avertissements.
+        """
         return not (self.violations or self.item_violations)
 
 
 def audit_building_tags(db: VanillaDB) -> AuditReport:
-    """Audite tous les bâtiments de ``db`` : violations d'invariants, machines
-    à recette cachée non routées, comptage par tag."""
+    """Audite les bâtiments d'une base vanilla.
+
+    `db` est la `VanillaDB` chargée. Vérifie les rôles fonctionnels, les invariants de tags et le routage des recettes cachées. Retourne un `AuditReport` renseigné (compteurs et violations).
+    """
     report = AuditReport()
 
     for bname, b in db.buildings.items():
@@ -187,10 +194,10 @@ ITEM_INVARIANTS = (
 
 
 def audit_item_tags(db: VanillaDB) -> AuditReport:
-    """Audite les tags §9 des items : orthogonalité + craftabilité. Un item
-    environnemental (récolté à la main) ou virtuel (blueprint/planner) NE DOIT
-    PAS avoir de recette vanilla le produisant — sinon le générateur créerait
-    un fake cycle (recette → item « du monde »)."""
+    """Audite les tags des items d'une base vanilla.
+
+    `db` est la `VanillaDB`. Vérifie l'orthogonalité des tags et détecte les items environnementaux ou virtuels produits par une recette. Retourne un `AuditReport` dédié aux items.
+    """
     report = AuditReport()
 
     # Recettes produisant chaque item (type+name), une seule fois par item.
@@ -231,7 +238,10 @@ def audit_item_tags(db: VanillaDB) -> AuditReport:
 
 
 def summarize_tags(db: VanillaDB, report: AuditReport) -> str:
-    """Résumé textuel de l'audit de tags pour l'affichage CLI."""
+    """Met en forme le bilan de l'audit de tags.
+
+    `db` fournit les totaux de référence et `report` les violations/compteurs. Retourne une chaîne multi-lignes destinée à la sortie CLI.
+    """
     lines = [
         f"Bâtiments audités : {report.buildings_checked}",
         f"Tags distincts activés : {len(report.tag_counts)}",

@@ -13,10 +13,20 @@ _PLAYTHROUGH_CSS = '\n.scroll{overflow:auto;max-height:70vh;scrollbar-gutter:sta
 
 
 def _esc(value: Any) -> str:
+    """Échappe une valeur pour une insertion HTML sûre.
+
+    ``value`` est converti en chaîne puis échappé. Retourne le texte prêt à être inséré dans le document.
+    """
     return _html.escape(str(value))
 
 
 def _fmt(value: Any) -> str:
+    """Formate un nombre pour l'affichage.
+
+    Les entiers sont séparés par des espaces ; les autres valeurs gardent au
+    plus deux décimales utiles. Les valeurs non numériques sont renvoyées
+    telles quelles.
+    """
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -27,6 +37,11 @@ def _fmt(value: Any) -> str:
 
 
 def _write(out: Any, text: str) -> None:
+    """Écrit un document HTML vers un chemin, un fichier ouvert ou un objet chemin.
+
+    Les dossiers parents sont créés au besoin. Cette souplesse permet aux
+    appelants CLI d'écrire sur disque ou dans un flux de test.
+    """
     if isinstance(out, Path):
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")
@@ -67,7 +82,10 @@ def _raw_resources(dump: dict) -> list[str]:
 
 
 def _universe(dump: dict, seed: dict, analysis: dict) -> dict[str, str]:
-    """Classe chaque nom : item / fluide / ressource, depuis le dump."""
+    """Classe les noms du dump en items, fluides ou ressources.
+
+    ``dump`` fournit les items/fluides, ``seed`` les ressources brutes et ``analysis`` les données de complexité. Retourne ``{nom: type}`` pour l'affichage et les filtres.
+    """
     fluids = {str(name) for name in dump.get("fluids") or {}}
     kinds: dict[str, str] = {}
     for name in dump.get("items") or {}:
@@ -98,6 +116,12 @@ def _universe(dump: dict, seed: dict, analysis: dict) -> dict[str, str]:
 
 
 def _rows(dump: dict, seed: dict, analysis: dict) -> list[dict]:
+    """Construit une ligne par item, fluide ou ressource brute.
+
+    Chaque ligne reprend les volumes, temps, énergie et tags calculés par
+    l'analyse, puis les trie par volume simulé décroissant (produit +
+    consommé) pour mettre en avant les éléments dominants.
+    """
     stats = analysis.get("item_stats") or {}
     kinds = _universe(dump or {}, seed, analysis)
     rows: list[dict] = []
@@ -124,6 +148,11 @@ def _rows(dump: dict, seed: dict, analysis: dict) -> list[dict]:
 
 
 def _stat(label: str, value: str, cls: str = "", hint: str = "") -> str:
+    """Génère une tuile du bandeau de statistiques.
+
+    ``cls`` choisit la couleur de la valeur et ``hint`` ajoute une infobulle
+    discrète sous celle-ci.
+    """
     hint_html = f'<div class="hint">{_esc(hint)}</div>' if hint else ""
     return (
         f'<div class="stat"><div class="lab">{_esc(label)}</div>'
@@ -132,6 +161,12 @@ def _stat(label: str, value: str, cls: str = "", hint: str = "") -> str:
 
 
 def _item_tags(name: str, dump: dict, seed: dict | None = None) -> str:
+    """Résume les tags d'un item ou d'un fluide pour le tableau.
+
+    Les informations viennent uniquement du dump et, si elle est fournie, de
+    la seed : type d'affichage, sous-groupe, rôle « science » ou
+    « progression » et valeur de carburant pour les fluides.
+    """
     items = dump.get("items", {})
     fluids = dump.get("fluids", {})
     entry = items.get(name) or fluids.get(name)
@@ -166,6 +201,11 @@ def _item_tags(name: str, dump: dict, seed: dict | None = None) -> str:
 
 
 def _bar_list(title: str, pairs: list[tuple[str, float]], color: str) -> str:
+    """Génère un classement en barres horizontales.
+
+    ``pairs`` contient les noms et volumes à afficher ; les barres sont
+    normalisées sur la plus grande valeur pour rester lisibles.
+    """
     if not pairs:
         return f'<h3>{_esc(title)}</h3><p class="muted">Aucune donnée.</p>'
     top = max(value for _name, value in pairs) or 1
@@ -182,12 +222,23 @@ def _bar_list(title: str, pairs: list[tuple[str, float]], color: str) -> str:
 
 
 def _tags(items: list[str], empty: str) -> str:
+    """Affiche une liste de valeurs en badges HTML.
+
+    ``empty`` est le texte affiché quand la liste est vide, ce qui évite les
+    sections muettes dans le rapport.
+    """
     if not items:
         return f'<span class="muted">{_esc(empty)}</span>'
     return "".join(f'<span class="tag">{_esc(item)}</span>' for item in items)
 
 
 def _info_sections(seed: dict, analysis: dict) -> str:
+    """Assemble les blocs d'information secondaires du rapport.
+
+    On y trouve les bâtiments utilisés, les ressources brutes disponibles et
+    non utilisées, ainsi que les recettes encore verrouillées à la fin de la
+    simulation.
+    """
     buildings = analysis.get("buildings") or []
     raws = analysis.get("raw_resources") or []
     unused = analysis.get("unused_raw_resources") or []
@@ -207,6 +258,12 @@ def _info_sections(seed: dict, analysis: dict) -> str:
 
 
 def _table(rows: list[dict]) -> str:
+    """Construit le tableau détaillé par item et fluide.
+
+    La colonne « Externe » n'apparaît que si au moins une fourniture hors
+    chaîne existe. Les cellules numériques portent leur valeur brute pour que
+    le tri JavaScript reste exact.
+    """
     has_external = any(row.get("external", 0) > 0 for row in rows)
     head_parts = [
         _th("Item / fluide", "name", "text", "Nom de l'item ou du fluide."),
@@ -290,6 +347,12 @@ def _table(rows: list[dict]) -> str:
 
 
 def _fragments(seed: dict, analysis: dict, rows: list[dict]) -> dict:
+    """Prépare les fragments HTML du rapport de partie simulée.
+
+    Le résultat contient le bandeau, les barres de volumes, le tableau
+    détaillé et l'éventuelle note sur les items inconnus. Les données brutes
+    (analyse, lignes, seed, progression) y sont jointes pour les appelants.
+    """
     header_stats = "".join(
         [
             _stat("Crafts", _fmt(analysis.get("total_crafts", 0)), "acc"),
@@ -358,6 +421,12 @@ def playthrough_report(
     seed: dict | None = None,
     title: str | None = None,
 ) -> dict:
+    """Produit le rapport de partie simulée sous forme de fragments et de données.
+
+    Si ``seed`` n'est pas fournie, elle est construite depuis le dump. La
+    fonction exécute l'analyse de partie, marque la progression puis prépare
+    les lignes et fragments HTML destinés au rapport complet.
+    """
     dump = dump or {}
     if seed is None:
         seed = build_vanilla_seed(dump)
@@ -372,6 +441,12 @@ def playthrough_report(
 
 
 def write_playthrough_html(dump: dict, out: Any) -> dict:
+    """Écrit un document HTML autonome de la partie simulée vanilla.
+
+    La seed est dérivée du dump, la simulation est exécutée puis rendue avec
+    les styles et scripts partagés. Retourne l'analyse, les lignes, la seed et
+    la progression utilisées.
+    """
     from tool.exporters.complexity_graph import _CSS as _BASE_CSS
 
     seed = build_vanilla_seed(dump)
@@ -399,6 +474,11 @@ def write_playthrough_html(dump: dict, out: Any) -> dict:
 
 
 def write_vanilla_complexity_html(dump: dict, out: Any) -> None:
+    """Écrit le rapport de complexité de la seed vanilla dérivée du dump.
+
+    Contrairement à :func:`write_playthrough_html`, aucune simulation de
+    partie n'est lancée : seule la vue de complexité est produite.
+    """
     seed = build_vanilla_seed(dump)
     game_version = (dump.get("meta") or {}).get("game_version", "inconnue")
     title = f"Factorio vanilla {game_version}"

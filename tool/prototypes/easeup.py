@@ -37,8 +37,10 @@ class EaseupConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> EaseupConfig:
-        """Construit la config easeup depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``easeup`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts de ``defaults.yaml``. Retourne une ``EaseupConfig`` validée.
+        """
         cfg = config.get("easeup", {})
         return cls(
             prefix=str(cfg.get("prefix", _cfg.default_value("easeup", "prefix"))),

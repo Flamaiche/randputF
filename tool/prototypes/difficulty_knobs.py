@@ -18,7 +18,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class DifficultyConfig(PrototypeConfig):
-    """Configuration pour les knobs de difficulté par seed."""
+    """Configuration des knobs de difficulté par seed.
+
+    ``enabled`` active la dérivation ; chaque knob est une paire de bornes (aire de départ, nids, évolution, pollution, falaises) et ``biomes`` liste les biomes de départ autorisés.
+    """
     enabled: bool = False
     # bornes (min, max) de chaque knob
     starting_area: tuple[int, int] = (2, 5)        # taille (vanilla ≈ 2)
@@ -31,8 +34,10 @@ class DifficultyConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> DifficultyConfig:
-        """Construit la config difficulty depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``difficulty`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts du YAML. Retourne une ``DifficultyConfig`` avec des bornes converties en tuples.
+        """
         cfg = config.get("difficulty", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),
@@ -47,7 +52,10 @@ yaml, jamais codés en dur par le moteur."""
 
 @dataclass
 class DifficultyProfile:
-    """Profil de difficulté d'une seed (mini-modèle)."""
+    """Profil de difficulté concret d'une seed.
+
+    Porte les valeurs tirées pour ``starting_area``, ``nest_density``, ``evolution_factor``, ``pollution_factor``, ``cliff_density`` et ``biome``. ``to_map_settings`` le sérialise.
+    """
     starting_area: int
     nest_density: float
     evolution_factor: float
@@ -56,7 +64,10 @@ class DifficultyProfile:
     biome: str
 
     def to_map_settings(self) -> dict:
-        """Sérialisation compatible map_gen_settings (simplifiée)."""
+        """Sérialise le profil en ``map_gen_settings`` simplifié.
+
+        Retourne un dict contenant l'aire de départ, l'expansion ennemie, l'évolution, la pollution, les falaises et le biome. Les valeurs sont directement dérivées des champs du profil.
+        """
         return {
             "starting_area": self.starting_area,
             "enemy_expansion": {"expansion_cooldown": int(3600 / self.nest_density)},

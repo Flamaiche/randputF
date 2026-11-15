@@ -20,7 +20,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class RecursiveConfig(PrototypeConfig):
-    """Configuration pour la récursion pondérée."""
+    """Configuration de la récursion pondérée.
+
+    Porte les poids par catégorie, l'accélération progressive, les bornes d'itérations/recettes/techs, les jalons de distribution, les armes montées et les groupes compagnons. Les valeurs sont lues par ``from_config``.
+    """
     # Poids de base par catégorie
     category_weights: dict[str, float] = field(default_factory=lambda: {
         "transformer": 30.0,
@@ -82,8 +85,10 @@ class RecursiveConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RecursiveConfig:
-        """Construit la config recursive depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``recursive`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts de ``defaults.yaml``. Retourne une ``RecursiveConfig`` validée, avec les listes et tuples normalisés.
+        """
         rec_cfg = config.get("recursive", {})
         return cls(
             category_weights={
@@ -122,28 +127,46 @@ yaml, jamais codés en dur par le moteur."""
         )
 
     def roll_tech_count(self, rng: random.Random) -> int:
-        """Nombre de technologies enfant tiré au sort (bornes config)."""
+        """Tire le nombre de technologies enfant.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier uniforme entre ``tech_count_min`` et ``tech_count_max`` inclus.
+        """
         return rng.randint(self.tech_count_min, self.tech_count_max)
 
     def roll_recipes_count(self, rng: random.Random) -> int:
-        """Nombre de recettes par bâtiment tiré au sort (bornes config)."""
+        """Tire le nombre de recettes par bâtiment.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier uniforme entre ``recipes_per_building_min`` et ``recipes_per_building_max`` inclus.
+        """
         return rng.randint(self.recipes_per_building_min, self.recipes_per_building_max)
 
     def roll_science_cost(self, rng: random.Random) -> int:
-        """Coût en packs de science d'une tech tiré au sort (bornes config)."""
+        """Tire le coût en packs de science d'une tech.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier uniforme entre ``science_cost_min`` et ``science_cost_max`` inclus.
+        """
         return rng.randint(self.science_cost_min, self.science_cost_max)
 
     @property
     def vehicle_weapon_names(self) -> list[str]:
-        """Items d'armes de la pool (ordre de config)."""
+        """Retourne les armes montées autorisées.
+
+        Le résultat est une copie de ``vehicle_weapons`` dans l'ordre de la configuration. Sert à tirer les emplacements d'armes des véhicules.
+        """
         return list(self.vehicle_weapons)
 
     def roll_vehicle_slot_count(self, rng: random.Random) -> int:
-        """Nombre d'emplacements d'armes d'un véhicule."""
+        """Tire le nombre d'emplacements d'armes d'un véhicule.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier uniforme entre ``vehicle_slots_min`` et ``vehicle_slots_max`` inclus.
+        """
         return rng.randint(self.vehicle_slots_min, self.vehicle_slots_max)
 
     def companion_group_for(self, item_name: str) -> list[str] | None:
-        """Groupe compagnon (C3) contenant ``item_name``, ou None."""
+        """Retourne le groupe compagnon d'un item.
+
+        ``item_name`` est le nom recherché ; le résultat est une copie du premier groupe de ``companions`` qui le contient, ou ``None`` si l'item n'est dans aucun groupe.
+        """
         for group in self.companions:
             if item_name in group:
                 return list(group)

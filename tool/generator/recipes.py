@@ -50,14 +50,20 @@ _AUTO_SELECT_RESAMPLE_ATTEMPTS = 4
 
 
 def set_config(config: dict) -> None:
-    """Branche la config ``recipes`` (proto) sur le module, en cache global."""
+    """Branche la configuration ``recipes`` sur le module.
+
+    ``config`` est le dict complet validé ; il est converti en ``RecipeConfig`` et conservé dans le cache global ``_config``. Retourne ``None``.
+    """
     global _config
     _config = RecipeConfig.from_config(config)
 
 
 @dataclass
 class ProgressionState:
-    """Etat de progression partage par toutes les phases du pipeline."""
+    """État de progression partagé par les phases du pipeline.
+
+    Porte les items/fluides obtenus, les bâtiments débloqués, les recettes et steps posés, les compteurs production/consommation et les affectations de fluides. Les méthodes ``snapshot``/``restore`` permettent les rollbacks.
+    """
 
     obtained_items: set[str] = field(default_factory=set)
     obtained_fluids: set[str] = field(default_factory=set)
@@ -82,20 +88,29 @@ class ProgressionState:
     early: EarlyOracle = field(default_factory=EarlyOracle)
 
     def is_obtained(self, kind: str, name: str) -> bool:
-        """Vrai si la ressource (item/fluide) est obtenable à ce stade."""
+        """Indique si une ressource est obtenable à ce stade.
+
+        ``kind`` vaut ``item`` ou ``fluid`` et ``name`` est le nom recherché. Retourne ``True`` si la ressource figure dans le pool obtenu correspondant.
+        """
         if kind == SLOT_ITEM:
             return name in self.obtained_items
         return name in self.obtained_fluids
 
     def mark_obtained(self, kind: str, name: str) -> None:
-        """Ajoute la ressource (item/fluide) au pool des obtenables."""
+        """Ajoute une ressource au pool des obtenables.
+
+        ``kind`` sélectionne le bucket item/fluide et ``name`` est le nom à ajouter. Mute l'état et retourne ``None``.
+        """
         if kind == SLOT_ITEM:
             self.obtained_items.add(name)
         else:
             self.obtained_fluids.add(name)
 
     def pool(self) -> list[tuple[str, str]]:
-        """Vue triée du pool obtenable : items puis fluides."""
+        """Retourne la vue triée des ressources obtenables.
+
+        Le résultat liste d'abord les items puis les fluides sous forme ``(type, nom)``, chaque bucket étant trié. Sert aux tirages déterministes.
+        """
         return [(SLOT_ITEM, n) for n in sorted(self.obtained_items)] + [
             (SLOT_FLUID, n) for n in sorted(self.obtained_fluids)
         ]
@@ -147,7 +162,10 @@ class ProgressionState:
             self.balance_target = rng.uniform(_config.balance_min, _config.balance_max)
 
     def record_recipe(self, recipe: dict) -> None:
-        """C2 : incrémente production/consommation depuis une recette posée."""
+        """Met à jour les compteurs d'équilibre depuis une recette.
+
+        ``recipe`` fournit résultats et ingrédients ; ``production`` et ``consumption`` sont incrémentés des montants déclarés. Retourne ``None``.
+        """
         for res in recipe.get("results") or []:
             self.production[res["name"]] += res.get("amount", 1)
         for ing in recipe.get("ingredients") or []:
@@ -233,7 +251,10 @@ def make_recipe(
     forbidden: frozenset[str] = frozenset(),
     force_building=None,
 ) -> dict:
-    """Tire et enregistre une recette pour ``product_name``, puis le marque obtenu."""
+    """Tire et enregistre une recette pour un produit.
+
+    ``rng`` est la source aléatoire, ``db`` la base, ``state`` l'état courant, ``product_kind``/``product_name`` le produit cible, ``forbidden`` les ressources interdites et ``force_building`` un atelier imposé. Retourne le dict de recette créé et marque le produit comme obtenu.
+    """
     for existing in state.recipes:
         if (
             existing["results"]
@@ -586,7 +607,10 @@ def _roll_amount(rng, db, name: str) -> int:
 
 
 def _item_is_stackable(db: VanillaDB, name: str) -> bool:
-    """Item inconnu → supposé empilable (ne jamais bloquer une recette)."""
+    """Indique si un item peut être empilé.
+
+    ``db`` fournit les définitions et ``name`` le nom recherché. Un item inconnu est supposé empilable pour ne jamais bloquer une recette ; retourne un booléen.
+    """
     item = db.items.get(name)
     return item is None or item.is_stackable
 
@@ -609,11 +633,17 @@ def _available_fluid_inputs(db, state, exclude_buildings: frozenset[str],
     """Nombre max d'entrées fluides parmi les bâtiments réellement utilisables
     à ce moment : débloqués prioritairement, sinon déblocables sans cycle."""
     def fluid_of(b) -> int:
-        """Nombre d'entrées fluides du bâtiment ``b``."""
+        """Retourne le nombre d'entrées fluides d'un bâtiment.
+
+        ``b`` est la ``BuildingDef`` considérée ; le résultat est ``b.fluid_inputs``. Utilisé pour borner les recettes à fluides.
+        """
         return b.fluid_inputs
 
     def usable(b) -> bool:
-        """Vrai si ``b`` est dans la whitelist (ou débloqué) et atelier."""
+        """Indique si un bâtiment est utilisable comme atelier.
+
+        ``b`` est le bâtiment ; il doit être dans la whitelist (ou débloqué) et reconnu comme atelier. Retourne un booléen.
+        """
         if whitelist is not None:
             return b.name in whitelist and _is_atelier(b)
         return b.name in state.unlocked_buildings and _is_atelier(b)
@@ -633,7 +663,10 @@ def _available_fluid_inputs(db, state, exclude_buildings: frozenset[str],
 
 
 def _max_fluid_inputs(db) -> int:
-    """Nombre max d'entrées fluides qu'un bâtiment de craft du jeu accepte."""
+    """Retourne le nombre maximal d'entrées fluides d'un atelier.
+
+    ``db`` est la base vanilla ; seuls les bâtiments reconnus comme ateliers sont considérés. Retourne au moins ``1`` pour éviter une division par zéro.
+    """
     best = 0
     for b in db.buildings.values():
         if _is_atelier(b):
@@ -762,7 +795,10 @@ def _pick_building(
         )
 
     def blocked(b) -> bool:
-        """Vrai si le bâtiment (artefact) est objectivement indisponible ici."""
+        """Indique si un bâtiment est objectivement indisponible.
+
+        ``b`` est le bâtiment candidat ; la décision est déléguée à ``_blocked_building`` avec la base et l'état courants. Retourne ``True`` si l'atelier ne peut pas être utilisé ici.
+        """
         return _blocked_building(db, state, b.name)
 
     def conflict(b) -> bool:
@@ -852,7 +888,10 @@ def _unlock_building(
     exclude_buildings: frozenset[str] = frozenset(),
     handcraft: bool = False,
 ) -> None:
-    """Debloque un bâtiment : son item est resolu AVANT son inscription."""
+    """Débloque un bâtiment et résout son item avant inscription.
+
+    ``rng``/``db``/``state`` portent le contexte, ``building`` est le bâtiment visé, ``requester`` le produit demandeur, ``exclude_buildings`` les ateliers interdits et ``handcraft`` autorise le craft manuel. Mute l'état et retourne ``None``.
+    """
     item = _item_for_building(db, building.name)
     if item is not None:
         ensure_obtainable(

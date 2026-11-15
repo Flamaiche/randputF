@@ -238,7 +238,6 @@ def _check_tech_recipe_coherence(
     - Double déblocage : une recette dans les effects de plusieurs techs
       (inutile et confusant, même si Factorio ignore les doublons).
     """
-    # Recettes débloquées par les techs
     tech_recipes: set[str] = set()
     for tech in technologies:
         for effect in tech.get("effects", []):

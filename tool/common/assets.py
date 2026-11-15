@@ -24,7 +24,10 @@ _ASSET_MARKERS = {
 
 
 def repo_root() -> Path:
-    """Racine du paquet ``tool`` (repos du dépôt en dev, site-packages en wheel)."""
+    """Retourne la racine du paquet ``tool``.
+
+    En développement, c'est le dossier du dépôt ; dans une wheel installée, c'est le dossier ``site-packages`` correspondant. Sert à résoudre ``config/``, ``data/`` et les assets embarqués sans dépendre du cwd.
+    """
     return Path(__file__).resolve().parent.parent.parent
 
 

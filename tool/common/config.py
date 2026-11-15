@@ -24,7 +24,10 @@ from tool.common.assets import asset_path
 
 
 class ConfigError(ValueError):
-    """Erreur de configuration (schéma, plage, contrainte croisée)."""
+    """Erreur de configuration.
+
+    Couvre un schéma invalide, une valeur hors plage ou une contrainte croisée non respectée ; le message indique la section et la clé fautives.
+    """
 
 
 # ── Spécifications du schéma ──────────────────────────────────────────────────
@@ -189,7 +192,10 @@ _SCHEMA: dict[str, dict[str, tuple]] = {
 
 
 class _ConfigStore:
-    """Defaults chargés une fois depuis ``config/defaults.yaml``."""
+    """Cache paresseux des defaults de configuration.
+
+    Charge `config/defaults.yaml` au premier accès et mémorise le dossier résolu ; aucun I/O n'est fait à l'import.
+    """
 
     def __init__(self) -> None:
         """Initialise le cache paresseux : aucun fichier n'est lu ici.
@@ -255,7 +261,10 @@ _STORE = _ConfigStore()
 
 
 def _deep_merge(base: dict, overrides: dict | Any) -> dict:
-    """Fusion récursive : les dict s'imbriquent, tout le reste remplace."""
+    """Fusionne récursivement `overrides` dans `base`.
+
+    Les dicts s'imbriquent, les autres valeurs remplacent. Retourne un nouveau dict sans muter `base`.
+    """
     out = copy.deepcopy(base)
     for key, value in (overrides or {}).items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):
@@ -266,18 +275,26 @@ def _deep_merge(base: dict, overrides: dict | Any) -> dict:
 
 
 def load_defaults() -> dict:
-    """Copie profonde du defaults (jamais muté par les appelants)."""
+    """Retourne une copie profonde des defaults de configuration.
+
+    Aucun paramètre ; lit ``defaults.yaml`` via le cache ``_STORE`` et retourne un nouveau ``dict`` que l'appelant peut muter sans corrompre le cache. Lève ``ConfigError`` si le fichier est absent ou invalide.
+    """
     return _STORE.defaults()
 
 
 def user_config_file() -> Path | None:
-    """Chemin du fichier de surcharge utilisateur (None s'il est absent)."""
+    """Retourne le chemin du fichier de surcharge utilisateur.
+
+    Aucun paramètre ; retourne le ``Path`` de ``user.yaml`` s'il existe dans le dossier de configuration, sinon ``None``. Le fichier n'est pas lu : seule son existence est testée.
+    """
     return _STORE.user_file()
 
 
 def default_value(section: str, key: str):
-    """Valeur par défaut (source UNIQUE = defaults.yaml) pour un module appelé
-    avec un dict de config partiel. Jamais de littéral dupliqué dans le code."""
+    """Retourne la valeur par défaut d'une clé de configuration.
+
+    `section` et `key` désignent la section et la clé dans `defaults.yaml` ; sert aux modules appelés avec une config partielle, sans dupliquer de littéral.
+    """
     body = _STORE._merged_defaults().get(section)
     if not isinstance(body, dict):
         raise ConfigError(f"defaults : section inconnue {section!r}")
@@ -287,15 +304,9 @@ def default_value(section: str, key: str):
 
 
 def full_config(overrides: dict | None = None, *, strict_sections: bool = True) -> dict:
-    """Defaults fusionnés avec ``overrides`` puis VALIDÉS.
+    """Fusionne les defaults avec `overrides` puis valide le résultat.
 
-    Le résultat est complet (toutes les sections/clés présentes) et conforme
-    au schéma ; sans ``overrides`` il vaut exactement le defaults.
-
-    ``strict_sections=False`` ignore les sections racine INCONNUES des
-    surcharges (usage programmatique : ``pipeline.generate_seed`` reçoit des
-    dict d'appelants divers) — mais le contenu de TOUTES les sections connues
-    est tout de même validé strictement (types, plages, bornes).
+    `overrides` est un dict partiel ; `strict_sections=False` tolère les sections racine inconnues. Retourne un dict complet et conforme au schéma, ou lève `ConfigError`.
     """
     merged = _deep_merge(_STORE.defaults(), overrides)
     errors = validate(merged, strict_sections=strict_sections)
@@ -307,7 +318,10 @@ def full_config(overrides: dict | None = None, *, strict_sections: bool = True) 
 
 
 def runtime_config() -> dict:
-    """Default + fichier ``user.yaml`` (les surcharges persistantes)."""
+    """Retourne la configuration persistante de l'application.
+
+    Aucun paramètre ; part des defaults, fusionne ``user.yaml`` s'il existe puis valide le résultat. Retourne un ``dict`` complet et conforme au schéma, ou lève ``ConfigError``.
+    """
     user_path = _STORE.user_file()
     overrides = None
     if user_path is not None:
@@ -434,10 +448,10 @@ def _check_value(errors: list[str], where: str, value: Any, spec: tuple) -> None
 
 
 def validate(merged: dict, *, strict_sections: bool = True) -> list[str]:
-    """Valide le config fusionné contre le schéma. Renvoie la liste d'erreurs
-    (vide si tout est bon). ``strict_sections=False`` : les sections racine
-    inconnues ne sont pas signalées (contenu des sections connues validé
-    quand même)."""
+    """Valide un config fusionné contre le schéma.
+
+    `merged` est le dict complet et `strict_sections` contrôle le rejet des sections inconnues. Retourne la liste des messages d'erreur (vide si le config est valide).
+    """
     errors: list[str] = []
 
     for section, body in merged.items():

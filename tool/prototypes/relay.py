@@ -29,8 +29,10 @@ class RelayConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RelayConfig:
-        """Construit la config relay depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``relay`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts de ``defaults.yaml``. Retourne une ``RelayConfig`` validée.
+        """
         cfg = config.get("relay", {})
         return cls(
             prefix=str(cfg.get("prefix", _cfg.default_value("relay", "prefix"))),

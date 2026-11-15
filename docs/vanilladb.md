@@ -37,7 +37,7 @@ Le `vanilla_dump.json` (exporter randputf **0.1.5**, jeu 2.1.24) fournit les don
 * **`inventory`** – inventaire complet A→Z du jeu : 39 tables par type de prototype (`item`, `entity`, `fluid`, `tile`, `recipe`, `technology`, …).
 * **`tiles`** – 52 tuiles, chacune avec ses `collision_layers` et éventuellement son `fluid` (ex. `water`).
 
-La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` (`tool/common/db.py:322`) pour initialiser les flux aléatoires du pipeline (§1).
+La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` (`tool/common/db.py:336`) pour initialiser les flux aléatoires du pipeline (§1).
 
 ## 3. Schéma des données
 

@@ -90,16 +90,29 @@ _JS = """
 
 
 def _esc(value: Any) -> str:
+    """Échappe une valeur pour une insertion HTML.
+
+    ``value`` est converti en chaîne ; ``None`` devient une chaîne vide. Retourne le texte échappé, sans balise.
+    """
     return _html.escape(str(value)) if value is not None else ""
 
 
 def _chips(values: Any) -> str:
+    """Rend une collection de valeurs en badges HTML.
+
+    ``values`` peut être une liste, un ensemble ou ``None`` ; une collection vide donne un tiret discret. Retourne un fragment HTML.
+    """
     if not values:
         return '<span class="muted">—</span>'
     return "".join(f'<span class="chip">{_esc(v)}</span>' for v in values)
 
 
 def _fluidbox_summary(boxes: Any) -> str:
+    """Résume les fluidboxes d'une entité.
+
+    Le détail déclaré par le dump (type de production et filtre) est préféré ;
+    à défaut, on affiche les compteurs d'entrées et de sorties.
+    """
     if not isinstance(boxes, dict):
         return '<span class="muted">—</span>'
     detail = boxes.get("detail")
@@ -120,6 +133,10 @@ def _fluidbox_summary(boxes: Any) -> str:
 
 
 def _ingredients_list(entries: Any) -> str:
+    """Formate une liste d'ingrédients ou de produits.
+
+    ``entries`` est une liste de dicts ``{name, amount}`` ; les entrées non conformes sont ignorées. Retourne ``nom ×quantité`` joints par ``+``, ou un tiret si la liste est vide.
+    """
     if not entries:
         return '<span class="muted">—</span>'
     parts = []
@@ -130,6 +147,10 @@ def _ingredients_list(entries: Any) -> str:
 
 
 def _stat(label: str, value: Any) -> str:
+    """Génère une tuile du bandeau de statistiques.
+
+    ``label`` est le libellé et ``value`` la valeur affichée (échappée). Retourne un fragment HTML autonome.
+    """
     return (
         f'<div class="stat"><div class="lab">{_esc(label)}</div>'
         f'<div class="val">{_esc(value)}</div></div>'
@@ -137,10 +158,19 @@ def _stat(label: str, value: Any) -> str:
 
 
 def _section(title: str, anchor: str, body: str) -> str:
+    """Enveloppe un contenu dans une section HTML.
+
+    ``title`` est le titre, ``anchor`` l'identifiant de section et ``body`` le HTML déjà construit. Retourne la section complète.
+    """
     return f'<section id="{anchor}"><h2>{_esc(title)}</h2>{body}</section>'
 
 
 def _inventory_fragment(inventory: dict) -> str:
+    """Construit l'inventaire A→Z des tables de prototypes.
+
+    Chaque table devient un bloc repliable contenant ses noms ; les données
+    de recherche sont incluses pour que le filtre global fonctionne aussi ici.
+    """
     if not inventory:
         return '<p class="muted">Inventaire absent (dump &lt; 0.1.5).</p>'
     blocks = []
@@ -160,6 +190,11 @@ def _inventory_fragment(inventory: dict) -> str:
 
 
 def _tiles_fragment(tiles: dict) -> str:
+    """Construit le tableau des tuiles.
+
+    On y expose les couches de collision et le fluide éventuel de chaque
+    tuile, faits lus directement dans le dump.
+    """
     if not tiles:
         return '<p class="muted">Section tuiles absente (dump &lt; 0.1.5).</p>'
     rows = []
@@ -188,7 +223,10 @@ def _tiles_fragment(tiles: dict) -> str:
 
 
 def _placement_summary(rules: Any) -> str:
-    """Règles de placement sur tuiles : couches requises / en collision."""
+    """Résume les règles de placement sur tuiles.
+
+    ``rules`` est la liste des règles du dump (tuiles requises, collisions, suppression). Retourne un fragment HTML multi-lignes ou un tiret si aucune règle.
+    """
     if not rules:
         return '<span class="muted">—</span>'
     parts = []
@@ -205,6 +243,12 @@ def _placement_summary(rules: Any) -> str:
 
 
 def _entities_fragment(entities: dict) -> str:
+    """Construit le tableau des entités du dump.
+
+    Chaque ligne rassemble type, catégories de craft et de ressource,
+    fluidboxes, source d'énergie, règles de placement sur tuiles et fluide
+    pompé.
+    """
     rows = []
     for name in sorted(entities):
         e = entities[name] or {}
@@ -231,6 +275,12 @@ def _entities_fragment(entities: dict) -> str:
 
 
 def _items_fragment(items: dict, science: set[str]) -> str:
+    """Construit le tableau des items.
+
+    Le badge « science » signale les packs déduits des faits du dump ; la
+    pile, le carburant et les produits de lancement sont affichés quand ils
+    sont déclarés.
+    """
     rows = []
     for name in sorted(items):
         entry = items[name] or {}
@@ -267,6 +317,11 @@ def _items_fragment(items: dict, science: set[str]) -> str:
 
 
 def _fluids_fragment(fluids: dict, science: set[str]) -> str:
+    """Construit le tableau des fluides.
+
+    Le badge « science » reprend les packs déduits du dump ; sous-groupe,
+    température par défaut et carburant sont affichés lorsqu'ils existent.
+    """
     rows = []
     for name in sorted(fluids):
         entry = fluids[name] or {}
@@ -290,6 +345,11 @@ def _fluids_fragment(fluids: dict, science: set[str]) -> str:
 
 
 def _recipes_fragment(recipes: dict) -> str:
+    """Construit le tableau des recettes.
+
+    On y montre la catégorie, les ingrédients, les produits et le temps de
+    craft, sans interprétation supplémentaire.
+    """
     rows = []
     for name in sorted(recipes):
         r = recipes[name] or {}
@@ -311,6 +371,11 @@ def _recipes_fragment(recipes: dict) -> str:
 
 
 def _technologies_fragment(technologies: dict) -> str:
+    """Construit le tableau des technologies.
+
+    Chaque ligne expose le coût unitaire, les prérequis et le nombre d'effets
+    déclarés dans le dump.
+    """
     rows = []
     for tech_id in sorted(technologies):
         tech = technologies[tech_id] or {}

@@ -241,7 +241,10 @@ def _recipe_tech_info(seed: dict) -> dict[str, dict]:
     tmap, order, free, _ = _tech_order(seed)
 
     def local(tid: str) -> str:
-        """Nom localisé d'une tech (ou son id en repli)."""
+        """Retourne le nom localisé d'une technologie.
+
+        ``tid`` est l'identifiant de tech ; utilise ``localised_name`` du seed, sinon l'identifiant brut. Retourne une chaîne affichable.
+        """
         return tmap[tid].get("localised_name") or tid
 
     unlocks: dict[str, list[tuple[int, str]]] = {}
@@ -379,11 +382,17 @@ def _item_tech_info(seed: dict) -> dict[str, dict]:
                 tech_by_item.setdefault(prod, set()).add((num, tid))
 
     def local(tid: str) -> str:
-        """Nom localisé d'une tech (ou son id en repli)."""
+        """Retourne le nom localisé d'une technologie.
+
+        ``tid`` est l'identifiant de tech ; utilise ``localised_name`` du seed, sinon l'identifiant brut. Retourne une chaîne affichable.
+        """
         return tmap[tid].get("localised_name") or tid
 
     def packs_of(tid: str) -> set[str]:
-        """Science packs exigés par le coût de la tech ``tid``."""
+        """Retourne les packs de science exigés par une technologie.
+
+        ``tid`` est l'identifiant de tech ; lit ``unit.ingredients`` et ne conserve que les noms finissant par ``-science-pack``. Retourne un ensemble de noms.
+        """
         return {
             ing.get("name")
             for ing in (tmap[tid].get("unit") or {}).get("ingredients") or []
@@ -416,7 +425,10 @@ def _item_tech_info(seed: dict) -> dict[str, dict]:
 
 
 def _find_quoted(body: str, key: str) -> str | None:
-    """Valeur `key"..."` (première occurrence)."""
+    """Retourne la première valeur quotée associée à ``key``.
+
+    ``body`` est le texte source et ``key`` le préfixe recherché (par exemple ``icon = ``). Retourne la valeur entre guillemets ou ``None`` si le motif est absent.
+    """
     idx = body.find(key + '"')
     if idx < 0:
         return None
@@ -428,7 +440,10 @@ def _find_quoted(body: str, key: str) -> str | None:
 
 
 def _find_icon_in_body(body: str) -> str | None:
-    """`icon = "…"` simple, sinon premier `icon = "…"` d'un `icons = {…}`."""
+    """Retourne le chemin d'icône déclaré dans un corps de prototype.
+
+    ``body`` est le texte source ; privilégie ``icon = \"…\"`` simple, sinon le premier ``icon = \"…\"`` d'un bloc ``icons = {…}``. Retourne ``None`` si aucun chemin n'est trouvé.
+    """
     simple = _find_quoted(body, "icon = ")
     if simple is not None:
         return simple
@@ -608,8 +623,10 @@ def _seed_raw_sources(seed: dict) -> set[str]:
 
 
 def _dot_for(seed: dict, image_dir: Path | None = None) -> Path:
-    """Écrit le `.dot` de la seed dans un fichier temporaire et renvoie le path
-    (utilisé par write_seed_graph_html)."""
+    """Écrit le DOT d'une seed dans un fichier temporaire.
+
+    ``seed`` est la seed et ``image_dir`` un dossier d'icônes optionnel. Retourne le ``Path`` du fichier temporaire ; l'appelant est responsable de sa suppression.
+    """
     import tempfile
 
     tmp = tempfile.NamedTemporaryFile("w", suffix=".dot", delete=False, encoding="utf-8")
@@ -625,7 +642,10 @@ _ICON_HREF_RE = re.compile(r'(xlink:href|href)="([^"]+\.png)"')
 
 
 def _embed_icons(svg: str) -> str:
-    """Remplace les `href` d'icônes locales par des data-URI base64 (SVG autonome)."""
+    """Remplace les icônes locales d'un SVG par des data-URI.
+
+    ``svg`` est le document Graphviz ; chaque ``href`` vers un PNG est recadré puis encodé en base64. Retourne le SVG autonome ; un fichier illisible conserve son lien d'origine.
+    """
     def _uri(m: re.Match) -> str:
         """Remplace une occurrence d'icône par son data-URI base64.
 
@@ -662,8 +682,10 @@ def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     icons: dict[str, str | None] = {}
 
     def icon_uri(name: str) -> str | None:
-        """URI data (icône PNG recadrée, en base64) de l'item/tech ``name``,
-        mise en cache — None si introuvable."""
+        """Retourne l'icône d'un item/tech en data-URI.
+
+        ``name`` est le nom recherché ; l'icône PNG est recadrée puis encodée en base64, avec un cache local. Retourne la data-URI ou ``None`` si l'icône est introuvable/illisible.
+        """
         if name not in icons:
             icon = _icon_path(name)
             if icon is None:
@@ -1734,7 +1756,10 @@ function boot() {
 
 
 def _quote(name: str) -> str:
-    """Identifiant DOT entre guillemets (échappement `"` et `\\`, newline→\\n)."""
+    """Échappe un identifiant pour DOT.
+
+    ``name`` est le nom brut ; les guillemets, antislashs et retours à la ligne sont échappés. Retourne l'identifiant entouré de guillemets.
+    """
     escaped = name.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     return f'"{escaped}"'
 
@@ -1743,5 +1768,8 @@ _SLUG_RE = re.compile(r"[^A-Za-z0-9_.\-]")
 
 
 def _slug(name: str) -> str:
-    """Nom de fichier sûr pour une icône recadrée (l'item "water\"X" → water_X)."""
+    """Convertit un nom en nom de fichier sûr.
+
+    ``name`` est le nom d'item/tech ; les caractères hors ``[A-Za-z0-9_.-]`` sont remplacés par ``_``. Retourne le slug utilisable pour une icône recadrée.
+    """
     return _SLUG_RE.sub("_", name)

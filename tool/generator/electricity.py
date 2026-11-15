@@ -233,7 +233,10 @@ def _unlock_pole(
 
 
 def _needs_electricity(db: VanillaDB, unlocked_buildings: set[str]) -> bool:
-    """Vérifie si un bâtiment débloqué a besoin d'électricité."""
+    """Indique si un bâtiment débloqué consomme de l'électricité.
+
+    ``db`` fournit les définitions et ``unlocked_buildings`` les noms débloqués. Retourne ``True`` dès qu'un bâtiment connu a ``energy_type == \"electric\"``, ``False`` sinon.
+    """
     for building_name in unlocked_buildings:
         building = db.buildings.get(building_name)
         if building and building.energy_type == "electric":

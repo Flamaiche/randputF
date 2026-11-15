@@ -29,7 +29,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class UsageConfig(PrototypeConfig):
-    """Configuration pour la garantie d'usage dure (D2)."""
+    """Configuration de la garantie d'usage dure (D2).
+
+    ``enabled`` active la passe, ``strict_order`` applique l'ordre recette/bâtiment, ``terminal_buildings`` liste les bâtiments sans recette hébergée et ``kit_exempt`` ceux réputés débloqués en tech 0.
+    """
     enabled: bool = True
     strict_order: bool = True
     # Bâtiments terminaux : leur usage est leur rôle moteur, pas une recette
@@ -42,8 +45,10 @@ class UsageConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> UsageConfig:
-        """Construit la config usage depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``usage`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts de ``defaults.yaml``. Retourne une ``UsageConfig`` avec les ensembles convertis en ``frozenset``.
+        """
         cfg = config.get("usage", {})
         return cls(
             enabled=bool(cfg.get("enabled", _cfg.default_value("usage", "enabled"))),

@@ -101,7 +101,10 @@ def _tech_id(category: str, element_name: str) -> str:
 
 
 def set_config(config: dict) -> None:
-    """Branche la config ``recursive`` (proto) sur le module, en cache global."""
+    """Branche la configuration ``recursive`` sur le module.
+
+    ``config`` est le dict complet validé ; il est converti en ``RecursiveConfig`` et conservé dans le cache global ``_config``. Retourne ``None``.
+    """
     global _config
     _config = RecursiveConfig.from_config(config)
 
@@ -257,7 +260,10 @@ def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
 
 
 def _has_product_recipe(state: ProgressionState, name: str) -> bool:
-    """Une recette produit déjà ``name`` ? (via le produit, pas l'état obtenu.)"""
+    """Indique si une recette produit déjà un item.
+
+    ``state`` fournit les recettes et ``name`` est le produit recherché. Regarde le premier résultat de chaque recette, sans tenir compte de l'état « obtenu ». Retourne un booléen.
+    """
     return any(
         (r.get("results") or []) and r["results"][0]["type"] == SLOT_ITEM
         and r["results"][0]["name"] == name
@@ -328,7 +334,10 @@ def _assign_vehicle_weapons(rng: random.Random) -> dict[str, list[str]]:
 
 
 def vehicle_weapons_pool() -> list[str]:
-    """Items d'armes montées de la pool (§7), ordre de config."""
+    """Retourne les armes montées autorisées.
+
+    La liste vient de la configuration ``recursive`` et conserve son ordre. Sert à peupler les emplacements d'armes des véhicules.
+    """
     return _config.vehicle_weapon_names
 
 
@@ -1059,7 +1068,10 @@ def _make_fixed_fluid_recipe(
     building,
     output_fluid: str | None = None,
 ) -> dict:
-    """Branche « fluide → fluide » (boiler/heat-exchanger). Voir l'appelant."""
+    """Crée une recette fluide → fluide pour un bâtiment fixe.
+
+    ``rng``/``db``/``state`` portent le contexte, ``building`` est le bâtiment à recette cachée et ``output_fluid`` le fluide imposé (optionnel). Retourne le dict de recette enregistré.
+    """
     all_names = [f.name for f in db.pipable_fluids()]
 
     # Output : tout fluide pipable, de préférence non déjà produit par une autre
@@ -1135,8 +1147,10 @@ def _make_fixed_item_recipe(
     building,
     output_item: str | None = None,
 ) -> dict:
-    """Branche « (item/fluide) → item » (transformateur item du mod). Voir
-    l'appelant."""
+    """Crée une recette (item/fluide) → item pour un transformateur fixe.
+
+    ``rng``/``db``/``state`` portent le contexte, ``building`` est le bâtiment et ``output_item`` l'item imposé. Retourne le dict de recette enregistré et marque l'item obtenu.
+    """
     if output_item is None:
         # Output : item obtenable non encore produit (être LE producteur) ;
         # hors items de bâtiment et chaîne fusée.
@@ -1258,7 +1272,10 @@ def _make_fixed_residue_recipe(
 
 
 def _is_recipe_output_item_plausible(db: VanillaDB, state: ProgressionState, name: str) -> bool:
-    """Output imposé plausible : item réel du pool, obtenable comme produit."""
+    """Indique si un item imposé est un output plausible.
+
+    ``db`` fournit les items, ``state`` les ressources obtenues et ``name`` l'item candidat. Retourne ``True`` si l'item existe dans la base et figure déjà parmi les produits obtenables.
+    """
     return name in db.items and name in state.obtained_items
 
 

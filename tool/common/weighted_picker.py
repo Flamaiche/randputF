@@ -16,7 +16,10 @@ from dataclasses import dataclass, field
 
 @dataclass
 class WeightedItem:
-    """Un élément avec son poids pour la sélection pondérée."""
+    """Élément candidat d'un ``WeightedPicker``.
+
+    ``name`` est la valeur retournée par le tirage, ``weight`` son poids relatif (positif) et ``tags`` un ensemble libre utilisé par ``filter_by_tags``.
+    """
     name: str
     weight: float
     tags: set[str] = field(default_factory=set)
@@ -70,11 +73,17 @@ class WeightedPicker:
         self.items = [item for item in self.items if item.name != name]
 
     def filter_by_tags(self, required_tags: set[str]) -> list[WeightedItem]:
-        """Retourne les éléments ayant TOUS les tags requis."""
+        """Retourne les éléments portant tous les tags requis.
+
+        ``required_tags`` est comparé par inclusion à ``WeightedItem.tags`` ; un ensemble vide retourne tout le pool. L'ordre du pool est conservé.
+        """
         return [item for item in self.items if required_tags.issubset(item.tags)]
 
     def filter_by_predicate(self, predicate) -> list[WeightedItem]:
-        """Filtre les éléments par un prédicat arbitraire."""
+        """Retourne les éléments satisfaisant ``predicate``.
+
+        ``predicate`` reçoit chaque ``WeightedItem`` et doit retourner un booléen ; l'ordre du pool est conservé. Sert aux filtres ad hoc sans modifier le picker.
+        """
         return [item for item in self.items if predicate(item)]
 
     def pick(self, rng: random.Random) -> str | None:
@@ -98,7 +107,10 @@ class WeightedPicker:
         return chosen
 
     def pick_many(self, rng: random.Random, count: int) -> list[str]:
-        """Sélectionne plusieurs éléments (sans remise si replacement=False)."""
+        """Sélectionne jusqu'à ``count`` éléments.
+
+        ``rng`` est la source aléatoire et ``count`` le nombre demandé. Avec ``replacement=False``, chaque tirage retire l'élément ; le résultat peut donc être plus court si le pool s'épuise. Retourne la liste des noms choisis.
+        """
         results = []
         for _ in range(min(count, len(self.items))):
             choice = self.pick(rng)
@@ -108,7 +120,10 @@ class WeightedPicker:
         return results
 
     def pick_with_predicate(self, rng: random.Random, predicate) -> str | None:
-        """Sélectionne un élément satisfaisant le prédicat, ou None."""
+        """Sélectionne un élément satisfaisant ``predicate``.
+
+        ``rng`` est la source aléatoire et ``predicate`` filtre les candidats. Le tirage est pondéré parmi les seuls candidats ; avec ``replacement=False``, l'élément choisi est retiré du pool. Retourne le nom choisi ou ``None`` si aucun candidat.
+        """
         candidates = [item for item in self.items if predicate(item)]
         if not candidates:
             return None
@@ -133,13 +148,16 @@ class WeightedPicker:
 
     @property
     def is_empty(self) -> bool:
-        """Vrai si plus aucun candidat (sélection sans remise épuisée)."""
+        """Indique si le pool ne contient plus aucun candidat.
+
+        Retourne ``True`` quand ``items`` est vide, notamment après des tirages sans remise ; ne tient pas compte des poids nuls.
+        """
         return len(self.items) == 0
 
     def __len__(self) -> int:
-        """Nombre d'éléments actuellement dans le pool.
+        """Retourne le nombre d'éléments actuellement dans le pool.
 
-        Permet ``len(picker)`` ; diminue après chaque ``pick`` sans remise.
+        Permet ``len(picker)`` ; la valeur diminue après chaque ``pick`` sans remise et sert à borner ``pick_many``.
         """
         return len(self.items)
 

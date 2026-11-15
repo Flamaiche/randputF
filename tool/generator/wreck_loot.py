@@ -48,7 +48,10 @@ def counts_from_formula(t: int, a: int, b: int) -> list[int]:
 
 
 def build_wreck_config(config: dict | None, db: VanillaDB) -> dict:
-    """Assemble la section `wreck` de la seed depuis la config."""
+    """Assemble la section ``wreck`` de la seed.
+
+    ``config`` est le dict complet (ou ``None``) et ``db`` la base vanilla. Lit les paramètres ``t``/``a``/``b``, calcule la répartition du butin et retourne le dict ``wreck`` prêt pour la seed.
+    """
     cfg = (config or {}).get("wreck") or {}
     counts = counts_from_formula(
         int(cfg.get("t", _cfg.default_value("wreck", "t"))),

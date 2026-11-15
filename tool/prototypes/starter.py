@@ -15,7 +15,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class StarterConfig(PrototypeConfig):
-    """Configuration pour le kit de départ et la chaîne initiale."""
+    """Configuration du kit de départ et de la chaîne initiale.
+
+    Porte le nombre de munitions, la probabilité d'inserter, la quantité de combustible au spawn et ``deferred`` (raws reportées à leur jalon). Les valeurs sont lues par ``from_config``.
+    """
     # Kit
     ammo_count: int = 50
     # Transports
@@ -31,8 +34,10 @@ class StarterConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> StarterConfig:
-        """Construit la config starter depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``starter`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts du YAML. Retourne une ``StarterConfig`` avec ``deferred`` converti en ``frozenset`` de tuples.
+        """
         starter_cfg = config.get("starter", {})
         return cls(
             ammo_count=int(starter_cfg.get("ammo_count", _cfg.default_value("starter", "ammo_count"))),

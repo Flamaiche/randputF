@@ -72,7 +72,10 @@ def _is_science_step(step: dict) -> bool:
 
 
 def _is_free_step(step: dict) -> bool:
-    """Tech sans coût (gratuite, auto-complétée au runtime) : starter."""
+    """Indique si un step de tech est gratuit.
+
+    ``step`` est la fiche de tech ; un step est gratuit quand ``count <= 1`` et que ``cost`` est vide. Ces techs sont auto-complétées au runtime et servent au starter.
+    """
     count = step.get("count", 10)
     cost = step.get("cost", [])
     return count <= 1 and (not cost or cost == [])

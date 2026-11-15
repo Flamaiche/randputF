@@ -63,7 +63,7 @@ Ces écarts sont volontaires : le graphe est entièrement généré, aléatoire 
 
 - **Seed** : 1299 — révélé par le contrôle `PYTHONHASHSEED` 0/1 (pré-existant, baseline comme gaté).
 - **Symptôme** : le `seed.json` diffère au byte près entre processus — les recettes `chemical-plant`/`oil-refinery`/`assembling-machine-1`/`assembling-machine-3` de la tech `randputf-combat-submachine-gun` tournaient selon l'ordre de hachage.
-- **Cause racine** : `tool/generator/recursive_phase.py:910` construisait `step["unlocks_buildings"]` en itérant `state.unlocked_buildings - buildings_before` (set, ordre hash).
+- **Cause racine** : `tool/generator/recursive_phase.py:919` construisait `step["unlocks_buildings"]` en itérant `state.unlocked_buildings - buildings_before` (set, ordre hash).
 - **Fix** : `sorted(state.unlocked_buildings - buildings_before)`.
 - **État** : ✓ corrigé — vérifié byte-à-byte sous hashseeds 0/1/2 sur seeds 37/412/1299 baseline + gatées ; garde élargi dans `tests/test_determinism.py` (seeds 1337 et 1299).
 

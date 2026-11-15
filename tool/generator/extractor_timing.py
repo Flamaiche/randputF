@@ -182,7 +182,10 @@ def _atelier_claim(
 
 
 def _kit_buildings(starter, db: VanillaDB) -> set[str]:
-    """Bâtiments fournis par le kit de départ (réputés débloqués en tech 0)."""
+    """Retourne les bâtiments fournis par le kit de départ.
+
+    ``starter`` décrit le kit et ``db`` fournit les items/bâtiments. Un item du kit dont ``place_result`` est un bâtiment connu est ajouté ; le résultat est un ensemble de noms.
+    """
     kit: set[str] = set()
     for entry in starter.kit:
         if entry.get("type") != "item":

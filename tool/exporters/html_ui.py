@@ -19,7 +19,10 @@ def th(
     cls: str = "",
     style: str = "",
 ) -> str:
-    """En-tête de tableau triable avec infobulle."""
+    """Génère un en-tête de tableau triable.
+
+    ``label`` est le texte, ``key`` la clé de tri, ``sort_type`` le type (texte/nombre), ``tip`` l'infobulle et ``cls``/``style`` des attributs optionnels. Retourne la balise ``<th>`` complète.
+    """
     attrs = [
         f'data-key="{_html.escape(key)}"',
         f'data-type="{_html.escape(sort_type)}"',

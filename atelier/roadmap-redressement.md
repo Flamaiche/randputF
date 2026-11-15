@@ -71,12 +71,12 @@ rester court et factuel. Le detail reste dans `docs/`.
 Passe sur `README.md` + les 16 fichiers de `docs/`. Corrections confirmees
 lors de la preparation de ce plan :
 
-- [x] **C1 — `docs/solvabilite.md:21` « CALSE un cycle »** → « casse un
+- [x] **C1 — `docs/solvabilite.md` « CALSE un cycle »** → « casse un
       cycle » (le verbe du contexte est bien « casser », pas « calculer »).
-- [x] **C2 — `docs/solvabilite.md:80` « ils ne disent rien d'un playlist reel »**
+- [x] **C2 — `docs/solvabilite.md` « ils ne disent rien d'un playlist reel »**
       → « ils ne disent rien d'un parcours reel » (le mot est *playthrough*,
       pas *playlist*).
-- [x] **C3 — `docs/tech.md:52` « la quantite n'est jamais demandee »** →
+- [x] **C3 — `docs/tech.md` « la quantite n'est jamais demandee »** →
       « demandee » (accords).
 - [x] **C4 — NE PAS corriger « gaté »** (14 occurrences : `docs/seed.md`,
       `docs/DEVIANCES.md`, `docs/plan-extracteurs-dispatche.md`,
@@ -84,7 +84,7 @@ lors de la preparation de ce plan :
       projet dérivé de *gating* (`late_raws.gated`, section `late_raws`), pas
       la faute « gatée » signalée par la revue. Corriger cassera le
       vocabulaire de `docs/nomenclature-rejoueur.md`.
-- [x] **C5 — « ~7 % Mo »** (`README.md:135`) : mesuré sur le témoin local,
+- [x] **C5 — « ~7 % Mo »** (`README.md`) : mesuré sur le témoin local,
       `seed.graph.html` fait **7,2 Mo** (7 487 511 octets). Le `%` est une
       coquille → « ~7,2 Mo ».
 - [x] **C6** Balayage des restes (« CALSE », « playlist », doubles espaces,
@@ -143,11 +143,11 @@ aussi sur `master` `a1719b9e17659d141c95d617508c5a7a11a331fb`).
 - [x] **F1 — `bootstrap_guard` n'est plus execute par le pipeline.**
       `tool/generator/bootstrap_guard.py` existe et n'est appele que par les
       tests (`tests/test_bootstrap_guard.py`,
-      `tests/test_pipeline_invariants.py:834,860`). Aucun appel dans
+      `tests/test_pipeline_invariants.py`). Aucun appel dans
       `tool/generator/pipeline.py`. Or :
-      - `docs/solvabilite.md:18` le decrit comme « une phase de cloture
+      - `docs/solvabilite.md` le decrit comme « une phase de cloture
         (bootstrap_guard, AFTER toutes les phases productrices) » ;
-      - `docs/solvabilite.md:74-75` renvoie a une section de config
+      - `docs/solvabilite.md` renvoie a une section de config
         `bootstrap_guard` (`enabled`, `prefix`, `ingredient_min/max`,
         `max_iterations`, `replace_first`) **qui n'existe pas** dans
         `config/defaults.yaml` et n'est lue par aucun code.
@@ -168,7 +168,7 @@ aussi sur `master` `a1719b9e17659d141c95d617508c5a7a11a331fb`).
 La revue identifie le **dernier angle mort de couverture** : `seed.graph.html`
 est bien decrit cote utilisateur (README « Le graphe interactif »), mais son
 *comment* (generation autonome, icones base64, structure du graphe) n'a pas de
-section de conception. `docs/architecture.md:156-158` affirme explicitement le
+section de conception. `docs/architecture.md` affirme explicitement le
 contraire (« c'est une sortie joueur, pas une piece de conception ») : c'est
 un choix a remettre en cause, pas une erreur de la revue.
 
@@ -176,7 +176,7 @@ un choix a remettre en cause, pas une erreur de la revue.
       (`tool/exporters/seed_graph.py`), graphe produit→ingredient→produit,
       encodage base64 des icones, choix d'auto-suffisance du HTML, navigation
       et sous-graphes, determinisme de la sortie.
-- [x] **G2**.decider si `docs/architecture.md:156-158` est remplace par un
+- [x] **G2**.decider si `docs/architecture.md` est remplace par un
       renvoi vers ce document.
 - [x] **G3** Indexer le document dans `docs/README.md`.
 

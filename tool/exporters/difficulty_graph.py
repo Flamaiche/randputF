@@ -82,7 +82,10 @@ def vanilla_seed_from_dump(dump: dict) -> dict | None:
 
 
 def _fmt(value: float) -> str:
-    """Format court pour les axes : séparateurs de milliers, sans décimale."""
+    """Formate une valeur pour les axes du graphique.
+
+    ``value`` est un nombre ; retourne une chaîne sans décimale avec des séparateurs de milliers (espace fine insécable).
+    """
     return f"{value:,.0f}".replace(",", "\u202f")
 
 
@@ -517,7 +520,10 @@ def render_difficulty_graph_html(
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
 ) -> str:
-    """Rend le HTML comparatif (chaîne). Lève ``ValueError`` si pas de séries."""
+    """Rend le HTML comparatif de deux séries de difficulté.
+
+    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``mod_label``/``vanilla_label`` les libellés. Retourne une chaîne HTML autonome et lève ``ValueError`` si l'une des séries est vide.
+    """
     vanilla_series = difficulty_series(vanilla_seed)
     mod_series = difficulty_series(mod_seed)
     if not vanilla_series or not mod_series:
@@ -547,7 +553,10 @@ def render_difficulty_graph_html(
 
 
 def difficulty_table_html(seed: dict, *, label: str = "seed") -> str:
-    """Tableau de difficulté d'une seule série (sans comparaison)."""
+    """Rend le tableau de difficulté d'une seule série.
+
+    ``seed`` fournit la série et ``label`` le nom affiché. Retourne un fragment HTML ; une série vide donne un message discret.
+    """
     series = difficulty_series(seed)
     if not series:
         return '<p class="muted">Aucune donnée de difficulté.</p>'
@@ -562,7 +571,10 @@ def write_difficulty_graph_html(
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
 ) -> Path:
-    """Écrit le HTML comparatif. Lève ``ValueError`` si pas de séries."""
+    """Écrit le HTML comparatif de difficulté dans ``path``.
+
+    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``path`` le fichier de sortie et les libellés sont optionnels. Crée le dossier parent, écrit le document et retourne ``path`` ; lève ``ValueError`` si une série est vide.
+    """
     doc = render_difficulty_graph_html(
         mod_seed,
         vanilla_seed,

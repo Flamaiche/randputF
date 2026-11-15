@@ -795,8 +795,10 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
 
 
 def summarize_db(db: VanillaDB) -> str:
-    """Résumé textuel de la base (items/fluides/bâtiments par tag, recettes)
-    pour l'audit de parse — ex. `randputf parse`."""
+    """Résume le contenu d'une base vanilla.
+
+    ``db`` est la base parsée ; le résultat est une chaîne multi-lignes avec les compteurs d'items, fluides, bâtiments par tag et recettes. Sert à l'audit de parse (``randputf parse``).
+    """
     mediums = sorted({b.medium for b in db.buildings.values() if b.is_extractor and b.medium})
     others = sum(1 for b in db.buildings.values() if b.is_other)
     lines = [

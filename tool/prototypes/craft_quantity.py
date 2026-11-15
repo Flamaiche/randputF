@@ -20,7 +20,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class CraftQuantityConfig(PrototypeConfig):
-    """Configuration pour la randomisation des quantités de craft."""
+    """Configuration de la randomisation des quantités de craft.
+
+    ``enabled`` active la passe, ``mode`` vaut ``symmetric`` ou ``asymmetric``, ``factor_min``/``factor_max`` bornent le facteur multiplicatif et ``amount_min`` garantit un plancher par ingrédient.
+    """
     enabled: bool = False
     # Mode : "symmetric" (même facteur pour toute la recette) ou "asymmetric".
     mode: str = "symmetric"
@@ -32,8 +35,10 @@ class CraftQuantityConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> CraftQuantityConfig:
-        """Construit la config craft_quantity depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``craft_quantity`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts de ``defaults.yaml`` via ``default_value``. Retourne une ``CraftQuantityConfig`` validée.
+        """
         cfg = config.get("craft_quantity", {})
         return cls(
             enabled=bool(cfg.get("enabled", _cfg.default_value("craft_quantity", "enabled"))),
@@ -46,7 +51,10 @@ yaml, jamais codés en dur par le moteur."""
 
 @dataclass
 class Ingredient:
-    """Un ingrédient de recette (mini-modèle pour le prototype)."""
+    """Ingrédient ou résultat d'une recette du prototype.
+
+    ``name`` est l'identifiant, ``amount`` la quantité et ``type`` vaut ``item`` ou ``fluid``. Modèle léger indépendant de ``VanillaDB``.
+    """
     name: str
     amount: int
     type: str = "item"  # "item" | "fluid"
@@ -54,7 +62,10 @@ class Ingredient:
 
 @dataclass
 class RecipeSpec:
-    """Une recette (mini-modèle pour le prototype)."""
+    """Recette du prototype de quantités.
+
+    ``name`` identifie la recette, ``ingredients`` et ``results`` sont des listes d'``Ingredient``. Sert à appliquer la randomisation sans dépendre du format complet du seed.
+    """
     name: str
     ingredients: list[Ingredient]
     results: list[Ingredient]
@@ -80,7 +91,10 @@ def randomise_recipe_quantities(
         )
 
     def _scale(amount: int, factor: float, amount_min: int) -> int:
-        """Mise à l'échelle d'un montant (arrondi), plancher ``amount_min``."""
+        """Met à l'échelle un montant avec un plancher.
+
+        ``amount`` est la quantité d'origine, ``factor`` le multiplicateur et ``amount_min`` le minimum garanti. Retourne ``max(amount_min, round(amount × factor))``.
+        """
         return max(amount_min, int(round(amount * factor)))
 
     if config.mode == "symmetric":
@@ -119,7 +133,10 @@ def randomise_all_quantities(
     recipes: list[RecipeSpec],
     config: CraftQuantityConfig,
 ) -> list[RecipeSpec]:
-    """Applique la randomisation à une liste de recettes."""
+    """Applique la randomisation à une liste de recettes.
+
+    ``rng`` est la source aléatoire, ``recipes`` les recettes d'entrée et ``config`` la configuration validée. Retourne une nouvelle liste de ``RecipeSpec`` ; si la passe est désactivée, les recettes sont copiées à l'identique.
+    """
     if not config.enabled:
         return [
             RecipeSpec(
@@ -133,7 +150,10 @@ def randomise_all_quantities(
 
 
 def verify_no_zero_amounts(recipes: list[RecipeSpec], amount_min: int = 1) -> list[str]:
-    """Renvoie les noms de recettes ayant un ingrédient < amount_min."""
+    """Retourne les recettes ayant un ingrédient sous le plancher.
+
+    ``recipes`` est la liste à vérifier et ``amount_min`` le minimum autorisé. Le résultat contient au plus une fois le nom de chaque recette fautive.
+    """
     bad: list[str] = []
     for r in recipes:
         for i in r.ingredients:
@@ -144,5 +164,8 @@ def verify_no_zero_amounts(recipes: list[RecipeSpec], amount_min: int = 1) -> li
 
 
 def verify_recipe_names_preserved(recipes: list[RecipeSpec], originals: list[RecipeSpec]) -> bool:
-    """Les noms de recettes ne sont jamais modifiés."""
+    """Vérifie que les noms de recettes sont inchangés.
+
+    ``recipes`` est la liste transformée et ``originals`` la liste d'origine. Retourne ``True`` si les noms se correspondent dans le même ordre, ``False`` sinon.
+    """
     return [r.name for r in recipes] == [o.name for o in originals]

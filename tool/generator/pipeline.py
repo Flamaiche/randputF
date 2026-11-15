@@ -133,7 +133,10 @@ def _build_prefix(rng, db, cfg, patches, lake_list):
 
 
 def generate_seed(db: VanillaDB, config: dict | None = None, *, validate: bool = True) -> dict:
-    """Génère une seed complète à partir de la base vanilla."""
+    """Génère une seed complète à partir de la base vanilla.
+
+    ``db`` est la base chargée, ``config`` un dict partiel optionnel et ``validate`` active la validation finale. La config est normalisée via ``full_config`` puis distribuée aux modules ; retourne le dict de seed complet.
+    """
     # Normalisation : defaults.yaml (source UNIQUE) + surcharges partielles,
     # validés. ``strict_sections=False`` : des appelants (sweeps, tests) passent
     # des clés racine hors schéma (``seed``…) — le contenu de toutes les

@@ -18,7 +18,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class RecipeConfig(PrototypeConfig):
-    """Configuration pour la génération de recettes."""
+    """Configuration de la génération de recettes.
+
+    Porte les poids du nombre d'ingrédients/résultats, les énergies possibles, les paramètres d'équilibre production/consommation, les bornes de montants et le préfixe des recettes. Les valeurs sont lues par ``from_config``.
+    """
     ingredient_counts: list[tuple[int, int]] = field(default_factory=lambda: [
         (1, 3),
         (2, 5),
@@ -56,8 +59,10 @@ class RecipeConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RecipeConfig:
-        """Construit la config recipes depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``recipes`` depuis le dict complet.
+
+        ``config`` peut être partiel ; chaque clé absente est lue dans ``defaults.yaml`` via ``default_value``. Retourne une ``RecipeConfig`` validée.
+        """
         rec_cfg = config.get("recipes", {})
         return cls(
             ingredient_counts=[
@@ -110,16 +115,24 @@ yaml, jamais codés en dur par le moteur."""
         )
 
     def roll_ingredient_count(self, rng: random.Random) -> int:
-        """Tire au sort le nombre d'ingrédients d'une recette (1-3 pondéré)."""
+        """Tire le nombre d'ingrédients d'une recette.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier 1–3 choisi selon ``ingredient_counts``. Retourne la valeur tirée.
+        """
         return weighted_choice(rng, self.ingredient_counts)
 
     def roll_result_amount(self, rng: random.Random) -> int:
-        """Tire au sort le nombre de résultats d'une recette (1-2 pondéré)."""
+        """Tire le nombre de résultats d'une recette.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier 1–2 choisi selon ``result_amounts``. Retourne la valeur tirée.
+        """
         return weighted_choice(rng, self.result_amounts)
 
     def roll_energy(self, rng: random.Random, n_ingredients: int = 0) -> float:
-        """Tire au sort l'énergie d'une recette, majorée par le nombre
-        d'ingrédients (``energy_per_ingredient``)."""
+        """Tire l'énergie d'une recette.
+
+        ``rng`` est la source aléatoire et ``n_ingredients`` le nombre d'ingrédients. Le résultat multiplie l'énergie de base par ``1 + energy_per_ingredient × n_ingredients`` et l'arrondit à trois décimales.
+        """
         base = float(rng.choice(self.recipe_energies))
         return round(base * (1 + self.energy_per_ingredient * n_ingredients), 3)
 
@@ -136,10 +149,15 @@ yaml, jamais codés en dur par le moteur."""
                    min(self.balance_max_factor, factor))
 
     def roll_ingredient_amount(self, rng: random.Random) -> int:
-        """Tire au sort le montant d'un ingrédient (bornes config)."""
+        """Tire le montant d'un ingrédient.
+
+        ``rng`` est la source aléatoire ; le résultat est un entier uniforme entre ``ingredient_amount_min`` et ``ingredient_amount_max`` inclus.
+        """
         return rng.randint(self.ingredient_amount_min, self.ingredient_amount_max)
 
     def recipe_name(self, product_name: str) -> str:
-        """Nom canonique de la recette générée pour un produit donné
-        (``recipe_prefix`` + nom du produit)."""
+        """Retourne le nom canonique d'une recette générée.
+
+        ``product_name`` est le nom du produit ; le résultat est ``recipe_prefix`` suivi du nom. Aucun autre formatage n'est appliqué.
+        """
         return f"{self.recipe_prefix}{product_name}"

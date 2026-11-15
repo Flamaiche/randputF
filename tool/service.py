@@ -51,11 +51,17 @@ MAX_ATTEMPTS = 10
 
 
 class RandputfError(Exception):
-    """Erreur attendue, présentable telle quelle à un joueur."""
+    """Erreur attendue du service, présentable telle quelle à un joueur.
+
+    Sert de classe de base aux erreurs de dump et de génération ; le message transporté est déjà rédigé pour l'utilisateur final et ne contient pas de trace technique. Aucun champ supplémentaire n'est ajouté.
+    """
 
 
 class DumpMissingError(RandputfError):
-    """Le dump vanilla est introuvable (message joueur pré-formaté)."""
+    """Le dump vanilla est introuvable.
+
+    Le message, construit à partir du chemin recherché, rappelle l'emplacement embarqué et les options `--dump`/exporteur.
+    """
 
     def __init__(self, path: Path) -> None:
         """Construit le message d'aide pour un dump absent.
@@ -74,11 +80,17 @@ class DumpMissingError(RandputfError):
 
 
 class DumpInvalidError(RandputfError):
-    """Le dump vanilla est illisible ou incohérent."""
+    """Le dump vanilla est illisible, incohérent ou muté.
+
+    Signale un JSON invalide, un schéma incomplet ou un dump pollué par une partie randputF.
+    """
 
 
 class SeedUnplayableError(RandputfError):
-    """Aucune graine dérivée n'a donné une seed jouable dans la limite fixée."""
+    """Aucune graine dérivée n'a produit une seed jouable.
+
+    Conserve `base_seed`, `issues` et `seed_value` pour que l'appelant puisse afficher le dernier diagnostic.
+    """
 
     def __init__(self, base_seed: int, issues: list[str], seed_value: int) -> None:
         """Mémorise l'échec de génération pour inspection par l'appelant.
@@ -98,14 +110,18 @@ class SeedUnplayableError(RandputfError):
 
 
 def load_config() -> dict:
-    """Config de la run : defaults.yaml (source unique) + surcharges du fichier
-    ``user.yaml`` (facultatif), VALIDÉS avant génération."""
+    """Charge la configuration effective de la run.
+
+    Fusionne `config/defaults.yaml` avec `user.yaml` s'il existe, valide le résultat et retourne le dict complet. Lève `ConfigError` si le schéma est invalide.
+    """
     return _cfg.runtime_config()
 
 
 def load_db(demo: bool = False, dump_path: Path | None = None) -> VanillaDB:
-    """Charge la base vanilla. Lève ``DumpMissingError``/``DumpInvalidError``
-    au lieu de quitter le processus — voir l'en-tête du module."""
+    """Charge la base vanilla demandée.
+
+    `demo` choisit la base synthétique ; sinon `dump_path` désigne le JSON de l'exporter. Retourne une `VanillaDB` ; lève `DumpMissingError` ou `DumpInvalidError` sans quitter le processus.
+    """
     if demo:
         return build_demo_db()
     path = dump_path or DUMP_PATH_DEFAULT
@@ -118,7 +134,10 @@ def load_db(demo: bool = False, dump_path: Path | None = None) -> VanillaDB:
 
 
 def build_mod(seed: dict, dest: Path) -> Path:
-    """Assemble le mod complet dans dest. Retourne le chemin du dossier."""
+    """Assemble le mod complet dans `dest`.
+
+    `seed` est la seed finale et `dest` le dossier de sortie. Écrit les fichiers du mod et retourne le chemin du dossier assemblé.
+    """
     mod_name = MOD_NAME_VERSIONED
     mod_dir = dest / mod_name
     dest.mkdir(parents=True, exist_ok=True)
@@ -141,7 +160,10 @@ def build_mod(seed: dict, dest: Path) -> Path:
 
 
 def install_mod(seed: dict, mods_dir: Path) -> None:
-    """Copie le mod dans le dossier Factorio mods + met a jour mod-list.json."""
+    """Installe le mod assemblé dans Factorio.
+
+    `seed` est la seed finale et `mods_dir` le dossier `mods` du jeu. Copie le mod, met à jour `mod-list.json` et désactive `randputf-exporter` ; retourne `None`.
+    """
     mod_name = MOD_NAME_VERSIONED
     dest = mods_dir / mod_name
 
@@ -176,7 +198,10 @@ def install_mod(seed: dict, mods_dir: Path) -> None:
 
 
 def current_seed() -> int:
-    """Graine tirée de l'horloge (ms) : partie unique à chaque génération."""
+    """Retourne une graine tirée de l'horloge.
+
+    Aucun paramètre ; le résultat est le nombre de millisecondes depuis l'époque, pour une partie unique à chaque génération. Utilisé uniquement quand ``--seed`` est absent ; la reprise sur échec reste déterministe.
+    """
     return int(time.time() * 1000)
 
 
@@ -188,14 +213,9 @@ def generate_with_retry(
     max_attempts: int = MAX_ATTEMPTS,
     on_attempt=None,
 ) -> tuple[dict, VanillaDB]:
-    """Génère une seed, et réessaie avec des graines dérivées tant qu'elle est
-    invalide. Retourne ``(seed, db)`` avec ``db.seed_value`` positionné sur la
-    graine qui a **réussi** — indispensable : le mod installé doit porter la
-    seed réellement utilisée, pas celle demandée.
+    """Génère une seed en réessayant avec des graines dérivées.
 
-    ``max_attempts`` est le nombre total de générations (la graine de base
-    comprise), comme dans la CLI historique : on tente ``base`` puis
-    ``base+1`` … ``base+max_attempts-1``, et on lève au-delà.
+    `db` est la base vanilla, `cfg` la config validée et `base_seed` la graine demandée. Tente `base_seed`, `base_seed+1`, … jusqu'à `MAX_ATTEMPTS` ; retourne `(seed, db)` avec `db.seed_value` synchronisé sur la graine réussie. Lève `SeedUnplayableError` si aucune tentative ne passe.
     """
     db.seed_value = base_seed
     seed = generate_seed(db, config=cfg)

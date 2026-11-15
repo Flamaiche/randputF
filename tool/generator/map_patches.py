@@ -50,7 +50,10 @@ class Patch:
 
 
 def make_rng(seed_value: int) -> random.Random:
-    """Flux RNG principal de la seed (première phase)."""
+    """Crée le flux RNG principal de la seed.
+
+    ``seed_value`` est la graine demandée ; le flux est dérivé avec le sel principal et sert à la première phase de pose des patches. Retourne un ``random.Random``.
+    """
     return make_seeded_rng(seed_value, "randputF:")
 
 
@@ -78,7 +81,10 @@ def generate_patches(
     used: set[str] = set(lake_resources or ())
 
     def available(pool: list[str]) -> list[str]:
-        """Ressources du pool pas encore posées sur la carte (C6)."""
+        """Retourne les ressources du pool non encore posées.
+
+        ``pool`` est une liste de noms et ``used`` l'ensemble des ressources déjà placées (lacs compris). Le résultat conserve l'ordre du pool.
+        """
         return [r for r in pool if r not in used]
 
     available_items = len(available(item_candidates))
@@ -306,7 +312,10 @@ def _excludable_items(db: VanillaDB):
 
 
 def item_patch_resources(db: VanillaDB) -> list[str]:
-    """Pool des ressources ITEM pouvant être posées en patch (réparation C1)."""
+    """Retourne les items pouvant être posés en patch.
+
+    ``db`` est la base vanilla ; le résultat exclut les items non minables, les packs de science, les environnementaux, les virtuels et les items réservés à la recherche/au héros. Retourne une liste de noms.
+    """
     return [i.name for i in _excludable_items(db)]
 
 

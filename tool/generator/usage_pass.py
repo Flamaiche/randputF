@@ -58,7 +58,10 @@ log = logging.getLogger(__name__)
 
 
 def _hosted_map(state) -> dict[str, list[dict]]:
-    """Recettes hébergées par bâtiment (``crafted_in`` non vide)."""
+    """Indexe les recettes hébergées par bâtiment.
+
+    ``state`` fournit les recettes ; seules celles avec ``crafted_in`` non vide sont retenues. Retourne ``{bâtiment: [recettes]}``.
+    """
     hosted: dict[str, list[dict]] = {}
     for recipe in state.recipes:
         crafted_in = recipe.get("crafted_in")
@@ -68,7 +71,10 @@ def _hosted_map(state) -> dict[str, list[dict]]:
 
 
 def _recipe_needs_fluid(recipe: dict) -> tuple[bool, bool]:
-    """(a un ingrédient fluide, a un résultat fluide)."""
+    """Indique si une recette touche aux fluides.
+
+    ``recipe`` fournit ingrédients et résultats. Retourne ``(ingrédient_fluide, résultat_fluide)`` sous forme de deux booléens.
+    """
     fluid_ing = any(
         ing.get("type") == SLOT_FLUID for ing in recipe.get("ingredients", [])
     )
@@ -96,7 +102,10 @@ def _fits(building, recipe: dict) -> bool:
 
 
 def _rehome(recipe: dict, building) -> None:
-    """Déplace une recette vers l'atelier ``building`` (crafted_in + category)."""
+    """Déplace une recette vers un autre atelier.
+
+    ``recipe`` est la recette à réhéberger et ``building`` l'atelier cible. Met à jour ``crafted_in`` et la catégorie de craft ; retourne ``None``.
+    """
     fluid_ing, fluid_out = _recipe_needs_fluid(recipe)
     recipe["crafted_in"] = building.name
     recipe["category"] = _recipe_category(building, fluid_ing, fluid_out)
@@ -296,7 +305,10 @@ def _reorder_claim(
 
 
 def _product_of(recipe: dict) -> tuple:
-    """(type, nom) du premier résultat d'une recette (clé produit)."""
+    """Retourne la clé produit d'une recette.
+
+    ``recipe`` fournit ``results`` ; le résultat est ``(type, nom)`` du premier résultat, ou ``(None, None)`` si la recette n'en a aucun. Sert d'identifiant de produit.
+    """
     res = recipe.get("results") or [{}]
     return (res[0].get("type"), res[0].get("name"))
 

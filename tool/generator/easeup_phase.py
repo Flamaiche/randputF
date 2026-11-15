@@ -46,14 +46,19 @@ _BASE_LABELS = "abcdefghijklmnopqrstuvwxyz"
 
 
 def set_config(config: dict) -> None:
-    """Branche la config ``easeup`` (proto) sur le module, en cache global."""
+    """Branche la configuration ``easeup`` sur le module.
+
+    ``config`` est le dict complet validé ; il est converti en ``EaseupConfig`` et conservé dans le cache global ``_config``. Retourne ``None``.
+    """
     global _config
     _config = EaseupConfig.from_config(config)
 
 
 def make_rng(seed_value: int) -> random.Random:
-    """Flux RNG indépendant de la phase ease-up (comme les lacs) : elle ne
-    change pas le tirage du reste de la seed."""
+    """Crée le flux RNG dédié à la phase ease-up.
+
+    ``seed_value`` est la graine de la seed ; le flux est dérivé avec un sel distinct pour que cette phase ne modifie pas les autres tirages. Retourne un ``random.Random``.
+    """
     return make_seeded_rng(seed_value, "randputF:easeup:")
 
 
@@ -142,7 +147,10 @@ def dispatch_ease_steps(
 
 
 def _label(index: int) -> str:
-    """Suffixe de tech (jamais un chiffre) : a,b,…,z, puis aa,ab,…"""
+    """Retourne le suffixe alphabétique d'une tech ease-up.
+
+    ``index`` est l'indice zéro-based ; les 26 premiers donnent ``a``…``z``, puis ``aa``, ``ab``… Aucun chiffre n'est utilisé pour éviter les niveaux contigus Factorio.
+    """
     if index < len(_BASE_LABELS):
         return _BASE_LABELS[index]
     first, second = divmod(index - len(_BASE_LABELS), len(_BASE_LABELS))
@@ -154,7 +162,10 @@ def _pick_trigger(
     candidates: list[str] | None,
     used: set[str],
 ) -> str | None:
-    """Tire UN item du bootstrap distinct (jamais déjà attribué)."""
+    """Tire un item de déclenchement encore inutilisé.
+
+    ``rng`` est la source aléatoire, ``candidates`` les items autorisés et ``used`` l'ensemble des items déjà attribués (muté en place). Retourne l'item choisi, ou ``None`` si le pool est vide.
+    """
     if not candidates:
         return None
     pool = [c for c in candidates if c not in used]
@@ -167,7 +178,10 @@ def _pick_trigger(
 
 
 def _producers(state: ProgressionState) -> dict[tuple[str, str], list[int]]:
-    """(kind, name) du produit → indices des recettes qui le produisent."""
+    """Indexe les recettes par produit.
+
+    ``state`` fournit la liste des recettes ; le résultat associe ``(kind, nom)`` à la liste des indices de recettes qui produisent ce couple. Sert aux calculs de profondeur.
+    """
     by_product: dict[tuple[str, str], list[int]] = defaultdict(list)
     for ridx, recipe in enumerate(state.recipes):
         for res in recipe.get("results", []):
@@ -176,7 +190,10 @@ def _producers(state: ProgressionState) -> dict[tuple[str, str], list[int]]:
 
 
 def _usage_counter(state: ProgressionState) -> Counter:
-    """Nombre de recettes (pas de quantité) qui consomment chaque ingrédient."""
+    """Compte les recettes consommant chaque ingrédient.
+
+    ``state`` fournit les recettes ; le résultat est un ``Counter`` indexé par ``(kind, nom)``. Compte les recettes, pas les quantités.
+    """
     usage: Counter = Counter()
     for recipe in state.recipes:
         for ing in recipe.get("ingredients", []):
@@ -209,8 +226,10 @@ def _compute_depths(state: ProgressionState) -> dict[tuple[str, str], int]:
     by_product = _producers(state)
 
     def rec_depth(ridx: int) -> int:
-        """Profondeur (au sens graphe) de la recette ``ridx`` : 1 au sol, sinon
-        1 + le max des profondeurs de ses ingrédients."""
+        """Calcule la profondeur d'une recette dans le graphe.
+
+        ``ridx`` est l'indice de la recette ; une recette sans ingrédient vaut 1, sinon 1 + la profondeur maximale de ses ingrédients. Retourne un entier.
+        """
         ings = state.recipes[ridx].get("ingredients", [])
         if not ings:
             return 1

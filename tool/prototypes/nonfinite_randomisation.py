@@ -17,7 +17,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class NonfiniteConfig(PrototypeConfig):
-    """Configuration pour la randomisation des ressources non-infinies."""
+    """Configuration de la randomisation des ressources finies.
+
+    ``enabled`` active la passe et les trois paires ``*_factor_min/max`` bornent les multiplicateurs appliqués à la richesse, au nombre de blocs et au rayon des clusters.
+    """
     enabled: bool = False
     # Facteurs multiplicatifs sur la richesse (bornes)
     richness_factor_min: float = 0.4
@@ -31,8 +34,10 @@ class NonfiniteConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> NonfiniteConfig:
-        """Construit la config nonfinite depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``nonfinite`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts de ``defaults.yaml``. Retourne une ``NonfiniteConfig`` validée.
+        """
         cfg = config.get("nonfinite", {})
         return cls(
             enabled=bool(cfg.get("enabled", _cfg.default_value("nonfinite", "enabled"))),
@@ -47,7 +52,10 @@ yaml, jamais codés en dur par le moteur."""
 
 @dataclass
 class PatchSpec:
-    """Spécification d'un patch (mini-modèle pour le prototype)."""
+    """Spécification d'un patch fini.
+
+    ``kind`` vaut ``item`` ou ``fluid``, ``resource`` est le nom de la ressource, ``richness``/``count``/``cluster_radius`` décrivent le gisement et ``center`` sa position. Modèle léger pour la randomisation.
+    """
     kind: str          # "item" | "fluid"
     resource: str      # ex. "iron-ore", "crude-oil"
     richness: int
@@ -109,7 +117,10 @@ def verify_solvability(
 
 
 def no_duplicates(patches: list[PatchSpec]) -> bool:
-    """Vérifie l'invariant C6 : chaque ressource apparaît au plus une fois."""
+    """Vérifie que chaque ressource n'apparaît qu'une fois.
+
+    ``patches`` est la liste des gisements ; retourne ``True`` si aucun nom de ressource n'est répété, ``False`` sinon. Implémente l'invariant C6.
+    """
     seen: set[str] = set()
     for p in patches:
         if p.resource in seen:

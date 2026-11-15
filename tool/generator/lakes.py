@@ -25,24 +25,34 @@ from tool.common.rng import make_seeded_rng
 
 @dataclass
 class Lake:
-    """Un lac : ressource fluide (tuile aquatique, extractible à la pompe
-    offshore) et richesse (taille/densité ; volume infini)."""
+    """Lac de fluide posé sur la carte.
+
+    ``resource`` est le nom du fluide et ``richness`` sa taille/densité (le volume est infini). Sert à la sérialisation dans ``seed[\"lakes\"]`` et au rejoueur.
+    """
     resource: str  # fluide
     richness: int  # taille/densité du lac (volume = infini)
 
     def to_seed(self) -> dict:
-        """Forme sérialisée dans ``seed["lakes"]``."""
+        """Retourne la forme sérialisée d'un lac.
+
+        Le résultat est un dict ``{\"resource\": ..., \"richness\": ...}`` directement inséré dans la seed. Ne mute pas l'objet.
+        """
         return {"resource": self.resource, "richness": self.richness}
 
 
 def make_rng(seed_value: int) -> random.Random:
-    """Flux RNG indépendant des lacs : ajouter des lacs ne change pas le
-    tirage du reste de la seed."""
+    """Crée le flux RNG dédié aux lacs.
+
+    ``seed_value`` est la graine de la seed ; le sel distinct garantit qu'ajouter des lacs ne change pas les autres tirages. Retourne un ``random.Random``.
+    """
     return make_seeded_rng(seed_value, "randputF:lakes:")
 
 
 def pipable_lake_resources(db: VanillaDB) -> list[str]:
-    """Pool des fluides pouvant devenir un lac (extractibles sans électricité)."""
+    """Retourne les fluides pouvant devenir un lac.
+
+    ``db`` fournit les fluides pipables du dump. Le résultat est la liste triée de leurs noms ; aucun filtrage par électricité n'est fait ici.
+    """
     return [f.name for f in db.pipable_fluids()]
 
 

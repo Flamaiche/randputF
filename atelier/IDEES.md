@@ -77,11 +77,6 @@ l'exe n'est pas un chantier séparé.
 > solvabilite.md, DEVIANCES.md et le reste). Aucun point n'est bloquant :
 > le fond de la doc est tenu pour terminé, il ne reste que de l'entretien.
 
-**Typo.** `docs/model.md` : « deux bâtiments **d même type** » →
-« **de même type** ». Sur la même phrase, le lien se pointe lui-même
-(`[model.md](model.md#…)` depuis `model.md`) : à repasser en ancre locale
-`(#…)`, sans le nom de fichier.
-
 **Checker d'ancres — à porter dans le dépôt.** Le contrôle existe
 (`ancres.py`), mais c'est un outil externe : une ancre cassée par une
 retouche de titre ne se voit qu'à la main (constat expérimental : 1 ancre

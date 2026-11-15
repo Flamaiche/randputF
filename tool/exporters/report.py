@@ -26,6 +26,11 @@ _TOC_SCRIPT = "\n<script>\n(function () {\n  function openTarget() {\n    var el
 
 
 def _document_parts(document: str) -> tuple[str, str]:
+    """Extrait le CSS et le corps d'un document HTML autonome.
+
+    Lève ``ValueError`` si les balises ``<style>`` ou ``<body>`` manquent,
+    afin qu'un rapport incomplet ne soit jamais assemblé silencieusement.
+    """
     style = _STYLE_RE.search(document)
     body = _BODY_RE.search(document)
     if style is None or body is None:
@@ -34,6 +39,11 @@ def _document_parts(document: str) -> tuple[str, str]:
 
 
 def _playthrough_section(report: dict) -> str:
+    """Construit la section HTML « partie simulée » du rapport complet.
+
+    ``report`` provient de :func:`tool.exporters.vanilla_complexity.playthrough_report`
+    et fournit les fragments déjà rendus (bandeau, barres, tableau, notes).
+    """
     return (
         "<section class='report-section' id='partie-simulee'><h2>Partie simulée — statistiques par item et fluide</h2>"
         "<div class='sub'>Inventaire porté d'une technologie à l'autre, items produits quand ils manquent (minage ou recette primaire), déclencheurs de recherche inclus.</div>"
@@ -58,6 +68,14 @@ def write_full_report(
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
 ) -> dict:
+    """Assemble et écrit le rapport HTML complet de la seed.
+
+    Le document réunit trois vues dans un seul fichier autonome : complexité,
+    difficulté comparée (si ``vanilla_seed`` est fourni) et partie simulée.
+    Les documents HTML existants sont réutilisés pour ne maintenir qu'un seul
+    jeu de styles et de scripts. Retourne les données de simulation et le
+    chemin du fichier écrit.
+    """
     meta = seed.get("meta") or {}
     if title is None:
         label = meta.get("seed", meta.get("generator_version", "?"))

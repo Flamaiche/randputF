@@ -32,7 +32,10 @@ _config = StarterConfig()
 
 
 def set_config(config: dict) -> None:
-    """Branche la config ``starter`` (proto) sur le module, en cache global."""
+    """Branche la configuration ``starter`` sur le module.
+
+    ``config`` est le dict complet validé ; il est converti en ``StarterConfig`` et conservé dans le cache global ``_config``. Retourne ``None``.
+    """
     global _config
     _config = StarterConfig.from_config(config)
 

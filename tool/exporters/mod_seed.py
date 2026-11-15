@@ -141,7 +141,7 @@ def _lua_key(key: str) -> str:
 
 def _extract_entities(dump: dict) -> dict[str, dict]:
     """Retourne le dict des entités du dump indexé par nom.
-    
+
     Gère les entités avec ou sans clé 'name' : si 'name' est présent,
     on l'utilise comme clé ; sinon on recourt au nom tel que apparait
     dans la structure (ex: 'iron-ore', 'crude-oil') en récupérant la
@@ -157,7 +157,10 @@ def _extract_entities(dump: dict) -> dict[str, dict]:
 
 
 def _extract_recipes(dump: dict) -> list[dict]:
-    """Extrait les recettes du dump, en excluant les barils, Kovarex et nucléaire."""
+    """Extrait les recettes du dump pour le seed vanilla.
+
+    ``dump`` est le JSON de l'exporteur. Exclut les barils, Kovarex, le retraitement du combustible nucléaire et les recettes paramétrées ; retourne une liste de recettes normalisées (nom, catégorie, ingrédients, produits).
+    """
     recipes: list[dict] = []
     for name, entry in (dump.get("recipes") or {}).items():
         if not isinstance(entry, dict):
@@ -196,7 +199,12 @@ def _extract_recipes(dump: dict) -> list[dict]:
 
 
 def _extract_technologies(dump: dict) -> list[dict]:
-    """Extrait les technologies du dump."""
+    """Extrait et normalise les technologies du dump.
+
+    Chaque technologie conserve son identifiant, son nom localisé, ses
+    prérequis, son unité de recherche, ses effets et son éventuel
+    déclencheur, dans une forme directement exploitable par la seed.
+    """
     techs: list[dict] = []
     for name, entry in (dump.get("technologies") or {}).items():
         if not isinstance(entry, dict):
@@ -223,7 +231,10 @@ def _extract_technologies(dump: dict) -> list[dict]:
 
 
 def _topo_sort(tech_ids: list[str], prerequisites: dict[str, list[str]]) -> list[str]:
-    """Tri topologique déterministe : à chaque étape on dépile le plus petit nom disponible."""
+    """Ordonne les technologies par dépendances.
+
+    ``tech_ids`` est l'ensemble des techs et ``prerequisites`` associe chaque tech à ses prérequis. Retourne une liste déterministe : à chaque étape, la plus petite tech dont tous les prérequis connus sont déjà sortis.
+    """
     known = set(tech_ids)
     indegree = {tid: 0 for tid in tech_ids}
     successors: dict[str, list[str]] = {tid: [] for tid in tech_ids}

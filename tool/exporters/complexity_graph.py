@@ -68,7 +68,10 @@ def _crafting_speeds(db: Any = None) -> dict[str, float]:
 
 @dataclass
 class _Expansion:
-    """Consommation cumulée d'un dépliage de recettes."""
+    """Consommation cumulée d'un dépliage de recettes.
+
+    ``crafts`` compte les crafts par recette, ``raw`` les ressources brutes consommées, ``buildings`` les bâtiments utilisés, ``hand_crafts``/``machine_seconds`` les temps associés et ``unknown`` les items sans recette. Sert à agréger plusieurs branches d'un même calcul.
+    """
 
     crafts: Counter = field(default_factory=Counter)
     raw: Counter = field(default_factory=Counter)
@@ -78,6 +81,11 @@ class _Expansion:
     unknown: set[str] = field(default_factory=set)
 
     def add(self, other: "_Expansion") -> None:
+        """Fusionne les compteurs d'une autre expansion dans celle-ci.
+
+        Utilisé pour agréger plusieurs branches de recettes sans perdre les
+        temps machine, les crafts à la main ni les items inconnus.
+        """
         self.crafts.update(other.crafts)
         self.raw.update(other.raw)
         self.buildings.update(other.buildings)
@@ -95,6 +103,12 @@ class _RecipeIndex:
     """
 
     def __init__(self, recipes: list[dict]) -> None:
+        """Indexe les recettes par nom et par produit.
+
+        Aucun choix de recette n'est figé ici : :meth:`chosen` décide ensuite
+        de façon déterministe, ce qui garde le résultat indépendant de l'ordre
+        des recettes dans le JSON.
+        """
         self.by_name: dict[str, dict] = {
             r["name"]: r for r in recipes if r.get("name")
         }
@@ -107,6 +121,12 @@ class _RecipeIndex:
         self._chosen: dict[str, dict | None] = {}
 
     def chosen(self, item: str) -> dict | None:
+        """Retourne la recette retenue pour produire ``item``, ou ``None``.
+
+        Le choix privilégie une recette homonyme, puis une recette hors
+        variantes ``ease``, puis l'ordre alphabétique. Le résultat est mémorisé
+        pour éviter de recalculer le tri à chaque dépliage.
+        """
         if item in self._chosen:
             return self._chosen[item]
         candidates = self._producers.get(item) or []
@@ -122,6 +142,11 @@ class _RecipeIndex:
 
     @staticmethod
     def output_amount(recipe: dict, item: str) -> int:
+        """Quantité de ``item`` produite par un craft de ``recipe``.
+
+        Retourne 1 quand le dump ne déclare aucune quantité exploitable, pour
+        éviter une division par zéro dans le calcul du nombre de crafts.
+        """
         total = sum(
             int(result.get("amount", 0) or 0)
             for result in recipe.get("results") or []
@@ -141,7 +166,10 @@ def _expand(
     stack: tuple[str, ...],
     max_depth: int = 64,
 ) -> None:
-    """Ajoute à ``exp`` ce qu'il faut pour produire ``amount`` unités de ``item``."""
+    """Ajoute à ``exp`` ce qu'il faut pour produire ``amount`` unités de ``item``.
+
+    ``index`` fournit les recettes, ``speeds`` les vitesses machines, ``terminal`` les produits considérés bruts, ``stack`` la pile de récursion et ``max_depth`` la profondeur maximale. Les cycles et les produits sans recette sont repliés en ressources brutes. Retourne ``None`` et mute ``exp``.
+    """
     if amount <= 0:
         return
     if item in terminal:
@@ -194,6 +222,11 @@ def _expand(
 
 
 def _tech_seconds(tech: dict) -> float:
+    """Temps de recherche théorique d'une technologie.
+
+    Il vaut ``unit.count × unit.time`` ; les valeurs absentes ou invalides
+    sont ramenées à zéro pour ne jamais fausser les totaux.
+    """
     unit = tech.get("unit") or {}
     try:
         count = int(unit.get("count", 0) or 0)
@@ -207,7 +240,10 @@ def _tech_seconds(tech: dict) -> float:
 
 
 def _science_requirements(tech: dict) -> list[tuple[str, int]]:
-    """Packs de science (nom, quantité totale) exigés par la tech."""
+    """Retourne les packs de science exigés par une technologie.
+
+    ``tech`` est la fiche du seed ; le résultat est une liste de couples ``(nom, quantité totale)`` calculée comme ``unit.count × amount``. Une unité absente ou invalide donne une liste vide.
+    """
     unit = tech.get("unit") or {}
     try:
         count = int(unit.get("count", 0) or 0)
@@ -224,6 +260,10 @@ def _science_requirements(tech: dict) -> list[tuple[str, int]]:
 
 
 def _format_seconds(value: float) -> str:
+    """Formate une durée en ``mm:ss`` ou ``h:mm:ss``.
+
+    ``value`` est un nombre de secondes (négatif ramené à zéro). Retourne la chaîne destinée à l'affichage HTML, sans dépendance externe.
+    """
     seconds = max(0, int(round(value)))
     hours, rest = divmod(seconds, 3600)
     minutes, sec = divmod(rest, 60)
@@ -233,6 +273,11 @@ def _format_seconds(value: float) -> str:
 
 
 def _format_number(value: float) -> str:
+    """Formate un nombre pour les graphiques.
+
+    Le séparateur de milliers est une espace et le nombre de décimales
+    s'adapte à l'ordre de grandeur pour garder des graduations lisibles.
+    """
     if value >= 100:
         return f"{value:,.0f}".replace(",", " ")
     if value >= 10:
@@ -241,7 +286,10 @@ def _format_number(value: float) -> str:
 
 
 def analyze_complexity(seed: dict, db: Any = None) -> dict:
-    """Calcule le rapport de complexité complet de ``seed``."""
+    """Calcule le rapport de complexité complet d'une seed.
+
+    ``seed`` fournit recettes, technologies, ordre de progression et pools ; ``db`` est optionnel et sert de repli pour les entités. Retourne un dict sérialisable contenant les totaux, le score, les usages de bâtiments/ressources et une ligne détaillée par technologie (``tech_rows``).
+    """
     recipes = seed.get("recipes") or []
     technologies = seed.get("technologies") or []
     progression = list(seed.get("progression_order") or [])
@@ -401,7 +449,10 @@ def _chart_svg(
     *,
     cumulative_label: str = "",
 ) -> str:
-    """Graphique ligne SVG (viewBox 1000×260) d'une série par tech."""
+    """Construit un graphique ligne SVG d'une série par technologie.
+
+    ``title`` est le titre, ``values``/``labels`` les points et leurs abscisses, ``color`` la couleur de la ligne et ``cumulative_label`` l'étiquette de la série cumulée. Retourne le fragment SVG complet (viewBox 1000×260).
+    """
     plot_w = _W - _ML - _MR
     plot_h = _H - _MT - _MB
     count = len(values)
@@ -410,11 +461,19 @@ def _chart_svg(
     top *= 1.08
 
     def px(index: int) -> float:
+        """Retourne la position horizontale SVG d'un point.
+
+        ``index`` est l'indice du point dans la série ; le résultat est réparti linéairement entre les marges du graphique. Un seul point est centré.
+        """
         if count <= 1:
             return _ML + plot_w / 2
         return _ML + (index / (count - 1)) * plot_w
 
     def py(value: float) -> float:
+        """Retourne la position verticale SVG d'une valeur.
+
+        ``value`` est la mesure à placer ; l'échelle est fixée par le maximum de la série et les marges du graphique. Retourne un ``float`` en coordonnées SVG.
+        """
         return _MT + plot_h - (value / top) * plot_h
 
     parts: list[str] = [
@@ -480,7 +539,6 @@ def _chart_svg(
         stride = max(1, math.ceil(count / 20))
         for i in range(0, count, stride):
             label = labels[i] if i < len(labels) else ""
-            # Truncation simple si trop long.
             if len(label) > 30:
                 label = label[:27] + "..."
             parts.append(
@@ -498,6 +556,11 @@ def _chart_svg(
 
 
 def _bar_list(title: str, rows: list[tuple[str, float]], color: str) -> str:
+    """Génère un classement en barres horizontales pour la complexité.
+
+    Les barres sont normalisées sur la plus grande valeur et affichent la
+    valeur formatée à droite.
+    """
     if not rows:
         return f'<p class="muted">{_html.escape(title)} : aucune donnée.</p>'
     top = max(value for _, value in rows) or 1
@@ -595,6 +658,11 @@ _CSS = _CSS + UI_CSS
 
 
 def _stat(lab: str, val: str, cls: str = "", hint: str = "") -> str:
+    """Génère une tuile du bandeau de statistiques de complexité.
+
+    ``cls`` choisit la couleur de la valeur et ``hint`` ajoute une infobulle
+    discrète sous celle-ci.
+    """
     hint_html = f'<div class="hint">{_html.escape(hint)}</div>' if hint else ""
     return (
         f'<div class="stat"><div class="lab">{_html.escape(lab)}</div>'
@@ -605,7 +673,10 @@ def _stat(lab: str, val: str, cls: str = "", hint: str = "") -> str:
 def render_complexity_html(
     seed: dict, db: Any = None, *, title: str | None = None
 ) -> str:
-    """Rend (chaîne) le rapport de complexité autonome de la seed."""
+    """Rend le rapport de complexité autonome d'une seed.
+
+    ``seed`` est la seed, ``db`` une base optionnelle et ``title`` un titre personnalisé. Retourne une chaîne HTML complète, sans ressource externe, prête à être écrite ou affichée.
+    """
     data = analyze_complexity(seed, db)
     rows = data["tech_rows"]
     labels = [str(row["num"]) for row in rows]
@@ -751,7 +822,10 @@ def render_complexity_html(
 
 
 def write_complexity_html(seed: dict, path: Path, db: Any = None) -> None:
-    """Écrit ``path`` (HTML autonome) du rapport de complexité de la seed."""
+    """Écrit le rapport de complexité d'une seed dans ``path``.
+
+    ``seed`` est la seed, ``path`` le fichier HTML de sortie et ``db`` une base optionnelle. Crée/écrase le fichier et retourne ``None``.
+    """
     document = render_complexity_html(seed, db)
     path.write_text(document, encoding="utf-8")
 
@@ -765,7 +839,10 @@ _ENERGY_KW_FACTOR = 0.06
 
 
 def _amount(value: Any) -> int | float:
-    """Convertit un montant du dump en nombre (entier quand c'est exact)."""
+    """Convertit un montant du dump en nombre exploitable.
+
+    ``value`` peut être un nombre ou une chaîne ; retourne un ``int`` quand la valeur est entière, sinon un ``float``. Une valeur absente ou invalide donne ``0``.
+    """
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -776,6 +853,11 @@ def _amount(value: Any) -> int | float:
 
 
 def _item_amounts(entries: Any) -> list[tuple[str, int | float]]:
+    """Convertit des entrées ``{name, amount}`` du dump en couples exploitables.
+
+    Les entrées sans nom sont ignorées et les quantités passent par
+    :func:`_amount`, qui normalise les valeurs numériques du dump.
+    """
     out: list[tuple[str, int | float]] = []
     for entry in entries or []:
         if not isinstance(entry, dict):
@@ -788,7 +870,10 @@ def _item_amounts(entries: Any) -> list[tuple[str, int | float]]:
 
 
 def _number(value: Any) -> int | float:
-    """Arrondit une mesure : entier si exact, sinon 3 décimales."""
+    """Arrondit une mesure pour l'affichage.
+
+    ``value`` est convertie en ``float`` ; retourne un ``int`` si la valeur est entière à 1e-9 près, sinon un ``float`` arrondi à trois décimales.
+    """
     number = float(value)
     if abs(number - round(number)) < 1e-9:
         return int(round(number))
@@ -805,6 +890,13 @@ class _Playthrough:
     """
 
     def __init__(self, seed: dict, db: Any = None) -> None:
+        """Prépare l'état complet de la simulation.
+
+        L'index recense recettes, producteurs, entités, fluides, sources
+        pompées, conversions, technologies, déblocages, gisements, foreuses et
+        compteurs. Aucune ressource n'est produite ici : :meth:`run` déroule
+        ensuite la progression technologique.
+        """
         self.seed = seed
         self.db = db
         self.recipes = [
@@ -864,7 +956,6 @@ class _Playthrough:
                 self.launch_requirements[product] = payload
         self.rocket_part = self._find_rocket_part()
 
-        # Recettes débloquées par une technologie.
         self.unlocked_by: dict[str, str] = {}
         for tech in self.techs:
             for effect in tech.get("effects") or []:
@@ -890,7 +981,6 @@ class _Playthrough:
                     }
                 )
 
-        # Foreuses disponibles.
         self.drills: list[dict] = []
         for name, entry in self.entities.items():
             if entry.get("type") != "mining-drill":
@@ -923,14 +1013,29 @@ class _Playthrough:
     # -- disponibilité des recettes -----------------------------------------
 
     def _is_available(self, recipe_name: str) -> bool:
+        """Indique si une recette est accessible à ce stade de la partie.
+
+        Une recette sans technologie de déblocage est toujours disponible ;
+        sinon, sa technologie doit déjà figurer dans ``processed``.
+        """
         tech = self.unlocked_by.get(recipe_name)
         return tech is None or tech in self.processed
 
     @staticmethod
     def _ingredient_names(recipe: dict) -> set[str]:
+        """Retourne l'ensemble des noms d'ingrédients d'une recette.
+
+        ``recipe`` est une fiche du seed ; les entrées sans nom sont ignorées. Sert à détecter les cycles avant de choisir une recette.
+        """
         return {name for name, _qty in _item_amounts(recipe.get("ingredients"))}
 
     def _choose(self, item: str, stack: tuple[str, ...]) -> dict | None:
+        """Choisit la meilleure recette disponible pour produire ``item``.
+
+        Les recettes qui créeraient un cycle sont écartées quand une
+        alternative existe. À défaut, on privilégie l'homonyme, puis les
+        recettes hors variantes ``ease``, puis l'ordre alphabétique.
+        """
         candidates = [
             r for r in self.producers.get(item, []) if self._is_available(r["name"])
         ]
@@ -938,6 +1043,10 @@ class _Playthrough:
             return None
 
         def cyclic(recipe: dict) -> bool:
+            """Détecte une recette cyclique à ce stade.
+
+            ``recipe`` est la recette candidate ; retourne ``True`` si elle consomme l'item courant ou un item déjà présent dans ``stack``. Sert à écarter les cycles quand une alternative existe.
+            """
             names = self._ingredient_names(recipe)
             return item in names or any(name in stack for name in names)
 
@@ -950,6 +1059,10 @@ class _Playthrough:
 
     @staticmethod
     def _output_amount(recipe: dict, item: str) -> int | float:
+        """Retourne la quantité de ``item`` produite par un craft.
+
+        ``recipe`` est la fiche de recette et ``item`` le nom recherché. Additionne les résultats correspondants et retourne au moins ``1`` pour éviter une division par zéro.
+        """
         total: int | float = 0
         for name, qty in _item_amounts(recipe.get("results")):
             if name == item:
@@ -959,7 +1072,10 @@ class _Playthrough:
     # -- minage --------------------------------------------------------------
 
     def _building_power_kw(self, name: str | None) -> float:
-        """Puissance électrique d'un bâtiment, en kW."""
+        """Retourne la puissance électrique d'un bâtiment en kW.
+
+        ``name`` est le nom de l'entité ; la valeur vient du dump ou, à défaut, de ``self.db``. Une puissance absente ou invalide donne ``0.0``.
+        """
         if not name:
             return 0.0
         entry = self.entities.get(name) or {}
@@ -973,9 +1089,18 @@ class _Playthrough:
             return 0.0
 
     def _recipe_power_kw(self, recipe: dict) -> float:
+        """Retourne la puissance électrique du bâtiment qui exécute ``recipe``.
+
+        ``recipe`` porte ``crafted_in`` ; la conversion J/tick → kW est déléguée à ``_building_power_kw``. Retourne ``0.0`` si le bâtiment est inconnu.
+        """
         return self._building_power_kw(recipe.get("crafted_in"))
 
     def _best_drill(self, category: Any) -> dict | None:
+        """Sélectionne la foreuse la plus rapide pour une catégorie de ressource.
+
+        Les foreuses incompatibles sont ignorées ; à vitesse égale, le nom
+        alphabétique départage pour garder un résultat déterministe.
+        """
         best = None
         for drill in self.drills:
             if category and category not in drill["categories"]:
@@ -989,6 +1114,13 @@ class _Playthrough:
         return best
 
     def _mine(self, item: str, amount: float) -> bool:
+        """Extrait ``amount`` d'une ressource minable.
+
+        Le meilleur gisement (rendement puis nom) et la meilleure foreuse sont
+        choisis depuis le dump. L'inventaire, la production, le temps de
+        minage et l'énergie sont mis à jour. Retourne ``False`` si aucun
+        gisement ne produit cet item.
+        """
         sources = self.mineables.get(item) or []
         if not sources:
             return False
@@ -1016,6 +1148,11 @@ class _Playthrough:
     # -- production ---------------------------------------------------------
 
     def _supply_external(self, item: str, amount: float) -> None:
+        """Comptabilise une fourniture hors chaîne de craft.
+
+        Pompage, récolte ou orbite : la quantité est marquée comme produite
+        et ajoutée à l'inventaire sans recette ni minage.
+        """
         self.external[item] += amount
         self.produced[item] += amount
         self.inv[item] += amount
@@ -1052,6 +1189,11 @@ class _Playthrough:
     def _convert_fluid(
         self, item: str, amount: float, stack: tuple[str, ...] = ()
     ) -> bool:
+        """Produit un fluide par conversion déclarée par les fluidboxes.
+
+        Les fluides d'entrée sont consommés récursivement. Retourne ``False``
+        si aucune conversion connue ne produit ``item``.
+        """
         conversion = self.fluid_conversions.get(item)
         if conversion is None:
             return False
@@ -1063,6 +1205,11 @@ class _Playthrough:
         return True
 
     def _recipe_seconds(self, recipe: dict, crafts: int) -> float:
+        """Temps machine nécessaire pour ``crafts`` exécutions d'une recette.
+
+        La vitesse du bâtiment est lue dans les prototypes ; un craft à la main
+        utilise une vitesse de 1.
+        """
         crafted_in = recipe.get("crafted_in")
         speed = 1.0
         if crafted_in:
@@ -1071,6 +1218,12 @@ class _Playthrough:
         return crafts * energy / speed
 
     def _craft(self, recipe: dict, crafts: int, stack: tuple[str, ...]) -> None:
+        """Exécute ``crafts`` fois une recette.
+
+        Les ingrédients sont consommés, les produits ajoutés à l'inventaire et
+        les compteurs de crafts, de temps et de bâtiments utilisés sont mis à
+        jour.
+        """
         if crafts <= 0:
             return
         self.recipe_crafts[recipe["name"]] += crafts
@@ -1086,6 +1239,12 @@ class _Playthrough:
             self.produced[name] += crafts * qty
 
     def _produce(self, item: str, amount: float, stack: tuple[str, ...] = ()) -> None:
+        """Produit ``item`` par la première voie applicable.
+
+        L'ordre est : ressource minable, fluide pompé, recette débloquée,
+        lancement de fusée, conversion de fluide, puis fourniture externe.
+        Tous les compteurs de simulation sont mis à jour au passage.
+        """
         if amount <= 0:
             return
         if item in stack:
@@ -1123,7 +1282,10 @@ class _Playthrough:
         self._supply_external(item, amount)
 
     def _require(self, item: str, amount: float, stack: tuple[str, ...] = ()) -> None:
-        """Consomme ``amount`` de ``item``, en produisant le manque au besoin."""
+        """Consomme ``amount`` de ``item`` en produisant le manque.
+
+        ``item`` est le nom, ``amount`` la quantité et ``stack`` la pile de récursion. Puise d'abord dans l'inventaire, puis produit ou fournit en externe ; les compteurs de consommation/production sont mis à jour. Retourne ``None``.
+        """
         if amount <= 0:
             return
         if item in stack:
@@ -1155,6 +1317,11 @@ class _Playthrough:
     # -- technologies et déclencheurs ---------------------------------------
 
     def _resource_product(self, entity_name: str) -> str:
+        """Nom du produit minable associé à une entité.
+
+        Si le dump ne déclare pas de produit minable, le nom de l'entité est
+        renvoyé pour conserver un identifiant exploitable.
+        """
         entry = self.entities.get(entity_name)
         if entry:
             for name, _qty in _item_amounts(entry.get("mineable_products")):
@@ -1175,7 +1342,10 @@ class _Playthrough:
         return None
 
     def _find_rocket_part(self) -> str | None:
-        """Item fabriqué par le silo : recette de sa catégorie de craft."""
+        """Retourne l'item fabriqué par le silo.
+
+        Parcourt les entités pour trouver ``rocket-silo`` puis les recettes de sa catégorie de craft. Retourne le nom du produit ou ``None`` si le dump ne décrit pas de silo/recette.
+        """
         silo = next(
             (
                 name
@@ -1246,6 +1416,12 @@ class _Playthrough:
     def _process_trigger(
         self, trigger: dict, tech_id: str | None = None
     ) -> None:
+        """Simule le déclencheur de recherche d'une technologie.
+
+        Selon le type, la simulation mine une entité, craft un item ou lance
+        un payload en orbite. ``tech_id`` est conservé pour le contexte mais
+        le déclencheur reste piloté uniquement par les faits du dump.
+        """
         kind = trigger.get("type")
         if kind == "mine-entity":
             for entity_name in trigger.get("entities") or []:
@@ -1264,6 +1440,12 @@ class _Playthrough:
                     self._produce(str(product), _amount(qty or 1))
 
     def _process_tech(self, tech: dict) -> None:
+        """Traite une technologie dans l'ordre de progression.
+
+        Un déclencheur dédié est simulé s'il existe ; sinon les packs de
+        science sont consommés par le laboratoire, dans les quantités
+        déclarées par le dump.
+        """
         trigger = tech.get("research_trigger")
         if isinstance(trigger, dict) and trigger.get("type"):
             self._process_trigger(trigger, tech.get("id"))
@@ -1280,6 +1462,11 @@ class _Playthrough:
             self._require(name, count * qty)
 
     def _craft_used_buildings(self) -> None:
+        """Fabrique récursivement les bâtiments utilisés par la simulation.
+
+        La boucle s'arrête quand plus aucun bâtiment nouveau n'apparaît ; la
+        liste triée est ensuite exposée dans le résultat.
+        """
         crafted: set[str] = set()
         for _ in range(100):
             pending = sorted(
@@ -1297,6 +1484,13 @@ class _Playthrough:
     # -- résultat -----------------------------------------------------------
 
     def _result(self) -> dict:
+        """Assemble le résultat final de la simulation.
+
+        Le dictionnaire contient les statistiques par item, les totaux, les
+        bâtiments, les recettes verrouillées, les ressources inutilisées et
+        l'inventaire restant, dans un format directement consommé par les
+        exporteurs HTML.
+        """
         keys = (
             set(self.produced)
             | set(self.consumed)
@@ -1352,6 +1546,12 @@ class _Playthrough:
         }
 
     def run(self) -> dict:
+        """Déroule la progression technologique puis finalise la simulation.
+
+        Les technologies sont traitées dans l'ordre déclaré, les bâtiments
+        nécessaires sont fabriqués, puis les statistiques finales sont
+        retournées.
+        """
         for tech_id in self.progression:
             tech = self.tech_by_id.get(tech_id)
             if tech is None:

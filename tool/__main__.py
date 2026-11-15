@@ -45,10 +45,9 @@ from tool.service import load_db as _load_db_raising
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
-    """Wrapper CLI : traduit les exceptions du service en sortie de processus.
+    """Charge la base vanilla demandée par la CLI.
 
-    Le service lève (pour que l'IG ne se fasse pas tuer) ; ici on quitte, comme
-    toujours. Messages et codes de sortie inchangés.
+    `demo` sélectionne la base synthétique, sinon `dump_path` désigne le JSON de l'exporter. Retourne la `VanillaDB` chargée ; en cas de dump absent ou invalide, imprime le message du service et termine le processus avec le code 1 (aucune exception ne remonte).
     """
     try:
         return _load_db_raising(demo, dump_path)
@@ -61,13 +60,19 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
 
 
 def cmd_parse(args: argparse.Namespace) -> None:
-    """Chargement + résumé CLI de la base vanilla (dump ou demo)."""
+    """Charge la base vanilla puis imprime son résumé.
+
+    `args` est le namespace argparse de `randputf parse` (`demo`, `dump`). Écrit le résumé de `summarize_db` sur stdout et retourne `None`.
+    """
     db = _load_db(args.demo, Path(args.dump))
     print(summarize_db(db))
 
 
 def cmd_audit(args: argparse.Namespace) -> None:
-    """Audit CLI des tags (bâtiments + items) ; exit 1 si violations."""
+    """Audite les tags des bâtiments et des items puis imprime le bilan.
+
+    `args` porte `demo`/`dump`. Fusionne les deux rapports, écrit le résumé sur stdout et termine avec le code 0 si aucun invariant n'est violé, 1 sinon.
+    """
     db = _load_db(args.demo, Path(args.dump))
     report = audit_building_tags(db)
     item_report = audit_item_tags(db)
@@ -81,7 +86,10 @@ def cmd_audit(args: argparse.Namespace) -> None:
 
 
 def _vanilla_seed_from_path(dump_path: str) -> dict | None:
-    """« Seed » vanilla dérivée du dump (``None`` si absent/sans technologies)."""
+    """Dérive une « seed » vanilla depuis un dump sur disque.
+
+    `dump_path` est le chemin du JSON ; retourne le dict seed produit par `vanilla_seed_from_dump`, ou `None` si le fichier est absent/illisible ou ne contient pas les technologies.
+    """
     try:
         dump = json.loads(Path(dump_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -90,16 +98,19 @@ def _vanilla_seed_from_path(dump_path: str) -> dict | None:
 
 
 def _report_retry(attempt: int, seed_value: int, issues: list[str]) -> None:
-    """Trace une tentative dérivée. La seed N+1… est déterministe : ce n'est
-    donc jamais l'horloge qui remplace silencieusement la graine demandée."""
+    """Trace une tentative de génération avec une graine dérivée.
+
+    `attempt` est le numéro de tentative, `seed_value` la graine essayée et `issues` les problèmes du validateur. Écrit une ligne `[RETRY …]` sur stdout et retourne `None`.
+    """
     first = issues[0] if issues else "raison inconnue"
     print(f"[RETRY {attempt}] seed {seed_value} non jouable ({first}), derive...")
 
 
 def cmd_generate(args: argparse.Namespace) -> None:
-    """Génère une seed (démonstrateur) puis l'assemble en mod : seed.json/
-    .lua + graphe HTML. Retente avec une graine dérivée tant que la seed est
-    invalide (≤10 tentatives, sinon exit 2)."""
+    """Génère une seed puis l'assemble en mod et écrit ses rapports.
+
+    `args` porte les options CLI (`demo`, `dump`, `seed`, `out`, `install`). La fonction charge la base et la config, génère avec reprise sur graine dérivée, écrit `seed.json`/`seed.lua` et le graphe HTML, puis installe le mod si demandé. Retourne `None` et termine avec le code 2 après 10 échecs.
+    """
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
 
@@ -156,8 +167,10 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
-    """Génère une seed puis écrit le HTML comparant sa difficulté à la baseline
-    vanilla (dump requis, technologies incluses)."""
+    """Génère une seed et écrit la comparaison de difficulté avec le vanilla.
+
+    `args` fournit `demo`, `dump`, `seed` et `out`. La baseline vanilla est dérivée du dump ; le HTML comparatif est écrit dans `out`. Retourne `None`.
+    """
     if args.demo:
         sys.exit("La comparaison nécessite le dump vanilla (pas --demo).")
     db = _load_db(False, Path(args.dump))
@@ -186,11 +199,10 @@ def cmd_compare(args: argparse.Namespace) -> None:
 
 
 def cmd_report(args: argparse.Namespace) -> None:
-    """Génère le rapport complet (complexité, difficulté, partie simulée) du
-    dump vanilla, puis résume et contrôle les données lues.
+    """Génère le rapport complet du dump vanilla et contrôle les données lues.
 
-    Sert d'outil de validation du dump : avertit si des items sont fournis en
-    externe, si les tags ou les temps de minage manquent, etc."""
+    `args` porte `demo`, `dump`, `seed` et `out`. Produit complexité, difficulté et partie simulée, imprime un résumé et des avertissements sur les données manquantes. Retourne `None`.
+    """
     dump_path = Path(args.dump)
     try:
         dump = json.loads(dump_path.read_text(encoding="utf-8"))
@@ -286,9 +298,10 @@ def cmd_report(args: argparse.Namespace) -> None:
 
 
 def cmd_dump(args: argparse.Namespace) -> None:
-    """Écrit le navigateur HTML du dump (notre Factoriopedia) : inventaire
-    A→Z de toutes les tables, tuiles, entités, items/fluides, recettes,
-    technologies — avec filtre de recherche global."""
+    """Écrit le navigateur HTML du dump.
+
+    `args` porte `dump` et `out`. La page autonome contient l'inventaire et les sections détaillées ; retourne `None`.
+    """
     dump_path = Path(args.dump)
     try:
         dump = json.loads(dump_path.read_text(encoding="utf-8"))
@@ -300,8 +313,10 @@ def cmd_dump(args: argparse.Namespace) -> None:
 
 
 def cmd_difficulty(args: argparse.Namespace) -> None:
-    """Génère une seed et affiche son ardoise de difficulté (recettes
-    primaires, DAG)."""
+    """Génère une seed et imprime son ardoise de difficulté.
+
+    `args` porte `demo`, `dump` et `seed`. Affiche les coûts bruts par ressource et la chaîne de progression ; retourne `None`.
+    """
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
     db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
@@ -312,9 +327,10 @@ def cmd_difficulty(args: argparse.Namespace) -> None:
 
 
 def cmd_witness(args: argparse.Namespace) -> None:
-    """Assemble le mod pour une seed donnée (défaut 5) et affiche son témoin
-    md5 canonique (``tool.common.witness``). ``--expect`` rend la commande
-    utilisable en CI : exit 1 dès que le digest diverge."""
+    """Assemble le mod d'une seed et vérifie son témoin canonique.
+
+    `args` porte `seed` (défaut 5) et `expect`. Imprime le md5 canonique ; si `expect` est fourni et diffère, termine avec le code 1. Retourne `None`.
+    """
     db = _load_db(args.demo, Path(args.dump))
     db.seed_value = args.seed
     cfg = _load_config()
@@ -332,8 +348,10 @@ def cmd_witness(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Point d'entrée CLI ``randputf`` (parse / audit / generate /
-    difficulty / report)."""
+    """Point d'entrée de la CLI `randputf`.
+
+    `argv` est la liste d'arguments (ou `None` pour `sys.argv`). Parse la sous-commande, l'exécute et retourne `None` ; les erreurs sont converties en codes de sortie par les commandes.
+    """
     parser = argparse.ArgumentParser(prog="randputf", description="Generateur de seeds randputF")
     sub = parser.add_subparsers(dest="command", required=True)
 

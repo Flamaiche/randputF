@@ -43,7 +43,10 @@ MAX_QDEPTH = 6         # profondeur max de la recherche de faisabilité quantit�
 
 @dataclass
 class Blocker:
-    """Première tech non recherchable + explication lisible (bordereau)."""
+    """Premier blocage rencontré pendant le rejeu.
+
+    ``tech`` est l'identifiant de la tech bloquante, ``kind`` la catégorie (``prereqs``, ``trigger``, ``cost`` ou ``lab``), ``item`` l'élément manquant et ``reason`` une explication multi-étapes. ``__str__`` produit la ligne du bordereau joueur.
+    """
 
     tech: str          # id de la tech bloquante (None si prérequis cassé)
     kind: str          # "prereqs" | "trigger" | "cost" | "lab"
@@ -84,8 +87,10 @@ class ReplayReport:
     never_masterable: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
-        """Ligne de résumé : état, techs maîtrisées, électricité, blocker
-        éventuel — ex. `VICTOIRE techs=101/101 élec=OUI`."""
+        """Retourne une ligne de résumé du rejeu.
+
+        Le texte indique l'état (victoire/blocage/sans fusée), le nombre de techs recherchées, la disponibilité de l'électricité et, le cas échéant, le blocage. Sert à l'affichage CLI.
+        """
         state = "VICTOIRE" if self.victory else ("BLOQUÉ" if self.blocker else "SANS FUSÉE")
         n = f"{self.researched}/{self.total_techs}"
         details = f" ({self.blocker})" if self.blocker else ""
@@ -93,7 +98,10 @@ class ReplayReport:
 
 
 class FakePlayer:
-    """Rejoue une seed. ``db`` = base vanilla, ``seed`` = seed finale."""
+    """Rejoue une seed avec un joueur simulé.
+
+    ``db`` est la base vanilla et ``seed`` la seed finale. L'objet porte l'inventaire simulé, les ressources obtenues, l'état de l'électricité et les compteurs de maîtrise ; ``play`` retourne un ``ReplayReport``.
+    """
 
     def __init__(self, db: VanillaDB, seed: dict) -> None:
         """Prépare un rejeu complet de ``seed`` sur la base ``db``.
@@ -449,7 +457,10 @@ class FakePlayer:
         return True  # void / inconnu : pas de contrainte d'énergie
 
     def _generator_ok(self, b, items: set[str], fluids: set[str]) -> bool:
-        """Un générateur (produces_electricity) peut-il tourner ?"""
+        """Indique si un générateur peut fonctionner.
+
+        ``b`` est le générateur, ``items``/``fluids`` les ressources obtenues. Vérifie le fluide assigné ou disponible pour les générateurs à fluide, le combustible pour les brûleurs, et considère les générateurs autonomes comme valides.
+        """
         if getattr(b, "fluid_inputs", 0) > 0:
             assign = self.fluid_assignments.get(b.name, {})
             inp = assign.get("input")
@@ -479,7 +490,10 @@ class FakePlayer:
         return False, None
 
     def _closure_items_buckets(self) -> tuple[set[str], set[str]]:
-        """Items/fluides de départ (sources + kit + patches item ramassés)."""
+        """Retourne les items et fluides disponibles au départ.
+
+        Le résultat est un couple ``(items, fluides)`` comprenant les ressources environnementales, le kit de départ et les patches item ramassables selon leur jalon. Sert à initialiser la fermeture du rejeu.
+        """
         items = set(ENVIRONMENTAL_ITEMS) & set(self.items_db)
         items |= self.kit
         # Patches ITEM : ramassables à la main au spawn (resource finie, façon
@@ -759,7 +773,10 @@ class FakePlayer:
         }
 
     def _is_mastered(self, item: str) -> bool:
-        """L'item est-il « sûr » ? (au moins 10× la sortie de sa recette.)"""
+        """Indique si un item est considéré comme maîtrisé.
+
+        ``item`` est le nom recherché ; la maîtrise exige une production d'au moins 10× la sortie de sa recette et une sortie de référence non nulle. Retourne un booléen.
+        """
         out = 10 * self._mastery_goal.get(item, 0)
         return out > 0 and self.had.get(item, 0) >= out
 
@@ -1096,8 +1113,10 @@ class FakePlayer:
         depth: int = 0,
         seen: frozenset[str] = frozenset(),
     ) -> str:
-        """Pourquoi ``target`` n'est PAS obtenable : chaîne lisible du plus
-        proche au plus profond, bornée en profondeur."""
+        """Explique pourquoi une cible n'est pas obtenable.
+
+        ``target`` est l'item/fluide visé, ``items``/``fluids`` les ressources disponibles, ``power`` l'état électrique, ``depth`` la profondeur courante et ``seen`` les cibles déjà visitées. Retourne une chaîne lisible décrivant la chaîne de dépendances manquantes.
+        """
         if target in ENVIRONMENTAL_ITEMS or target in self.kit:
             return "déjà obtenu (source/kit)"
         if depth >= MAX_DEPTH:
@@ -1157,5 +1176,8 @@ class FakePlayer:
 
 
 def play(db: VanillaDB, seed: dict) -> ReplayReport:
-    """Joue la seed avec un joueur simulé (API courte)."""
+    """Joue une seed et retourne le verdict du rejeu.
+
+    ``db`` est la base vanilla et ``seed`` la seed finale. Construit un ``FakePlayer`` puis retourne son ``ReplayReport`` (victoire, techs recherchées, blocage, maîtrise).
+    """
     return FakePlayer(db, seed).play()

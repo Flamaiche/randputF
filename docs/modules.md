@@ -79,11 +79,11 @@ sur le chemin d'une seed**.
 Tous dérivent de `PrototypeConfig` (`base.py`, 13 lignes).
 
 Les champs des dataclasses portent des **défauts** (par exemple
-`max_iterations: int = 120`, `tool/prototypes/recursive.py:39`) : ils servent à
+`max_iterations: int = 120`, `tool/prototypes/recursive.py:42`) : ils servent à
 construire un prototype seul, typiquement dans un test. Le chemin du pipeline
 passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 `config/defaults.yaml` — et **jamais** sur le défaut du champ
-(`tool/prototypes/recursive.py:84-101`). C'est ce qui permet d'affirmer que
+(`tool/prototypes/recursive.py:87-106`). C'est ce qui permet d'affirmer que
 `defaults.yaml` est la source unique des réglages.
 
 | Module | Lignes | Statut | Domaine |
@@ -111,7 +111,7 @@ passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
 | `config.py` | 548 | Pipeline | Fusion defaults + surcharges, **schéma strict**, `ConfigError` |
-| `db.py` | 436 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
+| `db.py` | 448 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
 | `rng.py` | 22 | Pipeline | `make_seeded_rng` — **fabrique unique** des flux RNG |
 | `tagsets.py` | 119 | Pipeline | Ensembles de noms figés (D3), source unique par ensemble |
 | `version.py` | 45 | Accessoire | `VERSION`, `FACTORIO_VERSION`, `MOD_NAME_VERSIONED` — lus depuis `mod/info.json` |
@@ -134,12 +134,12 @@ Seul module où la **validation** est une erreur et non un log.
 | `_wreck_constraints` | 513 | Contraintes non linéaires du loot de crash |
 
 Les 15 types de spécification du schéma sont définis en tête de fichier
-(`tool/common/config.py:30-46`).
+(`tool/common/config.py:33-49`).
 
 **Invariant** : un config fusionné est **toujours complet** — chaque clé lue par
 le moteur existe, donc aucun module n'a besoin de valeur de secours
 (`tool/common/config.py:10-12`). Une clé obligatoire absente est un défaut de
-maintenance, pas une tolérance (`tool/common/config.py:513-537`).
+maintenance, pas une tolérance (`tool/common/config.py:527-551`).
 
 ## 6. `tool/parsers/vanilla.py` — l'entrée
 
@@ -151,7 +151,7 @@ vers `VanillaDB`.
 | Ignore les objets randputF | `_RANDPUTF_PREFIX = "randputf-"` (`tool/parsers/vanilla.py:61`) — un dump pollué est filtré, pas refusé |
 | Empile les doublons | Rejette les noms déjà préfixés plutôt que de créer `randputf-randputf-…` |
 | Calcule les tags | Dérive `is_crafter`, `is_extractor`, `is_generator`… depuis les capacités |
-| Rejette un dump invalide | `DumpInvalidError` avec message → le CLI sort en 1 (`tool/__main__.py:60-62`) |
+| Rejette un dump invalide | `DumpInvalidError` avec message → le CLI sort en 1 (`tool/__main__.py:57-59`) |
 
 ## 7. `tool/validator/` — deux validations distinctes
 
@@ -161,7 +161,7 @@ vers `VanillaDB`.
 | `solver.py` | 114 | **Solvabilité** : la seed est-elle finissable ? Liste de problèmes |
 
 Le pipeline appelle le validateur **structurel** et ne fait qu'**logger**
-(`tool/generator/pipeline.py:413-429`). Le CLI appelle le **solver** et
+(`tool/generator/pipeline.py:416-432`). Le CLI appelle le **solver** et
 **retente avec une graine dérivée** jusqu'à 10 fois
 (`MAX_ATTEMPTS = 10`, `tool/service.py:50`).
 
@@ -177,20 +177,20 @@ non solvable — et c'est le cas qui déclenche la reprise du CLI. Voir
 | `difficulty.py` | 304 | Pipeline (à l'export) | Ardoise de ressources brutes ; **injectée dans la seed à l'export** |
 
 `compute_difficulty` est le seul audit sur le chemin d'une seed, et il ne
-s'exécute qu'à l'écriture (`tool/exporters/mod_seed.py:54`) : le calcul ne peut
+s'exécute qu'à l'écriture (`tool/exporters/mod_seed.py:55`) : le calcul ne peut
 donc pas biaiser la construction.
 
 ## 9. `tool/exporters/`
 
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
-| `mod_seed.py` | 482 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` ; fournit la baseline vanilla (`build_vanilla_seed`) et `tag_progression` aux rapports |
-| `seed_graph.py` | 1719 | Accessoire | Graphe de production HTML (`seed.graph.html`) ; **optionnel** (Graphviz absent → ignoré sans erreur) |
-| `complexity_graph.py` | 1382 | Accessoire | Rapport de complexité de la seed (`seed.complexity.html`, SVG Python pur) ; `analyze_playthrough` partagé avec les rapports vanilla |
-| `difficulty_graph.py` | 550 | Accessoire | Courbe de difficulté cumulée mod vs vanilla (`seed.difficulty.html`, commande `compare`) |
-| `vanilla_complexity.py` | 406 | Accessoire | Rapport « partie simulée » du dump vanilla (section de `randputf report`) |
-| `dump_html.py` | 396 | Accessoire | Navigateur HTML du dump (`randputf dump`) |
-| `report.py` | 119 | Accessoire | Rapport complet du dump vanilla : assemble complexité + difficulté + partie simulée (`randputf report`) |
+| `mod_seed.py` | 499 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` ; fournit la baseline vanilla (`build_vanilla_seed`) et `tag_progression` aux rapports |
+| `seed_graph.py` | 1746 | Accessoire | Graphe de production HTML (`seed.graph.html`) ; **optionnel** (Graphviz absent → ignoré sans erreur) |
+| `complexity_graph.py` | 1531 | Accessoire | Rapport de complexité de la seed (`seed.complexity.html`, SVG Python pur) ; `analyze_playthrough` partagé avec les rapports vanilla |
+| `difficulty_graph.py` | 574 | Accessoire | Courbe de difficulté cumulée mod vs vanilla (`seed.difficulty.html`, commande `compare`) |
+| `vanilla_complexity.py` | 480 | Accessoire | Rapport « partie simulée » du dump vanilla (section de `randputf report`) |
+| `dump_html.py` | 446 | Accessoire | Navigateur HTML du dump (`randputf dump`) |
+| `report.py` | 137 | Accessoire | Rapport complet du dump vanilla : assemble complexité + difficulté + partie simulée (`randputf report`) |
 | `html_ui.py` | 34 | Accessoire | Helpers HTML partagés (CSS, infobulles, JS) |
 
 `seed_graph.py` est le plus gros fichier du tool et le seul à dépendre d'un
@@ -201,7 +201,7 @@ dépendance, ouverture hors ligne (détail dans
 
 ## 10. `tool/replay/player.py` — le rejoueur
 
-1088 lignes. Simule une partie complète sur la seed finale pour **prouver** la
+1160 lignes. Simule une partie complète sur la seed finale pour **prouver** la
 solvabilité. Ce n'est pas le validateur : c'est une preuve par simulation
 (1501/1501 victoires mesurées, `docs/solvabilite.md` §15ter).
 
@@ -214,7 +214,7 @@ la suite de tests et par les sweeps.
 
 ## 11. `tool/__main__.py` — la CLI
 
-399 lignes, 8 commandes.
+406 lignes, 8 commandes.
 
 | Commande | Rôle | Sortie |
 |----------|------|--------|
@@ -232,7 +232,7 @@ vanilla alternatif).
 
 `generate` a une option propre : `--install`, qui copie le mod dans
 `paths.factorio_mods` et met à jour `mod-list.json`
-(`tool/service.py:144-174`) — et **désactive** `randputf-exporter`, pour
+(`tool/service.py:162-197`) — et **désactive** `randputf-exporter`, pour
 qu'aucun dump ne puisse être pris depuis une partie randomisée.
 
 ## 12. Récapitulatif des statuts

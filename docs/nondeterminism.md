@@ -20,7 +20,7 @@ et chaque seed = une combinaison unique de choix.
 ## 1. Choix d'items/resource patches (Phase 1 — map_patches.py)
 
 ### 1a. Items solides tirés en patches
-- **Fichier** : `tool/generator/map_patches.py:104-143` (`_draw`)
+- **Fichier** : `tool/generator/map_patches.py:110-149` (`_draw`)
 - **Code** : `n_items = rng.randint(min_items, max(min_items, count - 1))` (`:104`) puis tirage sans remise : `rng.shuffle(pool)` (`:130`) en sautant les identités déjà dans `used` (pas de `rng.sample`)
 - **Pool** : `db.beltable_items()` = **209 items** (tous les items beltables non-tool)
 - **Ce que ça fait** : choisit N items solides qui seront posés en carte (gisements)
@@ -28,7 +28,7 @@ et chaque seed = une combinaison unique de choix.
 - **Impact** : détermine quels items sont miniables en carte (pierre, fer, cuivre, etc.)
 
 ### 1b. Fluides tirés en patches
-- **Fichier** : `tool/generator/map_patches.py:121-143` (`_draw`, branche fluide)
+- **Fichier** : `tool/generator/map_patches.py:127-149` (`_draw`, branche fluide)
 - **Code** : `rng.shuffle(pool)` puis prise sans remise, en sautant les identités déjà dans `used`
 - **Pool** : `db.pipable_fluids()` = **8 fluids** (water, crude-oil, heavy-oil, light-oil, lubricant, steam, petroleum-gas, sulfuric-acid)
 - **Ce que ça fait** : choisit N fluids qui seront en carte (gisements fluides)
@@ -36,7 +36,7 @@ et chaque seed = une combinaison unique de choix.
 - **Impact** : détermine quels fluids sont disponibles via pumpjack
 
 ### 1c. Shuffle final des patches
-- **Fichier** : `tool/generator/map_patches.py:144`
+- **Fichier** : `tool/generator/map_patches.py:150`
 - **Code** : `rng.shuffle(patches)`
 - **Pool** : liste de N items + M fluids (quelques dizaines max)
 - **Impact** : l'ordre des patches dans la seed (post-shuffle)
@@ -47,9 +47,9 @@ et chaque seed = une combinaison unique de choix.
 ## 2. Chaîne initiale (Phase 2 — starter_chain.py)
 
 ### 2a. Extracteur pour ressource
-- **Fichier** : `tool/generator/starter_chain.py:332`
+- **Fichier** : `tool/generator/starter_chain.py:335`
 - **Code** : `extractor = rng.choice(candidates)`
-- **Pool** : `_extractors_for_resource` (`starter_chain.py:355`) — taille variable :
+- **Pool** : `_extractors_for_resource` (`starter_chain.py:358`) — taille variable :
   - `kind=SLOT_FLUID, name=water` → **1** (offshore-pump)
   - `kind=SLOT_FLUID, name!=water` → **1-2** (offshore-pump si no_electric, sinon pumpjack)
   - `kind=SLOT_ITEM` → **2** (burner-mining-drill, electric-mining-drill)
@@ -58,41 +58,41 @@ et chaque seed = une combinaison unique de choix.
 - **Exemple concret** : si heavy-oil est un patch → pumpjack choisi → son craft doit être accessible
 
 ### 2b. Transformateur (fabricateur)
-- **Fichier** : `tool/generator/starter_chain.py:404`
+- **Fichier** : `tool/generator/starter_chain.py:407`
 - **Code** : `chosen = rng.choice(transformers)`
 - **Pool** : `db.buildings_with_tag("is_crafter")` filtré starters = **~5-8** (stone-furnace, steel-furnace, assembling-machine-1/2, etc.)
 - **Ce que ça fait** : choisit le bâtiment de transformation principal (four, assembleur…)
 - **Impact** : détermine la catégorie de craft (smelting, crafting, etc.)
 
 ### 2c. Bâtiment de recherche (lab)
-- **Fichier** : `tool/generator/starter_chain.py:429`
+- **Fichier** : `tool/generator/starter_chain.py:432`
 - **Code** : `item = rng.choice(candidates)`
 - **Pool** : items avec `place_result` = building type "research" = **1** (lab)
 - **Impact** : nul (pool=1)
 
 ### 2d. Premier science pack
-- **Fichier** : `tool/generator/starter_chain.py:454`
+- **Fichier** : `tool/generator/starter_chain.py:457`
 - **Code** : `item = rng.choice(packs)`
 - **Pool** : items `is_science_pack` = **7** (automation, logistic, military, chemical, production, utility, space)
 - **Ce que ça fait** : choisit le premier pack craftable (gratuit au démarrage)
 - **Impact** : détermine quelle branche de science est ouverte en premier
 
 ### 2e. Item kit cible (armes/munitions)
-- **Fichier** : `tool/generator/starter_chain.py:528`
+- **Fichier** : `tool/generator/starter_chain.py:531`
 - **Code** : `chosen = rng.choice(candidates)`
 - **Pool** : items matchant patterns (weapon/gun/armor) = **~10-15**
 - **Ce que ça fait** : choisit l'arme principale du kit de départ
 - **Impact** : détermine l'arme que le joueur a au spawn
 
 ### 2f. Gun pour l'arme
-- **Fichier** : `tool/generator/starter_chain.py:593`
+- **Fichier** : `tool/generator/starter_chain.py:596`
 - **Code** : `gun = rng.choice(guns)`
 - **Pool** : items `is_handheld_gun` = **6** (pistol, submachine-gun, shotgun, combat-shotgun, rocket-launcher, flamethrower)
 - **Ce que ça fait** : choisit le type d'arme à munitions
 - **Impact** : détermine quel gun est craftable
 
 ### 2g. Munitions alignées
-- **Fichier** : `tool/generator/starter_chain.py:599`
+- **Fichier** : `tool/generator/starter_chain.py:602`
 - **Code** : `ammo = rng.choice(matching or ammos)`
 - **Pool** : items `is_ammo` = **14** (bullet, shotgun-shell, rocket, flask, etc.)
 - **Ce que ça fait** : choisit les munitions alignées avec le gun
@@ -103,25 +103,25 @@ et chaque seed = une combinaison unique de choix.
 ## 3. Recettes et ateliers (recipes.py)
 
 ### 3a. Atelier pour recette (whitelist)
-- **Fichier** : `tool/generator/recipes.py:717` (`_pick_building`, defini `:717`)
+- **Fichier** : `tool/generator/recipes.py:750` (`_pick_building`, defini `:717`)
 - **Code** : `rng.choice(candidates)`
 - **Pool** : `db.buildings.values()` filtré whitelist = variable (souvent 1-5)
 - **Impact** : choix du bâtiment fabricant pour une recette
 
 ### 3b. Atelier pour recette (déjà unlocké)
-- **Fichier** : `tool/generator/recipes.py:789` (`pick`, dans `_pick_building`)
+- **Fichier** : `tool/generator/recipes.py:825` (`pick`, dans `_pick_building`)
 - **Code** : `rng.choice(candidates)`
 - **Pool** : `db.buildings.values()` filtré `state.unlocked_buildings` = variable
 - **Impact** : quel atelier libre fabrique la recette
 
 ### 3c. Atelier pour recette (tout bâtiment)
-- **Fichier** : `tool/generator/recipes.py:789` (`pick`, dans `_pick_building`)
+- **Fichier** : `tool/generator/recipes.py:825` (`pick`, dans `_pick_building`)
 - **Code** : `building = rng.choice(candidates)`
 - **Pool** : `db.buildings.values()` hors exclusions = variable (~10-30)
 - **Impact** : dernier repli pour choisir un atelier
 
 ### 3d. Combustible pour bâtiment burner
-- **Fichier** : `tool/generator/recipes.py:872` (`_ensure_burner_fuel`)
+- **Fichier** : `tool/generator/recipes.py:911` (`_ensure_burner_fuel`)
 - **Code** : `fuel = rng.choice(fuel_items)`
 - **Pool** : `db.fuel_items()` filtré `not in ROCKET_CHAIN` (`:887`) = **5** (`coal`, `solid-fuel`, `uranium-fuel-cell`, `wood`, `nuclear-fuel` — `rocket-fuel` exclu, chaîne fusée)
 - **Impact** : détermine quel combustible est assigné aux fours/brûleurs
@@ -131,50 +131,50 @@ et chaque seed = une combinaison unique de choix.
 ## 4. Phase récursive (recursive_phase.py)
 
 ### 4a. Couverture d'items
-- **Fichier** : `tool/generator/recursive_phase.py:297`
+- **Fichier** : `tool/generator/recursive_phase.py:303`
 - **Code** : `rng.shuffle(items)`
 - **Pool** : `db.beltable_items()` = **209 items**
 - **Ce que ça fait** : mélange l'ordre de couverture (quels items ont des recettes)
 - **Impact** : détermine l'ordre de création des recettes d'extension
 
 ### 4b. Munitions manquantes
-- **Fichier** : `tool/generator/recursive_phase.py:372`
+- **Fichier** : `tool/generator/recursive_phase.py:381`
 - **Code** : `rng.shuffle(missing)`
 - **Pool** : items `is_ammo` manquants = variable
 - **Impact** : ordre de création des recettes de munitions
 
 ### 4c. Bâtiment distribution (transporteur)
-- **Fichier** : `tool/generator/recursive_phase.py:539-556` (`_generate_for_element(..., "distribution", pole)`, `_pick_real_pole`)
+- **Fichier** : `tool/generator/recursive_phase.py:548-565` (`_generate_for_element(..., "distribution", pole)`, `_pick_real_pole`)
 - **Code** : `rng.choice(candidates)` (`:556`)
 - **Pool** : `db.buildings_with_tag("is_distribution")` = **5** (4 power poles + beacon)
 - **Impact** : choisit le transporteur/connexions
 
 ### 4d. Bâtiment par catégorie
-- **Fichier** : `tool/generator/recursive_phase.py:688-718` (`_pick_element`)
+- **Fichier** : `tool/generator/recursive_phase.py:697-727` (`_pick_element`)
 - **Code** : `rng.choice(candidates)` (`:704`/`:712`/`:718` selon la branche)
 - **Pool** : `db.buildings_with_tag(_CATEGORY_TAGS[category])` = variable par catégorie
 - **Impact** : choisit quel bâtiment fabrique une recette d'un type donné
 
 ### 4e. Gun pour arme montée
-- **Fichier** : `tool/generator/recursive_phase.py:311-323` (`_assign_vehicle_weapons`, pool `VEHICLE_GUNS` à `:247`)
+- **Fichier** : `tool/generator/recursive_phase.py:317-329` (`_assign_vehicle_weapons`, pool `VEHICLE_GUNS` à `:247`)
 - **Code** : `drawn = [rng.choice(pool) for _ in range(n)]` (`:323`)
 - **Pool** : items `is_handheld_gun` = **6**
 - **Impact** : arme assignée aux véhicules (tank, spidertron, etc.)
 
 ### 4f. Science pack pour recherche
-- **Fichier** : `tool/generator/recursive_phase.py:827` (et `:852`)
+- **Fichier** : `tool/generator/recursive_phase.py:836` (et `:852`)
 - **Code** : `pack = rng.choice(_unlocked_science_packs)`
 - **Pool** : items `is_science_pack` = **7**
 - **Impact** : quel pack est consommé par une tech
 
 ### 4g. Item obtenu pour ingrédient
-- **Fichier** : `tool/generator/recursive_phase.py:1131-1198` (`_make_fixed_item_recipe`)
+- **Fichier** : `tool/generator/recursive_phase.py:1143-1212` (`_make_fixed_item_recipe`)
 - **Code** : ingrédients puisés dans `state.obtained_items` trié (`:1171`), `n_item = rng.randint(1, max_ingredients)` (`:1183`), puis `rng.shuffle(ingredients)` (`:1198`)
 - **Pool** : `state.obtained_items` (set) = variable (quelques dizaines)
 - **Impact** : choisit un item déjà obtainable comme ingrédient
 
 ### 4h. Fluide obtenu pour ingrédient
-- **Fichier** : `tool/generator/recursive_phase.py:1055-1101` (`_make_fixed_fluid_recipe`)
+- **Fichier** : `tool/generator/recursive_phase.py:1064-1113` (`_make_fixed_fluid_recipe`)
 - **Code** : `input_fluid = rng.choice(narrowed)` (`:1101`), candidats depuis `obtained_fluids = sorted(state.obtained_fluids)` (`:1091`)
 - **Pool** : `state.obtained_fluids` (set) = variable (0-8)
 - **Impact** : choisit un fluide déjà obtainable comme ingrédient
@@ -210,7 +210,7 @@ et chaque seed = une combinaison unique de choix.
   sous `PYTHONHASHSEED` 0/1 et compare `seed.json` octet par octet.
 
 ### 5d. Claim des ateliers débloqués « sur le tas » (claim anti-orpheline)
-- **Fichier** : `tool/generator/recursive_phase.py:910`
+- **Fichier** : `tool/generator/recursive_phase.py:919`
 - **Code** : `for name in sorted(state.unlocked_buildings - buildings_before):`
   `step_buildings.append(name)` — itération d'un **set** qui alimente
   `step["unlocks_buildings"]`.
@@ -232,7 +232,7 @@ et chaque seed = une combinaison unique de choix.
 ## 6. Lacs (lakes.py)
 
 ### 6a. Fluide du lac
-- **Fichier** : `tool/generator/lakes.py:60-75`
+- **Fichier** : `tool/generator/lakes.py:70-85`
 - **Code** : `count = rng.randint(low, high)` (`:60`), `rng.shuffle(candidates)` (`:70`), puis prise des `count` premiers — sans remise, note A5 — et richesse par `rng.randint` (`:75`)
 - **Pool** : `db.pipable_fluids()` = **8** fluids
 - **Ce que ça fait** : choisit quel fluide sera dans un lac
@@ -303,8 +303,8 @@ La suite de tests passe toujours (elle compte aujourd'hui 724 tests ; à
 l'époque de cette correction, elle en comptait 71).
 
 Après les correctifs (chaîne fusée, §5c, §5d), les itérations de
-`set`/`frozenset` restantes (ex. `map_patches.py:292` `hero`,
-`recipes.py:887` du filtre de `_ensure_burner_fuel`)
+`set`/`frozenset` restantes (ex. `map_patches.py:298` `hero`,
+`recipes.py:926` du filtre de `_ensure_burner_fuel`)
 ne servent QUE des tests d'appartenance (`in`/`not in`), déterministes —
 aucune ne trie une séquence exportée.
 
@@ -336,7 +336,7 @@ leur position.
   `deferred` avec SON plan).
 - **Fix** : copie défensive `starter_cfg = dict(cfg.get("starter") or {})`, puis
   `cfg = dict(cfg)` et `cfg["starter"] = starter_cfg` au lieu de muter le dict
-  partagé (`tool/generator/pipeline.py:230-233`).
+  partagé (`tool/generator/pipeline.py:233-236`).
 - **Preuve** : seed 1269 byte-identique (hash `c8c55ecf05e4`) en process vierge,
   après 1 seed, et après **1400 seeds cumulées** — victoire 101/101 dans tous
   les cas ; `BASE["starter"]` reste intact après génération. Sweep gaté **0-2000

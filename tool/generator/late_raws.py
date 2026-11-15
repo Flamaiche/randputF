@@ -34,15 +34,20 @@ from tool.common.db import SLOT_ITEM
 
 @dataclass
 class LateRawsConfig:
-    """Config de la section ``late_raws`` : activation et probabilité de pick
-    (conservée pour compat ; l'injection est à 100 %, cf. LateRawsPlan)."""
+    """Configuration de la section ``late_raws``.
+
+    ``enabled`` active le gating, ``share`` est conservé pour compatibilité et ``pick_chance`` aussi ; l'injection actuelle est déterministe à 100 %. Utilisée par ``from_config``.
+    """
     enabled: bool = False
     share: float = 0.25  # conservé pour compat config ; inutilisé (gating 100 %)
     pick_chance: float = 0.6
 
     @classmethod
     def from_config(cls, cfg: dict | None) -> "LateRawsConfig":
-        """Construit la config depuis ``config["late_raws"]`` — défauts yaml."""
+        """Construit la configuration ``late_raws`` depuis le dict complet.
+
+        ``cfg`` peut être ``None`` ou partiel ; les clés absentes prennent les défauts de ``defaults.yaml`` via ``default_value``. Retourne une ``LateRawsConfig`` validée.
+        """
         raw = (cfg or {}).get("late_raws") or {}
         return cls(
             enabled=bool(raw.get("enabled", _cfg.default_value("late_raws", "enabled"))),
@@ -75,11 +80,17 @@ class LateRawsPlan:
 
     @property
     def gated_fluids(self) -> frozenset[str]:
-        """Noms des fluides gatés (raws non-item du plan)."""
+        """Retourne les noms des fluides gatés.
+
+        Le résultat est dérivé de ``self.gated`` en ne gardant que les couples dont le type n'est pas item. Retourne un ``frozenset`` de noms.
+        """
         return frozenset(n for k, n in self.gated if k != SLOT_ITEM)
 
     def eligible(self, tier: int) -> list[tuple[str, str]]:
-        """Raws (kind, nom) dont le jalon est débloqué à l'échelon ``tier``."""
+        """Retourne les raws dont le jalon est atteint.
+
+        ``tier`` est l'échelon science courant ; le résultat liste les couples ``(kind, nom)`` dont ``floor_tier`` est inférieur ou égal. L'ordre suit ``floor_tier``.
+        """
         return [key for key, floor in self.floor_tier.items() if floor <= tier]
 
 
@@ -88,7 +99,10 @@ class LateRawsPlan:
 
 
 def _claim_indexes(tech_order: list[str], tech_by_id: dict) -> dict[str, int]:
-    """Index de progression du premier tech qui débloque chaque recette."""
+    """Indexe la première technologie débloquant chaque recette.
+
+    ``tech_order`` donne l'ordre de progression et ``tech_by_id`` les fiches de tech. Retourne ``{recette: index}`` en conservant la première occurrence.
+    """
     claim: dict[str, int] = {}
     for index, tech_id in enumerate(tech_order):
         for effect in tech_by_id[tech_id].get("effects", []):
@@ -98,8 +112,10 @@ def _claim_indexes(tech_order: list[str], tech_by_id: dict) -> dict[str, int]:
 
 
 def _science_chain(claim: dict[str, int], recipes: list[dict]) -> list[str]:
-    """Science packs ordonnés par leur déblocage (chaîne §13 : chacun coûte
-    le précédent)."""
+    """Ordonne les packs de science par déblocage.
+
+    ``claim`` associe une recette à son index de tech et ``recipes`` fournit les recettes du seed. Retourne la liste des noms de packs triés par index de déblocage puis alphabétiquement.
+    """
     packs = {
         r["results"][0]["name"]
         for r in recipes
@@ -113,7 +129,10 @@ def _science_chain(claim: dict[str, int], recipes: list[dict]) -> list[str]:
 
 
 def _tech_tier(tech: dict, chain: list[str]) -> int:
-    """Échelon science d'une tech : indice max de ses packs (0 si aucun)."""
+    """Retourne l'échelon science d'une technologie.
+
+    ``tech`` fournit ``unit.ingredients`` et ``chain`` l'ordre des packs. Le résultat est l'indice maximal des packs de la tech dans la chaîne, ou 0 si elle n'en consomme aucun.
+    """
     tiers = [
         chain.index(i["name"])
         for i in tech.get("unit", {}).get("ingredients", [])

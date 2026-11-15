@@ -72,14 +72,19 @@ class EarlyOracle:
     active: bool = False
 
     def activate(self, items: set[str], fluids: set[str]) -> None:
-        """Active le watershed pré-électricité avec les sources de départ
-        (items et fluides)."""
+        """Active le watershed pré-électricité.
+
+        ``items``/``fluids`` sont les sources obtenables sans électricité au démarrage ; ils remplacent l'état précédent et ``active`` passe à ``True``. Retourne ``None``.
+        """
         self.items = set(items)
         self.fluids = set(fluids)
         self.active = True
 
     def deactivate(self) -> None:
-        """Désactive le watershed (fin du bootstrap pré-électricité)."""
+        """Désactive le watershed pré-électricité.
+
+        Après l'appel, ``extend`` n'ajoute plus de produits et ``active`` vaut ``False``. Retourne ``None``.
+        """
         self.active = False
 
     def add_sources(self, items: set[str] | None = None, fluids: set[str] | None = None) -> None:
@@ -91,7 +96,10 @@ class EarlyOracle:
             self.fluids |= fluids
 
     def extend(self, db: VanillaDB, recipe: dict) -> None:
-        """Une recette non-électrique ajoute ses produits au watershed."""
+        """Étend le watershed avec les produits d'une recette non électrique.
+
+        ``db`` sert à reconnaître les ateliers électriques et ``recipe`` est la recette posée. Si le watershed est actif et la recette non électrique, chaque produit rejoint le bon bucket item/fluide. Retourne ``None``.
+        """
         if not self.active or is_electric_crafter(db, recipe):
             return
         for res in recipe.get("results", []):
@@ -99,13 +107,19 @@ class EarlyOracle:
             bucket.add(res["name"])
 
     def pool(self) -> list[tuple[str, str]]:
-        """Vue triée du watershed : (type, nom) des items puis des fluides."""
+        """Retourne la vue triée du watershed.
+
+        Le résultat liste d'abord les items puis les fluides sous forme ``(type, nom)``, dans l'ordre alphabétique de chaque bucket. Sert à contraindre les tirages du bootstrap.
+        """
         return [(SLOT_ITEM, n) for n in sorted(self.items)] + [
             (SLOT_FLUID, n) for n in sorted(self.fluids)
         ]
 
     def in_watershed(self, kind: str, name: str) -> bool:
-        """Vrai si la ressource est dans le watershed (buckétée par type)."""
+        """Indique si une ressource appartient au watershed.
+
+        ``kind`` sélectionne le bucket (item/fluide) et ``name`` la ressource. Retourne ``True`` si le nom est présent dans ce bucket, ``False`` sinon.
+        """
         return name in (self.items if kind == SLOT_ITEM else self.fluids)
 
 

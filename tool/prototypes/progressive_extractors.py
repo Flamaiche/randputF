@@ -31,7 +31,10 @@ class ExtractorTier:
 
 @dataclass
 class ProgressiveExtractorsConfig(PrototypeConfig):
-    """Configuration pour le déblocage progressif des extracteurs."""
+    """Configuration du déblocage progressif des extracteurs.
+
+    ``enabled`` active le mode, ``starter_extractor`` nomme la foreuse de départ, ``starter_max_extractors`` borne le nombre d'extracteurs au starter et ``research_map`` associe une ressource à sa recherche requise.
+    """
     enabled: bool = False
     # Nom du starter extractor (le plus primitif qui couvre au moins 1 patch)
     starter_extractor: str = "burner-mining-drill"
@@ -42,8 +45,10 @@ class ProgressiveExtractorsConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> ProgressiveExtractorsConfig:
-        """Construit la config progressive_extractors depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``progressive_extractors`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts du YAML. Retourne une configuration validée, avec ``research_map`` initialisé à un dict vide si absent.
+        """
         cfg = config.get("progressive_extractors", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),
@@ -101,8 +106,10 @@ def gather_unlocks(
     extractors: dict[str, ExtractorTier],
     config: ProgressiveExtractorsConfig,
 ) -> dict[int, list[str]]:
-    """Regroupe les extracteurs par palier : ``{tier: [extracteur_names]}``
-    (uniquement ceux utilisés dans les assignments)."""
+    """Regroupe les extracteurs utilisés par palier.
+
+    ``assignments`` associe une ressource à un extracteur, ``extractors`` fournit les paliers et ``config`` la configuration. Retourne ``{tier: [noms]}`` trié, en ne gardant que les extracteurs réellement assignés.
+    """
     tiers: dict[int, list[str]] = {}
     for res, ex in assignments.items():
         tier = extractors[ex].tier
@@ -116,5 +123,8 @@ def verify_starter_restant(
     unlock_plan: dict[int, list[str]],
     starter_max: int,
 ) -> bool:
-    """Le starter (tier 1) contient au plus ``starter_max`` extracteurs."""
+    """Vérifie la limite d'extracteurs au starter.
+
+    ``unlock_plan`` est le plan groupé par palier et ``starter_max`` la limite du tier 1. Retourne ``True`` si le tier 1 contient au plus ``starter_max`` extracteurs.
+    """
     return len(unlock_plan.get(1, [])) <= starter_max

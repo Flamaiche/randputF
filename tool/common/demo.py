@@ -101,8 +101,10 @@ def build_demo_db() -> VanillaDB:
     db.fluids["lubricant"] = FluidDef(name="lubricant")
 
     def building(name, ftype, **kw):
-        """Ajoute un bâtiment de démo ``ftype`` (extractor/transformer/
-        generator/research/distribution/rocket_silo/other) avec ses tags."""
+        """Ajoute un bâtiment au jeu de démonstration.
+
+        ``name`` est l'identifiant, ``ftype`` sélectionne le tag fonctionnel (extractor/transformer/generator/research/distribution/rocket_silo/other) et ``kw`` porte les champs supplémentaires de ``BuildingDef``. ``etype`` peut surcharger l'``entity_type``. Écrit dans ``db.buildings`` et retourne ``None``.
+        """
         etype = kw.pop("etype", name)
         tags = {
             "extractor": {"is_extractor": True},
@@ -164,8 +166,10 @@ def build_demo_db() -> VanillaDB:
     )
 
     def recipe(name, ingredients, products, category=""):
-        """Ajoute une recette de démo (ingrédients/produits en listes de
-        tuples (type, nom, montant))."""
+        """Ajoute une recette au jeu de démonstration.
+
+        ``name`` est l'identifiant, ``ingredients``/``products`` sont des listes de tuples ``(type, nom, montant)`` et ``category`` la catégorie de craft. Écrit dans ``db.recipes`` et retourne ``None``.
+        """
         db.recipes[name] = RecipeRef(
             name=name,
             category=category,

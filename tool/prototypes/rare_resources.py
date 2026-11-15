@@ -21,7 +21,10 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class RareResourcesConfig(PrototypeConfig):
-    """Configuration pour le mode « ressources rares au début »."""
+    """Configuration du mode « ressources rares au début ».
+
+    ``enabled`` active le mode, ``near_radius``/``far_radius`` délimitent les zones et les facteurs proches/lointains modulent richesse et densité. ``required_resources`` liste les ressources à garantir près du spawn.
+    """
     enabled: bool = False
     # Rayons (en tuiles) qui délimitent les zones proche / lointaine.
     near_radius: int = 40
@@ -37,8 +40,10 @@ class RareResourcesConfig(PrototypeConfig):
 
     @classmethod
     def from_config(cls, config: dict) -> RareResourcesConfig:
-        """Construit la config rare_resources depuis ``config`` — défauts du
-yaml, jamais codés en dur par le moteur."""
+        """Construit la configuration ``rare_resources`` depuis le dict complet.
+
+        ``config`` peut être partiel ; les clés absentes prennent les défauts du YAML. Retourne une ``RareResourcesConfig`` validée, avec ``required_resources`` converti en tuple.
+        """
         cfg = config.get("rare_resources", {})
         return cls(
             enabled=bool(cfg.get("enabled", False)),
@@ -55,7 +60,10 @@ yaml, jamais codés en dur par le moteur."""
 
 @dataclass
 class RarePatch:
-    """Un patch dans le mode rareté (mini-modèle)."""
+    """Patch du mode rareté.
+
+    ``resource`` est le nom, ``richness``/``count`` décrivent le gisement et ``distance_to_spawn`` sa distance au spawn en tuiles. Modèle léger pour les vérifications de solvabilité.
+    """
     resource: str
     richness: int
     count: int
@@ -63,7 +71,10 @@ class RarePatch:
 
 
 def distance(center: tuple[int, int]) -> int:
-    """Distance euclidienne au spawn (0, 0), arrondie."""
+    """Calcule la distance d'un point au spawn.
+
+    ``center`` est un couple ``(x, y)`` en tuiles ; le résultat est la norme euclidienne arrondie à l'entier. Sert à appliquer les facteurs proche/lointain.
+    """
     import math
     return int(math.hypot(center[0], center[1]))
 
@@ -72,9 +83,9 @@ def terrain_factor(
     dist: int,
     config: RareResourcesConfig,
 ) -> tuple[float, float]:
-    """Facteurs (richesse, count) selon la distance au spawn.
+    """Retourne les facteurs richesse/densité selon la distance.
 
-    Interpolation linéaire entre les zones proche et lointaine.
+    ``dist`` est la distance au spawn et ``config`` la configuration du mode. Le résultat est un couple ``(facteur_richesse, facteur_count)`` interpolé linéairement entre les zones proche et lointaine.
     """
     if dist <= config.near_radius:
         return config.near_richness_factor, config.near_count_factor
@@ -124,7 +135,10 @@ def verify_required_near_spawn(
     required: tuple[str, ...],
     near_radius: int,
 ) -> bool:
-    """Toutes les ressources obligatoires ont au moins un gisement ≤ near_radius."""
+    """Vérifie que chaque ressource obligatoire est proche du spawn.
+
+    ``patches`` est la liste des gisements, ``required`` les ressources obligatoires et ``near_radius`` le rayon maximal. Retourne ``True`` si chaque ressource a au moins un patch dans le rayon.
+    """
     for res in required:
         found = any(p.resource == res and p.distance_to_spawn <= near_radius for p in patches)
         if not found:

@@ -45,23 +45,27 @@ _PREFIX = "randputf-"
 
 @dataclass
 class DifficultyReport:
-    """Ardoise de difficulté d'une seed : coûts bruts par ressource, dépenses
-    par tech et coûts unitaires — agrégés pour le total affiché au spawn."""
+    """Ardoise de difficulté d'une seed.
+
+    `raw_totals` agrège les quantités de ressources brutes, `spent_per_tech` les coûts de recherche par technologie et `unit_costs` le coût brut d'une unité de chaque produit. Sert au total affiché au spawn et aux séries de difficulté.
+    """
     raw_totals: Counter[str] = field(default_factory=Counter)
     spent_per_tech: dict = field(default_factory=dict)
     unit_costs: dict = field(default_factory=dict)
 
     @property
     def total(self) -> float:
-        """Total de l'ardoise : somme des coûts bruts de toutes ressources."""
+        """Retourne le total de l'ardoise de difficulté.
+
+        Additionne les quantités de toutes les ressources brutes de ``raw_totals`` ; les entrées à zéro n'ont aucun effet. Aucun paramètre ; retourne un ``float`` destiné à l'affichage du total général.
+        """
         return sum(self.raw_totals.values())
 
 
 def _primary_recipe(by_product: dict[str, list[dict]], product: str) -> dict | None:
-    """Recette PRIMAIRE d'un produit (``randputf-<produit>``), sinon la
-    première recette alternative (relais/ease). Les doublons/ease ne sont
-    jamais cumulés : un produit n'est compté qu'une fois. ``rocket-part`` est
-    réservé à la recette exempte du silo.
+    """Retourne la recette primaire d'un produit.
+
+    `by_product` indexe les recettes par produit et `product` est le nom recherché. Privilégie `randputf-<produit>`, sinon la première alternative ; `rocket-part` est réservé à la recette du silo. Retourne `None` si le produit n'a aucune recette.
     """
     if product == "rocket-part":
         return ROCKET_PART_RECIPE
@@ -91,18 +95,18 @@ def _produced_amount(recipe: dict, product: str) -> float:
 def unit_costs(
     raw: set[str], by_product: dict[str, list[dict]]
 ) -> dict[str, Counter[str]]:
-    """Coût unitaire brut de chaque produit (mémoïsé, DAG primaire).
+    """Calcule le coût unitaire brut de chaque produit.
 
-    ``cost[p][r]`` = quantité de ressource brute ``r`` pour produire 1 unité de
-    ``p``. Un produit déjà calculé est réutilisé tel quel (diamond-safe) ; un
-    produit sans recette (non brut) est compté comme feuille de secours.
+    `raw` est l'ensemble des ressources brutes et `by_product` l'index produit → recettes. Retourne `{produit: Counter({ressource: quantité})}` ; les cycles sont cassés en traitant le produit comme une feuille.
     """
     memo: dict[str, Counter[str]] = {}
     visiting: set[str] = set()
 
     def cost(product: str) -> Counter[str]:
-        """Coût unitaire brut de ``product`` (mémoïsé) : lui-même si brut,
-        sinon la décomposition de sa recette primaire."""
+        """Retourne le coût unitaire brut de `product`.
+
+        Mémoïse le résultat ; un produit brut vaut une unité de lui-même, sinon le coût est décomposé depuis sa recette primaire.
+        """
         if product in raw:
             if product not in memo:
                 memo[product] = Counter({product: 1.0})
@@ -138,7 +142,10 @@ def unit_costs(
 
 
 def compute_difficulty(seed: dict) -> DifficultyReport:
-    """Ardoise : science packs de toutes les techs + chaîne de la fusée."""
+    """Calcule l'ardoise de difficulté complète d'une seed.
+
+    `seed` fournit recettes, technologies et ressources brutes. Additionne les packs de toutes les recherches et la chaîne de la fusée (silo, 100 rocket-part, satellite). Retourne un `DifficultyReport` renseigné.
+    """
     report = DifficultyReport()
 
     by_product: dict[str, list[dict]] = defaultdict(list)
@@ -212,7 +219,10 @@ def _tech_sequence(seed: dict) -> tuple[dict[str, dict], list[str]]:
 
 
 def _recipe_products(seed: dict) -> dict[str, list[str]]:
-    """Index recette → produits (noms), pour attribuer les déblocages par tech."""
+    """Indexe les produits de chaque recette d'une seed.
+
+    `seed` est le dict de seed. Retourne `{nom_recette: [noms_produits]}` ; sert à attribuer les déblocages aux technologies.
+    """
     out: dict[str, list[str]] = {}
     for recipe in seed.get("recipes") or []:
         prods = [res.get("name") for res in recipe.get("results") or [] if res.get("name")]
@@ -224,8 +234,10 @@ def _recipe_products(seed: dict) -> dict[str, list[str]]:
 def _expand_to_raw(
     costs: dict[str, Counter[str]], bill: Counter[str]
 ) -> Counter[str]:
-    """Décompose un besoin de produits (``bill`` : produit → quantité) en
-    ressources brutes via les coûts unitaires."""
+    """Décompose un besoin de produits en ressources brutes.
+
+    `costs` est l'index des coûts unitaires et `bill` associe un produit à sa quantité. Retourne un `Counter` ressource → quantité totale.
+    """
     raw: Counter[str] = Counter()
     for product, qty in bill.items():
         for key, value in costs.get(product, Counter()).items():
@@ -293,7 +305,10 @@ def difficulty_series(seed: dict) -> list[dict]:
 
 
 def summarize_difficulty(report: DifficultyReport) -> str:
-    """Tableau des totaux finaux par ressource brute (+ total général)."""
+    """Met en forme les totaux finaux par ressource brute.
+
+    `report` est un `DifficultyReport`. Retourne une chaîne multi-lignes terminée par le total général, prête pour l'affichage CLI.
+    """
     lines = []
     for name in sorted(report.raw_totals,
                        key=lambda n: (report.raw_totals[n] <= 0, -report.raw_totals[n], n)):

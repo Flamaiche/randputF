@@ -105,7 +105,10 @@ def _pick_fluid(
     available: list[str],
     exclude: set[str],
 ) -> str | None:
-    """Choisit un fluide aléatoire parmi les candidats, hors ``exclude``."""
+    """Choisit un fluide parmi les candidats disponibles.
+
+    ``rng`` est la source aléatoire, ``available`` la liste des fluides autorisés et ``exclude`` ceux déjà utilisés. Retourne un nom choisi uniformément, ou ``None`` si aucun candidat ne reste.
+    """
     candidates = [f for f in available if f not in exclude]
     if not candidates:
         return None
