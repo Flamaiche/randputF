@@ -91,6 +91,12 @@ def _locale_cfg(seed: dict) -> str:
 
 
 def _to_lua(value, indent: int = 0) -> str:
+    """Sérialise une valeur Python en littéral Lua indenté.
+
+    Gère dicts (clés via ``_lua_key``), listes/tuples, booléens, nombres,
+    ``None`` (→ ``nil``) et chaînes (échappement ``\\``, ``"``, saut de ligne).
+    ``indent`` est le niveau d'indentation courant. Retourne le texte Lua.
+    """
     pad = "  " * indent
     child_pad = "  " * (indent + 1)
     if isinstance(value, dict):
@@ -121,6 +127,12 @@ def _to_lua(value, indent: int = 0) -> str:
 
 
 def _lua_key(key: str) -> str:
+    """Rend une clé de table Lua valide.
+
+    Retourne la clé nue si c'est un identifiant ASCII ne commençant pas par un
+    chiffre, sinon la forme entre crochets ``["..."]`` (sans échappement
+    supplémentaire, les clés étant supposées sans guillemet).
+    """
     if key.isidentifier() and key.isascii() and not key[0].isdigit():
         return key
     return f'["{key}"]'

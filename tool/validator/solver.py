@@ -24,6 +24,13 @@ def validate_seed(seed: dict) -> list[str]:
 
 
 def _recipe_graph(seed: dict) -> dict[str, set[str]]:
+    """Graphe de dépendances recette → recettes productrices.
+
+    Pour chaque recette de ``seed["recipes"]``, collecte les ``produced_by``
+    de ses ingrédients qui désignent une recette connue de la seed. Les
+    ingrédients bruts (sans ``produced_by`` ou pointant hors seed) sont
+    ignorés. Retourne ``{nom_recette: {noms_des_dépendances}}``.
+    """
     known_recipes = {r["name"] for r in seed.get("recipes", [])}
     graph: dict[str, set[str]] = {}
     for recipe in seed.get("recipes", []):
@@ -37,6 +44,13 @@ def _recipe_graph(seed: dict) -> dict[str, set[str]]:
 
 
 def _check_anti_cycle(seed: dict) -> list[str]:
+    """Détecte les cycles du graphe de recettes par tri topologique (Kahn).
+
+    Part des recettes sans dépendance puis retire progressivement les arêtes
+    résolues. Retourne une liste vide si toutes les recettes sont résolues,
+    sinon un unique message listant les recettes restantes (cycle ou
+    dépendance manquante).
+    """
     graph = _recipe_graph(seed)
     remaining = {node: set(deps) for node, deps in graph.items()}
     queue = sorted(node for node, deps in remaining.items() if not deps)
@@ -56,6 +70,15 @@ def _check_anti_cycle(seed: dict) -> list[str]:
 
 
 def _check_progressivity(seed: dict) -> list[str]:
+    """Vérifie que chaque recette n'utilise que des items déjà atteignables.
+
+    Le pool initial contient les ressources des patchs, des lacs et les items
+    environnementaux (récoltables à la main). Les recettes sont parcourues
+    dans l'ordre de la seed ; une recette dont un ingrédient manque au pool
+    est signalée, sauf si elle porte ``on_the_spot_unlock``. Après contrôle,
+    ses résultats et ingrédients rejoignent le pool. Retourne la liste des
+    messages de violation (vide si tout est progressif).
+    """
     issues: list[str] = []
     # Pool initial : patchs + lacs + ressources environnementales
     # (toujours récoltables à la main).
@@ -74,6 +97,13 @@ def _check_progressivity(seed: dict) -> list[str]:
 
 
 def _check_completeness(seed: dict) -> list[str]:
+    """Vérifie que chaque exigence de victoire est productible ou patchée.
+
+    Compare ``seed["victory_requirements"]`` à l'union des résultats de
+    recettes et des ressources présentes sur la carte (patchs + lacs).
+    Retourne la liste des exigences inatteignables (vide si la seed offre
+    une voie complète vers la victoire).
+    """
     required = seed.get("victory_requirements", [])
     produced = {p["name"] for r in seed.get("recipes", []) for p in r.get("results", [])}
     patched = {p["resource"] for p in seed.get("map", {}).get("patches", [])}

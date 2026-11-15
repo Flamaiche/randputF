@@ -34,7 +34,7 @@ C'est tout : tu joues. Le zip contient une seed déjà générée (seed 5, celle
 
 Pour **une autre seed**, il faut l'outil Python → [voie complète](#voie-complète-avec-python).
 
-> Le zip ne contient pas `seed.graph.html`, la vue interactive de 5 Mo : elle se régénère chez toi avec la voie complète (`randputf generate`). Le mod lui-même n'en a pas besoin.
+> Le zip ne contient pas `seed.graph.html`, la vue interactive de 7,2 Mo : elle se régénère chez toi avec la voie complète (`randputf generate`). Le mod lui-même n'en a pas besoin.
 
 ### Dossier `mods` selon ton système
 
@@ -214,13 +214,14 @@ randputF/
 ├── data/
 │   └── vanilla_dump.json # dump des prototypes vanilla
 ├── tool/                # générateur externe Python (python -m tool)
-│   ├── __main__.py      # CLI : parse, audit, difficulty, generate
+│   ├── __main__.py      # CLI : parse, audit, difficulty, generate, witness, compare
+│   ├── service.py       # orchestration partagée CLI / interface graphique
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker
 │   ├── audit/           # audit des tags bâtiments/items
 │   ├── parsers/         # extraction des prototypes vanilla
 │   ├── generator/       # moteur de tirage & graphe (phases, passe A/B)
 │   ├── prototypes/      # classes de configuration
-│   ├── exporters/       # écriture seed.json / seed.lua / graphe
+│   ├── exporters/       # écriture seed.json / seed.lua / graphes HTML
 │   ├── replay/          # rejoueur de seed (audit externe)
 │   └── validator/       # vérification de solvabilité
 ├── tools/               # scripts dev (classify_late_raws, audits par paquet)

@@ -43,7 +43,7 @@ juste après** leur déclencheur, par un patron commun (le « dispatch ») :
   débloqués. Les munitions déjà présentes ne sont pas recalculées
   ([combat.md](combat.md#121-armes-montées-randomisées)).
 - **Compagnons** : les produits liés (roboport + robots, panneau solaire + accumulateur)
-  reçoivent des **techs isolées juste APRÈS la tech du produit**, à ±3 techs
+  reçoivent des **techs isolées juste APRÈS la tech du produit** (au plus 3, comme les munitions de véhicule)
   ([recettes.md](recettes.md#97-garantie-de-compagnons)).
 - **Prologue** : les recettes relais sont regroupées en techs de prologue isolées juste
   après les free techs du starter ([starter.md](starter.md#7-la-phase-de-démarrage), [recettes.md](recettes.md#95-relais-des-ressources-non-infinies)).

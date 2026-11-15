@@ -1,3 +1,6 @@
+-- Lit `fuel_value` d'un prototype en tolérant les deux formes du runtime
+-- (nombre brut ou objet à champ `.value`) ; retourne un nombre ou nil si la
+-- propriété est absente ou illisible.
 local function fuel_value_of(proto)
   local ok, value = pcall(function()
     return proto.fuel_value
@@ -14,6 +17,8 @@ local function fuel_value_of(proto)
   return nil
 end
 
+-- Retourne la taille de pile réelle du prototype (source de vérité pour
+-- l'outil Python), ou nil si la propriété est absente/illisible.
 local function stack_size_of(proto)
   -- Empilabilité réelle (source de vérité pour l'outil Python).
   local ok, size = pcall(function()
@@ -25,6 +30,8 @@ local function stack_size_of(proto)
   return nil
 end
 
+-- Accès tolérant à `prototypes[key]` : retourne la table de prototypes ou nil
+-- si la clé n'existe pas dans cette version du jeu (aucune erreur propagée).
 local function prototypes_dict(key)
   local ok, dict = pcall(function()
     return prototypes[key]
@@ -35,6 +42,10 @@ local function prototypes_dict(key)
   return nil
 end
 
+-- Dump de tous les items : type, sous-groupe, entité posée, combustible
+-- (fuel_value, catégorie, résidu), pile et catégorie de munition. Complète
+-- avec les prototypes gun/ammo/tool/capsule/module/armor absents de
+-- `prototypes.item`. Retourne une table nom -> entrée.
 local function dump_all_items()
   local out = {}
   for _, proto in pairs(prototypes.item) do
@@ -94,6 +105,8 @@ local function dump_all_items()
   return out
 end
 
+-- Dump des fluides : type, pouvoir calorifique et température par défaut.
+-- Retourne une table nom -> entrée.
 local function dump_fluids()
   local out = {}
   for _, proto in pairs(prototypes.fluid) do
@@ -106,6 +119,8 @@ local function dump_fluids()
   return out
 end
 
+-- Version héritée (1.x) : lit `proto.energy_source` et son type. Conservée mais
+-- inutilisée (la version 2.0 plus bas la masque) ; retourne une table info.
 local function energy_source_info(proto)
   local info = {}
   local ok, source = pcall(function()
@@ -135,6 +150,8 @@ local function energy_source_info(proto)
   return info
 end
 
+-- Compte les fluidboxes d'entrée/sortie du prototype et détaille chacune
+-- (production_type et filtre). Retourne (nb_inputs, nb_outputs, details).
 local function fluidbox_info(proto)
   local inputs = 0
   local outputs = 0
@@ -173,6 +190,9 @@ local function fluidbox_info(proto)
   return inputs, outputs, details
 end
 
+-- Normalise une liste de prototypes en tableau de noms : gère les arrays,
+-- les objets à champ `.name` et les dictionnaires LuaCustomTable dont la clé
+-- est la valeur utile. Retourne un tableau de chaînes.
 local function string_list(list)
   -- Gere arrays ET dictionnaires LuaCustomTable (cle = valeur utile).
   local out = {}
@@ -190,6 +210,8 @@ local function string_list(list)
   return out
 end
 
+-- Retourne la liste si elle est non vide, sinon nil (évite d'écrire des
+-- champs vides dans le dump). Version dupliquée, inutilisée.
 local function non_empty(list)
   return list and #list > 0 and list or nil
 end
@@ -205,6 +227,9 @@ local ENERGY_SOURCE_PROPS = {
   {name = "void_energy_source_prototype", type = "void"},
 }
 
+-- Version 2.0 active : sonde les propriétés d'énergie typées (burner,
+-- electric, fluid, heat, void), déduit le type et extrait fuel_categories et
+-- production électrique. Retourne une table info (vide si aucune source).
 local function energy_source_info(proto)
   local info = {}
   local matched_type = nil
@@ -250,6 +275,8 @@ local function probe(proto, prop)
   return nil
 end
 
+-- Retourne la liste si elle est non vide, sinon nil (évite d'écrire des
+-- champs vides dans le dump). Version active.
 local function non_empty(list)
   return list and #list > 0 and list or nil
 end
@@ -286,6 +313,9 @@ local function auto_selects_recipe(proto)
   return true
 end
 
+-- Dump des entités posables : type, capacités de craft/extraction/pompage,
+-- fluidboxes, énergie consommée/produite, poteaux, chaudières, labos, silo et
+-- items qui les posent. Retourne une table nom -> entrée.
 local function dump_entities()
   local out = {}
   for _, proto in pairs(prototypes.entity) do
@@ -409,6 +439,8 @@ local function dump_entities()
   return out
 end
 
+-- Dump des recettes : catégorie, énergie et listes d'ingrédients/produits
+-- (type, nom, quantité). Retourne une table nom -> entrée.
 local function dump_recipes()
   local out = {}
   for _, proto in pairs(prototypes.recipe) do

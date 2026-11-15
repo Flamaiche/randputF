@@ -67,9 +67,9 @@ jobs:
         run: |
           mkdir -p /tmp/modrel
           randputf generate --seed 5 --out /tmp/modrel
-          # seed.graph.html est exclu : c'est une vue de debug de 5 Mo, deja
-          # ecartee du temoin de determinisme (WITNESS_EXCLUDED). Livre, il
-          # ferait passer le zip de 52 Ko a 5,2 Mo pour rien -- Factorio n'en a
+          # seed.graph.html est exclu : c'est une vue de debug de plusieurs Mo,
+          # deja ecartee du temoin de determinisme (WITNESS_EXCLUDED). Livre, il
+          # ferait gonfler le zip de plusieurs Mo pour rien -- Factorio n'en a
           # pas besoin. Il se regenere en local avec `randputf generate`.
           cd /tmp/modrel && zip -qr "/tmp/randputF_${VERSION}.zip" "randputF_${VERSION}" \
             -x "*/seed.graph.html"

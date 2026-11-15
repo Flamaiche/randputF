@@ -595,6 +595,13 @@ def recipes_to_seed() -> list[dict]:
 
 
 def _get_available_categories(db: VanillaDB, state: ProgressionState) -> list[str]:
+    """Catégories encore déployables dans la récursion pondérée.
+
+    Retourne, dans l'ordre fixe ``transformer``, ``extractor``, ``generator``,
+    ``distribution`` (si un bâtiment non déployé reste), puis ``combat`` et
+    ``science`` (si une arme / un pack n'est pas encore obtenu). La liste peut
+    être vide.
+    """
     available = []
     for cat in ("transformer", "extractor", "generator", "distribution"):
         if _has_undeployed_buildings(db, state, cat):
@@ -620,6 +627,13 @@ _CATEGORY_TAGS = {
 def _has_undeployed_buildings(
     db: VanillaDB, state: ProgressionState, category: str
 ) -> bool:
+    """Vrai s'il reste un bâtiment de ``category`` à déployer.
+
+    Cherche dans ``db.buildings_with_tag(_CATEGORY_TAGS[category])`` un
+    bâtiment non exclu, pas encore dans ``state.unlocked_buildings`` et doté
+    d'un item plaçable. Retourne ``False`` si la catégorie est inconnue ou
+    épuisée.
+    """
     tag = _CATEGORY_TAGS[category]
     for b in db.buildings_with_tag(tag):
         if b.name not in _config.excluded_buildings and b.name not in state.unlocked_buildings:
@@ -630,6 +644,11 @@ def _has_undeployed_buildings(
 
 
 def _has_undeployed_weapons(db: VanillaDB, state: ProgressionState) -> bool:
+    """Vrai s'il reste une arme portative non obtenue.
+
+    Parcourt ``db.items`` et teste ``is_handheld_gun`` contre
+    ``state.obtained_items``. Retourne ``False`` si toutes sont obtenues.
+    """
     return any(
         i.is_handheld_gun
         and i.name not in state.obtained_items
@@ -638,6 +657,11 @@ def _has_undeployed_weapons(db: VanillaDB, state: ProgressionState) -> bool:
 
 
 def _has_undeployed_science(db: VanillaDB, state: ProgressionState) -> bool:
+    """Vrai s'il reste un science pack non obtenu.
+
+    Parcourt ``db.items`` et teste ``is_science_pack`` contre
+    ``state.obtained_items``. Retourne ``False`` si tous sont obtenus.
+    """
     return any(
         i.is_science_pack and i.name not in state.obtained_items for i in db.items.values()
     )
@@ -646,6 +670,12 @@ def _has_undeployed_science(db: VanillaDB, state: ProgressionState) -> bool:
 def _weighted_category_choice(
     rng: random.Random, categories: list[str], buildings_unlocked: int
 ) -> str | None:
+    """Tire une catégorie selon les poids configurés et la progression.
+
+    Chaque poids vaut ``category_weights[cat] * (1 + buildings_unlocked *
+    progressive_factor)`` : les catégories déjà avancées gagnent en poids.
+    Retourne la catégorie choisie, ou ``None`` si ``categories`` est vide.
+    """
     if not categories:
         return None
     weights = [
@@ -658,6 +688,13 @@ def _weighted_category_choice(
 def _pick_element(
     rng: random.Random, db: VanillaDB, state: ProgressionState, category: str
 ):
+    """Tire l'élément à déployer pour une catégorie.
+
+    Pour les catégories de bâtiments, retourne un ``BuildingDef`` non exclu,
+    non déployé et doté d'un item. Pour ``combat``/``science``, retourne un
+    ``ItemDef`` (arme portative / pack) non obtenu, trié par nom. Retourne
+    ``None`` si la catégorie est inconnue ou épuisée.
+    """
     if category in ("transformer", "extractor", "generator", "distribution"):
         candidates = [
             b for b in db.buildings_with_tag(_CATEGORY_TAGS[category])
@@ -690,6 +727,16 @@ def _generate_for_element(
     element,
     isolate: bool = False,
 ) -> None:
+    """Génère la tech de déploiement d'un élément et ses recettes.
+
+    Crée un step ``_tech_id(category, element.name)`` (marqué ``isolate`` si
+    demandé), débloque le bâtiment/arme/pack via ``ensure_obtainable``, génère
+    les recettes associées (fixes ou aléatoires), les compagnons et les
+    munitions, puis réclame les ateliers débloqués pendant l'étape. Pour un
+    bâtiment ``is_heat_sink``, débloque d'abord source + transport de chaleur.
+    Mute ``state`` (steps, recettes, bâtiments/items obtenus) et retourne
+    ``None``.
+    """
     from tool.generator.recipes import _unlock_building, _item_for_building
 
     # Modèle « chaleur » (§10bis) : le bâtiment en cours de déploiement est un
@@ -925,6 +972,15 @@ def _make_recipe_for_building(
     building,
     force_building=None,
 ) -> dict | None:
+    """Fabrique une recette hébergée par ``building`` (ou ``None``).
+
+    Choisit la nature du produit (fluide si le bâtiment a une sortie fluide,
+    sinon item) et délègue à ``_make_fixed_recipe_for_crafter`` pour un
+    fabricateur à recette fixe, sinon à ``make_recipe``. ``force_building``
+    impose l'atelier. Retourne le dict recette créé, ou ``None`` si aucun
+    produit n'est disponible ou si la génération échoue (``ValueError``
+    absorbée).
+    """
     needs_fluid_out = building.fluid_outputs > 0
     product_kind = SLOT_FLUID if needs_fluid_out else SLOT_ITEM
 
@@ -1209,6 +1265,15 @@ def _is_recipe_output_item_plausible(db: VanillaDB, state: ProgressionState, nam
 def _pick_product(
     rng: random.Random, db: VanillaDB, state: ProgressionState, kind: str
 ) -> str | None:
+    """Tire un produit non encore produit pour une recette générique.
+
+    Pour ``SLOT_ITEM``, part des items obtenus en excluant les internes
+    ``randputf-*``, environnementaux, items de bâtiment, chaîne fusée et
+    produits déjà sortis ; pour ``SLOT_FLUID``, part des fluides obtenus non
+    déjà produits. La pondération privilégie les produits rares
+    (``1 / balance_factor``, C2). Retourne le nom choisi ou ``None`` si le
+    pool est vide.
+    """
     already = {
         r["results"][0]["name"]
         for r in state.recipes

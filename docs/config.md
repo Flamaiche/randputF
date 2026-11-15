@@ -34,7 +34,7 @@ Les sections `map`, `recursive`, `tree` et les autres conservent leurs valeurs p
 
 ## 3. Sections
 
-La configuration compte 17 entrées de premier niveau : 16 sections et la racine `factorio_version`. Les sections signalées comme **inertes** sont lues et validées, mais le moteur ne les exploite pas encore.
+La configuration compte 17 entrées de premier niveau : 16 sections et la racine `factorio_version`. Les sections signalées comme **inertes** sont lues et validées, mais le moteur ne les exploite pas encore ; celles marquées **conditionnelles** sont câblées et ne s'activent que si `enabled` vaut vrai.
 
 ### `factorio_version` (racine)
 
@@ -100,15 +100,15 @@ Détermine le nombre minimal et maximal de lacs (`min` / `max`) et la taille via
 
 ### `late_raws`
 
-Comprend `enabled` (désactivé par défaut avec false), `share` et `pick_chance`. Ces paramètres restent inertes car l'injection est déterministe à 100 %. Le plan v2 associé est une simple note de travail, non intégrée à la version publiée.
+Comprend `enabled` (désactivé par défaut avec false), `share` et `pick_chance`. La section est **conditionnelle** : quand `enabled` est vrai, `tool/generator/late_raws.py` construit le plan de jalons et `pipeline.py` rejoue la passe B. `share` et `pick_chance` restent inertes : l'injection est déterministe à 100 %.
 
-### `nonfinite` — **inerte**
+### `nonfinite` — **conditionnelle**
 
-Contient les coefficients de randomisation des ressources inépuisables (A1), avec `enabled: false`.
+Contient les coefficients de randomisation des ressources inépuisables (A1), avec `enabled: false`. Quand `enabled` est vrai, `map_patches.apply_nonfinite_randomisation` applique les facteurs.
 
-### `craft_quantity` — **inerte**
+### `craft_quantity` — **conditionnelle**
 
-Définit les multiplicateurs de volume par recette (B3), avec `enabled: false`.
+Définit les multiplicateurs de volume par recette (B3), avec `enabled: false`. Quand `enabled` est vrai, `craft_quantity.apply_craft_quantity` les applique à l'export.
 
 ### `pools`, `weights` — **inertes**
 

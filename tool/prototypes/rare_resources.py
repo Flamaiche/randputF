@@ -133,5 +133,10 @@ def verify_required_near_spawn(
 
 
 def verify_no_zero(patches: list[RarePatch]) -> bool:
-    """Aucun patch sans richesse ni bloc."""
+    """Vérifie qu'aucun patch n'est vide.
+
+    Retourne ``True`` si tous les patchs ont ``richness >= 500`` et
+    ``count >= 1`` ; ``False`` dès qu'un patch est dégénéré. Une liste vide
+    est considérée valide (aucun contre-exemple).
+    """
     return all(p.richness >= 500 and p.count >= 1 for p in patches)

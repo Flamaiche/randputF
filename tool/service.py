@@ -55,9 +55,15 @@ class RandputfError(Exception):
 
 
 class DumpMissingError(RandputfError):
-    """Le dump vanilla est introuvable."""
+    """Le dump vanilla est introuvable (message joueur pré-formaté)."""
 
     def __init__(self, path: Path) -> None:
+        """Construit le message d'aide pour un dump absent.
+
+        ``path`` est le chemin recherché ; il est inclus dans le message qui
+        rappelle l'emplacement embarqué et les options ``--dump`` / exporteur.
+        Aucun fichier n'est lu ni créé.
+        """
         super().__init__(
             f"Vanilla dump introuvable: {path}\n"
             "Le dump est embarque dans le paquet (data/vanilla_dump.json) : "
@@ -75,6 +81,13 @@ class SeedUnplayableError(RandputfError):
     """Aucune graine dérivée n'a donné une seed jouable dans la limite fixée."""
 
     def __init__(self, base_seed: int, issues: list[str], seed_value: int) -> None:
+        """Mémorise l'échec de génération pour inspection par l'appelant.
+
+        ``base_seed`` est la graine demandée, ``issues`` la dernière liste de
+        problèmes du validateur et ``seed_value`` la dernière graine dérivée
+        essayée. Les trois sont exposés en attributs après construction du
+        message d'erreur.
+        """
         super().__init__(
             f"Seed {base_seed} non jouable apres {MAX_ATTEMPTS} tentatives "
             f"(derivee jusqu'a {seed_value})."

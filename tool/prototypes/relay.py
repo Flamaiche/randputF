@@ -18,7 +18,12 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class RelayConfig(PrototypeConfig):
-    """Configuration pour la phase relais."""
+    """Réglages de la phase relais (recettes de dispatch intermédiaires).
+
+    ``prefix`` préfixe les noms générés et ``max_dispatch_steps`` borne le
+    nombre d'étapes de dispatch par chaîne. Les valeurs par défaut sont lues
+    depuis ``config/defaults.yaml`` via ``from_config``.
+    """
     prefix: str = "randputf-relay-"
     max_dispatch_steps: int = 3
 

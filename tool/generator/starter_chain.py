@@ -154,6 +154,11 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
 
 
 def _unique_resources(patches: list[Patch]) -> list[tuple[str, str]]:
+    """Liste ordonnée des couples ``(kind, resource)`` distincts des patchs.
+
+    Déduplique en conservant la première occurrence ; retourne une liste de
+    tuples ``(kind, resource)`` sans doublon, utilisable comme pool de tirage.
+    """
     seen: dict[tuple[str, str], None] = {}
     for patch in patches:
         seen.setdefault((patch.kind, patch.resource))
@@ -308,6 +313,15 @@ def _ensure_extraction(
     *,
     is_lake: bool = False,
 ) -> None:
+    """Ajoute l'étape d'extraction d'une ressource et garantit son extracteur.
+
+    Choisit un extracteur adapté (``_extractors_for_resource``), force sa
+    recette de craft dans la tech d'extraction via ``ensure_obtainable`` puis
+    l'ajoute à ``state.unlocked_buildings``, ``chain.extractors`` et
+    ``state.steps``. ``is_lake`` distingue une tuile fluide (pompe) d'un patch
+    fluide (drill). Lève ``ValueError`` si aucun extracteur ne convient.
+    Retourne ``None``.
+    """
     candidates = _extractors_for_resource(
         db, resource_kind, resource_name, is_lake=is_lake
     )
@@ -339,6 +353,14 @@ def _ensure_extraction(
 
 
 def _extractors_for_resource(db: VanillaDB, kind: str, name: str, *, is_lake: bool = False):
+    """Extracteurs capables de produire une ressource donnée.
+
+    Pour un fluide, retourne les pompes adaptées à l'eau (lac) ou les drills
+    ``basic-fluid`` (patch, en préférant le non-électrique) ; pour un item,
+    les extracteurs de milieu ``ground`` sans sortie fluide. ``name`` est
+    conservé pour l'API mais la sélection repose sur les tags/catégories.
+    Retourne une liste de ``BuildingDef`` (vide si aucun candidat).
+    """
     if kind == SLOT_FLUID:
         fluid_extractors = [
             b for b in db.buildings_with_tag("is_extractor") if b.fluid_outputs > 0
@@ -366,6 +388,13 @@ def _extractors_for_resource(db: VanillaDB, kind: str, name: str, *, is_lake: bo
 
 
 def _ensure_transformer(rng: random.Random, db: VanillaDB, state: ProgressionState, chain: StarterChain) -> None:
+    """Choisit un transformateur de starter et garantit son obtention.
+
+    Restreint ``STARTER_TRANSFORMERS`` aux bâtiments ``is_crafter`` non
+    exclus, en tire un au hasard, rend son item obtenable et l'ajoute aux
+    bâtiments débloqués ; ``chain.fabricator`` reçoit son nom. No-op silencieux
+    si aucun transformateur n'est disponible. Retourne ``None``.
+    """
     transformers = [
         b for b in db.buildings_with_tag("is_crafter")
         if b.name in STARTER_TRANSFORMERS and b.name not in EXCLUDED_BUILDINGS
@@ -432,6 +461,13 @@ def _ensure_first_science_pack(
 
 
 def _ensure_transports(rng: random.Random, db: VanillaDB, state: ProgressionState) -> None:
+    """Garantit les transports adaptés aux types de ressources extraites.
+
+    Si un item est extrait, assure belt/splitter/underground (et un inserter
+    avec probabilité ``inserter_chance``) ; si un fluide est extrait, assure
+    pipe/pipe_to_ground. Chaque rôle passe par ``_ensure_transport_item``.
+    Retourne ``None``.
+    """
     kinds_present = {
         SLOT_ITEM: any(
             step["type"] == "extract" and step["resource"]["type"] == SLOT_ITEM
@@ -470,6 +506,13 @@ def _ensure_transport_item(
     state: ProgressionState,
     role: str,
 ) -> None:
+    """Rend obtenable un item de transport pour un rôle logique.
+
+    ``role`` indexe ``TRANSPORT_ROLE_TAGS`` (belt, splitter, underground,
+    pipe, pipe_to_ground, inserter). Les items candidats sont triés par nom,
+    tirés au hasard puis rendus obtenables. No-op si le pool est vide.
+    Retourne ``None``.
+    """
     tag = TRANSPORT_ROLE_TAGS[role]
     candidates = sorted(
         (
@@ -529,6 +572,14 @@ def _ensure_chest_craftable(
 
 
 def _roll_starter_kit(rng: random.Random, db: VanillaDB) -> list[dict]:
+    """Tire le kit de départ : une arme et ses munitions assorties.
+
+    Sélectionne une arme portative au hasard, puis une munition de même
+    ``ammo_category`` (à défaut n'importe quelle munition) et en fournit
+    ``ammo_count`` exemplaires, borné par ``stack_size``. Retourne une liste
+    d'entrées ``{"type": "item", "name": ..., "count": ...}`` ; vide si la
+    base n'a ni arme ni munition.
+    """
     guns = sorted(
         (i for i in db.items.values() if i.is_handheld_gun),
         key=lambda i: i.name,
@@ -619,6 +670,12 @@ def _extend_spawn_kit(
 
 
 def _needs_fuel(db: VanillaDB, chain: StarterChain) -> bool:
+    """Vrai si le fabricateur ou un extracteur du starter est à combustible.
+
+    Vérifie ``energy_type == "burner"`` sur le fabricateur choisi et sur
+    chaque extracteur de ``chain`` (entités inconnues ignorées). Retourne
+    ``False`` si tous sont électriques/void ou absents.
+    """
     fabricator_burner = (
         chain.fabricator
         and db.buildings.get(chain.fabricator) is not None

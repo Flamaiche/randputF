@@ -17,22 +17,19 @@ Publiée — accessible publiquement, tag sur `master` :
 | Version | Tag | Contenu | Témoin seed 5 |
 |---|---|---|---|
 | v0.0.0 | `v0.0.0` → `a1719b9e17659d141c95d617508c5a7a11a331fb` | Première release publique. Config `settings.yaml`. | `f41e065e606ce24c8855d458c661988f` |
+| v0.0.1 | `v0.0.1` → `4f28fa6272e2da58868a4cee6d4022957143cb82` (sur `master`) | Config à deux YAML + refonte documentaire. | `c9566134864507d900f65806ade277d9` |
 
-En préparation — sur `dev`, non publiée :
-
-| Version | Note | Contenu | Témoin seed 5 |
-|---|---|---|---|
-| v0.0.1 | [`notes/v0.0.1.md`](../notes/v0.0.1.md) | Config à deux YAML + refonte documentaire. | `c9566134864507d900f65806ade277d9` |
+En préparation — aucune : la 0.0.2 est reportée.
 
 Le mécanisme des notes apparaît avec la v0.0.1 : `release.yml` lit `notes/v<version>.md` (titre = première ligne, reste = note « highlights »). Il n'existe **pas** de note v0.0.0 — cette release a été publiée sans le mécanisme de notes, et le dossier `notes/` n'existait pas à son tag. Une note posée est ensuite gelée : elle décrit l'état de son tag, ne la modifie pas.
 
-Réutilisation du numéro 0.0.1 : une première v0.0.1 a été préparée le 2026-10-01, sans être publiée — elle est restée en *draft* sur GitHub, et son tag a été supprimé lors du reset de `master`. Aucune donnée n'ayant été publique sous ce numéro, son réemploi ne trompe personne, ce qui a été fait. Le brouillon résiduel a été supprimé : la release v0.0.1 sera créée de zéro par le workflow (chemin `create`), et non reprise d'un brouillon obsolète en date et en corps. Un `draft` réapparu pour cette version signale un reliquat : supprime-le avant le tag (cf. checklist §3).
+Réutilisation du numéro 0.0.1 : une première v0.0.1 a été préparée le 2026-10-01, sans être publiée — elle est restée en *draft* sur GitHub, et son tag a été supprimé lors du reset de `master`. Aucune donnée n'ayant été publique sous ce numéro, son réemploi ne trompe personne, ce qui a été fait. Le brouillon résiduel a été supprimé : la release v0.0.1 a été créée de zéro par le workflow (chemin `create`), et non reprise d'un brouillon obsolète en date et en corps. Un `draft` réapparu pour cette version signalerait un reliquat : le supprimer avant le tag (cf. checklist §3).
 
 Écart assumé sur la numérotation : la configuration à deux YAML constitue un changement visible par l'utilisateur (un fichier supprimé, des surcharges à recopier), relevant de `0.1.0` au sens semver. La version sort en v0.0.1, sur décision du mainteneur. Convention retenue pour la suite : le semver reprend ses droits — un changement visible par l'utilisateur prend un chiffre mineur (0.1.0), un correctif de documentation ou de test un numéro de patch.
 
-## 2. Release v0.0.1 : EN PRÉPARATION
+## 2. Release v0.0.1 : PUBLIÉE
 
-Elle intègre le système de configuration à deux YAML et la refonte documentaire. Sa sortie interviendra au tag `v0.0.1`, créé par le workflow au moment où `master` reçoit le travail de `dev` (cf. §3 — il ne s'agit pas d'un merge, voir l'encadré).
+Elle intègre le système de configuration à deux YAML et la refonte documentaire. Elle est sortie le 2026-10-04 : le workflow a créé le tag `v0.0.1` sur le commit `4f28fa6` promu sur `master` (cf. §3 — il ne s'agit pas d'un merge, voir l'encadré).
 
 ### 2.1 Titre et note
 
@@ -54,7 +51,7 @@ Le titre et la note figurent dans [`notes/v0.0.1.md`](../notes/v0.0.1.md) — pr
 Le bump de version s'effectue dans `dev` (seule branche de travail) : `mod/info.json` (source de vérité) et `pyproject.toml` simultanément — `tool/common/version.py` lit `mod/info.json`, il ne se bump pas.
 La release correspond à la promotion `dev` → `master`, décidée par le mainteneur.
 
-> La release est la promotion `dev` → `master`. Le workflow se déclenche quand `master` reçoit le travail de `dev` ; il lit la version dans `mod/info.json`, construit le mod, crée le tag `v<version>` sur le commit promu et publie. Aucun tag manuel n'est requis. Le tag v0.0.0 (`a1719b9e17659d141c95d617508c5a7a11a331fb`) constitue un commit racine sans parent, de sorte que `master` et `dev` n'ont actuellement aucun ancêtre commun et `master` se replace sur `dev` via `git push origin dev:master --force`. Dès cette première promotion, les deux branches redeviennent parent-enfant : les promotions suivantes s'exécutent en *fast-forward*, sans `--force`. Conséquence à retenir : le commit v0.0.0 reste accessible par son tag, mais sort de l'ascendance de `master`.
+> La release est la promotion `dev` → `master`. Le workflow se déclenche quand `master` reçoit le travail de `dev` ; il lit la version dans `mod/info.json`, construit le mod, crée le tag `v<version>` sur le commit promu et publie. Aucun tag manuel n'est requis. Depuis la publication de la v0.0.1 (`4f28fa6`), `master` et `dev` partagent cet ancêtre : la promotion s'exécute en *fast-forward*, sans `--force` (`git push origin dev:master`). Le tag v0.0.0 (`a1719b9e17659d141c95d617508c5a7a11a331fb`) reste un commit racine sans parent : il demeure accessible par son tag, mais ne figure pas dans l'ascendance de `master`.
 
 - [ ] Tout passer par `dev` : corrections, docs, bump de version sur `dev`.
 - [ ] Version : bump de `mod/info.json` `"version"` — source de vérité lue par `tool/common/version.py` — et de `pyproject.toml`, au même moment.
@@ -63,17 +60,17 @@ La release correspond à la promotion `dev` → `master`, décidée par le maint
 - [ ] CHANGELOG : ajoute la section `## v<version>` dans [`CHANGELOG.md`](../CHANGELOG.md) dans le commit du bump de version, et non après. L'entrée est ainsi publiée en même temps que la promotion : rien à réécrire une fois le tag posé, et l'arbre promu est auto-cohérent. Le titre reprend celui de `notes/v<version>.md`.
 - [ ] Supprimer le brouillon résiduel : si un `gh release list` affiche un *draft* pour cette version, supprime-le avant le tag — sinon le workflow le reprend et le publie avec une date et un corps périmés.
 - [ ] Vérifier l'arbre propre avant de committer : un `output/`, un `randputF_*` ou un `mod-list.json` issu d'un run antérieur peut faire passer un test en local alors qu'il échoue en CI. Cela s'est produit réellement et a masqué le bug décrit en §4. Relance la suite depuis un arbre propre : `rm -rf output randputF_* mod-list.json && python -m pytest`.
-- [ ] Promouvoir `master` — réservé au mainteneur, seul moment où la branche bouge : `git push origin dev:master --force` (le `--force` n'est requis que pour cette première promotion, cf. l'encadré §3 ; ensuite un simple `git push origin dev:master` suffit). Ce push déclenche la release : build du wheel, témoin, zip attaché, tag `v<version>` créé sur le commit promu, publication automatique du titre et de la note depuis `notes/v<version>.md`.
+- [ ] Promouvoir `master` — réservé au mainteneur, seul moment où la branche bouge : `git push origin dev:master` (la promotion est un *fast-forward* depuis la v0.0.1, cf. l'encadré §3). Ce push déclenche la release : build du wheel, témoin, zip attaché, tag `v<version>` créé sur le commit promu, publication automatique du titre et de la note depuis `notes/v<version>.md`.
 - [ ] Vérifier la CI avant de conclure : la promotion est rejetée si la version est déjà taguée, si la note est absente, ou si un test casse (le bump casse les versions codées en dur).
 - [ ] Aucun push sans décision explicite du mainteneur.
 
-## 4. Ce que la v0.0.1 a appris (tentative du 2026-10-01, jamais publiée)
+## 4. Ce que la v0.0.1 a appris (tentative du 2026-10-01)
 
-La première v0.0.1 est restée en brouillon, mais les quatre problèmes rencontrés ont été corrigés dans le code — ils motivent l'état actuel.
+La première tentative de v0.0.1 est restée en brouillon et n'a jamais été publiée ; les quatre problèmes rencontrés ont été corrigés dans le code avant la publication effective du 2026-10-04 — ils motivent l'état actuel.
 
 - `release.yml` n'existait que sur `master` (`blob ea84054`) et manquait sur `dev`. Il a été rapatrié sur `dev`, faute de quoi le tag n'aurait construit ni zip ni publication.
 - Le titre et la note produits par le workflow n'étaient pas utilisables : titre automatique (« randputF <version> ») et simple lien « Full Changelog ». Corrigé : `release.yml` lit `notes/v<version>.md`, prend le titre sur sa première ligne et publie la note telle quelle.
-- `master` et `dev` avaient été créées séparément, sans ancêtre commun, et `master` a dû être reconstruit depuis `dev`. Aujourd'hui `master` repars de zéro sur le tag `v0.0.0` : il contient uniquement ce qui a été publié.
+- `master` et `dev` avaient été créées séparément, sans ancêtre commun, et `master` a dû être reconstruit depuis `dev`. `master` a ensuite été promu jusqu'à la v0.0.1 (`4f28fa6`), dont `dev` descend désormais ; les promotions suivantes sont de simples *fast-forward*.
 - Le bump a cassé deux tests qui présentaient `randputF_0.0.0` codé en dur dans une attente (`tests/test_witness.py`, `tests/test_cli_install.py`). Ils lisent désormais `MOD_NAME_VERSIONED`. Le second passait en local en raison d'un artefact résiduel (`output/randputF_0.0.0` d'un run antérieur) — d'où la règle « relancer depuis un arbre propre » au §3.
 
 ### Ce que `release.yml` fait, dans l'ordre
@@ -84,7 +81,7 @@ Il s'agit du script réel du job, et non d'un résumé — s'en écarter brise l
 2. Installer le paquet avec ses extras de dev (`pip install ".[dev]"`, comme `ci.yml`) — le job lance `pytest` immédiatement après.
 3. `pytest -q` — les tests sont bloquants : une release ne peut sortir sur une suite rouge. Cela garantit qu'un bump de version ne brise rien en silence.
 4. `randputf witness --seed 5` — vérifie que la génération aboutit (sans `--expect` : la CI porte la valeur figée, cf. `docs/witness.md`).
-5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `randputF_<version>/` uniquement. `seed.graph.html` est exclu du zip (vue de debug de 5 Mo, déjà écartée du témoin) : 5,2 Mo -> 52 Ko.
+5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `randputF_<version>/` uniquement. `seed.graph.html` est exclu du zip (vue de debug de 7,2 Mo, déjà écartée du témoin) : 52 Ko sans lui, ~7,2 Mo avec.
 6. Créer le tag explicitement : `git tag "$TAG" "$GITHUB_SHA"` puis `git push origin "$TAG"`. Le tag est ainsi créé après les tests et le build, et pointe exactement sur le commit promu.
 7. Publier : si la release existe déjà (brouillon), `gh release upload --clobber` puis `gh release edit --draft=false` — `gh release edit` ne publie pas de lui-même. Sinon `gh release create` avec le zip en asset.
 

@@ -38,12 +38,21 @@ class ValidationResult:
     stats: dict[str, int] = field(default_factory=dict)
 
     def add_issue(self, msg: str) -> None:
-        """Ajoute un problème bloquant."""
+        """Enregistre un problème bloquant et invalide le rapport.
+
+        Ajoute ``msg`` à ``issues`` puis force ``is_valid = False``. Retourne
+        ``None`` ; la décision d'arrêter ou non la génération appartient à
+        l'appelant.
+        """
         self.issues.append(msg)
         self.is_valid = False
 
     def add_warning(self, msg: str) -> None:
-        """Ajoute un avertissement non bloquant."""
+        """Enregistre un avertissement non bloquant.
+
+        Ajoute ``msg`` à ``warnings`` sans toucher à ``is_valid``. Retourne
+        ``None``.
+        """
         self.warnings.append(msg)
 
 

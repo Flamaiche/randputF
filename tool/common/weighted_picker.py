@@ -33,20 +33,40 @@ class WeightedPicker:
     """
 
     def __init__(self, replacement: bool = False) -> None:
+        """Crée un pool vide.
+
+        ``replacement=True`` conserve les éléments après ``pick`` (tirage avec
+        remise) ; ``False`` (défaut) les retire (sans remise). Le pool et le
+        mode sont exposés via ``items`` / ``replacement`` et mutés en place.
+        """
         self.items: list[WeightedItem] = []
         self.replacement = replacement
 
     def add(self, name: str, weight: float = 1.0, tags: set[str] | None = None) -> None:
-        """Ajoute un élément au pool."""
+        """Ajoute un élément nommé au pool.
+
+        ``name`` identifie l'élément (les doublons sont autorisés mais ``pick``
+        les retire tous par nom), ``weight`` est son poids relatif (positif ;
+        un poids nul le rend jamais tiré), ``tags`` alimente
+        ``filter_by_tags``. Retourne ``None``.
+        """
         self.items.append(WeightedItem(name=name, weight=weight, tags=tags or set()))
 
     def add_many(self, items: list[tuple[str, float]]) -> None:
-        """Ajoute plusieurs éléments (nom, poids)."""
+        """Ajoute en lot des couples ``(name, weight)``.
+
+        Chaque paire est déléguée à ``add`` (sans tags). L'ordre de ``items``
+        est conservé. Retourne ``None``.
+        """
         for name, weight in items:
             self.add(name, weight)
 
     def remove(self, name: str) -> None:
-        """Retire un élément du pool par son nom."""
+        """Retire du pool toutes les entrées portant ``name``.
+
+        Reconstruit ``self.items`` sans les éléments correspondants ; un nom
+        absent est ignoré silencieusement. Retourne ``None``.
+        """
         self.items = [item for item in self.items if item.name != name]
 
     def filter_by_tags(self, required_tags: set[str]) -> list[WeightedItem]:
@@ -104,7 +124,11 @@ class WeightedPicker:
 
     @property
     def total_weight(self) -> float:
-        """Somme des poids des candidats restants."""
+        """Somme des poids de tous les éléments encore dans le pool.
+
+        Retourne ``0.0`` pour un pool vide. Sert notamment à normaliser des
+        probabilités ou à détecter un pool dégénéré (poids tous nuls).
+        """
         return sum(item.weight for item in self.items)
 
     @property
@@ -113,6 +137,10 @@ class WeightedPicker:
         return len(self.items) == 0
 
     def __len__(self) -> int:
+        """Nombre d'éléments actuellement dans le pool.
+
+        Permet ``len(picker)`` ; diminue après chaque ``pick`` sans remise.
+        """
         return len(self.items)
 
 

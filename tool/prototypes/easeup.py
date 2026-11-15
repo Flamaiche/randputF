@@ -23,7 +23,13 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class EaseupConfig(PrototypeConfig):
-    """Configuration pour la phase ease-up."""
+    """Réglages de la phase ease-up (recettes simplifiées en profondeur).
+
+    ``prefix`` nomme les recettes générées, ``max_recipes`` borne leur nombre,
+    ``depth_threshold`` fixe la profondeur à partir de laquelle une chaîne est
+    allégée et ``unlocks_per_tech`` regroupe les déblocages. Les défauts du
+    prototype sont alignés sur ``config/defaults.yaml`` (source unique).
+    """
     prefix: str = "randputf-ease-"
     max_recipes: int = 8
     depth_threshold: int = 5

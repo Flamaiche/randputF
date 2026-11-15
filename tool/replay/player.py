@@ -56,6 +56,11 @@ class Blocker:
     reason: str = ""   # chaîne d'explication multi-étapes
 
     def __str__(self) -> str:
+        """Rend le blocage lisible : ``tech : kind item — raison``.
+
+        La raison n'est ajoutée que si elle est non vide. Retourne une chaîne
+        d'une ligne destinée au bordereau joueur.
+        """
         head = f"{self.tech} : {self.kind}"
         return f"{head} {self.item}" + (f" — {self.reason}" if self.reason else "")
 
@@ -96,6 +101,15 @@ class FakePlayer:
     """Rejoue une seed. ``db`` = base vanilla, ``seed`` = seed finale."""
 
     def __init__(self, db: VanillaDB, seed: dict) -> None:
+        """Prépare un rejeu complet de ``seed`` sur la base ``db``.
+
+        Indexe les recettes par produit, construit le graphe inverse des
+        consommateurs, lit les jalons ``late_raws`` et la chaîne des science
+        packs, infère les extracteurs disponibles, mémorise les ressources de
+        carte et les assignations de fluides, puis initialise l'état de partie
+        (recherches gratuites, recettes débloquées, kit). Mute uniquement
+        l'instance ; ``db`` et ``seed`` ne sont pas modifiés.
+        """
         self.db = db
         self.seed = seed
 
@@ -203,6 +217,11 @@ class FakePlayer:
     # ── Préparation ───────────────────────────────────────────────────────
 
     def _prep_db(self) -> None:
+        """Expose les index d'items et de bâtiments de la base vanilla.
+
+        Alias locaux (``items_db``, ``buildings_db``) utilisés par les
+        recherches de faisabilité ; aucune copie n'est faite. Retourne ``None``.
+        """
         self.items_db = self.db.items
         self.buildings_db = self.db.buildings
 
@@ -267,6 +286,14 @@ class FakePlayer:
         return tier <= self._current_tier()
 
     def _prep_kit(self) -> None:
+        """Initialise le kit de départ, ses quantités et les compteurs de rejeu.
+
+        Fusionne le ``starter_kit`` et le butin d'épave (items connus de la
+        base), calcule ``kit_counts`` et ``item_patch_counts`` (stock fini
+        ramassable), puis initialise l'inventaire simulé, les ressources
+        infinies d'office, les caches de maîtrise et le monde courant. Mute
+        l'instance et retourne ``None``.
+        """
         self.kit: set[str] = {
             e["name"]
             for e in self.seed.get("starter_kit") or []
@@ -354,6 +381,12 @@ class FakePlayer:
         return entries
 
     def _unlocks_of(self, tech: dict) -> set[str]:
+        """Recettes débloquées par une tech.
+
+        Parcourt ``tech["effects"]`` et collecte les ``recipe`` des effets
+        ``unlock-recipe``. Retourne un ensemble de noms de recettes (vide si
+        la tech n'a aucun effet de déblocage).
+        """
         out = set()
         for effect in tech.get("effects") or []:
             if effect.get("type") == "unlock-recipe":
@@ -363,12 +396,24 @@ class FakePlayer:
     # ── Fermeture obtenable (le « peut avoir » du joueur) ─────────────────
 
     def _fuel_obtainable(self, items: set[str]) -> bool:
+        """Vrai si au moins un item du monde courant est un combustible.
+
+        Teste la présence de ``fuel_value`` non nul dans ``items`` via
+        ``items_db``. Retourne ``False`` si aucun item combustible n'est
+        disponible (un bâtiment burner ne peut alors pas tourner).
+        """
         return any(
             (self.items_db.get(n) is not None and self.items_db[n].fuel_value)
             for n in items
         )
 
     def _heat_chain_ok(self, items: set[str]) -> bool:
+        """Vrai si une source ET un transport de chaleur sont constructibles.
+
+        Vérifie la présence dans ``items`` d'au moins un bâtiment tagué
+        ``is_heat_source`` et un tagué ``is_heat_transport``. Retourne ``False``
+        si l'un des deux manque (pas de réseau de chaleur opérationnel).
+        """
         has_source = any(
             b.name in items
             for b in self.buildings_db.values()
@@ -382,6 +427,12 @@ class FakePlayer:
         return has_source and has_transport
 
     def _energy_ok(self, building, items: set[str], power: bool) -> bool:
+        """Un bâtiment peut-il fonctionner avec l'énergie disponible ?
+
+        ``electric`` exige ``power`` ; ``burner`` exige un combustible dans
+        ``items`` ; ``heat`` exige une chaîne chaleur complète ; ``void`` ou un
+        type inconnu n'impose aucune contrainte. Retourne le booléen.
+        """
         et = getattr(building, "energy_type", "burner")
         if et == "electric":
             return power
@@ -483,6 +534,13 @@ class FakePlayer:
     def _recipe_runs(
         self, recipe: dict, items: set[str], fluids: set[str], power: bool
     ) -> bool:
+        """Vrai si une recette est exécutable dans le monde courant.
+
+        Vérifie que tous les ingrédients sont dans ``items``/``fluids``, que
+        l'atelier ``crafted_in`` est constructible et que son énergie est
+        disponible (``_energy_ok``). Une recette sans ``crafted_in`` est
+        supposée craftable à la main. Retourne le booléen.
+        """
         for ing in recipe.get("ingredients") or []:
             bucket = items if ing.get("type") == SLOT_ITEM else fluids
             if ing["name"] not in bucket:
@@ -565,6 +623,12 @@ class FakePlayer:
         return inf_items, inf_fluids
 
     def _recipe_result_amount(self, recipe: dict, target: str) -> int:
+        """Quantité de ``target`` produite par une exécution de ``recipe``.
+
+        Cherche la ligne de résultat item correspondante et retourne son
+        ``amount`` entier. Retourne ``1`` si le produit n'est pas listé, ce qui
+        évite une division par zéro dans les calculs de faisabilité.
+        """
         for res in recipe.get("results") or []:
             if res.get("type") == SLOT_ITEM and res["name"] == target:
                 return int(res.get("amount", 1))
@@ -958,6 +1022,14 @@ class FakePlayer:
         depth: int,
         seen: frozenset[str] = frozenset(),
     ) -> str:
+        """Explique pourquoi ``need`` copies de ``target`` sont (in)faisables.
+
+        Consomme d'abord le stock fini ``budget``, puis choisit la recette
+        productrice dont le plus d'ingrédients sont déjà infinis et décrit
+        récursivement les manques (borné par ``MAX_QDEPTH``). ``seen`` coupe
+        les cycles. Retourne une chaîne lisible type
+        ``item×n (recette): ingrédient×q ← …``.
+        """
         if depth >= MAX_QDEPTH:
             return f"{target}×{need} → profondeur maximale atteinte"
         have = budget.get(target, 0)

@@ -119,6 +119,13 @@ def generate_patches(
     patches: list[Patch] = []
 
     def _draw(pool: list[str], n: int, kind: str, richness: tuple) -> None:
+        """Ajoute jusqu'à ``n`` patchs distincts tirés de ``pool``.
+
+        Mélange ``pool`` en place puis crée un ``Patch(kind, resource,
+        richesse)`` pour chaque ressource pas encore dans ``used`` ; la
+        richesse est tirée uniformément dans ``richness`` (min, max). Mute
+        ``used`` et ``patches`` et s'arrête dès ``n`` atteint ou pool épuisé.
+        """
         # Tirage sans remise, en sautant les identités déjà dans ``used``.
         rng.shuffle(pool)
         for resource in pool:
@@ -263,6 +270,13 @@ def assign_patch_gisements(patches: list[Patch], seed_value: int, config: dict) 
 
 
 def _excludable_items(db: VanillaDB):
+    """Items éligibles à devenir un gisement item sur la carte.
+
+    Part des items posables (``db.beltable_items``) puis exclut les armes, le
+    sous-groupe ``combat``, les bâtiments de recherche, la chaîne fusée et le
+    silo (victoire garantie par recette), ainsi que les science packs. Retourne
+    la liste filtrée ; ne mute pas la base.
+    """
     excluded_types = {"combat"}
     # Les bâtiments de recherche (§8) ne sont jamais des patchs : leur recette
     # est une brique garantie du starter (2e recherche gratuite).

@@ -19,6 +19,8 @@ do
   local base_size = scaling.base_size or 2.0
   local range_scale = scaling.scale or 0.4
 
+  -- Taille d'une entité = plus grand côté de sa selection_box (extent x/y).
+  -- Retourne 0 si l'entité ou sa boîte de sélection est absente.
   local function entity_size(entity)
     if not entity or not entity.selection_box then return 0 end
     local box = entity.selection_box
@@ -27,11 +29,16 @@ do
     return math.max(math.abs((box[2] or box[1])[1] - box[1][1]), math.abs((box[2] or box[1])[2] - box[1][2]))
   end
 
+  -- Portée d'arme ajustée à la taille du véhicule : facteur linéaire au-delà
+  -- de base_size, arrondi à l'entier le plus proche. Retourne un nombre.
   local function scaled_range(orig, size)
     local factor = 1 + math.max(size - base_size, 0) * range_scale
     return math.floor(orig * factor + 0.5)
   end
 
+  -- Clone une arme sous le nom randputf-<véhicule>-<arme>, ajuste sa portée à
+  -- la taille du véhicule et l'ajoute à data.raw. Retourne le nom du clone ou
+  -- nil si l'arme source est inconnue.
   local function clone_gun_for(vehicle, gun, size)
     local src = data.raw["gun"][gun]
     if not src then
@@ -89,6 +96,8 @@ if not fluid_template then fluid_template = table.deepcopy(data.raw["resource"][
 
 local patches = (seed.map or {}).patches or {}
 
+-- Retourne l'icône principale d'un prototype et sa taille : champ `icon`, ou
+-- première entrée de `icons`. Renvoie (nil) si aucune icône n'est définie.
 local function get_primary_icon(proto)
   if proto == nil then return nil end
   if proto.icon ~= nil then
@@ -109,6 +118,8 @@ local ITEM_LIKE_TYPES = {
   "deconstruction-item", "upgrade-item", "rail-planner",
 }
 
+-- Cherche un prototype item-like par nom dans data.raw (item puis armes,
+-- capsules, modules, etc.). Retourne le prototype ou nil.
 local function find_item_proto(name)
   if not name then return nil end
   if data.raw.item and data.raw.item[name] then return data.raw.item[name] end
@@ -283,6 +294,7 @@ local LAKE_MIN_LUM  = 0.60
 local LAKE_MIN_SAT  = 0.35
 local LAKE_MAX_LUM  = 0.90
 
+-- Borne une composante de couleur dans [0, 1]. Retourne le nombre borné.
 local function clamp01(v) return math.max(0, math.min(1, v)) end
 
 -- Les teintes claires « acceptables » (vert clair → orange → bleu/cyan).
@@ -343,6 +355,8 @@ local function force_lake_range(r, g, b)
   return best[1], best[2], best[3]
 end
 
+-- Ramène une couleur dans la palette pastel des lacs : gamme claire, saturation
+-- minimale puis plafond de luminosité. Retourne les trois composantes (r,g,b).
 local function pastel_floor(r, g, b)
   -- 1) Force la gamme claire (teinte + luminosité)
   r, g, b = force_lake_range(r, g, b)
@@ -376,6 +390,9 @@ local function pastel_floor(r, g, b)
   return r, g, b
 end
 
+-- Couleur finale d'un lac : part de la couleur du fluide, bascule sur la
+-- palette de secours si elle est trop sombre/terne/hors gamme, puis applique
+-- le pastel. Retourne {r, g, b}.
 local function lake_color(fluid, base)
   local r, g, b = base[1] or 0, base[2] or 0, base[3] or 0
 
@@ -697,6 +714,8 @@ end
 -- burner.fuel_fluid_box.
 local function collect_fluid_boxes(proto)
   local boxes = {}
+  -- Ajoute une fluid box à la liste si c'est bien une table avec un
+  -- production_type (ignore les champs absents ou malformés).
   local function push(box)
     if type(box) == "table" and box.production_type then
       boxes[#boxes + 1] = box

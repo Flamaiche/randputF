@@ -474,6 +474,14 @@ def apply_extractor_timing(
     early_buildings: set[str] | None = None
 
     def _pre_electric() -> tuple[set[str], set[str]]:
+        """Calcule (une fois) l'accessibilité avant électricité.
+
+        Construit les sources de départ (patchs + lacs), propage les recettes
+        du starter avec ``compute_early_reachable`` puis collecte les
+        bâtiments non électriques ayant des slots d'entrée. Retourne
+        ``(items_atteignables, bâtiments_utilisables)`` ; le résultat est
+        mémorisé dans ``early_items``/``early_buildings`` (fermeture).
+        """
         nonlocal early_items, early_buildings
         if early_items is not None:
             return early_items, early_buildings or set()

@@ -20,6 +20,12 @@ _PNG_SIG = b"\x89PNG\r\n\x1a\n"
 
 
 def _png_chunks(data: bytes):
+    """Itère les blocs PNG d'un fichier complet.
+
+    Saute la signature de 8 octets puis yield ``(type, données)`` pour chaque
+    bloc (type = 4 octets, données sans le CRC). Le parcours s'arrête à la fin
+    du buffer ; un fichier tronqué peut produire un dernier bloc partiel.
+    """
     pos = 8
     while pos < len(data):
         ln = struct.unpack(">I", data[pos : pos + 4])[0]
@@ -29,7 +35,15 @@ def _png_chunks(data: bytes):
 
 
 def _decode(data: bytes):
-    """Retourne (w, h, chans, rows) pour les PNG 8-bit non entrelacés."""
+    """Décode un PNG 8 bits non entrelacé en lignes de pixels bruts.
+
+    Retourne ``(w, h, ct, chans, plte, trns, rows)`` : largeur, hauteur, type
+    de couleur PNG, nombre de canaux, palette (``bytes`` vide si absente),
+    table de transparence (``bytes`` ou ``None``) et ``rows`` (liste de listes
+    d'octets, une par ligne, filtres PNG déjà appliqués). Retourne ``None``
+    si l'en-tête ou les données manquent, ou si la profondeur/le type/
+    l'entrelacement n'est pas supporté.
+    """
     ihdr = None
     idat = b""
     plte = b""
@@ -87,6 +101,13 @@ def _decode(data: bytes):
 
 
 def _pix4(ct, chans, plte, trns, row, o):
+    """Extrait un pixel RGBA d'une ligne décodée.
+
+    ``ct``/``chans``/``plte``/``trns`` viennent de ``_decode``, ``row`` est la
+    ligne de bytes et ``o`` l'offset du pixel (déjà multiplié par ``chans``).
+    Gère les types RGB, RGBA, niveaux de gris (± alpha) et palette ; retourne
+    toujours un tuple ``(r, g, b, a)`` d'octets 0-255, alpha opaque par défaut.
+    """
     if ct == 6:
         return row[o], row[o + 1], row[o + 2], row[o + 3]
     if ct == 4:
@@ -107,6 +128,13 @@ def _pix4(ct, chans, plte, trns, row, o):
 
 
 def _encode(cw: int, ch: int, out_rows) -> bytes:
+    """Encode des lignes RGBA en PNG 8 bits non entrelacé.
+
+    ``cw``/``ch`` sont les dimensions, ``out_rows`` une séquence de lignes
+    d'octets RGBA (4 octets par pixel, sans filtre). Chaque ligne reçoit le
+    filtre PNG 0 (aucun), puis IHDR/IDAT/IEND sont assemblés avec leurs CRC.
+    Retourne les octets complets du fichier PNG.
+    """
     out_raw = b"".join(b"\x00" + r for r in out_rows)
 
     def chunk(typ, data):

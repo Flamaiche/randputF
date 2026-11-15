@@ -221,6 +221,12 @@ def _pick_trigger(
 
 
 def _uses_environmental(recipe: dict) -> bool:
+    """Vrai si la recette consomme un item environnemental récoltable.
+
+    Examine les ingrédients de type ``SLOT_ITEM`` et teste leur nom contre
+    ``ENVIRONMENTAL_ITEMS`` (bois, pierre, poisson…). Retourne ``False`` pour
+    une recette vide ou sans ingrédient correspondant.
+    """
     for ingredient in recipe.get("ingredients", []):
         if (
             ingredient.get("type") == SLOT_ITEM

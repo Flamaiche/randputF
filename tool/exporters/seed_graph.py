@@ -64,6 +64,12 @@ _ICONS_DIR: Path | None = None
 
 
 def _icons_dir() -> Path | None:
+    """Répertoire des icônes vanilla, résolu une seule fois.
+
+    Met en cache le résultat de ``_find_icons_dir`` dans ``_ICONS_DIR``
+    (``None`` inclus, pour ne pas re-scanner). Retourne le ``Path`` trouvé ou
+    ``None`` si les icônes sont indisponibles.
+    """
     global _ICONS_DIR
     if _ICONS_DIR is None:
         _ICONS_DIR = _find_icons_dir()
@@ -175,6 +181,12 @@ def _parse_prototype_items(text: str) -> dict[str, dict]:
 
 
 def _find_line(body: str, prefix: str) -> bool:
+    """Vrai si une ligne de ``body`` contient ``prefix``.
+
+    Test de sous-chaîne ligne par ligne (pas d'ancrage), utilisé pour repérer
+    une directive dans un prototype Lua. Retourne ``False`` si aucune ligne
+    ne correspond.
+    """
     for line in body.splitlines():
         if prefix in line:
             return True
@@ -256,6 +268,14 @@ def _recipe_tech_info(seed: dict) -> dict[str, dict]:
 
 
 def _technology_info(seed: dict) -> dict[str, dict]:
+    """Fiche par tech pour l'interface du graphe.
+
+    Réutilise ``_tech_order`` puis calcule, pour chaque tech, son numéro
+    d'ordre, son nom localisé, ses ingrédients de recherche (nom, quantité,
+    icône) et les produits débloqués par ses recettes. Retourne
+    ``{id_tech: fiche}`` ; les champs absents/invalides retombent sur des
+    valeurs neutres (compte 1, listes vides).
+    """
     tmap, order, free, _ = _tech_order(seed)
     recipe_products: dict[str, str] = {}
     for recipe in seed.get("recipes") or []:
@@ -607,6 +627,13 @@ _ICON_HREF_RE = re.compile(r'(xlink:href|href)="([^"]+\.png)"')
 def _embed_icons(svg: str) -> str:
     """Remplace les `href` d'icônes locales par des data-URI base64 (SVG autonome)."""
     def _uri(m: re.Match) -> str:
+        """Remplace une occurrence d'icône par son data-URI base64.
+
+        ``m`` doit exposer l'attribut (``href``/``xlink:href``) et le chemin du
+        PNG. Recadre l'icône via ``crop_mip`` puis retourne
+        ``attr="data:image/png;base64,..."`` ; en cas d'``OSError`` retourne
+        la correspondance inchangée (lien local conservé).
+        """
         attr, path = m.group(1), m.group(2)
         try:
             b64 = base64.b64encode(crop_mip(Path(path).read_bytes())).decode()

@@ -192,18 +192,42 @@ class _ConfigStore:
     """Defaults chargés une fois depuis ``config/defaults.yaml``."""
 
     def __init__(self) -> None:
+        """Initialise le cache paresseux : aucun fichier n'est lu ici.
+
+        ``_defaults`` reste ``None`` jusqu'au premier accès et ``_config_dir``
+        aussi ; cela évite tout I/O à l'import et permet aux tests de changer
+        le répertoire d'assets avant la première lecture.
+        """
         self._defaults: dict | None = None
         self._config_dir: Path | None = None
 
     def _resolve(self) -> Path:
+        """Répertoire contenant ``defaults.yaml`` / ``user.yaml``.
+
+        Résout ``asset_path("config")`` une seule fois puis mémorise le chemin.
+        Retourne le ``Path`` du dossier de configuration (jamais ``None``).
+        """
         if self._config_dir is None:
             self._config_dir = Path(asset_path("config"))
         return self._config_dir
 
     def defaults(self) -> dict:
+        """Copie profonde et mutable des defaults validés.
+
+        Retourne un nouveau ``dict`` à chaque appel : l'appelant peut le
+        modifier sans corrompre le cache interne. Lève ``ConfigError`` si
+        ``defaults.yaml`` est absent ou invalide (via ``_merged_defaults``).
+        """
         return copy.deepcopy(self._merged_defaults())
 
     def _merged_defaults(self) -> dict:
+        """Charge, normalise et valide ``defaults.yaml``, puis met en cache.
+
+        Le YAML est fusionné dans un dict vide (les ``null`` deviennent ``{}``),
+        validé par ``validate`` et conservé tel quel. Les appels suivants
+        renvoient l'objet caché (mutation interne réservée à ``defaults``).
+        Lève ``ConfigError`` si le fichier manque ou si le schéma échoue.
+        """
         if self._defaults is None:
             path = self._resolve() / "defaults.yaml"
             if not path.exists():
@@ -217,6 +241,12 @@ class _ConfigStore:
         return self._defaults
 
     def user_file(self) -> Path | None:
+        """Chemin du ``user.yaml`` s'il existe, sinon ``None``.
+
+        Ne lit pas le fichier : seul son existence est testée dans le
+        répertoire de configuration résolu. Le résultat n'est pas caché, ce
+        qui permet à l'utilisateur de créer/supprimer le fichier à chaud.
+        """
         candidate = self._resolve() / "user.yaml"
         return candidate if candidate.exists() else None
 
@@ -290,11 +320,25 @@ def runtime_config() -> dict:
 
 
 def _expect(cond: bool, errors: list[str], where: str, message: str) -> None:
+    """Ajoute ``message`` à ``errors`` si ``cond`` est faux.
+
+    ``where`` est le préfixe de localisation (``section`` ou
+    ``section.clé``) ; ``errors`` est mutée en place. Retourne ``None`` :
+    cette fonction n'interrompt jamais la validation, elle accumule.
+    """
     if not cond:
         errors.append(f"{where}: {message}")
 
 
 def _check_value(errors: list[str], where: str, value: Any, spec: tuple) -> None:
+    """Valide une valeur contre une spécification de ``_SCHEMA``.
+
+    ``spec[0]`` sélectionne le type (``bool``, ``int``, ``pair_int``,
+    ``enum``…), les éléments suivants portent les bornes/valeurs autorisées.
+    Ajoute zéro ou plusieurs messages à ``errors`` (mutation en place) et
+    retourne ``None``. Les booléens sont explicitement exclus des types
+    numériques pour éviter que ``True`` passe pour un entier.
+    """
     kind = spec[0]
     if kind == "bool":
         _expect(isinstance(value, bool), errors, where, "attendu un booléen")
@@ -450,6 +494,13 @@ def _pair_order(
     key_a: str,
     key_b: str,
 ) -> None:
+    """Vérifie la contrainte croisée ``section.key_a <= section.key_b``.
+
+    Ignore silencieusement une section absente ou non-dict, ainsi que des
+    valeurs non numériques : ces cas sont déjà signalés par
+    ``_check_value``. Ajoute un message à ``errors`` si l'ordre est inversé
+    et retourne ``None``.
+    """
     sec = merged.get(section)
     if not isinstance(sec, dict):
         return
@@ -460,6 +511,14 @@ def _pair_order(
 
 
 def _wreck_constraints(errors: list[str], merged: dict) -> None:
+    """Valide la distribution des épaves via ``wreck.t/a/b``.
+
+    Le code dérive les comptes ``c0..c3`` (nombre d'épaves à 0..3 objets) des
+    paramètres ``t`` (poids commun), ``a`` (poids intermédiaire) et ``b``
+    (poids du palier 0). Exige ``b >= 1``, des comptes tous positifs et une
+    suite ``c0 > c1 > c2 > c3`` strictement décroissante. Ajoute les
+    violations à ``errors`` (mutation en place) et retourne ``None``.
+    """
     sec = merged.get("wreck")
     if not isinstance(sec, dict):
         return

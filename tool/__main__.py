@@ -1,4 +1,11 @@
-"""randputF external generator CLI."""
+"""Point d'entrée CLI de randputF (``python -m tool``).
+
+Expose les commandes ``parse``, ``audit``, ``difficulty``, ``compare``,
+``generate`` et ``witness``. Chaque commande valide ses arguments via
+``argparse`` puis délègue à ``tool.service`` (chargement de la base, config,
+génération, assemblage) ; ce module ne fait que traduire les exceptions du
+service en codes de sortie et formater la sortie console.
+"""
 
 import argparse
 import json

@@ -86,6 +86,12 @@ def _fmt(value: float) -> str:
 
 
 def _point_dict(point: dict) -> dict:
+    """Réduit un point de série aux champs utiles à l'interface.
+
+    Retourne ``{"name", "raw", "cum", "products"}`` avec des valeurs neutres
+    quand ``name``/``raw_total``/``cumulative_total`` manquent ; ``products``
+    est toujours une liste. Ne mute pas ``point``.
+    """
     products = point.get("products") or []
     return {
         "name": point.get("name") or point.get("id") or "",
@@ -122,11 +128,22 @@ def _chart_svg(
     span_x = (x1 - x0)
 
     def x_at(index: int) -> float:
+        """Abscisse SVG de l'indice de tech ``index``.
+
+        Répartit linéairement ``0..max_n-1`` entre les marges gauche/droite ;
+        un seul point est centré. Retourne la coordonnée en unités du viewBox.
+        """
         if max_n == 1:
             return (x0 + x1) / 2
         return x0 + index / (max_n - 1) * span_x
 
     def y_at(cum: float) -> float:
+        """Ordonnée SVG d'un coût cumulé ``cum``.
+
+        Projette ``0..max_y`` entre le bas et le haut de la zone de tracé
+        (l'axe Y croît vers le haut). Retourne la coordonnée en unités du
+        viewBox.
+        """
         return y1 - (cum / max_y) * (y1 - y0)
 
     parts: list[str] = [f'<svg id="diffsvg" viewBox="0 0 {_SVG_W} {_SVG_H}" '
@@ -236,6 +253,13 @@ def _chart_svg(
 
 
 def _table(series: list[dict], label: str, color: str, cls: str) -> str:
+    """Construit le tableau HTML lié d'une série de difficulté.
+
+    ``series`` fournit les points (num, name, products, raw_total,
+    cumulative_total), ``label``/``color`` titrent la colonne et ``cls`` marque
+    les lignes pour la synchronisation JS avec le SVG. Retourne un fragment
+    ``<div class="col">…</div>`` ; les textes sont échappés HTML.
+    """
     rows = []
     for point in series:
         products = ", ".join(point.get("products") or [])

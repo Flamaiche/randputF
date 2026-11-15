@@ -17,7 +17,12 @@ from tool.prototypes.base import PrototypeConfig
 
 @dataclass
 class ExtractorTier:
-    """Un palier d'extracteur (mini-modèle)."""
+    """Palier d'extracteur du modèle de déblocage progressif.
+
+    ``name`` identifie l'extracteur, ``tier`` son rang (1 = starter, 2+ =
+    récursion), ``picks`` le nombre de patchs qu'il peut prendre en charge et
+    ``research_required`` la technologie qui le débloque (``None`` si aucune).
+    """
     name: str
     tier: int            # 1 = starter, 2+ = récursion
     picks: int           # nombre de patchs pris en charge

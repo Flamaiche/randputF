@@ -69,7 +69,7 @@ déclencheur est vérifié **strictement en amont** de sa tech
 (`test_craft_trigger_prologue_craftable_des_le_starter`). La quantité à hand-crafter n'est
 jamais un singleton trivial : chaque prologue exige un **nombre d'items**
 (`research_trigger` `craft-item`) égal à `count = round(2^(n + 1/4))` avec `n ~ randint(2, 6)`
-(`relay_phase.py:185`), l'exposant calé sur la première science (`relay_phase.py:183`),
+(`relay_phase.py:185-186`), l'exposant calé sur la première science (`relay_phase.py:183`),
 soit de 2^2.25 ≈ 5 à 2^6.25 ≈ 76 items. Le `craft_trigger_count` est propagé aux techs
 (`tech_tree.py:311`) ; un tirage aléatoire ultérieur parmi des techs plus profondes
 applique la même contrainte, avec un pool limité aux recettes déjà unlockées (hors

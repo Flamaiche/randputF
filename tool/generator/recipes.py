@@ -672,11 +672,23 @@ def _production_is_electric(db: VanillaDB, state: ProgressionState, item_name: s
 
 
 def _blocked_building(db, state, building_name: str) -> bool:
+    """Vrai si l'item du bâtiment est déjà engagé dans une autre obtention.
+
+    ``state.pending`` contient des clés ``"<type>:<nom>"`` en cours de
+    résolution ; un bâtiment dont l'item y figure ne peut pas servir d'atelier
+    ici sans créer un cycle. Retourne ``False`` si le bâtiment n'a pas d'item.
+    """
     item = _item_for_building(db, building_name)
     return item is not None and f"{SLOT_ITEM}:{item.name}" in state.pending
 
 
 def _weighted_choice(rng: random.Random, weighted: list[tuple[int, int]]) -> int:
+    """Tire une valeur entière selon des poids ``(valeur, poids)``.
+
+    ``weighted`` doit être non vide ; délègue à ``rng.choices`` (un seul
+    tirage) et retourne la valeur sélectionnée. Les poids doivent être
+    positifs et sommer à un total strictement positif.
+    """
     values, weights = zip(*weighted)
     return rng.choices(values, weights=weights, k=1)[0]
 
@@ -716,6 +728,18 @@ def _pick_building(
     ingredient_names: frozenset[str] = frozenset(),
     conflict_state: "ProgressionState | None" = None,
 ):
+    """Choisit l'atelier qui fabriquera une recette.
+
+    Filtre les bâtiments selon les slots item/fluide requis, la sortie fluide
+    éventuelle, l'interdiction de recette cachée et de self-hosting du produit,
+    et l'absence d'électricité en mode « early ». ``force_building`` impose un
+    transformateur déjà débloqué ; ``whitelist`` restreint le pool ; sinon on
+    préfère les bâtiments déjà débloqués, puis on en débloque un nouveau via
+    ``_unlock_building`` (effet de bord : ajout à ``state``). ``conflict_state``
+    permet d'évaluer les conflits d'auto-sélection sur un état de référence
+    (rejeu). Retourne le ``BuildingDef`` choisi ou ``None`` si aucun ne
+    convient.
+    """
     def fits(b) -> bool:
         """Bâtiment candidat comme atelier pour la recette en cours :
         capacités slots/fluides suffisantes, pas de recette cachée, atelier,
@@ -872,6 +896,12 @@ def _ensure_burner_fuel(
 
 
 def _item_for_building(db: VanillaDB, entity_name: str):
+    """Item plaçable qui pose l'entité ``entity_name``.
+
+    Parcourt ``db.items`` et retourne le premier ``ItemDef`` dont
+    ``place_result`` correspond, ou ``None`` si l'entité n'est pas posable par
+    un item (fluide, ressource, entité uniquement mapgen).
+    """
     return next((i for i in db.items.values() if i.place_result == entity_name), None)
 
 

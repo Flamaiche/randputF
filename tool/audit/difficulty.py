@@ -75,6 +75,13 @@ def _primary_recipe(by_product: dict[str, list[dict]], product: str) -> dict | N
 
 
 def _produced_amount(recipe: dict, product: str) -> float:
+    """Quantité de ``product`` produite par une recette.
+
+    Parcourt ``recipe["results"]`` et retourne le champ ``amount`` de la
+    première ligne dont le ``name`` correspond (converti en ``float``).
+    Retourne ``1.0`` si le produit n'apparaît pas, ce qui neutralise la
+    division du coût unitaire sans faire échouer l'audit.
+    """
     for res in recipe.get("results", []):
         if res.get("name") == product:
             return float(res.get("amount", 1))

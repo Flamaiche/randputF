@@ -17,7 +17,7 @@ Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
 - **Pool atteignable** : ensemble des éléments accessibles par le joueur à une étape précise de la génération (ressources placées, bâtiments débloqués, recettes validées).
 - **Déblocage sur le tas** : processus où le randomizer génère à la volée les éléments requis pour valider une recette (méthode d'extraction, craft intermédiaire, combustible, ...).
 - **Graine / seed** : valeur déterministe qui régit tous les tirages du randomizer. Unique et basée par défaut sur le temps système (en millisecondes), elle peut être fixée avec l'option `--seed` (§16).
-- **Gaté / gating** (sans accent circonflexe) : ressource volontairement écartée du pool d'une seed pour retarder son apparition dans la partie. Ce terme technique provient de l'anglais *gating*. Il figure dans `seed.md`, `DEVIANCES.md` et `nondeterminism.md`, et est explicitement documenté dans le `CHANGELOG.md`.
+- **Gaté / gating** (sans accent circonflexe) : ressource volontairement écartée du pool d'une seed pour retarder son apparition dans la partie. Ce terme technique provient de l'anglais *gating*. Il figure dans `seed.md`, `DEVIANCES.md` et `nondeterminism.md` ; le `CHANGELOG.md` le rappelle comme vocabulaire du projet.
 
 ## 5. Le modèle randput : classification des bâtiments
 

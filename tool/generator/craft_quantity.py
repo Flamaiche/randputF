@@ -34,6 +34,12 @@ def apply_craft_quantity(seed: dict, config: dict) -> None:
     crng = make_seeded_rng(seed_value, "randputF:craft_quantity:")
 
     def _scale(amount: int, factor: float) -> int:
+        """Applique ``factor`` à ``amount`` avec un plancher ``amount_min``.
+
+        Retourne ``max(amount_min, round(amount * factor))`` en entier ; le
+        plancher évite les quantités nulles qui rendraient une recette
+        inutilisable.
+        """
         return max(cqcfg.amount_min, int(round(amount * factor)))
 
     for recipe in seed.get("recipes", []):

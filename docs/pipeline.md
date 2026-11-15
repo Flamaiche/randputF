@@ -13,8 +13,8 @@ Les références `fichier:ligne` correspondent au code à la date de rédaction.
 | Question | Réponse |
 |----------|---------|
 | Que produit le pipeline ? | Un `dict` `seed` — la structure décrite dans `tool/exporters/mod_seed.py:8-32` |
-| Qui l'appelle ? | `tool/__main__.py:85` (`randputf generate`), `tool/__main__.py:133` (`randputf difficulty`), `tool/__main__.py:145` (`randputf witness`) |
-| Le pipeline écrit-il des fichiers ? | Non. L'écriture est le fait de `write_seed_files` (`tool/exporters/mod_seed.py:45`) et `build_mod` (`tool/service.py:107`) |
+| Qui l'appelle ? | `tool/__main__.py:105` (`randputf generate`), `tool/__main__.py:191` (`randputf difficulty`), `tool/__main__.py:203` (`randputf witness`) |
+| Le pipeline écrit-il des fichiers ? | Non. L'écriture est le fait de `write_seed_files` (`tool/exporters/mod_seed.py:45`) et `build_mod` (`tool/service.py:120`) |
 | Le pipeline est-il déterministe ? | Oui, à triplet `(dump vanilla, config, seed_value)` identique — voir [`nondeterminism.md`](nondeterminism.md) |
 | Le pipeline valide-t-il ? | Oui, mais **après** construction : la validation (`tool/generator/pipeline.py:412`) n'échoue jamais la génération, elle loggue |
 
@@ -36,7 +36,7 @@ La séparation entre `_build_prefix` et `_finalize_pipeline` permet le rejeu des
 
 | # | Jalon | Appel exact | Effet |
 |---|-------|-------------|-------|
-| 0 | Normalisation de la config | `tool/generator/pipeline.py:143` — `_cfg.full_config(config, strict_sections=False)` | Fusionne `config/defaults.yaml` et les surcharges, puis valide le tout via le schéma (`tool/common/config.py:392`). L'option `strict_sections=False` accepte les clés racine hors schéma (comme `seed`) requises par les sweeps et les tests. Les sections connues restent quant à elles validées strictement (`tool/common/config.py:265-268`). Le résultat est une copie profonde : aucune mutation locale ne pollue l'appelant |
+| 0 | Normalisation de la config | `tool/generator/pipeline.py:143` — `_cfg.full_config(config, strict_sections=False)` | Fusionne `config/defaults.yaml` et les surcharges, puis valide le tout via le schéma (`tool/common/config.py:436`). L'option `strict_sections=False` accepte les clés racine hors schéma (comme `seed`) requises par les sweeps et les tests. Les sections connues restent quant à elles validées strictement (`tool/common/config.py:295-298`). Le résultat est une copie profonde : aucune mutation locale ne pollue l'appelant |
 | 1 | Distribution de la config | `tool/generator/pipeline.py:146-151` — `recipes`, `starter_chain`, `recursive_phase`, `relay_phase`, `tech_tree`, `easeup_phase` `.set_config(cfg)` | Chaque module extrait ses propres paramètres via `default_value`. Aucun ne possède de valeur de secours écrite en dur (`tool/common/config.py:10-12`) |
 | 2 | Flux RNG principal | `tool/generator/pipeline.py:153` — `map_patches.make_rng(db.seed_value)` | Ce flux est partagé par toutes les phases recevant `rng` en paramètre |
 
@@ -61,8 +61,8 @@ Les tirages internes des lacs s'effectuent ainsi : `count = rng.randint(low, hig
 | 8 | Rejeu des macro-techs starter | `tool/generator/pipeline.py:88` — `starter_chain.build_tech_steps(starter.state, db)` | Les recettes créées par l'électricité doivent être unlockées par une tech, jamais orphelines |
 | 9 | Gel des promesses + extinction de l'oracle | `tool/generator/pipeline.py:95-100` — `starter.promises = {...}` puis `starter.state.early.deactivate()` | Snapshot des produits des recettes gratuites. Dès ici la récursion re-tire sans contrainte early ; `ensure_obtainable`/`make_recipe` garantissent qu'aucun produit promis n'est re-baké |
 | 10 | **Phase 2bis** — Fluides de bâtiments | `tool/generator/pipeline.py:108` — `building_fluids.assign_building_fluids(rng, db, starter.state, lake_res)` | `{bâtiment: {input, output?}}`. Fusionné avec les assignations de l'électricité, la clé faisant autorité (`tool/generator/pipeline.py:113-115`) |
-| 11 | **Phase 1ter** — Gisements | `tool/generator/pipeline.py:121` — `map_patches.assign_patch_gisements(patches, db.seed_value, cfg)` | Centre, rayon, `well_seed`, `count` par patch. Flux `randputF:wells:` (`tool/generator/map_patches.py:238`) |
-| 12 | **Phase 1ter-bis** — Nonfinite | `tool/generator/pipeline.py:127` — `map_patches.apply_nonfinite_randomisation(patches, db.seed_value, cfg)` | Richesse/rayon/count × facteurs. Flux `randputF:nonfinite:` (`tool/generator/map_patches.py:328`) |
+| 11 | **Phase 1ter** — Gisements | `tool/generator/pipeline.py:121` — `map_patches.assign_patch_gisements(patches, db.seed_value, cfg)` | Centre, rayon, `well_seed`, `count` par patch. Flux `randputF:wells:` (`tool/generator/map_patches.py:245`) |
+| 12 | **Phase 1ter-bis** — Nonfinite | `tool/generator/pipeline.py:127` — `map_patches.apply_nonfinite_randomisation(patches, db.seed_value, cfg)` | Richesse/rayon/count × facteurs. Flux `randputF:nonfinite:` (`tool/generator/map_patches.py:342`) |
 | 13 | **Instantané gelé `base`** | `tool/generator/pipeline.py:131` — `copy.deepcopy(starter.state)` | `base` est la **source exclusive du pool** des recettes relais (§9.3) et ease-up. Après cette ligne, plus rien n'y écrit |
 
 > Le jalon 6 modifie **en place** les variables `patches` et `lake_list`. L'appelant doit donc fournir des copies. C'est la raison d'être des **quatre** appels à `_build_prefix` (`tool/generator/pipeline.py:181`, `192`, `214`, `236`), qui s'exécutent chacun sur `list(pre_patches)` et `list(pre_lake_list)`. Les jalons 14b et 14e peuvent ainsi rejouer le préfixe à partir d'un état identique.
@@ -92,7 +92,7 @@ Les tirages internes des lacs s'effectuent ainsi : `count = rng.randint(low, hig
 | 19 | **Phase 4ter** — Techs de prologue | `tool/generator/pipeline.py:336` — `relay_phase.consolidate_intro_steps(relay_phase.dispatch_relay_steps(relays, rng), trigger_candidates, rng)` | ≤ 5 unlocks par tech. Déclencheur = **hand-craft** d'un item du bootstrap : `unit` vide, `research_trigger` au craft |
 | 20 | **Ease-up** | `tool/generator/pipeline.py:357` — `easeup_phase.build_ease_up_recipes(easeup_rng, db, starter.state, base, ..., steps_rng=easeup_rng)` | Recettes alternatives pour les crafts trop lourds. Détection sur le graphe **final** |
 | 21 | **Phase 5** — Arbre technologique | `tool/generator/pipeline.py:371-373` puis `404` — `tech_tree.build_linear_tech_tree(all_tech_steps, rng, db)` | Ordre : techs starter gratuites → prologue → ease-up → récursif → fusée. Les seules gratuites sont celles du starter (`tool/generator/pipeline.py:409`) |
-| 22 | **Phase 4quater** — Timing extracteurs | `tool/generator/pipeline.py:383` — `extractor_timing.apply_extractor_timing(db, starter, all_tech_steps, seed_value=..., patch_resources=..., lake_resources=...)` | « Juste-au-besoin » : `kept` / `moved` / `random`. Flux `randputf:extractor-timing:` (`tool/generator/extractor_timing.py:457`) |
+| 22 | **Phase 4quater** — Timing extracteurs | `tool/generator/pipeline.py:383` — `extractor_timing.apply_extractor_timing(db, starter, all_tech_steps, seed_value=..., patch_resources=..., lake_resources=...)` | « Juste-au-besoin » : `kept` / `moved` / `random`. Flux `randputf:extractor-timing:` (`tool/generator/extractor_timing.py:464`) |
 | 23 | Ré-application de la garantie d'usage | `tool/generator/pipeline.py:396` | Les relais et ease-up ont été créés **après** la passe primaire ; leurs bâtiments d'hébergement peuvent être profonds. Passe idempotente, sur l'ordre final |
 | 24 | **Phase 6** — Validation | `tool/generator/pipeline.py:412-427` — `pipeline_validator.validate_pipeline(state, technologies, db, patch_resources, lake_resources)` | **Loggue** (`log.warning` / `log.info`), ne lève pas. Recettes validées = `starter.recipes + recursive_phase.recipes_to_seed()` |
 | 25 | Assemblage de la seed | `tool/generator/pipeline.py:430-485` | Voir §4 |
@@ -133,12 +133,12 @@ La fabrique unique `make_seeded_rng` (`tool/common/rng.py:15-23`) génère chaqu
 |---------|----------|---------------|
 | `randputF:` | `tool/generator/map_patches.py:54` | **Flux principal** partagé : patchs, starter, électricité, récursion, relais, tech tree |
 | `randputF:lakes:` | `tool/generator/lakes.py:41` | Lacs |
-| `randputF:wells:` | `tool/generator/map_patches.py:238` | Gisements par patch |
-| `randputF:nonfinite:` | `tool/generator/map_patches.py:328` | Facteurs nonfinite |
+| `randputF:wells:` | `tool/generator/map_patches.py:245` | Gisements par patch |
+| `randputF:nonfinite:` | `tool/generator/map_patches.py:342` | Facteurs nonfinite |
 | `randputf:bootstrap-miner:` | `tool/generator/starter_chain.py:110` | Foreuse pré-alimentation du kit |
 | `randputf:chest:` | `tool/generator/starter_chain.py:141` | Coffre(s) du kit |
 | `randputF:easeup:` | `tool/generator/easeup_phase.py:57` | Ease-up (flux isolé : additif pur, une seed régénérée = la précédente + les ease-up) |
-| `randputf:extractor-timing:` | `tool/generator/extractor_timing.py:457` | Timing extracteurs |
+| `randputf:extractor-timing:` | `tool/generator/extractor_timing.py:464` | Timing extracteurs |
 | `randputF:craft_quantity:` | `tool/generator/craft_quantity.py:34` | Montants de craft |
 
 Deux flux ne sont pas recréés mais **positionnés et rejoués** : le flux principal utilise `getstate()` et `setstate()` lors des jalons 14b, 14d et 14e. Ce mécanisme assure que les deux passes démarrent exactement au même point.
@@ -153,24 +153,24 @@ Deux flux ne sont pas recréés mais **positionnés et rejoués** : le flux prin
 | Les recettes du starter sont unlockées, jamais orphelines | rejeu des techs au jalon 8 | `tests/test_pipeline_invariants.py` |
 | La seed est byte-à-byte identique entre processus | `tests/test_determinism.py:50` (seeds 1337 et 1299, `PYTHONHASHSEED` 0/1) | — |
 | La seed ne dépend pas de sa position dans un même process | copie défensive de `cfg` au jalon 14e | `test_seed_1757_gating_inerte_victoire_comme_baseline` |
-| L'ordre des modules ne fuit pas entre deux seeds du même process | reset des globals en tête de `expand_recursive` (`tool/generator/recursive_phase.py:121-127`) | `tests/test_seed_graph.py` |
+| L'ordre des modules ne fuit pas entre deux seeds du même process | reset des globals en tête de `expand_recursive` (`tool/generator/recursive_phase.py:121-128`), `_vehicle_armament` étant réassigné juste après (`tool/generator/recursive_phase.py:294-295`) | `tests/test_seed_graph.py` |
 | La victoire reste possible (chaîne fusée non bloquée) | jalon 16 | `tests/test_witness.py` |
 
 ## 7. État global des modules
 
-Le module `recursive_phase` est le seul à conserver un état global notable (`tool/generator/recursive_phase.py:38-49`) : `_tech_steps`, `_unlocked_science_packs`, `_raw_resources`, `_heat_prereq_emitted`, `_fluid_pity` et `_fluid_steps`.
+Le module `recursive_phase` est le seul à conserver un état global notable (`tool/generator/recursive_phase.py:38-62`) : `_tech_steps`, `_unlocked_science_packs`, `_raw_resources`, `_heat_prereq_emitted`, `_fluid_pity`, `_fluid_steps` et `_vehicle_armament`.
 
 Ces listes sont **réinitialisées** au début de `expand_recursive` (`tool/generator/recursive_phase.py:121-127`). Cela isole chaque graine par processus, mais aussi **chaque graine par appel**. Par conséquent, les fonctions de lecture publique `steps()` (ligne 585), `recipes_to_seed()` (591) et `vehicle_armament()` (344) ne renvoient des données valides qu'immédiatement après l'exécution de `expand_recursive`.
 
 ## 8. Chemin d'échec et reprise du CLI
 
-La commande `randputf generate` (`tool/__main__.py:85`) ne s'appuie pas sur la validation enregistrée dans les logs. Elle exécute à nouveau `validate_seed` (`tool/validator/solver.py:15`, qui fonctionne indépendamment de `pipeline_validator`) et **rejoue la génération avec une graine dérivée** en cas d'anomalie.
+La commande `randputf generate` (`tool/__main__.py:105`) ne s'appuie pas sur la validation enregistrée dans les logs. Elle exécute à nouveau `validate_seed` (`tool/validator/solver.py:15`, qui fonctionne indépendamment de `pipeline_validator`) et **rejoue la génération avec une graine dérivée** en cas d'anomalie.
 
 | Situation | Comportement |
 |-----------|--------------|
-| `--seed N` fourni | Dérive déterministe `N+1, N+2…` dans `generate_with_retry` (`tool/service.py:170`) — l'horloge ne remplace jamais la valeur demandée ; `MAX_ATTEMPTS = 10` (`tool/service.py:50`) |
-| `--seed` absent | Base = `current_seed()` = `int(time.time() * 1000)` (`tool/service.py:167`), re-tirée au début de la boucle (`tool/__main__.py:95`) |
-| 10 tentatives infructueuses | `SeedUnplayableError` (`tool/service.py:79`), la CLI imprime les 10 premiers problèmes puis `sys.exit(2)` (`tool/__main__.py:101-104`) |
+| `--seed N` fourni | Dérive déterministe `N+1, N+2…` dans `generate_with_retry` (`tool/service.py:183`) — l'horloge ne remplace jamais la valeur demandée ; `MAX_ATTEMPTS = 10` (`tool/service.py:50`) |
+| `--seed` absent | Base = `current_seed()` = `int(time.time() * 1000)` (`tool/service.py:180`), re-tirée au début de la boucle (`tool/__main__.py:115`) |
+| 10 tentatives infructueuses | `SeedUnplayableError` (`tool/service.py:92`), la CLI imprime les 10 premiers problèmes puis `sys.exit(2)` (`tool/__main__.py:121-124`) |
 
 ## 9. Lectures associées
 

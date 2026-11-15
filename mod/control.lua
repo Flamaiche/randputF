@@ -19,6 +19,9 @@ end
 local WRECK_SETTLE_TICKS = 300  -- fenêtre de balayage (world just créé)
 local WRECK_SWEEP_INTERVAL = 10 -- pas du balayage pendant la fenêtre
 
+-- Initialise l'état de traitement des épaves : table d'idempotence par
+-- unit_number et borne de fin de balayage (game.tick + WRECK_SETTLE_TICKS).
+-- Sans effet pendant on_load (game est nil) ; retourne nil.
 local function init_wreck()
   storage.randputf.wreck_processed = storage.randputf.wreck_processed or {}
   if storage.randputf.wreck_stop == nil and game then
@@ -47,6 +50,9 @@ local function draw_slot_count(counts, rng)
   return 0
 end
 
+-- Remplit un conteneur d'épave : vide son inventaire puis dépose, pour chaque
+-- slot, un nombre 0..3 d'un matériau tiré dans seed.wreck.loot (loi `counts`).
+-- Idempotent par unit_number ; garantit au moins un stack non vide. Retourne nil.
 local function process_crash_container(entity)
   if not entity.valid then
     return
@@ -117,6 +123,9 @@ local function resource_label(kind, resource)
   return "[" .. tag .. "=" .. resource .. "]"
 end
 
+-- Construit le récapitulatif chat de la seed : difficulté (k de ressources
+-- brutes), lacs (fluide, richesse) et patchs (kind, compte, centre, richesse).
+-- Retourne une chaîne multi-lignes prête pour player.print.
 local function describe_patches()
   local lines = {}
   table.insert(lines, "[randputF] RESSOURCES DE LA SEED #" .. tostring(seed.meta and seed.meta.seed or "?"))
@@ -152,6 +161,8 @@ local function describe_patches()
   return table.concat(lines, "\n")
 end
 
+-- Retourne le personnage valide du joueur, ou nil s'il n'existe pas encore
+-- (cutscene de spawn) ou n'est plus valide.
 local function get_character(player)
   if player.character and player.character.valid then
     return player.character
@@ -175,6 +186,8 @@ local function configure_freeplay_kit()
   end
 end
 
+-- Vide l'inventaire principal, les slots armes et munitions du personnage.
+-- Utilisé avant tout dépôt de kit pour repartir d'un état propre ; nil.
 local function clear_spawn_inventory(player)
   local inv = player.get_main_inventory()
   if inv then
@@ -196,6 +209,8 @@ local function clear_spawn_inventory(player)
   end
 end
 
+-- Initialise le stockage persistant du mod (table storage.randputf), y range la
+-- seed chargée et prépare l'état des épaves. Appelé une fois dans on_init ; nil.
 local function init_storage()
   storage.randputf = storage.randputf or {}
   storage.randputf.seed = seed
@@ -214,6 +229,9 @@ local WATER_TILES = {
   ["water-wube"] = true,
 }
 
+-- Remplace les tuiles d'eau vanilla d'un chunk par la terre dominante du
+-- chunk (les lacs randputf-lac-* sont exclus de WATER_TILES). Idempotent :
+-- les tuiles converties ne sont plus dans WATER_TILES. Retourne nil.
 local function purge_chunk_water(surface, cx, cy)
   local px, py = cx * 32, cy * 32
   local water_pos = {}
@@ -250,6 +268,8 @@ local SPAWN_SETTLE_TICKS = 1200
 local ARMED = {}       -- player_index -> ticks_left
 local KIT_APPLIED = {} -- player_index -> true (kit complet déjà posé cette vie)
 
+-- Arme le filet de spawn du joueur : pendant SPAWN_SETTLE_TICKS, on_tick
+-- retentera d'appliquer le kit si le personnage apparaît en retard. nil.
 local function set_armed(player_index)
   ARMED[player_index] = SPAWN_SETTLE_TICKS
 end
@@ -261,6 +281,9 @@ local KIT_ENFORCE = {} -- player_index -> index du prochain point de contrôle
 
 -- Plan du kit seed : nom -> { count, type }. Calculé une fois.
 local KIT_PLAN = nil
+-- Construit (une fois) le plan du kit : nom d'item -> {count, type} agrégé
+-- depuis seed.starter_kit. Le type vient du prototype (gun/ammo/item) et sert
+-- à choisir l'inventaire cible. Retourne la table KIT_PLAN mise en cache.
 local function kit_plan()
   if KIT_PLAN then
     return KIT_PLAN
@@ -398,6 +421,9 @@ local RESPAWN_KIT = {
   { name = "firearm-magazine", count = 10 },
 }
 
+-- Dépose le kit mince de respawn (RESPAWN_KIT) dans les inventaires adaptés
+-- (armes/munitions séparées, le reste dans l'inventaire principal). Retourne
+-- true si le personnage existe, false sinon.
 local function give_respawn_kit(player)
   local character = get_character(player)
   if not character then
@@ -426,6 +452,8 @@ local function give_respawn_kit(player)
   return true
 end
 
+-- Applique le kit de respawn : purge d'abord l'inventaire puis dépose le kit
+-- mince. Retourne true si le personnage existe, false sinon.
 local function apply_respawn_kit(player)
   if not get_character(player) then
     return false
@@ -444,6 +472,9 @@ local PHANTOM_TILE = "randputf-lac-neutre"
 local LAKE_FLUID_TILES = {}
 local LAKE_FLUID_LOOKUP = {}
 
+-- Reconstruit les tables de correspondance des lacs depuis la seed :
+-- LAKE_FLUID_TILES (fluides dans l'ordre) et LAKE_FLUID_LOOKUP (tuile ->
+-- fluide). Appelé à l'initialisation du module ; nil.
 local function init_lake_fluids()
   LAKE_FLUID_TILES = {}
   LAKE_FLUID_LOOKUP = {}
@@ -553,6 +584,9 @@ end
 -- (indépendant de l'ordre des chunks). Richesse via entity.amount.
 local WELL_MIX = 2654435761 -- constant de mélange (Knuth), masqué sous 2^31
 
+-- Pose une entité de gisement à (x, y) si la position est libre, puis fixe sa
+-- richesse (amount, et initial_amount pour les gisements infinis). Retourne
+-- true si l'entité a été créée, false si la pose est impossible.
 local function place_resource_block(surface, entity_name, x, y, richness)
   local pos = { x, y }
   if not surface.can_place_entity{ name = entity_name, position = pos, forced = true } then
@@ -582,6 +616,9 @@ local NOISE_CORE_KEEP = 0.99 -- proba de poser une tuile au cœur (quasi plein)
 local NOISE_DILUTE = 0.85 -- densité maximale de l'anneau externe (bord dilué)
 local NOISE_M = 2147483647 -- modulo (nombre premier, produits < 2^53 : exacts)
 
+-- Hash déterministe par tuile, miroir de `_tile_hash` côté Python : retourne
+-- un flottant dans [0, 1) à partir de (seed, x, y), sans dépendre de l'ordre
+-- de génération des chunks. Utilisé pour le bruit du champ de gisements.
 local function tile_hash(seed, x, y)
   local h = (seed % NOISE_M) + 1 + (x + 31) * 48271 + (y + 31) * 33919
   h = ((h % NOISE_M) * 48271) % NOISE_M
@@ -589,6 +626,9 @@ local function tile_hash(seed, x, y)
   return h / NOISE_M
 end
 
+-- Calcule les positions des blocs/puits d'un patch tombant dans `area`.
+-- Item : disque bruité déterministe (cœur plein, anneau dilué, bord ondulé) ;
+-- fluide : puits éparpillés autour du centre. Retourne une liste {x, y}.
 local function block_positions_in_area(patch, area)
   local out = {}
   local center = patch.center or {}

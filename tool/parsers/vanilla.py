@@ -227,6 +227,12 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
 
 
 def _safe_group(entry: dict) -> str:
+    """Nom du sous-groupe d'un prototype, tolérant aux deux formats du dump.
+
+    ``entry["subgroup"]`` peut être une chaîne ou un objet ``{"name": ...}``
+    (selon la version de l'exporteur). Retourne le nom, ou ``""`` si le champ
+    est absent ou vide.
+    """
     group = entry.get("subgroup")
     if isinstance(group, dict):
         return group.get("name", "")
@@ -234,6 +240,12 @@ def _safe_group(entry: dict) -> str:
 
 
 def _fuel_value(raw) -> float | None:
+    """Normalise une valeur énergétique du dump en nombre de joules.
+
+    Accepte ``None`` (retourne ``None``), un dict ``{"value": ...}`` (retourne
+    sa valeur, ``None`` si nulle) ou un nombre/chaîne convertible (retourne le
+    ``float``). Une valeur non convertible donne ``None`` au lieu de lever.
+    """
     if raw is None:
         return None
     if isinstance(raw, dict):
@@ -245,6 +257,12 @@ def _fuel_value(raw) -> float | None:
 
 
 def _parse_stack(stack: dict) -> tuple:
+    """Convertit une ligne ingrédient/produit du dump en tuple canonique.
+
+    Retourne ``(type, name, amount)`` avec ``type`` par défaut ``"item"``,
+    ``name`` par défaut ``""`` et ``amount`` converti en ``float`` (0 si
+    absent). Utilisé pour les ingrédients comme pour les produits.
+    """
     return (stack.get("type", "item"), stack.get("name", ""), float(stack.get("amount", 0)))
 
 

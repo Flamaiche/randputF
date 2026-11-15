@@ -14,6 +14,15 @@ _MOD_INFO = Path(__file__).resolve().parent.parent.parent / "mod" / "info.json"
 
 
 def _read_info() -> dict:
+    """Charge les métadonnées ``mod/info.json`` (autorité de version).
+
+    Lit le fichier JSON voisin du paquet et retourne au minimum les clés
+    ``name``, ``version`` et ``factorio_version``. Si le fichier n'existe pas
+    (wheel installé hors dépôt), retourne un dict équivalent construit depuis
+    les métadonnées du paquet ``randputf``, avec ``factorio_version = "2.0"``.
+    Ne lève pas d'erreur pour un fichier absent ; une erreur de décodage JSON
+    reste propagée.
+    """
     try:
         return json.loads(_MOD_INFO.read_text(encoding="utf-8"))
     except FileNotFoundError:

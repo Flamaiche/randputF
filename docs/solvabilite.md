@@ -23,7 +23,7 @@ Quand le mode « early » est actif, `recipes._make_recipe` tire les ingrédient
 Les invariants §15 raisonnent sur l'ORDRE (unlock avant usage) et les CYCLES — ils ne disent rien d'un parcours réel : « cette recette est unlockée avant celle-là » n'implique pas « le joueur peut la fabriquer à ce moment-là ». Le rejoueur (`tool/replay/player.py`, balayage `tools/audit_playthrough.py`) **simule une partie** sur la seed finale, comme un joueur qui la découvre :
 
 - **départ** : kit spawn (`starter_kit`) + loot de l'épave (`wreck`) + environnement (bois/pierre/poisson, récolte à la main) ;
-- **sources brutes** : chaque patch/lac n'est obtenu que si l'extracteur qui le mine est lui-même obtenable ET opérationnel (foreuse → combustible ou électricité ; pumpjack → électricité ; pompe offshore → énergie void) — selon le modèle **physique** (`_infer_extractors`, `tool/replay/player.py:327-354`). Le champ `seed["extractor_timing"]` (mapping C3, qui fixe le **déblocage** des extracteurs au fil de l'arbre, pas la physique) n'est **pas lu** par le rejoueur — choix consigné dans `docs/nomenclature-rejoueur.md` ;
+- **sources brutes** : chaque patch/lac n'est obtenu que si l'extracteur qui le mine est lui-même obtenable ET opérationnel (foreuse → combustible ou électricité ; pumpjack → électricité ; pompe offshore → énergie void) — selon le modèle **physique** (`_infer_extractors`, `tool/replay/player.py:354-381`). Le champ `seed["extractor_timing"]` (mapping C3, qui fixe le **déblocage** des extracteurs au fil de l'arbre, pas la physique) n'est **pas lu** par le rejoueur — choix consigné dans `docs/nomenclature-rejoueur.md` ;
 - **électricité** : disponible dès qu'un générateur (`produces_electricity`) obtenable PEUT TOURNER — fluide de lac assigné en entrée (`building_fluid_assignments`) s'il en consomme, combustible s'il brûle, solaire/hors-réseau autonome — et qu'un pylône est obtenable ;
 - **ateliers** : une recette ne tourne que si son `crafted_in` est obtenable et alimenté (électricité / combustible / chaîne chaleur source+transport pour les bâtiments en énergie `heat`) ; sans `crafted_in` → craft à la main ;
 - **recherche** : les techs gratuites (`free_researches`) sont déjà recherchées ; chaque tech suivante est recherchée dès que son coût (packs) ou son `craft_trigger` (prologue §7) est **produisible à ce moment** ;
@@ -48,7 +48,7 @@ Premier passage à 99/201 ? Le rejoueur liait chaque ressource à SON extracteur
 
 ## 15. Règles de solvabilité
 
-Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifiés par le tool externe avant validation d'une seed (`pipeline_validator.py`) :
+Cinq invariants majeurs, plus trois vérifications complémentaires, tous vérifiés par le tool externe avant validation d'une seed (`pipeline_validator.py`) :
 
 1. **Anti-cycle** : aucun maillon ne peut dépendre de sa propre production.
 
@@ -61,5 +61,6 @@ Cinq invariants majeurs, plus deux vérifications complémentaires, tous vérifi
 5. **Packs sans ressource brute** : aucune recette de science pack ne consomme une ressource brute (patch au sol, item environnemental récolté à la main, fluide d'extraction — infinis ou non, §3/§13). Vérifié en fin de pipeline sur les recettes de la graine (`_check_packs_no_raw`), en plus de l'exclusion appliquée au tirage par la génération.
 6. **Cohérence tech-recettes** (warning) : chaque recette créée par le pipeline apparaît dans les effects d'exactement UNE tech — pas de recette orpheline (jamais débloquée) et pas de double déblocage. Les orphelins émettent un warning plutôt qu'une erreur (certaines recettes créées « sur le tas » sont disponibles dès le début sans unlock explicite).
 7. **Coûts obtainables** : les matériaux de recherche de chaque tech payante doivent être produibles par le joueur au moment de sa place dans l'arbre. Simulation de la progression : on parcourt les techs dans l'ordre, on ajoute les produits débloqués au pool, et on vérifie que chaque coût est couvert.
+8. **Entrées disjointes par bâtiment auto-sélection** : deux recettes hébergées sur un même bâtiment `auto_select` (fours, `rocket-silo`) doivent avoir des ensembles d'ingrédients **disjoints** — sinon Factorio retient la première venue et laisse la suivante inatteignable. Garanti à la création par le re-tirage d'ingrédients (`recipes.py`) et en aval par `usage_pass._correct_auto_select`.
 
-Une seed qui viole l'un de ces invariants est rejetée et régénérée par le tool, jamais livrée au joueur.
+Une seed qui viole un invariant **bloquant** (1-5, 7, 8) est rejetée et régénérée par le tool, jamais livrée au joueur. Le warning 6 (recette orpheline ou doublement débloquée) est signalé sans rejet : certaines recettes créées « sur le tas » sont disponibles dès le début sans unlock explicite.

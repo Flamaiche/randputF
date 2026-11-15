@@ -14,14 +14,14 @@ Le rejoueur (`tool/replay/player.py`) réalise un audit externe : il simule l'ex
 | tech | `seed["technologies"][]` {`id`, `prerequisites`, `unit{ingredients[{name,amount}], count}`, [optionnel: `craft_trigger`], `effects[{type:"unlock-recipe", recipe}]`} | `technologies`, `unit`, `craft_trigger` (niveau tech) |
 | item / fluide | `type: "item"` / `"fluid"` | `SLOT_ITEM` / `SLOT_FLUID` (`tool/common/db.py`) |
 | raw / patch / lac | `seed["map"].patches[{resource, kind, count}]`, `.lakes[{resource}]` | Idem ; un patch d'item se ramasse à la main et constitue un stock fini dans `item_patch_counts` |
-| jalon tardif | `seed["late_raws"].startup` / `.gated` (dict `name` → {`kind`, `tier`}) | `late_tier[(kind, name)] = tier` ; tier = index de la chaîne des packs |
+| jalon tardif | `seed["late_raws"].startup` (liste `[kind, name]`) / `.gated` (dict `name` → {`kind`, `tier`}) | `late_tier[(kind, name)] = tier` ; tier = index de la chaîne des packs |
 | déclencheur prologue | `tech.craft_trigger` (item à fabriquer) | `_craft(trigger, 1)` exécuté avant la chaîne des packs |
 
 ## 2. La règle de MAÎTRISE (propre au rejoueur)
 
 Une recette ne devient accessible de manière infinie qu'après avoir été dûment **prouvée** :
 
-- Toute recette doit être produite jusqu'à atteindre **10 × sa sortie** (`_mastery_goal[name] = 10 × max(results[].amount)`, par exemple une sortie de 2 exige une maîtrise à 20). L'**atelier** (`crafted_in`) est reconstruit à chaque tentative et n'est jamais conservé.
+- Toute recette doit être produite jusqu'à atteindre **10 × sa sortie** (`_mastery_goal[name] = max(results[].amount)`, puis seuil `10 × _mastery_goal[name]` ; par exemple une sortie de 2 exige une maîtrise à 20). L'**atelier** (`crafted_in`) est reconstruit à chaque tentative et n'est jamais conservé.
 - Ce seuil franchi, la sortie devient **infinie** et n'a plus besoin d'être fabriquée : elle rejoint `_craft`.
 - La passe `_mastery_sweep` intervient **à chaque technologie débloquée** afin de vérifier les nouvelles recettes. Seules sont réévaluées les recettes dont un ingrédient ou l'atelier vient d'être validé (**worklist inverse**, point fixe d'un réexamen complet : en cas d'échec, l'état antérieur est rétabli sans conserver la moindre trace).
 

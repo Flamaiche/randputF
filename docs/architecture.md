@@ -38,7 +38,7 @@ Pourquoi ce choix ?
 
 Pendant le *data-stage*, le mod charge uniquement la seed via `require("seed.seed")` (le fichier `seed.lua`). Aucun fichier `yaml` ou `json` n'est lu par les scripts `mod/*.lua`, et `seed.json` n'est jamais lu par le code Lua (le champ `pools` de la seed reste d'ailleurs une variable locale morte dans `mod/data.lua:18`). Le mod utilise ces données pour générer :
 
-- Les entités de ressources au sol : le mod ne crée pas des centaines d'entités cachées. En réalité, `mod/data-updates.lua:125-155` génère uniquement les entités `randputf-minerai-*` et `randputf-oil-*` requises pour les patchs de la seed (entre 3 et 8 ressources dédupliquées). La liste complète `seed.pools` (qui contient 209 items et 8 fluides) sert exclusivement à `vehicle_range_scaling` dans `mod/data-updates.lua:18` ;
+- Les entités de ressources au sol : le mod ne crée pas des centaines d'entités cachées. En réalité, `mod/data-updates.lua:163-273` génère uniquement les entités `randputf-minerai-*` et `randputf-oil-*` requises pour les patchs de la seed (entre 3 et 8 ressources dédupliquées). La liste complète `seed.pools` (qui contient 209 items et 8 fluides) sert exclusivement à `vehicle_range_scaling` dans `mod/data-updates.lua:18` ;
 - L'ensemble des recettes générées ;
 - L'intégralité de l'arbre technologique.
 
@@ -82,8 +82,8 @@ randputF/
 ├── data/                # dump des prototypes vanilla
 │   └── vanilla_dump.json
 ├── tool/                # générateur externe Python
-│   ├── __main__.py      # CLI : parse, audit, generate, difficulty, witness
-│   ├── service.py       # service d'orchestration (202 lignes)
+│   ├── __main__.py      # CLI : parse, audit, generate, difficulty, witness, compare
+│   ├── service.py       # service d'orchestration (214 lignes)
 │   ├── common/          # VanillaDB, ItemDef, demo, WeightedPicker, config
 │   │   ├── db.py
 │   │   ├── demo.py
@@ -136,7 +136,8 @@ randputF/
 │   │   └── progressive_extractors.py # expérimental — testé, non branché
 │   ├── exporters/       # écriture seed.json / seed.lua / locale / graphe
 │   │   ├── mod_seed.py         # seed.json + seed.lua
-│   │   └── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   │   ├── seed_graph.py       # graphe interactif HTML (seed.graph.html)
+│   │   └── difficulty_graph.py # graphe de difficulté HTML (commande compare)
 │   ├── replay/          # audit externe : rejoueur de seed (player.py)
 │   └── validator/       # vérification de solvabilité
 │       ├── pipeline_validator.py  # 7 checks sur ProgressionState

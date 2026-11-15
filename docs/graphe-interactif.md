@@ -1,6 +1,6 @@
 # Le graphe interactif (`seed.graph.html`)
 
-À la racine du mod (`<out>/randputF_0.0.1/seed.graph.html`), soit un niveau au-dessus de `seed/seed.json`, l'export `--out` génère un fichier supplémentaire : un graphe de production cliquable et autonome. Ce document détaille sa conception ; l'usage est décrit pour l'utilisateur dans le README racine, section « Le graphe interactif ».
+À la racine du mod (`<out>/randputF_<version>/seed.graph.html`), soit un niveau au-dessus de `seed/seed.json`, la commande `generate` écrit un fichier supplémentaire : un graphe de production cliquable et autonome. `--out` choisit seulement le dossier de sortie. Ce document détaille sa conception ; l'usage est décrit pour l'utilisateur dans le README racine, section « Le graphe interactif ».
 
 Retour : [docs/README.md](README.md).
 
@@ -10,7 +10,7 @@ Retour : [docs/README.md](README.md).
 
 Le graphe affiche un nœud par item ou fluide et une arête par dépendance de craft (produit vers ingrédient). Chaque arête porte la quantité nécessaire (`amount`). La disposition est de type left-to-right sur fond sombre.
 
-Le code HTML est autonome : le SVG est intégré, les icônes sont embarquées en data-URI et le script de navigation est inclus. Il s'ouvre localement sans serveur. Le fichier est régénéré à chaque export par la commande `.venv/bin/python -m tool generate --out …`. Il n'est jamais inclus dans le dossier `mod/` et reste exclu du témoin de déterminisme décrit dans [witness.md](witness.md) car le `<svg>` dépend de la version de Graphviz.
+Le code HTML est autonome : le SVG est intégré, les icônes sont embarquées en data-URI et le script de navigation est inclus. Il s'ouvre localement sans serveur. Le fichier est régénéré à chaque `generate` (`.venv/bin/python -m tool generate [--out <dossier>]`), sauf avec `--install`. Il n'est jamais inclus dans le dossier `mod/` et reste exclu du témoin de déterminisme décrit dans [witness.md](witness.md) car le `<svg>` dépend de la version de Graphviz.
 
 ## 2. Construction, étape par étape
 

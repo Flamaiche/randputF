@@ -4,13 +4,13 @@
 
 Le module `tool/common/db.py` centralise la **base de données normalisée**, source de vérité pour toutes les phases du générateur. Il convertit le `vanilla_dump.json` en une structure interne, `VanillaDB`, exploitée par le pipeline.
 
-Définie dans `tool/parsers/vanilla.py` (lignes 154‑226) et appelée par `tool/generator/pipeline.py`, la fonction `load_db_from_dump()` initialise l'objet `VanillaDB` à partir du dump : items, fluides, bâtiments taggés par capacités, recettes, puis pools dérivés. Cette base est ensuite transmise à `randputf` pour la génération.
+Définie dans `tool/parsers/vanilla.py` (lignes 154‑227) et appelée par `tool/service.py` (et `tool/exporters/difficulty_graph.py`), la fonction `load_db_from_dump()` initialise l'objet `VanillaDB` à partir du dump : items, fluides, bâtiments taggés par capacités, recettes, puis pools dérivés. Cette base est ensuite transmise à `randputf` pour la génération.
 
 ```
 # Position dans le pipeline
 # ──────────────────────────────────────
 1. Objet et périmètre (pipeline.md:13‑21)
-2. Les trois fonctions d'orchestration (pipeline.py:23‑32)
+2. Les trois fonctions d'orchestration (pipeline.py:34, 135, 269)
 3. Chronologie des jalons (pipeline.md:39‑50)
 ```
 
@@ -24,7 +24,7 @@ Le `vanilla_dump.json` (version 2.0) fournit les données brutes exploitées par
 * **`entities`** – entités du monde, filtrées par `is_junk` (lignes 200‑204) puis taggées par capacités (`tag_parse_entity`).
 * **`recipes`** – recettes brutes avec `name`, `category`, `ingredients`, `products` et `energy` (lignes 209‑216).
 
-La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` (ligne 316) pour initialiser les flux aléatoires du pipeline (§1).
+La `seed_value` est lue depuis `meta.game_version_numeric` (défaut 0 si absente, §7.1) et stockée dans `VanillaDB.seed_value` (`tool/common/db.py:322`) pour initialiser les flux aléatoires du pipeline (§1).
 
 ## 3. Schéma des données
 
@@ -176,18 +176,18 @@ class BuildingDef:
 
 | Pool | Méthode | Description |
 |------|---------|-------------|
-| `beltable_items` | `VanillaDB.beltable_items()` | Items solides posables sur tapis, HORS outils (`not is_tool`), triés par nom (lignes 326‑331). |
-| `pipable_fluids` | `VanillaDB.pipable_fluids()` | TOUS les fluides du dump, triés par nom (lignes 333‑335). |
-| `extraction_only_fluids` | `VanillaDB.extraction_only_fluids` | Fluides sans recette de production directe (eau, pétrole brut, vapeur) ; barillage exclu (cycle fluide → baril → fluide) (lignes 338‑350). |
-| `raw_resources` | `VanillaDB.raw_resources(patch_resources)` | Patches posés + `ENVIRONMENTAL_ITEMS` + `extraction_only_fluids` (lignes 352‑357). |
-| `fuel_items` | `VanillaDB.fuel_items()` | Items combustibles triés (lignes 359‑365). |
-| `fuels_for(b)` | méthode | Combustibles compatibles par bâtiment (lignes 366‑378). |
-| `fuel_residues(b)` | méthode | Résidus de combustion (lignes 379‑386). |
-| `fuel_item_flow(b)` | méthode | Flux normalisé : combustible vers résidu (lignes 387‑404). |
-| `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item (lignes 399‑404). |
-| `fuel_fluids()` | méthode | Fluides combustibles triés (lignes 405‑411). |
-| `buildings_with_tag(tag)` | méthode | Bâtiments possédant le tag (lignes 412‑418). |
-| `extractors_for_medium(medium)` | méthode | Extracteurs par milieu (lignes 420‑430). |
+| `beltable_items` | `VanillaDB.beltable_items()` | Items solides posables sur tapis, HORS outils (`not is_tool`), triés par nom (lignes 332‑337). |
+| `pipable_fluids` | `VanillaDB.pipable_fluids()` | TOUS les fluides du dump, triés par nom (lignes 339‑341). |
+| `extraction_only_fluids` | `VanillaDB.extraction_only_fluids` | Fluides sans recette de production directe (eau, pétrole brut, vapeur) ; barillage exclu (cycle fluide → baril → fluide) (lignes 344‑356). |
+| `raw_resources` | `VanillaDB.raw_resources(patch_resources)` | Patches posés + `ENVIRONMENTAL_ITEMS` + `extraction_only_fluids` (lignes 358‑363). |
+| `fuel_items` | `VanillaDB.fuel_items()` | Items combustibles triés (lignes 365‑370). |
+| `fuels_for(b)` | méthode | Combustibles compatibles par bâtiment (lignes 372‑383). |
+| `fuel_residues(b)` | méthode | Résidus de combustion (lignes 385‑391). |
+| `fuel_item_flow(b)` | méthode | Flux normalisé : combustible vers résidu (lignes 393‑403). |
+| `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item (lignes 405‑409). |
+| `fuel_fluids()` | méthode | Fluides combustibles triés (lignes 411‑416). |
+| `buildings_with_tag(tag)` | méthode | Bâtiments possédant le tag (lignes 418‑424). |
+| `extractors_for_medium(medium)` | méthode | Extracteurs par milieu (lignes 426‑433). |
 
 ## 4. Prédicats de détection par capacités
 
@@ -275,7 +275,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 - `is_offshore_pump` : Pompe d'eau.
 - `is_well_pump` : Pompe de fluide.
 
-Précisions d'extraction (vanilla.py:462‑465) : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = le seul extracteur `medium == 'water'` ; `is_well_pump` = `type == 'pump'`.
+Précisions d'extraction (vanilla.py:483‑486) : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = le seul extracteur `medium == 'water'` ; `is_well_pump` = `type == 'pump'`.
 
 ### 5.4 Tags de logistique & transport
 - `is_belt`, `is_splitter`, `is_inserter` : Logistique de flux.
@@ -287,7 +287,7 @@ Précisions d'extraction (vanilla.py:462‑465) : `is_mining_drill` = `type == '
 - `is_power_pole` : Pylône électrique (`type == 'electric-pole'` ; l'ancien `is_beam_pole` a disparu au chantier D3).
 - `is_beacon` : Transmission d'effet.
 - `is_accumulator` : Stockage électrique.
-- `is_energy_storage` : Stockage d'énergie — le dump n'exporte pas `buffer_capacity`, tag rabattu sur `is_accumulator` (vanilla.py:394‑397).
+- `is_energy_storage` : Stockage d'énergie — le dump n'exporte pas `buffer_capacity`, tag rabattu sur `is_accumulator` (vanilla.py:418).
 - `is_offgrid` : Production hors réseau.
 - `consumes_electricity` : Consommation électrique.
 - `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` : Extracteurs par milieu.
@@ -312,7 +312,7 @@ Inclut les bâtiments à recette fixe pouvant recevoir une recette randomisée :
 ## 7. Notes d'implémentation
 
 ### 7.1 `seed_value`
-Identifiant de la graine guidant toute la génération, lu depuis `meta.game_version_numeric` (défaut 0 sinon, vanilla.py:161) et stocké dans `VanillaDB.seed_value` (ligne 316). Le dump livré n'exporte que `game_version` : `seed_value` vaut donc 0 à l'entrée, puis est surchargé par le CLI (`randputf gen --seed` ou, par défaut, l'horodatage courant).
+Identifiant de la graine guidant toute la génération, lu depuis `meta.game_version_numeric` (défaut 0 sinon, vanilla.py:161) et stocké dans `VanillaDB.seed_value` (`tool/common/db.py:322`). Le dump livré n'exporte que `game_version` : `seed_value` vaut donc 0 à l'entrée, puis est surchargé par le CLI (`randputf gen --seed` ou, par défaut, l'horodatage courant).
 
 ### 7.2 `fuel_residues`
 Les résidus (`burnt_result` des combustibles du bâtiment) sont calculés à la fin du parse (vanilla.py:223‑225) : ils dépendent de la base items, indisponible à la volée. Ils alimentent `fuel_item_flow` et `has_fuel_item_flow`, et estampent `has_hidden_recipe` (§4.1) — le réacteur est ainsi révélé sans liste de noms.

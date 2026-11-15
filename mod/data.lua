@@ -25,6 +25,8 @@ local ITEM_LIKE_TYPES = {
   "deconstruction-item", "upgrade-item", "rail-planner",
 }
 
+-- Cherche un prototype item-like par nom dans data.raw (item d'abord, puis
+-- gun/ammo/tool/capsule/module/etc.). Retourne le prototype ou nil.
 local function find_item_proto(name)
   if not name then return nil end
   if data.raw.item and data.raw.item[name] then return data.raw.item[name] end
@@ -128,6 +130,8 @@ local icon_layouts = {
   {4, {{-32, -32}, {32, -32}, {-32, 32}, {32, 32}}},
 }
 
+-- Extrait l'icône exploitable d'un prototype : première entrée de `icons` ou
+-- champ `icon`, avec sa taille. Retourne {icon=..., icon_size=...} ou nil.
 local function proto_icon(proto)
   if not proto then return nil end
   if proto.icons and #proto.icons > 0 then
@@ -139,6 +143,9 @@ local function proto_icon(proto)
   return nil
 end
 
+-- Compose l'icône d'une technologie à partir des items débloqués par ses
+-- effets unlock-recipe : jusqu'à 4 icônes disposées en grille. Retourne un
+-- tableau d'icônes (ou nil si aucun item n'a d'icône).
 local function tech_icons_for_effects(effects)
   local picked = {}
   for _, effect in ipairs(effects or {}) do
