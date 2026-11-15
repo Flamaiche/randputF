@@ -270,7 +270,7 @@ A **residual, non-blocking** warning, knowingly accepted. It concerns furnaces
 (`stone-furnace`, `steel-furnace`, `electric-furnace`): their item is indeed
 consumed by other recipes, but that particular furnace hosts no recipe of its
 own. Verified at **2000/2000 wins** with the warning present. Details in
-[`docs/DEVIANCES.md`](docs/DEVIANCES.md#usage_pass-warning-four-consommé-mais-aucun-candidat-à-rattacher) (French).
+[`docs/DEVIANCES.md`](docs/DEVIANCES.md#31-usage_pass-warning-four-consommé-mais-aucun-candidat-à-rattacher) (French).
 
 **Is my seed really playable?**
 Yes — a measured guarantee, not a hope. **1501 games out of 1501** (seed 0 to
@@ -278,7 +278,7 @@ Yes — a measured guarantee, not a hope. **1501 games out of 1501** (seed 0 to
 invariants are guaranteed for every accepted seed. See
 [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/invariants.md`](docs/invariants.md#règles-de-solvabilité) and
-[`docs/solvabilite.md`](docs/solvabilite.md#rejoueur--fake-player--vérification-par-simulation).
+[`docs/solvabilite.md`](docs/solvabilite.md#15ter-rejoueur--fake-player--vérification-par-simulation).
 
 **How do I find the seed of a mod?**
 It is printed at generation time (`Seed <value> valide`) and stored in the mod

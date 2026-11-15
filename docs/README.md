@@ -4,7 +4,10 @@ Ce document sert de **référence de conception** pour le randomizer. Il détail
 
 ## Par où commencer : tu veux X → lis Y
 
-Trois étages : on s'arrête où le besoin s'arrête.
+Trois étages : on s'arrête où le besoin s'arrête. Ce tableau choisit
+l'entrée selon le besoin ; l'**ordre de lecture conseillé** donne ensuite le
+parcours linéaire, et l'**index des documents** sert d'annuaire par thème pour
+retrouver une page précise. Les trois se complètent.
 
 | Étage | Pour qui | Tu veux… | Lis… |
 |---|---|---|---|
@@ -37,7 +40,7 @@ Chaque partie réinvente :
 
 Ces choix délibérément conservateurs garantissent la robustesse du moteur.
 
-## Ordre de lecture conseillé
+## Ordre de lecture conseillé (parcours linéaire)
 
 1. [Terminologie](model.md#3-terminologie)
 2. [Modèle randput (bâtiments)](model.md#5-le-modèle-randput--classification-des-bâtiments) — fondation du moteur
@@ -50,7 +53,10 @@ Ces choix délibérément conservateurs garantissent la robustesse du moteur.
 9. [Règles de solvabilité](solvabilite.md#15-règles-de-solvabilité) — invariants
 10. [Rejoueur (vérification par simulation)](solvabilite.md#15ter-rejoueur--fake-player--vérification-par-simulation) — preuve (1501/1501 victoires)
 
-## Index des documents
+## Index des documents (annuaire par thème)
+
+L'index ne définit pas un ordre de lecture : il liste les documents par usage.
+Le parcours linéaire ci-dessus reste la référence pour une découverte.
 
 ### Conception
 

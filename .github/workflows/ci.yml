@@ -18,6 +18,8 @@ jobs:
           pip install -e .[dev]
       - name: Tester
         run: pytest -q
+      - name: Verifier les ancres Markdown
+        run: python tools/check_anchors.py
 
   wheel:
     runs-on: ubuntu-latest

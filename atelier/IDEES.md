@@ -71,25 +71,6 @@ Voie retenue : **tkinter pour l'IG v1** (inclus dans Python, zéro dépendance),
 **PyInstaller pour l'exe**. Le passage à l'IG suffit à ouvrir ce chantier ;
 l'exe n'est pas un chantier séparé.
 
-## Maintenance de la documentation
-
-> Relevé après une relecture complète (model.md, ressources.md,
-> solvabilite.md, DEVIANCES.md et le reste). Aucun point n'est bloquant :
-> le fond de la doc est tenu pour terminé, il ne reste que de l'entretien.
-
-**Checker d'ancres — à porter dans le dépôt.** Le contrôle existe
-(`ancres.py`), mais c'est un outil externe : une ancre cassée par une
-retouche de titre ne se voit qu'à la main (constat expérimental : 1 ancre
-morte après la purge des `§`). À intégrer à `tools/` + workflow CI, sur le
-modèle de `audit_playthrough`, pour que tout lien mort fasse échouer un run.
-
-**Index redondant de `docs/README.md`.** L'« Index des documents » (par
-catégorie : Conception / Références) recoupe l'« Arbre de lecture » (par
-ordre). Les deux répondent à deux usages (table des matières vs ordre de
-lecture conseillé), donc à trancher : soit garder l'arbre comme unique
-entrée et réduire l'index à une liste plate, soit assumer les deux et le
-dire.
-
 ## Four : deux recettes au même ingrédient (auto-sélection) — RÉSOLU
 
 **Observé en test.** Un four peut héberger plusieurs recettes randomisées à
