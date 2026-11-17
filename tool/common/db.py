@@ -246,8 +246,8 @@ class BuildingDef:
     is_energy_storage: bool = False   # stockage d'énergie (buffer_capacity > 0, pas de prod)
     is_offgrid: bool = False          # producteur hors réseau (solaire, burner-generator)
     consumes_electricity: bool = False  # consomme du courant (energy_source.type == 'electric')
-    is_water_extractor: bool = False  # extracteur d'eau (medium == 'water')
-    is_fluid_extractor: bool = False  # extracteur de fluide brut (medium == 'fluid')
+    is_lake_extractor: bool = False  # extracteur de lac (medium == 'lake')
+    is_deposit_extractor: bool = False  # extracteur de gisement (medium == 'deposit')
     is_ground_extractor: bool = False # extracteur de minerai solide (medium == 'ground')
     # --- Tags §2 : logistique & transports (docs/tags.md §2) ---
     is_belt: bool = False             # transport-belt
@@ -318,13 +318,18 @@ class BuildingDef:
 class RecipeRef:
     """Recette brute lue dans ``vanilla_dump.json``.
 
-    ``name``/``category`` identifient la recette, ``ingredients`` et ``products`` sont des tuples ``(type, nom, montant)`` (``item``/``fluid``) et ``energy`` porte le temps de craft en secondes. Aucune normalisation n'est appliquée : les faits du dump restent la source de vérité.
+    ``name``/``category`` identifient la recette, ``ingredients`` et ``products`` sont des tuples ``(type, nom, montant)`` (``item``/``fluid``) et ``energy`` porte le temps de craft en secondes. ``enabled``/``hidden`` reflètent l'état runtime du dump (``None`` si le champ manque). Le nom réel est conservé, même quand la recette est canonisée sous une clé logique sans préfixe.
     """
     name: str
     category: str = ""
     ingredients: tuple = ()
     products: tuple = ()
     energy: float = 0.5
+    # État runtime exporté : une recette neutralisée garde ses liens mais porte
+    # ``hidden=True`` (et souvent ``enabled=False``). ``None`` = champ absent
+    # d'un dump ancien, pas « inactif ».
+    enabled: bool | None = None
+    hidden: bool | None = None
 
 
 @dataclass
@@ -338,6 +343,16 @@ class VanillaDB:
     fluids: dict[str, FluidDef] = field(default_factory=dict)
     buildings: dict[str, BuildingDef] = field(default_factory=dict)
     recipes: dict[str, RecipeRef] = field(default_factory=dict)
+    # Normalisation des recettes préfixées : produit logique (préfixe retiré)
+    # -> nom réel de la recette canonique (``randputf-X``). Permet au
+    # générateur de retrouver ``randputf-X`` sans ré-empiler le préfixe.
+    canonical_recipes: dict[str, str] = field(default_factory=dict)
+    # Contenu déjà produit par randputF (préfixé) : conservé pour l'inspection
+    # et les liens, mais hors des pools de génération — le re-randomiser
+    # créerait des noms ``randputf-randputf-…``.
+    modded_items: dict[str, dict] = field(default_factory=dict)
+    modded_fluids: dict[str, dict] = field(default_factory=dict)
+    modded_buildings: dict[str, dict] = field(default_factory=dict)
     # Bac a rien-decide : items/fluides ecartes des pools (junk) et entites
     # sans capacite reconnue. Conserve pour requalification ulterieure.
     excluded_items: dict[str, dict] = field(default_factory=dict)
@@ -456,8 +471,24 @@ class VanillaDB:
             key=lambda b: b.name,
         )
 
+    def items_for_building_tag(self, tag: str) -> list[ItemDef]:
+        """Items plaçables dont le bâtiment porte ``tag``, triés par nom.
+
+        Permet de retrouver les items d'un rôle (silo, lab…) sans coder leur
+        nom : le tag reste la source de vérité (``is_rocket_parts_crafter``).
+        """
+        return sorted(
+            (
+                i
+                for i in self.items.values()
+                if i.place_result is not None
+                and getattr(self.buildings.get(i.place_result), tag, False)
+            ),
+            key=lambda i: i.name,
+        )
+
     def extractors_for_medium(self, medium: str) -> list[BuildingDef]:
-        """Extracteurs du dump pour un milieu donné ('item'/'fluid'), triés
+        """Extracteurs du dump pour un milieu donné ('lake'/'deposit'/'ground'), triés
         par nom — ou tous les extracteurs si ``medium`` est vide."""
         return sorted(
             (

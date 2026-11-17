@@ -136,6 +136,8 @@ même re-tirage au niveau de l'ingrédient.
 
 ## Taxonomie `medium` : nommer les milieux « lake » et « deposit »
 
+**Statut (2026-11-16) : fait.** Renommage appliqué dans le parseur, `BuildingDef`, la démo, l'audit, les tests et les docs. Le pumpjack de la démo est désormais `medium="deposit"` ; le silo est retrouvé par `is_rocket_parts_crafter`.
+
 **Pourquoi.** Le champ `medium` des extracteurs (docs/tags.md §6) décrit le
 **milieu** d'où l'on tire : `water` = un plan d'eau (offshore-pump),
 `fluid` = un gisement de fluide (pumpjack), `ground` = le sol (drill).
@@ -155,20 +157,41 @@ le lac ne contient pas forcément de l'eau. Le champ et les booléens ne
 sortent jamais du Python (aucune occurrence dans `mod/`, `config/` ni les
 JSON générés) : renommage interne, sans compatibilité disque.
 
-**Étendue.**
-- `tool/parsers/vanilla.py` : affectation du medium (~399-408), booléens
-  dérivés (~427-429), `is_offshore_pump = is_water_extractor` (~486),
-  résumé (~617) ;
-- `tool/common/db.py` : champ (~180), booléens + commentaires (~244-246),
-  `extractors_for_medium` (~433) ;
-- `tool/common/demo.py` (~120-126) — au passage, incohérence réelle : le
-  pumpjack de la démo porte `medium="ground"` alors que le parseur vanilla
-  lui donne `fluid` (catégorie `basic-fluid`) ; à corriger du même coup ;
-- `tool/generator/starter_chain.py` (~199, 365) : littéraux `"ground"` ;
-- `tool/audit/tags.py` (~33-37) : messages d'audit mentionnant les mediums ;
-- tests : `test_vanilla_tags.py` (~148-149, 262, 272) ;
-- docs : `docs/tags.md` (~36, 215, 218), `docs/vanilladb.md` (~82, 190, 278).
+**Étendue appliquée.** Parseur, `BuildingDef`, démo, audit, tests et docs.
 
+
+## Canonisation des recettes préfixées d’un dump moddé
+
+**Statut (2026-11-16) : fait.** Deux compléments indissociables.
+
+1. **L’exporter expose l’état réel.** `dump_recipes()` et
+   `dump_technologies()` ajoutent `enabled` et `hidden`. Les prototypes
+   neutralisés par `data-final-fixes.lua` restent donc dans le dump avec
+   tous leurs liens, mais portent `enabled = false` et `hidden = true`.
+   On ne supprime plus les recettes vanilla du JSON : le dump reste une
+   photographie complète et on sait laquelle est active.
+2. **La DB canonise par produit.** Pour un produit `X`, si une recette
+   `randputf-X` existe et n’est pas `hidden`, elle devient la recette
+   canonique ; la recette vanilla `X` est ignorée par la génération. La
+   normalisation retire le préfixe pour la **clé logique** (`X`) mais
+   conserve le nom réel `randputf-X` dans `VanillaDB.recipes`, sinon les
+   effets de technologies et les liens du dump seraient cassés.
+   `VanillaDB.canonical_recipes` porte le mapping `X -> randputf-X`.
+   Les autres recettes préfixées (`randputf-ease-X`, `randputf-relay-X`,
+   recettes de fluides…) restent des alternatives, pas des remplacements.
+   `build_vanilla_seed()` filtre aussi les entrées `hidden` et applique le
+   même repli de préfixe pour les anciens dumps sans ces champs.
+   Les items, fluides et entités déjà préfixés (armes de véhicules,
+   `randputf-neutre`, ressources `randputf-oil-*`) sont conservés dans
+   `VanillaDB.modded_items` / `modded_fluids` / `modded_buildings`, hors des
+   pools de génération : les re-randomiser produirait des recettes
+   `randputf-randputf-…`.
+
+**Garde conservée.** Les artefacts à double préfixe
+(`randputf-randputf-…`) sont ignorés : un dump déjà randomisé deux fois ne
+doit pas empiler les couches. Le dump vanilla historique reste la
+référence de déterminisme ; un dump moddé décrit désormais l’état réel du
+mod et peut donc produire une seed différente, ce qui est attendu.
 
 ## Câbler le rejoueur dans `generate` (garde de sortie)
 
@@ -193,7 +216,7 @@ où l'interface graphique expose `generate` directement.
 ## Noms vanilla en dur côté outil — état du chantier
 
 Principe : l'outil ne doit porter **aucun nom d'item vanilla** ; tout se
-dérive des faits du dump. Avancement (2026-11-11) :
+dérive des faits du dump. Avancement (2026-11-16) :
 
 - **Nettoyé** — `tool/replay/player.py` : `VICTORY_ITEMS` et le littéral
   `"satellite"` supprimés (victoire = `db.rocket_chain` dérivée :
@@ -201,12 +224,13 @@ dérive des faits du dump. Avancement (2026-11-11) :
   lancement par `rocket_launch_products`) ; garde-fou lab par tag
   `is_research` ; fallbacks `"offshore-pump"`/`"pumpjack"` de
   `_infer_extractors` retirés (candidats par tags uniquement, une base
-  sans pompe ne pompe plus rien).
+  sans pompe ne pompe plus rien). `tool/generator/endgame_phase.py`,
+  `map_patches.py` et `recursive_phase.py` retrouvent le silo par
+  `items_for_building_tag("is_rocket_parts_crafter")` ; `tool/__main__.py`
+  le retrouve par son type.
 - **Restants, par design** — `tool/common/tagsets.py` (`ROCKET_CHAIN`,
   `ENVIRONMENTAL_ITEMS`, `VEHICLE_GUNS` : choix de conception consignés
-  docs/tags.md §14) et `tool/generator/endgame_phase.py` (le générateur
-  MODPACK garantit la chaîne §14 — il fabrique un mod vanilla-randomisé,
-  pas un mod pour d'autres mods).
+  docs/tags.md §14).
 - **Restants, à reprendre** — `tool/audit/difficulty.py`,
   `tool/common/demo.py` (base synthétique de test : tolérable mais à
   aligner sur les faits si le dump change), `tool/exporters/seed_graph.py`.

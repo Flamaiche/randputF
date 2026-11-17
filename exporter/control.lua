@@ -646,6 +646,10 @@ local function dump_recipes()
       energy = proto.energy,
       ingredients = ingredients,
       products = products,
+      -- État runtime : une recette neutralisée par randputF reste dans le dump
+      -- (liens intacts) mais porte enabled=false et hidden=true.
+      enabled = probe(proto, "enabled"),
+      hidden = probe(proto, "hidden"),
     }
   end
   return out
@@ -752,39 +756,16 @@ local function dump_technologies()
       end
       entry.research_trigger = trig
     end
+    -- État runtime : même logique que les recettes, pour distinguer les techs
+    -- vanilla neutralisées des techs randputF actives.
+    entry.enabled = probe(proto, "enabled")
+    entry.hidden = probe(proto, "hidden")
     out[proto.name] = entry
   end
   return out
 end
 
 script.on_init(function()
-  -- Garde-fou : un export depuis une partie où randputF est actif écrirait un
-  -- dump pollué — recettes randputf-* ajoutées, mais surtout des valeurs
-  -- vanilla MUTÉES en place (fuel_value 0 → 200 000 sur les fluides, filtres,
-  -- fuel_categories) qui ressemblent à du contenu légitime. La présence d'une
-  -- seule recette préfixée suffit à détecter la data-stage randomisée. Refus
-  -- net : aucun fichier écrit, log explicite.
-  local ok_recipes, recipes = pcall(function()
-    return prototypes.recipe
-  end)
-  -- Préfixe partagé avec le tool Python (tool/parsers/vanilla.py,
-  -- _RANDPUTF_PREFIX). Toute modification ici doit être répercutée là-bas et
-  -- inversement.
-  local RANDPUTF_PREFIX = "randputf-"
-  local artefact = nil
-  if ok_recipes and recipes then
-    for name in pairs(recipes) do
-      if type(name) == "string" and name:sub(1, #RANDPUTF_PREFIX) == RANDPUTF_PREFIX then
-        artefact = name
-        break
-      end
-    end
-  end
-  if artefact then
-    log("randputF exporter: EXPORT REFUSE — data-stage randomisee par randputF (recette «" .. artefact .. " »). Desactive randputF puis relance une partie pour un dump vanilla propre.")
-    return
-  end
-
   local payload = {
     meta = {game_version = script.active_mods["base"]},
     inventory = dump_inventory(),

@@ -31,12 +31,12 @@ L'installation standard via `pip install .` inclut les assets (`mod/`, `data/`, 
 
 L'outil ne devine rien : il utilise un **dump JSON des prototypes** extrait de votre jeu par le mod compagnon `exporter/` :
 
-1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.5/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
-2. **Désactivez `randputF` pour cet export** sous peine de rejet par l'exporter. Lancez Factorio quelques secondes : le jeu génère `script-output/randputF/vanilla_dump.json` dans votre dossier utilisateur.
+1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.6/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
+2. Lancez Factorio quelques secondes : le jeu génère `script-output/randputF/vanilla_dump.json` dans votre dossier utilisateur. L'export fonctionne aussi avec `randputF` actif, mais le dump est alors moddé.
 3. Déplacez ce fichier vers `data/vanilla_dump.json` dans le projet.
 4. Cet exporter est un outil de transition. Il sera intégré au mod principal ou supprimé.
 
-> **Pourquoi désactiver `randputF` pendant l'export** : exporter avec les deux mods actifs modifie directement les prototypes vanilla (par exemple, `fuel_value` passe à 200 000 au lieu de 0 sur `crude-oil`, altération des filtres de chaudières et de `fuel_categories`). Ces valeurs faussent la génération de la seed sans bloquer le jeu. Pour éviter cela : l'exporter bloque tout export altéré (pas de fichier généré, alerte dans les logs), l'outil rejette les dumps modifiés (via l'invariant vanilla 2.0 `fuel_value == 0`), et `test_dump_pollution.py` valide la propreté de l'export.
+> **Dump vanilla ou dump moddé** : exporter avec les deux mods actifs donne une photographie complète du mod en jeu. Les prototypes vanilla neutralisés restent dans le dump (`enabled = false`, `hidden = true`) et les mutations en place sont conservées (par exemple, `fuel_value` passe à 200 000 sur `crude-oil`). Le tool ne rejette plus ces dumps : il canonise les recettes à la lecture — pour un produit `X`, une recette `randputf-X` active remplace la vanilla `X` — et ignore les artefacts `randputf-randputf-…`. `test_dump_pollution.py` couvre la canonisation, les drapeaux d'état et le repli des anciens dumps.
 
 ### 20.3 Générer et jouer une seed
 

@@ -1,9 +1,9 @@
 {
   "name": "randputf-exporter",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "title": "randputF Exporter",
   "author": "Flamaiche",
-  "description": "Mod compagnon de randputF : exporte les prototypes vanilla en JSON vers script-output pour le tool externe Python — inventaire A→Z de toutes les tables de prototypes, items, fluides, entités (avec règles de placement sur tuiles), tuiles (couches + fluide), recettes, technologies. Refuse un export quand randputF est actif (data-stage randomisee) : a desactiver pour l'export, inactif et inoffensif sinon.",
+  "description": "Mod compagnon de randputF : exporte les prototypes en JSON vers script-output pour le tool externe Python — inventaire A→Z de toutes les tables de prototypes, items, fluides, entités (avec règles de placement sur tuiles), tuiles (couches + fluide), recettes, technologies (avec enabled/hidden). Exporte aussi depuis une partie où randputF est actif : le dump contient alors le contenu randomisé et les prototypes mutés.",
   "factorio_version": "2.1",
   "dependencies": [
     "base >= 2.0"

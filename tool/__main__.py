@@ -270,8 +270,15 @@ def cmd_report(args: argparse.Namespace) -> None:
         for entry in (dump.get("items") or {}).values()
         if isinstance(entry, dict) and entry.get("rocket_launch_products")
     ]
-    silo = entities.get("rocket-silo") or {}
-    if isinstance(silo, dict) and silo.get("rocket_launch_products"):
+    silo = next(
+        (
+            entity
+            for entity in entities.values()
+            if isinstance(entity, dict) and entity.get("type") == "rocket-silo"
+        ),
+        {},
+    )
+    if silo.get("rocket_launch_products"):
         launch_products_sources.append(silo["rocket_launch_products"])
     if not launch_products_sources:
         print("[ATTENTION] produits de lancement absents : relance l'exporter récent")

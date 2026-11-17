@@ -123,9 +123,9 @@ def build_demo_db() -> VanillaDB:
              resource_categories=("basic-solid",), item_input_slots=1)
     building("electric-mining-drill", "extractor", medium="ground", energy_type="electric",
              resource_categories=("basic-solid",))
-    building("offshore-pump", "extractor", medium="water", energy_type="void",
+    building("offshore-pump", "extractor", medium="lake", energy_type="void",
              pumped_fluid="water", fluid_outputs=1)
-    building("pumpjack", "extractor", etype="pumpjack", medium="ground", energy_type="electric",
+    building("pumpjack", "extractor", etype="pumpjack", medium="deposit", energy_type="electric",
              resource_categories=("basic-fluid",), fluid_outputs=1)
     building("stone-furnace", "transformer", crafting_categories=("smelting",),
              energy_type="burner", fuel_categories=("chemical",))

@@ -145,8 +145,12 @@ def test_dump_reel_tags_s1_roles():
     assert db.buildings["steam-engine"].consumes_electricity is False
     assert db.buildings["radar"].consumes_electricity is True
 
-    assert db.buildings["offshore-pump"].is_water_extractor is True
-    assert db.buildings["pumpjack"].is_fluid_extractor is True
+    assert db.buildings["offshore-pump"].is_lake_extractor is True
+    assert db.buildings["offshore-pump"].medium == "lake"
+    assert db.buildings["pumpjack"].is_deposit_extractor is True
+    assert db.buildings["pumpjack"].medium == "deposit"
+    assert {b.name for b in db.extractors_for_medium("lake")} == {"offshore-pump"}
+    assert {b.name for b in db.extractors_for_medium("deposit")} == {"pumpjack"}
     assert {b.name for b in db.buildings_with_tag("is_ground_extractor")} == {
         "burner-mining-drill",
         "electric-mining-drill",
@@ -212,6 +216,9 @@ def test_dump_reel_tags_s4_s5_s6_production_energie_extraction():
     assert db.buildings["oil-refinery"].is_refinery is True
     assert db.buildings["centrifuge"].is_centrifuge is True
     assert db.buildings["rocket-silo"].is_rocket_parts_crafter is True
+    assert [i.name for i in db.items_for_building_tag("is_rocket_parts_crafter")] == [
+        "rocket-silo"
+    ]
 
     assert db.buildings["boiler"].is_boiler is True
     assert db.buildings["boiler"].is_heat_exchanger is False
@@ -259,7 +266,7 @@ def test_detection_par_types_pas_par_noms():
         "custom-rig", {"type": "mining-drill", "resource_categories": ["basic-fluid"]}
     )
     assert rig.is_pumpjack is True
-    assert rig.is_fluid_extractor is True
+    assert rig.is_deposit_extractor is True
     pump = tag_parse_entity(
         "custom-pump",
         {
@@ -269,7 +276,7 @@ def test_detection_par_types_pas_par_noms():
         },
     )
     assert pump.is_offshore_pump is True
-    assert pump.is_water_extractor is True
+    assert pump.is_lake_extractor is True
 
     hx = tag_parse_entity(
         "custom-hx",

@@ -56,99 +56,57 @@ def is_junk(name: str) -> bool:
     )
 
 
-# Préfixe partagé avec le garde-fou Lua (exporter/control.lua, RANDPUTF_PREFIX).
-# Toute modification ici doit être répercutée là-bas et inversement.
+# Préfixe des artefacts générés par randputF (recettes/items/entités/fluides).
 _RANDPUTF_PREFIX = "randputf-"
-_POLLUTABLE_SECTIONS = ("items", "fluids", "entities", "recipes")
-
-# Invariant vanilla 2.0 : ces fluides ne sont PAS des carburants (fuel_value 0).
-# La passe carburant de randputF les mute en place à 200 000 — un signal fiable
-# de dump pollué par le canal MUTATION (indétectable par le filtre de noms).
-# parameter-0..9 et fluid-unknown (internes 2.0, fuel_value 0 en base) sont
-# inclus : mesurés mutés dans un vrai dump pollué, ce sont aussi des cibles
-# possibles de la passe carburant.
-_VANILLA_NON_FUEL_FLUIDS = (
-    "water",
-    "crude-oil",
-    "heavy-oil",
-    "light-oil",
-    "petroleum-gas",
-    "sulfuric-acid",
-    "steam",
-    "lubricant",
-    "parameter-0",
-    "parameter-1",
-    "parameter-2",
-    "parameter-3",
-    "parameter-4",
-    "parameter-5",
-    "parameter-6",
-    "parameter-7",
-    "parameter-8",
-    "parameter-9",
-    "fluid-unknown",
-)
 
 
-def _strip_randputf_artefacts(dump: dict) -> dict:
-    """Retire du dump les artefacts générés par le mod randputF (clés préfixées
-    ``randputf-`` dans les sections items/fluides/entités/recettes).
+def _recipe_product_names(entry: dict) -> set[str]:
+    """Noms des produits d'une recette du dump (items et fluides)."""
+    return {
+        str(product.get("name"))
+        for product in entry.get("products") or []
+        if isinstance(product, dict) and product.get("name")
+    }
 
-    L'exporter et le mod principal peuvent être actifs ensemble : l'exporter
-    lit alors les prototypes APRÈS la data-stage de randputF, un dump
-    « pollué ». Sans filtre, le tool re-randomiserait des recettes déjà
-    randomisées — empilant le préfixe (``randputf-randputf-…``) et tirant des
-    tirages fantômes — des seeds valides qui ne correspondent plus à rien de
-    documenté, sans rien casser. Le filtre rend l'erreur impossible : un dump
-    pollué et un dump propre produisent exactement la même seed.
+
+def is_hidden_prototype(entry: dict) -> bool:
+    """Vrai si le prototype est neutralisé (``hidden = true``).
+
+    ``enabled = false`` seul n'est PAS un critère : une recette normale est
+    souvent désactivée au chargement puis débloquée par une technologie.
     """
-    clean = dict(dump)
-    for section in _POLLUTABLE_SECTIONS:
-        entries = dump.get(section)
-        if not isinstance(entries, dict):
-            continue
-        clean[section] = {
-            name: entry
-            for name, entry in entries.items()
-            if not name.startswith(_RANDPUTF_PREFIX)
-        }
-    return clean
+    return entry.get("hidden") is True
 
 
-def _check_dump_integrity(dump: dict) -> None:
-    """Rejette un dump MUTÉ EN PLACE (canal silencieux, indétectable par le
-    filtre de noms ci-dessus).
+def _is_stacked_randputf(name: str) -> bool:
+    """Artefact d'un dump déjà randomisé deux fois (``randputf-randputf-…``)."""
+    return name.startswith(_RANDPUTF_PREFIX * 2)
 
-    Si randputF a tourné avant l'export, sa passe carburant modifie des fluides
-    vanilla existants : ``fuel_value`` 0 → 200 000 sur des clés dont le nom est
-    inchangé. Ces valeurs ressemblent à du contenu légitime — seul un invariant
-    versionné les trahit. L'exporter REFUSE déjà un export pollué (garde-fou
-    runtime) ; ce contrôle protège les dumps pollués déjà sur disque et rend
-    l'erreur impossible à rater au chargement.
 
-    Limite assumée, et pourquoi elle est sans conséquence : l'invariant ne
-    couvre QUE le canal fluides. Toute mutation seule d'un autre canal passe —
-    pas seulement le canal entities (fuel_categories += "nuclear" sur les
-    brûleurs, filtres boiler/heat-exchanger), aussi recipes/items/etc. Il n'en a
-    pas besoin : la passe carburant mute TOUJOURS des fluides (co-occurrence
-    structurelle garantie par ``mod/data-updates.lua`` : boucle non conditionnelle
-    ``for _, proto in pairs(data.raw.fluid)``) — un dump réellement pollué est
-    donc systématiquement attrapé par l'invariant fluides, SAUF s'il est la
-    seule mutation présente. La frontière de vérité reste le refus de l'exporter
-    ; ce garde est une défense en profondeur pour les dumps anciens.
+def canonical_recipe_map(recipes: dict) -> dict[str, str]:
+    """Normalise les recettes préfixées : produit logique -> recette canonique.
+
+    Une recette ``randputf-X`` est canonique pour le produit ``X`` quand son
+    nom, préfixe retiré, est exactement un de ses produits. La recette vanilla
+    ``X`` est alors ignorée par la génération ; les autres recettes préfixées
+    (``randputf-ease-X``, ``randputf-relay-X``, recettes de fluides…) restent
+    des alternatives et ne remplacent rien.
+
+    Les recettes neutralisées (``hidden = true``) ne sont jamais canoniques :
+    un dump moddé expose ainsi l'état réel, sans deviner à partir du nom seul.
     """
-    for name in _VANILLA_NON_FUEL_FLUIDS:
-        entry = (dump.get("fluids") or {}).get(name)
-        if entry is None:
+    canonical: dict[str, str] = {}
+    for name, entry in recipes.items():
+        if not isinstance(entry, dict) or is_hidden_prototype(entry):
             continue
-        fuel_value = entry.get("fuel_value") or 0
-        if fuel_value > 0:
-            raise ValueError(
-                f"Dump pollue : {name} a fuel_value={fuel_value} (attendu 0 en "
-                "vanilla 2.0) — la data-stage de randputF a mute des prototypes "
-                "vanilla en place. Re-exporte le dump avec randputF desactive "
-                "(l'exporter refuse un export pollue)."
-            )
+        if not name.startswith(_RANDPUTF_PREFIX):
+            continue
+        logical = name[len(_RANDPUTF_PREFIX):]
+        if logical.startswith(_RANDPUTF_PREFIX):
+            continue
+        if logical in _recipe_product_names(entry):
+            canonical[logical] = name
+    return canonical
 
 
 def _resolve_pumped_fluid(entry: dict, layer_fluids: dict[str, set[str]]) -> str | None:
@@ -314,17 +272,26 @@ def rocket_chain_from_dump(dump: dict) -> dict:
 
 def load_db_from_dump(dump: dict) -> VanillaDB:
     """Construit la VanillaDB depuis le dump du mod compagnon : items/fluides
-    post-filtre junk, bâtiments taggés (§9), recettes. ``seed_value`` hérite
-    de la version du jeu (meta du dump)."""
-    dump = _strip_randputf_artefacts(dump)
-    _check_dump_integrity(dump)
+    post-filtre junk, bâtiments taggés (§9), recettes canonisées. ``seed_value``
+    hérite de la version du jeu (meta du dump).
+
+    Un dump moddé est accepté tel quel : les recettes vanilla remplacées sont
+    ignorées via ``canonical_recipes`` (``X -> randputf-X``), mais leur nom réel
+    et les prototypes préfixés restent disponibles pour les liens."""
     meta = dump.get("meta", {})
     db = VanillaDB(seed_value=int(meta.get("game_version_numeric", 0)))
+    recipes = dump.get("recipes") or {}
+    db.canonical_recipes = canonical_recipe_map(recipes)
     inject_pumped_fluids(dump)
     science = science_pack_names(dump)
     db.rocket_chain = rocket_chain_from_dump(dump)
 
     for name, entry in (dump.get("items") or {}).items():
+        if _is_stacked_randputf(name):
+            continue
+        if name.startswith(_RANDPUTF_PREFIX):
+            db.modded_items[name] = entry
+            continue
         if is_junk(name):
             db.excluded_items[name] = entry
             continue
@@ -366,6 +333,11 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         )
 
     for name, entry in (dump.get("fluids") or {}).items():
+        if _is_stacked_randputf(name):
+            continue
+        if name.startswith(_RANDPUTF_PREFIX):
+            db.modded_fluids[name] = entry
+            continue
         if is_junk(name):
             db.excluded_fluids[name] = entry
             continue
@@ -375,6 +347,11 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         )
 
     for name, entry in (dump.get("entities") or {}).items():
+        if _is_stacked_randputf(name):
+            continue
+        if name.startswith(_RANDPUTF_PREFIX):
+            db.modded_buildings[name] = entry
+            continue
         # Les entités cheat/junk finiraient par remplir l'arbre tech de fillers.
         if is_junk(name):
             db.excluded_items[name] = entry
@@ -383,13 +360,22 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
         if bdef:
             db.buildings[name] = bdef
 
-    for name, entry in (dump.get("recipes") or {}).items():
+    for name, entry in recipes.items():
+        if _is_stacked_randputf(name):
+            continue
+        # Recette vanilla remplacée : la version randputF est la seule
+        # canonique. On ne la supprime pas du dump, seulement de la DB de
+        # génération ; le nom réel ``randputf-X`` est conservé pour les liens.
+        if not name.startswith(_RANDPUTF_PREFIX) and name in db.canonical_recipes:
+            continue
         db.recipes[name] = RecipeRef(
             name=name,
             category=entry.get("category") or "",
             ingredients=tuple(_parse_stack(i) for i in entry.get("ingredients", [])),
             products=tuple(_parse_stack(p) for p in entry.get("products", [])),
             energy=float(entry.get("energy", 0.5)),
+            enabled=entry.get("enabled"),
+            hidden=entry.get("hidden"),
         )
 
     # POST-PARSE : le tag « recette cachée » dépend des RÉSIDUS de combustible
@@ -579,12 +565,12 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     )
 
     if pumped_fluid:
-        medium = "water"
+        medium = "lake"
     elif "basic-fluid" in resource_categories:
-        medium = "fluid"
+        medium = "deposit"
     elif functional == "extractor" and fluid_out > 0 and not resource_categories:
-        # Sortie de fluide sans categorie de minage = source d'eau (offshore-pump).
-        medium = "water"
+        # Sortie de fluide sans categorie de minage = source de lac (offshore-pump).
+        medium = "lake"
     elif functional == "extractor":
         medium = "ground"
     else:
@@ -607,8 +593,8 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     consumes_electricity = (
         energy_type == "electric" and not produces_electricity and not is_accumulator
     )
-    is_water_extractor = is_extractor and medium == "water"
-    is_fluid_extractor = is_extractor and medium == "fluid"
+    is_lake_extractor = is_extractor and medium == "lake"
+    is_deposit_extractor = is_extractor and medium == "deposit"
     is_ground_extractor = is_extractor and medium == "ground"
 
     # --- Tags §2 : logistique & transports (docs/tags.md §2) ---
@@ -666,7 +652,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     # --- Tags §6 : extraction (docs/tags.md §6) ---
     is_mining_drill = entity_type == "mining-drill"
     is_pumpjack = entity_type == "mining-drill" and "basic-fluid" in resource_categories
-    is_offshore_pump = is_water_extractor  # seule source d'eau du vanilla
+    is_offshore_pump = is_lake_extractor  # seule source d'eau du vanilla
     is_well_pump = entity_type == "pump"
 
     # --- Tags §7 : combat & défense (docs/tags.md §10) ---
@@ -715,8 +701,8 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         is_energy_storage=is_energy_storage,
         is_offgrid=is_offgrid,
         consumes_electricity=consumes_electricity,
-        is_water_extractor=is_water_extractor,
-        is_fluid_extractor=is_fluid_extractor,
+        is_lake_extractor=is_lake_extractor,
+        is_deposit_extractor=is_deposit_extractor,
         is_ground_extractor=is_ground_extractor,
         is_belt=is_belt,
         is_underground_belt=is_underground_belt,

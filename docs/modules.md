@@ -148,8 +148,10 @@ vers `VanillaDB`.
 
 | Responsabilité | Détail |
 |----------------|--------|
-| Ignore les objets randputF | `_RANDPUTF_PREFIX = "randputf-"` (`tool/parsers/vanilla.py:61`) — un dump pollué est filtré, pas refusé |
-| Empile les doublons | Rejette les noms déjà préfixés plutôt que de créer `randputf-randputf-…` |
+| Canonise les recettes préfixées | `canonical_recipe_map` mappe `X -> randputf-X` quand la recette préfixée active produit `X` ; la recette vanilla `X` est ignorée pour la génération, le nom réel est conservé dans `recipes` |
+| Lit l'état réel | `enabled`/`hidden` sont conservés sur `RecipeRef` ; `hidden = true` marque un prototype neutralisé, sans supprimer ses liens |
+| Sépare le contenu déjà moddé | Items/fluides/entités préfixés vont dans `modded_items`/`modded_fluids`/`modded_buildings`, hors des pools de génération |
+| Ignore les doubles préfixes | Les noms `randputf-randputf-…` sont des artefacts de double randomisation et sont écartés |
 | Calcule les tags | Dérive `is_crafter`, `is_extractor`, `is_generator`… depuis les capacités |
 | Rejette un dump invalide | `DumpInvalidError` avec message → le CLI sort en 1 (`tool/__main__.py:57-59`) |
 

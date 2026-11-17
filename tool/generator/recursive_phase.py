@@ -70,7 +70,14 @@ _ROCKET_CHAIN_ITEM_NAMES = frozenset(ROCKET_CHAIN)
 # Exclus : chaîne fusée (endgame §14, y compris rocket-part, recette exempte du
 # silo — sinon « craft en double » trivial), armes montées (mortes sans véhicule,
 # randomisées en §7), environnementaux et outils.
-_ROCKET_CHAIN_SWEEP_EXCLUDED = _ROCKET_CHAIN_ITEM_NAMES | {"rocket-silo", "rocket-part"}
+
+def _rocket_chain_sweep_excluded(db: VanillaDB) -> frozenset[str]:
+    """Items à exclure du balayage : chaîne fusée + silo retrouvé par tag."""
+    return _ROCKET_CHAIN_ITEM_NAMES | {
+        "rocket-part",
+        *(i.name for i in db.items_for_building_tag("is_rocket_parts_crafter")),
+    }
+
 
 def _roman_value(n: int) -> str:
     """Romanisation d'un suffixe numérique d'ID de tech : Factorio exige des
@@ -248,12 +255,13 @@ def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
     (VEHICLE_GUNS, jamais craftées — la seed les clone à la volée, §12.1),
     ressources environnementales et outils."""
     excluded_guns = VEHICLE_GUNS
+    excluded_rocket = _rocket_chain_sweep_excluded(db)
     return [
         i
         for i in db.beltable_items()
         if not _has_product_recipe(state, i.name)
         and not i.is_environmental
-        and i.name not in _ROCKET_CHAIN_SWEEP_EXCLUDED
+        and i.name not in excluded_rocket
         and i.name not in excluded_guns
         and not i.is_virtual_item
     ]
@@ -1159,12 +1167,12 @@ def _make_fixed_item_recipe(
             for r in state.recipes
             if r["results"] and r["results"][0]["type"] == SLOT_ITEM
         }
+        excluded_rocket = _rocket_chain_sweep_excluded(db)
         candidates = sorted(
             n for n in state.obtained_items
             if n not in already_produced
             and not (db.items.get(n) is not None and db.items[n].is_environmental)
-            and n not in _ROCKET_CHAIN_ITEM_NAMES
-            and n not in _ROCKET_CHAIN_SWEEP_EXCLUDED
+            and n not in excluded_rocket
             and not n.startswith("randputf-")
             and not _is_building_item(db, n)
         )
@@ -1297,14 +1305,14 @@ def _pick_product(
         if r["results"] and r["results"][0]["type"] == kind
     }
     if kind == SLOT_ITEM:
+        excluded_rocket = _rocket_chain_sweep_excluded(db)
         candidates = sorted(
             (n for n in state.obtained_items
              if not n.startswith("randputf-")
              and not (db.items.get(n) is not None and db.items[n].is_environmental)
              and n not in already
              and not _is_building_item(db, n)
-             and n not in _ROCKET_CHAIN_ITEM_NAMES
-             and n not in _ROCKET_CHAIN_SWEEP_EXCLUDED),
+             and n not in excluded_rocket),
         )
     else:
         candidates = sorted(n for n in state.obtained_fluids if n not in already)

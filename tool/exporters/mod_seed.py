@@ -38,7 +38,12 @@ import json
 from pathlib import Path
 
 from tool.audit.difficulty import compute_difficulty
-from tool.parsers.vanilla import inject_pumped_fluids, science_pack_names
+from tool.parsers.vanilla import (
+    canonical_recipe_map,
+    inject_pumped_fluids,
+    is_hidden_prototype,
+    science_pack_names,
+)
 
 LUA_HEADER = "-- Généré par randputF tool. Ne pas éditer à la main.\n"
 
@@ -159,11 +164,22 @@ def _extract_entities(dump: dict) -> dict[str, dict]:
 def _extract_recipes(dump: dict) -> list[dict]:
     """Extrait les recettes du dump pour le seed vanilla.
 
-    ``dump`` est le JSON de l'exporteur. Exclut les barils, Kovarex, le retraitement du combustible nucléaire et les recettes paramétrées ; retourne une liste de recettes normalisées (nom, catégorie, ingrédients, produits).
+    ``dump`` est le JSON de l'exporteur. Exclut les barils, Kovarex, le retraitement du combustible nucléaire, les recettes paramétrées et les prototypes ``hidden``. Pour un dump moddé, ``randputf-X`` remplace la recette vanilla ``X`` ; pour un ancien dump sans champs d'état, le même choix est déduit du préfixe. Retourne une liste de recettes normalisées (nom, catégorie, ingrédients, produits).
     """
     recipes: list[dict] = []
-    for name, entry in (dump.get("recipes") or {}).items():
+    all_recipes = dump.get("recipes") or {}
+    canonical = canonical_recipe_map(all_recipes)
+    for name, entry in all_recipes.items():
         if not isinstance(entry, dict):
+            continue
+        if name.startswith("randputf-randputf-"):
+            continue
+        # Un dump moddé expose l'état réel : les prototypes neutralisés restent
+        # dans le JSON (liens intacts) mais ne participent pas à la génération.
+        if is_hidden_prototype(entry):
+            continue
+        # Repli pour les dumps anciens sans hidden : randputf-X remplace X.
+        if not name.startswith("randputf-") and name in canonical:
             continue
         if any(part in name for part in ("barrel", "kovarex", "nuclear-fuel-reprocessing", "parameter-0")):
             continue
@@ -208,6 +224,10 @@ def _extract_technologies(dump: dict) -> list[dict]:
     techs: list[dict] = []
     for name, entry in (dump.get("technologies") or {}).items():
         if not isinstance(entry, dict):
+            continue
+        if name.startswith("randputf-randputf-"):
+            continue
+        if is_hidden_prototype(entry):
             continue
         unit = entry.get("unit") or {}
         unit_count = unit.get("count", 0)

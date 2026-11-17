@@ -27,12 +27,13 @@ Cette base est ensuite transmise à `randputf` pour la génération.
 
 ## 2. Format d'entrée : `vanilla_dump.json` et métadonnées
 
-Le `vanilla_dump.json` (exporter randputf **0.1.5**, jeu 2.1.24) fournit les données brutes exploitées par `VanillaDB` — du brut factuel uniquement, aucune interprétation côté Lua :
+Le `vanilla_dump.json` (exporter randputf **0.1.6**, jeu 2.1.24) fournit les données brutes exploitées par `VanillaDB` — du brut factuel uniquement, aucune interprétation côté Lua :
 
 * **`meta`** – métadonnées : `game_version` (ex. « 2.1.24 ») ; `game_version_numeric` est absente, d'où `seed_value = 0` par défaut (§7.1).
 * **`items`** / **`fluids`** – objets solides et fluides, filtrés par `is_junk` (§3).
 * **`entities`** – entités du monde, filtrées par `is_junk` puis taggées par capacités (`tag_parse_entity`). Chacune peut porter `tile_buildability_rules` (règles de placement : `required_tiles` / `colliding_tiles` / `remove_on_collision`, voir §6.5).
-* **`recipes`** – recettes brutes avec `name`, `category`, `ingredients`, `products` et `energy`.
+* **`recipes`** – recettes brutes avec `name`, `category`, `ingredients`, `products`, `energy`, `enabled` et `hidden`. Le parseur canonise `randputf-X` en recette du produit `X` (`VanillaDB.canonical_recipes`) tout en conservant le nom réel pour les liens.
+* **contenu préfixé** – items, fluides et entités `randputf-*` déjà générés : conservés dans `VanillaDB.modded_items`, `modded_fluids` et `modded_buildings`, hors des pools de génération (sinon `randputf-randputf-…`).
 * **`technologies`** – arbre de recherche (prérequis, effets, `unit`).
 * **`inventory`** – inventaire complet A→Z du jeu : 39 tables par type de prototype (`item`, `entity`, `fluid`, `tile`, `recipe`, `technology`, …).
 * **`tiles`** – 52 tuiles, chacune avec ses `collision_layers` et éventuellement son `fluid` (ex. `water`).
@@ -117,7 +118,7 @@ class BuildingDef:
     fluid_inputs: int = 0
     fluid_outputs: int = 0
     item_output_slots: int = 0
-    # pumped_fluid : fluide pompé par un extracteur d'eau — RÉSOLU côté
+    # pumped_fluid : fluide pompé par un extracteur de lac — RÉSOLU côté
     # Python (inject_pumped_fluids, §6.5) ; le dump 0.1.5 ne le porte plus.
     pumped_fluid: str | None = None
     produces_heat: bool = False
@@ -131,8 +132,8 @@ class BuildingDef:
     is_energy_storage: bool = False
     is_offgrid: bool = False
     consumes_electricity: bool = False
-    is_water_extractor: bool = False
-    is_fluid_extractor: bool = False
+    is_lake_extractor: bool = False
+    is_deposit_extractor: bool = False
     is_ground_extractor: bool = False
     is_belt: bool = False
     is_underground_belt: bool = False
@@ -204,6 +205,7 @@ class BuildingDef:
 | `has_fuel_item_flow(b)` | méthode | Vrai si le bâtiment produit un résidu item. |
 | `fuel_fluids()` | méthode | Fluides combustibles triés. |
 | `buildings_with_tag(tag)` | méthode | Bâtiments possédant le tag. |
+| `items_for_building_tag(tag)` | méthode | Items plaçables dont le bâtiment possède le tag. |
 | `extractors_for_medium(medium)` | méthode | Extracteurs par milieu. |
 
 ## 4. Prédicats de détection par capacités
@@ -292,7 +294,7 @@ def is_fixed_crafter(b: "BuildingDef") -> bool:
 - `is_offshore_pump` : Pompe d'eau.
 - `is_well_pump` : Pompe de fluide.
 
-Précisions d'extraction : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = `is_water_extractor` (le seul extracteur de milieu `water` du vanilla) ; `is_well_pump` = `type == 'pump'`. Le `medium` se déduit du `pumped_fluid` résolu (§6.5) puis des catégories de ressource.
+Précisions d'extraction : `is_mining_drill` = `type == 'mining-drill'` (tout minerai) ; `is_pumpjack` = `mining-drill` **avec** `resource_categories ⊇ basic-fluid` ; `is_offshore_pump` = `is_lake_extractor` (le seul extracteur de milieu `lake` du vanilla) ; `is_well_pump` = `type == 'pump'`. Le `medium` se déduit du `pumped_fluid` résolu (§6.5) puis des catégories de ressource.
 
 ### 5.4 Tags de logistique & transport
 - `is_belt`, `is_splitter`, `is_inserter` : Logistique de flux.
@@ -307,7 +309,7 @@ Précisions d'extraction : `is_mining_drill` = `type == 'mining-drill'` (tout mi
 - `is_energy_storage` : Stockage d'énergie — le dump n'exporte pas `buffer_capacity`, tag rabattu sur `is_accumulator`.
 - `is_offgrid` : Production hors réseau.
 - `consumes_electricity` : Consommation électrique.
-- `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` : Extracteurs par milieu.
+- `is_lake_extractor` / `is_deposit_extractor` / `is_ground_extractor` : Extracteurs par milieu.
 - `produces_electricity` : Production élec.
 - `produces_heat` : Production chaleur.
 - `is_heat_source` : Source de chaleur.
@@ -332,7 +334,7 @@ L'exporter 0.1.5 ne porte plus le littéral `pumped_fluid` : le dump ne contient
 1. **Fluidbox de sortie** — si l'entité est une **source pure** (`fluidboxes.input == 0`, ex. offshore-pump : rien → fluide), le fluide de sa seule fluidbox de sortie la désigne. La porte « source pure » évite de confondre un convertisseur (boiler, heat-exchanger : fluide → fluide) avec un extracteur.
 2. **Chaîne de tuiles** — sinon, ses `tile_buildability_rules` exigent des couches (`required_tiles`) ; les tuiles portant ces couches exposent leur `fluid` ; **un seul fluide distinct** doit en émerger, sinon `None` (ambiguïté = rien inventé, l'entité part en « external » avec avertissement). `colliding_tiles` peut être `{}` (dict vide) — robuste via `or []`.
 
-Exemple vanilla : l'offshore-pump exige la couche `water_tile` ; la tuile `water` porte cette couche et le fluide `water` → `pumped_fluid = "water"`. Une tuile peut porter une couche SANS fluide (water-wube) : la chaîne s'arrête proprement. Le `medium` suit : `pumped_fluid` résolu → `medium = "water"` (§5.3).
+Exemple vanilla : l'offshore-pump exige la couche `water_tile` ; la tuile `water` porte cette couche et le fluide `water` → `pumped_fluid = "water"`. Une tuile peut porter une couche SANS fluide (water-wube) : la chaîne s'arrête proprement. Le `medium` suit : `pumped_fluid` résolu → `medium = "lake"` (§5.3).
 
 ### 6.6 `science_pack_names` (packs par les faits)
 Union des ingrédients de coût des technologies (`unit.ingredients`, formes dict ET listes gérées) et des entrées des labs (`lab_inputs`). Vanilla : 7 packs — `space-science-pack` n'est dans AUCUN coût de tech, il n'est reconnu que par les `lab_inputs`. C'est ce jeu de faits (pas le `subgroup` « science-pack ») qui alimente `ItemDef.is_science_pack`/`is_tool` et le tag `is_progression` du seed.
@@ -363,4 +365,4 @@ Les TAGS sont calculés PAR CAPACITÉS dans `tool/parsers/vanilla.py` (`tag_pars
 
 ---
 *Document généré à partir de `tool/common/db.py`, `tool/parsers/vanilla.py` et `docs/tags.md`.*
-*Version 1.2 – 2026‑11‑11 (dump exporter 0.1.5)*
+*Version 1.3 – 2026‑11‑16 (dump exporter 0.1.6)*

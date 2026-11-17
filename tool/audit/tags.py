@@ -29,11 +29,11 @@ INVARIANTS = (
     # pylône ⇒ distribution (is_distribution = supply_area, surensemble).
     ("is_power_pole", lambda b: b.is_distribution,
      "pylône mais pas is_distribution (anomalie supply_area)"),
-    ("is_water_extractor", lambda b: not (b.is_fluid_extractor or b.is_ground_extractor),
+    ("is_lake_extractor", lambda b: not (b.is_deposit_extractor or b.is_ground_extractor),
      "extracteur tagué sur deux mediums à la fois"),
-    ("is_fluid_extractor", lambda b: not (b.is_water_extractor or b.is_ground_extractor),
+    ("is_deposit_extractor", lambda b: not (b.is_lake_extractor or b.is_ground_extractor),
      "extracteur tagué sur deux mediums à la fois"),
-    ("is_ground_extractor", lambda b: not (b.is_water_extractor or b.is_fluid_extractor),
+    ("is_ground_extractor", lambda b: not (b.is_lake_extractor or b.is_deposit_extractor),
      "extracteur tagué sur deux mediums à la fois"),
     ("is_offgrid", lambda b: b.produces_electricity,
      "producteur hors-réseau sans produces_electricity"),
@@ -65,10 +65,10 @@ INVARIANTS = (
     # et le pumpjack un extracteur de fluide.
     ("is_mining_drill", lambda b: b.is_extractor,
      "foreuse (mining-drill) non taguée extracteur"),
-    ("is_pumpjack", lambda b: b.is_extractor and b.is_fluid_extractor,
-     "pumpjack doit être extracteur de fluide"),
-    ("is_offshore_pump", lambda b: b.is_extractor and b.is_water_extractor,
-     "pompe offshore doit être extracteur d'eau"),
+    ("is_pumpjack", lambda b: b.is_extractor and b.is_deposit_extractor,
+     "pumpjack doit être extracteur de gisement"),
+    ("is_offshore_pump", lambda b: b.is_extractor and b.is_lake_extractor,
+     "pompe offshore doit être extracteur de lac"),
     # --- §7 : combat & défense (orthogonaux au rôle is_other) ---
     ("is_turret", lambda b: (b.is_gun_turret or b.is_laser_turret
                              or b.is_flame_turret or b.is_artillery),

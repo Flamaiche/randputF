@@ -340,10 +340,9 @@ Le tool ne devine rien : il consomme un **dump JSON des prototypes** produit
 par ton propre jeu, via le mod compagnon `exporter/`. Nécessaire seulement
 pour re-générer ce dump (ajout de contenu, nouvelle version du jeu) :
 
-1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.5/` ;
+1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.6/` ;
    si le symlink n'est pas détecté (sandbox Flatpak), utilise une copie du dossier ;
-2. **désactive `randputF` pour cet export** (l'exporter refuse sinon) ; lance
-   Factorio une partie quelques secondes — à l'init, il écrit
+2. lance Factorio une partie quelques secondes — à l'init, l'exporter écrit
    `script-output/randputF/vanilla_dump.json` dans le dossier user-data ;
 3. remplace `data/vanilla_dump.json` du dépôt par ce fichier. En install
    classique, le dump voyage dans le wheel (`data/vanilla_dump.json` sous le
@@ -352,16 +351,15 @@ pour re-générer ce dump (ajout de contenu, nouvelle version du jeu) :
 4. l'exporter reste un outil compagnon de développement, destiné à disparaître
    ou fusionner dans le mod principal.
 
-> **Pourquoi désactiver `randputF` pour l'export** : exporter depuis une partie
-> où randputF est actif écrirait un dump « pollué ». La pollution n'est pas que
-> des recettes `randputf-*` ajoutées — surtout, des prototypes vanilla sont
-> MUTÉS en place (ex. `fuel_value` 0 → 200 000 sur `crude-oil`), des valeurs qui
-> ressemblent à du contenu légitime et qui changent la seed sans rien casser.
-> Trois barrières s'en protègent : l'exporter **refuse** un export pollué (log
-> explicite, aucun fichier écrit), le tool **rejette** un dump déjà muté au
-> chargement (invariant vanilla 2.0 `fuel_value == 0`), et le filtre `randputf-`
-> couvre le canal additif des dumps anciens. Pendant une partie normale, les
-> deux mods peuvent rester actifs.
+> **Dump vanilla ou dump moddé** : l'exporter peut tourner avec `randputF` actif.
+> Le dump contient alors les recettes `randputf-*`, les prototypes vanilla
+> neutralisés (`enabled = false`, `hidden = true`) et les mutations en place
+> (ex. `fuel_value` 0 → 200 000 sur `crude-oil`). Il reste complet — aucun lien
+> n'est supprimé — et le tool choisit `randputf-X` comme recette canonique du
+> produit `X` quand elle existe et n'est pas cachée. Un dump moddé décrit donc
+> l'état réel du mod et peut produire une seed différente du dump vanilla
+> historique ; les artefacts à double préfixe (`randputf-randputf-…`) restent
+> ignorés.
 
 ## Structure du projet
 

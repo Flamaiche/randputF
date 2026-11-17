@@ -33,7 +33,7 @@ Exemples de comptage sur `data/vanilla_dump.json` : `is_research` 1, `is_crafter
 | `is_energy_storage` | stockage d'énergie (pas de production) | `buffer_capacity` ; repli = `is_accumulator` (le dump n'exporte pas `buffer_capacity`) | documenté (alias de l'accumulateur), tests — aucun consommateur générateur |
 | `is_offgrid` | producteur hors réseau (solaire, burner-generator) | `produces_electricity` + énergie non `electric` OU `type == 'solar-panel'` | audit |
 | `consumes_electricity` | consomme du courant | `energy_type == 'electric'` sans production ni stockage | audit, tier tardif du balayage (via `_is_network_dependent_item`) |
-| `is_water_extractor` / `is_fluid_extractor` / `is_ground_extractor` | extracteur par MEDIUM | `is_extractor` + `medium` (water/fluid/ground) | `extractors_for_medium`, `starter_chain` |
+| `is_lake_extractor` / `is_deposit_extractor` / `is_ground_extractor` | extracteur par MEDIUM | `is_extractor` + `medium` (lake/deposit/ground) | `extractors_for_medium`, `starter_chain` |
 
 ## 2. Logistique & transport (raffinement des `is_other`)
 
@@ -99,13 +99,13 @@ boiler ET heat-exchanger partagent le type `'boiler'` dans le dump : on les dist
 
 ## 6. Extraction (raffinement d'`is_extractor`)
 
-`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium eau — le `pumped_fluid` n'est plus porté par le dump (0.1.5) : il est résolu côté Python par `inject_pumped_fluids` (fluidbox de sortie des sources pures, sinon chaîne de tuiles ; `docs/vanilladb.md` §6.5).
+`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium lac — le `pumped_fluid` n'est plus porté par le dump (0.1.5) : il est résolu côté Python par `inject_pumped_fluids` (fluidbox de sortie des sources pures, sinon chaîne de tuiles ; `docs/vanilladb.md` §6.5).
 
 | Tag | Déterminé par | Consommé par |
 |-----|---------------|--------------|
 | `is_mining_drill` | `type == 'mining-drill'` (minerai solide via médium ground) | via `is_extractor` + `medium` (`extractors_for_medium`), replay (vérif), audit |
 | `is_pumpjack` | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | via `is_extractor` + `fluid_outputs`/`resource_categories` (`starter_chain._extractors_for_resource`), replay (vérif), audit |
-| `is_offshore_pump` | `is_water_extractor` (médium eau) | via `pumped_fluid` (`starter_chain`, lacs) ; `mod/control.lua` (`on_built_entity` offshore-pump, runtime) ; replay (vérif), audit |
+| `is_offshore_pump` | `is_lake_extractor` (médium lac) | via `pumped_fluid` (`starter_chain`, lacs) ; `mod/control.lua` (`on_built_entity` offshore-pump, runtime) ; replay (vérif), audit |
 | `is_well_pump` | `type == 'pump'` | raffinage **usage en vue** |
 
 ## 7. Sortie spéciale (orthogonale aux rôles)
@@ -212,10 +212,11 @@ Invariant vérifié par l'audit (`tool/audit/tags.py`) : un item environnemental
 ## 13. Helpers / API
 
 - `VanillaDB.buildings_with_tag(tag)` — tous les bâtiments portant un tag donné (un multi-tags apparaît dans chaque catégorie qu'il porte).
-- `VanillaDB.extractors_for_medium(medium)` — les `is_extractor` filtrés par `medium` (« water », « fluid », « ground », ou tout).
+- `VanillaDB.items_for_building_tag(tag)` — les items plaçables dont le bâtiment porte un tag (ex. silo via `is_rocket_parts_crafter`).
+- `VanillaDB.extractors_for_medium(medium)` — les `is_extractor` filtrés par `medium` (« lake », « deposit », « ground », ou tout).
 - `VanillaDB.fuel_item_flow(b)` / `has_fuel_item_flow(b)` / `fuel_residues(b)` — vue normalisée d'une machine à combustible (item → item résidu).
 - `equivalent_functional_type(b)` — reconstruit l'ancien rôle exclusif (research → transformer → generator → distribution → extractor → other) : outil de vérification + décisions d'héritage du dump (medium, directives).
-- `medium` (champ associé aux extracteurs) : `water` (offshore-pump), `fluid` (`resource_categories` contenant `basic-fluid`, ex. pumpjack), `ground` (minerais), `""` (character).
+- `medium` (champ associé aux extracteurs) : `lake` (offshore-pump), `deposit` (`resource_categories` contenant `basic-fluid`, ex. pumpjack), `ground` (minerais), `""` (character).
 - `BuildingDef.directives` — héritages bruts du dump (`fluid_inputs`, `rocket_parts_required`, `lab_inputs`).
 
 ## 14. Ensembles dérivés en dur (résiduels)

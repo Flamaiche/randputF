@@ -22,6 +22,20 @@ figurent dans **cette** version : la v0.0.1 publiée ne les contient pas
 (étiquetage erroné corrigé dans les docs — le tag `v0.0.1` et son témoin font
 foi).
 
+### Exporter 0.1.6 — export moddé autorisé
+
+- Le garde-fou qui annulait l'export quand `randputF` était actif est retiré :
+  l'exporter écrit désormais le dump même depuis une partie randomisée, pour
+  inspecter le contenu généré (`python -m tool dump`).
+- Le dump moddé est désormais exploitable : l'exporter ajoute `enabled` et
+  `hidden` aux recettes et technologies, ce qui permet de distinguer les
+  prototypes vanilla neutralisés des prototypes randputF actifs sans supprimer
+  aucun lien.
+- Le tool canonise les recettes préfixées : pour un produit `X`, une recette
+  `randputf-X` active remplace la recette vanilla `X` dans la génération. La
+  clé logique est normalisée (`X`), le nom réel `randputf-X` reste conservé
+  dans la DB. Les artefacts `randputf-randputf-…` restent ignorés.
+
 ### Exporter 0.1.5 — le dump ne porte que du brut
 
 - Le dump embarque désormais l'**inventaire complet** (39 tables A→Z), les
@@ -112,7 +126,7 @@ foi).
 ### Déterminisme vérifiable
 
 - **Témoin de reproductibilité** : `randputf witness --seed 5 --expect
-  0e767f5d91c3d0e7838e0c75c0dbd064` (état courant du dépôt, dump 0.1.5 ;
+  b900d57712f212010d1c40e6405f4e0a` (état courant du dépôt, dump 0.1.6 ;
   vérifié depuis un wheel installé hors checkout, comme le job CI). Il
   **changera** au bump vers 0.0.2 (préfixe racine `randputF_<version>`) et la
   seed 5 est touchée par le correctif d'auto-sélection. Les sorties HTML
@@ -121,7 +135,7 @@ foi).
 
 ### Garanties mesurées
 
-- **762 tests** verts sur le dump réel 0.1.5.
+- **762 tests** verts sur le dump réel 0.1.6.
 - Parité du rapport vanilla inchangée (64 entrées, 10 090 834 crafts,
   13 850 040 s de minage, 3 lancements, offshore-pump en bâtiments).
 

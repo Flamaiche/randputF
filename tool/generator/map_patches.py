@@ -293,9 +293,11 @@ def _excludable_items(db: VanillaDB):
         and db.buildings.get(i.place_result) is not None
         and db.buildings[i.place_result].is_research
     }
-    # Idem chaîne fusée (§14) et rocket-silo : la victoire exige leurs recettes
+    # Idem chaîne fusée (§14) et silo : la victoire exige leurs recettes
     # générées (unlockées par randputf-endgame-rocket) — jamais un patch.
-    hero = set(ROCKET_CHAIN) | {"rocket-silo"}
+    hero = set(ROCKET_CHAIN) | {
+        i.name for i in db.items_for_building_tag("is_rocket_parts_crafter")
+    }
     # Les science packs ne sont JAMAIS des patchs (§13) : leur économie repose
     # sur le craft (jamais extraits du sol) ; un pack posé briserait la filière
     # de coût des techs.

@@ -1,14 +1,9 @@
-"""Régression dumps pollués (exporter + mod principal actifs ensemble).
+"""Dumps moddés : l'état réel est conservé, les recettes sont canonisées.
 
-Trois canaux de pollution, trois protections :
-1. clés AJOUTÉES (recettes/items `randputf-*`, préfixe empilé) → filtrées par
-   ``load_db_from_dump`` : clean et pollué donnent la même DB et la même seed ;
-2. valeurs MUTÉES en place (fuel_value 0 → 200 000, filtres, fuel_categories)
-   → indétectables par le filtre de noms, "ressemblent" à du contenu légitime :
-   l'exporter refuse un export pollué (garde-fou runtime) ET le tool rejette un
-   dump déjà muté via un invariant vanilla 2.0 ;
-3. un dump qui cumule les deux canaux reste rejeté (le canal mutation à lui
-   seul suffit).
+Un dump produit avec randputF actif contient les prototypes vanilla
+neutralisés (``hidden = true``) et les prototypes préfixés actifs. Le tool ne
+les filtre plus : il garde les liens, puis choisit ``randputf-X`` comme
+recette canonique du produit ``X`` quand elle existe et n'est pas cachée.
 """
 
 from __future__ import annotations
@@ -17,89 +12,130 @@ import copy
 import json
 from pathlib import Path
 
-import pytest
-
+from tool.exporters.mod_seed import build_vanilla_seed
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump
 
 DUMP_PATH = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json"
 CLEAN = json.loads(DUMP_PATH.read_text(encoding="utf-8"))
 
-POLLUTED_SECTIONS = ("items", "fluids", "entities", "recipes")
+
+def _add_prefixed_recipe(dump: dict, *, hidden: bool = False) -> dict:
+    """Ajoute ``randputf-iron-plate`` et neutralise ``iron-plate``."""
+    modded = copy.deepcopy(dump)
+    recipe = copy.deepcopy(modded["recipes"]["iron-plate"])
+    recipe["enabled"] = not hidden
+    recipe["hidden"] = hidden
+    modded["recipes"]["randputf-iron-plate"] = recipe
+    modded["recipes"]["iron-plate"]["enabled"] = False
+    modded["recipes"]["iron-plate"]["hidden"] = True
+    return modded
 
 
-def _pollute(dump: dict) -> dict:
-    """Re-préfixe le contenu comme le ferait un mod actif pendant l'export :
-    chaque clé est réinsérée sous ``randputf-<name>`` (une couche), plus
-    quelques clés à double préfixe (deux couches successives)."""
-    polluted = copy.deepcopy(dump)
-    for section in POLLUTED_SECTIONS:
-        entries = polluted.get(section)
-        if not isinstance(entries, dict):
-            continue
-        layers = {}
-        for name, entry in entries.items():
-            layers[f"randputf-{name}"] = entry
-        for name in list(layers)[:5]:
-            layers[f"randputf-{name}"] = layers[name]
-        entries.update(layers)
-    return polluted
+def test_dump_modde_garde_les_liens_et_canonise_la_recette_prefixee():
+    modded = _add_prefixed_recipe(CLEAN)
+
+    db = load_db_from_dump(modded)
+
+    assert db.canonical_recipes["iron-plate"] == "randputf-iron-plate"
+    assert "randputf-iron-plate" in db.recipes
+    assert "iron-plate" not in db.recipes
+    assert db.recipes["randputf-iron-plate"].hidden is False
+    assert db.recipes["randputf-iron-plate"].enabled is True
+    # Le dump brut garde la recette vanilla neutralisée : aucun lien perdu.
+    assert modded["recipes"]["iron-plate"]["hidden"] is True
 
 
-def test_dump_pollue_et_clean_donnent_la_meme_db():
-    clean_db = load_db_from_dump(CLEAN)
-    polluted_db = load_db_from_dump(_pollute(CLEAN))
+def test_recette_prefixee_cachee_ne_remplace_pas_la_vanilla():
+    modded = _add_prefixed_recipe(CLEAN, hidden=True)
 
-    assert polluted_db.recipes == clean_db.recipes
-    assert polluted_db.items == clean_db.items
-    assert polluted_db.fluids == clean_db.fluids
-    assert polluted_db.buildings == clean_db.buildings
-    assert polluted_db.excluded_items == clean_db.excluded_items
-    assert polluted_db.excluded_fluids == clean_db.excluded_fluids
+    db = load_db_from_dump(modded)
+
+    assert "iron-plate" not in db.canonical_recipes
+    assert "iron-plate" in db.recipes
+    assert "randputf-iron-plate" in db.recipes
 
 
-@pytest.mark.parametrize("seed_value", [5, 77])
-def test_dump_pollue_et_clean_donnent_la_meme_seed(seed_value):
-    clean_db = load_db_from_dump(CLEAN)
-    clean_db.seed_value = seed_value
-    polluted_db = load_db_from_dump(_pollute(CLEAN))
-    polluted_db.seed_value = seed_value
-
-    assert generate_seed(polluted_db) == generate_seed(clean_db)
-
-
-@pytest.mark.parametrize("fluid,fuel_value", [("crude-oil", 200000), ("steam", 200000)])
-def test_dump_mute_en_place_rejete(fluid, fuel_value):
-    """Canal mutation : même clé, valeur changée — le filtre de noms ne peut pas
-    le voir, l'invariant vanilla 2.0 (fluide non-carburant) doit le rejeter."""
+def test_dump_mute_en_place_est_accepte():
     mutated = copy.deepcopy(CLEAN)
-    mutated["fluids"][fluid]["fuel_value"] = fuel_value
-    with pytest.raises(ValueError, match="Dump pollue"):
-        load_db_from_dump(mutated)
-
-
-def test_dump_avec_les_deux_canaux_rejete():
-    """Clés ajoutées ``randputf-*`` ET mutation : la mutation seule suffit à
-    rejeter — pas de fausse garantie par le filtre de noms."""
-    mutated = _pollute(CLEAN)
-    mutated["fluids"]["light-oil"]["fuel_value"] = 200000
-    with pytest.raises(ValueError, match="Dump pollue"):
-        load_db_from_dump(mutated)
-
-
-def test_mutation_entities_seule_acceptee_frontiere_documentee():
-    """Canal entities seul (fuel_categories += "nuclear", filtres boiler) : PAS
-    d'invariant dédié — décision assumée. La passe carburant mute toujours des
-    fluides (co-occurrence), donc un dump réellement pollué est attrapé par
-    l'invariant fluides ; cet entonnoir documente la frontière pour qu'elle ne
-    soit pas un oubli, et la vérité reste le refus de l'exporter."""
-    mutated = copy.deepcopy(CLEAN)
-    entity = mutated["entities"]["burner-inserter"]
-    entity.setdefault("energy_source", {})["fuel_categories"] = ["chemical", "nuclear"]
-    boiler = mutated["entities"]["boiler"]
-    for box in boiler.get("fluidbox_info", {}).get("detail", {}).values():
-        if box.get("filter") == "water":
-            box["filter"] = "sulfuric-acid"
+    mutated["fluids"]["crude-oil"]["fuel_value"] = 200000
 
     db = load_db_from_dump(mutated)
-    assert db is not None
+
+    assert db.fluids["crude-oil"].fuel_value == 200000
+
+
+def test_contenu_prefixe_reste_hors_des_pools_de_generation():
+    modded = _add_prefixed_recipe(CLEAN)
+    modded["items"]["randputf-tank-shotgun"] = copy.deepcopy(modded["items"]["pistol"])
+    modded["fluids"]["randputf-neutre"] = copy.deepcopy(modded["fluids"]["water"])
+    modded["entities"]["randputf-oil-test"] = copy.deepcopy(modded["entities"]["iron-ore"])
+
+    db = load_db_from_dump(modded)
+    db.seed_value = 5
+    seed = generate_seed(db, validate=False)
+
+    assert "randputf-tank-shotgun" in db.modded_items
+    assert "randputf-neutre" in db.modded_fluids
+    assert "randputf-oil-test" in db.modded_buildings
+    assert "randputf-tank-shotgun" not in db.items
+    assert "randputf-neutre" not in db.fluids
+    assert "randputf-oil-test" not in db.buildings
+    assert not any(recipe["name"].startswith("randputf-randputf-") for recipe in seed["recipes"])
+
+
+def test_double_prefixe_reste_un_artefact_ignore():
+    modded = copy.deepcopy(CLEAN)
+    recipe = copy.deepcopy(modded["recipes"]["iron-plate"])
+    modded["recipes"]["randputf-randputf-iron-plate"] = recipe
+
+    db = load_db_from_dump(modded)
+
+    assert "randputf-randputf-iron-plate" not in db.recipes
+
+
+def test_build_vanilla_seed_ignore_hidden_et_suit_la_recette_canonique():
+    modded = _add_prefixed_recipe(CLEAN)
+
+    tech = copy.deepcopy(modded["technologies"]["automation"])
+    tech["enabled"] = True
+    tech["hidden"] = False
+    modded["technologies"]["randputf-automation"] = tech
+    modded["technologies"]["automation"]["enabled"] = False
+    modded["technologies"]["automation"]["hidden"] = True
+
+    hidden_recipe = copy.deepcopy(modded["recipes"]["iron-gear-wheel"])
+    hidden_recipe["enabled"] = False
+    hidden_recipe["hidden"] = True
+    modded["recipes"]["randputf-hidden-recipe"] = hidden_recipe
+
+    hidden_tech = copy.deepcopy(modded["technologies"]["automation"])
+    hidden_tech["hidden"] = True
+    modded["technologies"]["randputf-hidden-tech"] = hidden_tech
+
+    seed = build_vanilla_seed(modded)
+    recipe_names = {recipe["name"] for recipe in seed["recipes"]}
+    tech_ids = {tech["id"] for tech in seed["technologies"]}
+
+    assert "randputf-iron-plate" in recipe_names
+    assert "iron-plate" not in recipe_names
+    assert "randputf-hidden-recipe" not in recipe_names
+    assert "randputf-automation" in tech_ids
+    assert "automation" not in tech_ids
+    assert "randputf-hidden-tech" not in tech_ids
+
+
+def test_build_vanilla_seed_repli_prefixe_sans_champs_d_etat():
+    modded = copy.deepcopy(CLEAN)
+    for recipe in modded["recipes"].values():
+        recipe.pop("enabled", None)
+        recipe.pop("hidden", None)
+
+    recipe = copy.deepcopy(modded["recipes"]["iron-plate"])
+    modded["recipes"]["randputf-iron-plate"] = recipe
+
+    seed = build_vanilla_seed(modded)
+    recipe_names = {entry["name"] for entry in seed["recipes"]}
+
+    assert "randputf-iron-plate" in recipe_names
+    assert "iron-plate" not in recipe_names

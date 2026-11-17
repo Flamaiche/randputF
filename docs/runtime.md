@@ -414,9 +414,9 @@ Mod autonome de collecte, hors chaîne de génération randputF. Son exécution 
 | `dump_all_items` | 125-226 | `fuel_value`, `stack_size`, `subgroup`, `place_result`, `burnt_result`, `ammo_category` |
 | `dump_fluids` | 228-239 | `default_temperature` en plus |
 | `dump_entities` | 399-622 | Classement par **capacité** : craft (`crafting_categories`), extraction (`resource_categories`), pompage (`pumping_speed`), fluides, énergie, production |
-| `dump_recipes` | 624-655 | Ingrédients, produits, catégorie, énergie |
-| `dump_technologies` | 657-758 | Prérequis, unité de recherche et effets |
-| Écriture | 798-805 | `helpers.write_file("randputF/vanilla_dump.json")` sous `pcall` |
+| `dump_recipes` | 624-658 | Ingrédients, produits, catégorie, énergie, `enabled`, `hidden` |
+| `dump_technologies` | 661-761 | Prérequis, unité de recherche, effets, `enabled`, `hidden` |
+| Écriture | 780-787 | `helpers.write_file("randputF/vanilla_dump.json")` sous `pcall` |
 
 Trois spécificités liées à la version 2.0 font l'objet de commentaires dans le code :
 
@@ -426,11 +426,11 @@ Trois spécificités liées à la version 2.0 font l'objet de commentaires dans 
 | `production_type` (2.0) vs `flow_direction` (1.x) | 254-272 | Prise en charge des deux clés |
 | `get_supply_area_distance()` (méthode 2.0) | 550-556 | Appel sécurisé sous pcall, champ ignoré en cas d'échec |
 
-### 7.1 Le garde-fou d'export
+### 7.1 Export avec ou sans randputF
 
-`exporter/control.lua:760-786`. La présence du préfixe `randputf-` sur **une seule** recette interrompt le processus : l'écriture du fichier est annulée et un message d'erreur est consigné dans le journal.
+`exporter/control.lua` n'a plus de garde-fou : l'export s'écrit même si `randputF` est actif. Le dump contient alors du contenu vanilla, des recettes `randputf-*` et des altérations de prototypes : modification de `fuel_value` des fluides fixée à 200 kJ (`mod/data-updates.lua:861`), suppression de filtres (`mod/data-updates.lua:818`), ou encore élargissement de `fuel_categories` (`mod/data-updates.lua:687`).
 
-Cette sécurité empêche la création d'un dump corrompu depuis une partie modifiée (`exporter/control.lua:760-786`). Un export dans ces conditions mélangerait du contenu vanilla avec des recettes `randputf-*` et des altérations de prototypes : modification de `fuel_value` des fluides fixée à 200 kJ (`mod/data-updates.lua:861`), suppression de filtres (`mod/data-updates.lua:818`), ou encore élargissement de `fuel_categories` (`mod/data-updates.lua:687`).
+Ce dump moddé est une photographie complète : les recettes et technologies vanilla neutralisées restent présentes avec leurs liens, mais portent `enabled = false` et `hidden = true`. Le tool ne filtre plus les clés `randputf-*` et n'essaie plus de rejeter les mutations : il canonise à la lecture. Pour un produit `X`, une recette `randputf-X` active devient la recette canonique ; la recette vanilla `X` est ignorée pour la génération. La clé logique est normalisée (`X`), tandis que `VanillaDB.recipes` conserve le nom réel `randputf-X` pour ne pas casser les effets de technologies. Les recettes `randputf-ease-*`, `randputf-relay-*` et les recettes de fluides restent des alternatives. Les items, fluides et entités déjà préfixés sont conservés dans des buckets `modded_*` hors des pools de génération, et les artefacts `randputf-randputf-…` sont ignorés. Un dump moddé peut donc produire une seed différente du dump vanilla historique, ce qui est attendu.
 
 ## 8. Clés de seed consommées, par fichier
 

@@ -82,7 +82,7 @@ class DumpMissingError(RandputfError):
 class DumpInvalidError(RandputfError):
     """Le dump vanilla est illisible, incohérent ou muté.
 
-    Signale un JSON invalide, un schéma incomplet ou un dump pollué par une partie randputF.
+    Signale un JSON invalide, un schéma incomplet ou un dump dont des prototypes vanilla ont été mutés par une partie randputF.
     """
 
 
