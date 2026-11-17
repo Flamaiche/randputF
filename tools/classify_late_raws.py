@@ -44,14 +44,16 @@ def _claim_indexes(tech_order: list[str], tech_by_id: dict) -> dict[str, int]:
     return claim
 
 
-def _science_chain(claim: dict[str, int], recipes: list[dict]) -> list[str]:
+def _science_chain(
+    claim: dict[str, int], recipes: list[dict], science_packs: set[str]
+) -> list[str]:
     """Science packs ordonnés par leur déblocage (chaîne §13 : chacun coûte
     le précédent). Ordre de premier claim de leur recette."""
     packs = {
         r["results"][0]["name"]
         for r in recipes
         if r.get("results") and r["results"][0].get("type") == SLOT_ITEM
-        and str(r["results"][0]["name"]).endswith("-science-pack")
+        and str(r["results"][0]["name"]) in science_packs
     }
     return sorted(
         ({p: claim.get(f"randputf-{p}") for p in packs}),
@@ -128,7 +130,10 @@ def classify_seed(seed: dict) -> list[dict[str, object]]:
     tech_by_id = {t["id"]: t for t in seed["technologies"]}
     recipes = seed["recipes"]
     claim = _claim_indexes(tech_order, tech_by_id)
-    chain = _science_chain(claim, recipes)
+    science_packs = {
+        str(name) for name in (seed.get("meta") or {}).get("science_packs") or ()
+    }
+    chain = _science_chain(claim, recipes, science_packs)
 
     extracted: set[tuple[str, str]] = {
         (r["type"], r["name"]) for rs in report.get("extractors", {}).values() for r in rs

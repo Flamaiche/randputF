@@ -28,7 +28,6 @@ from dataclasses import dataclass, field
 from tool.common.db import (
     SLOT_FLUID,
     SLOT_ITEM,
-    ROCKET_CHAIN,
     VALID_RECIPE_CATEGORIES,
     ItemDef,
     VanillaDB,
@@ -923,7 +922,7 @@ def _ensure_burner_fuel(
     if building is None or building.energy_type != "burner":
         return
     fuel_items = [
-        item for item in db.fuel_items() if item.name not in ROCKET_CHAIN
+        item for item in db.fuel_items() if item.name not in db.rocket_chain_items()
     ]
     if not fuel_items:
         return

@@ -222,12 +222,46 @@ end
 -- Idempotent (tuiles converties sortent de WATER_TILES). Lacs randputf exclus.
 local WATER_PURGE_CHUNKS_PER_TICK = 32
 
+local function randputf_mod_data(name)
+  local ok, mod_data = pcall(function()
+    return prototypes.mod_data
+  end)
+  if not ok or not mod_data then
+    return nil
+  end
+  local entry = mod_data[name]
+  return entry and entry.data or nil
+end
+
 -- Tuiles d'eau vanilla (lacs randputf-lac-* exclus).
 local WATER_TILES = {
   water = true, deepwater = true, ["water-shallow"] = true,
   ["water-green"] = true, ["deepwater-green"] = true, ["water-mud"] = true,
   ["water-wube"] = true,
 }
+
+local function init_water_tiles()
+  local data = randputf_mod_data("randputf-water-tiles")
+  local tiles = data and data.tiles
+  if type(tiles) ~= "table" or #tiles == 0 then
+    return
+  end
+  local accepted = {}
+  for _, name in ipairs(tiles) do
+    if type(name) == "string" and not name:match("^randputf%-lac%-") then
+      accepted[#accepted + 1] = name
+    end
+  end
+  if #accepted == 0 then
+    return
+  end
+  for name in pairs(WATER_TILES) do
+    WATER_TILES[name] = nil
+  end
+  for _, name in ipairs(accepted) do
+    WATER_TILES[name] = true
+  end
+end
 
 -- Remplace les tuiles d'eau vanilla d'un chunk par la terre dominante du
 -- chunk (les lacs randputf-lac-* sont exclus de WATER_TILES). Idempotent :
@@ -468,21 +502,42 @@ end
 -- sinon prochain de la seed (tourniquet).
 local PHANTOM_TILE = "randputf-lac-neutre"
 
--- Tuiles-par-fluide dans l'ordre de la seed ; lookup nom de tuile -> fluide.
+-- Tuiles-par-fluide dans l'ordre de la seed ; lookup nom de tuile -> fluide
+-- et fluide -> nom de tuile (les deux viennent de mod-data quand disponible).
 local LAKE_FLUID_TILES = {}
 local LAKE_FLUID_LOOKUP = {}
+local LAKE_FLUID_TILE_BY_FLUID = {}
 
--- Reconstruit les tables de correspondance des lacs depuis la seed :
--- LAKE_FLUID_TILES (fluides dans l'ordre) et LAKE_FLUID_LOOKUP (tuile ->
--- fluide). Appelé à l'initialisation du module ; nil.
+-- Reconstruit les tables de correspondance des lacs. Source canonique :
+-- mod-data `randputf-lake-tiles` (même mapping que l'exporter). Repli sur la
+-- seed pour les versions de Factorio sans mod-data (< 2.1.20).
 local function init_lake_fluids()
   LAKE_FLUID_TILES = {}
   LAKE_FLUID_LOOKUP = {}
+  LAKE_FLUID_TILE_BY_FLUID = {}
+  local data = randputf_mod_data("randputf-lake-tiles")
+  if data then
+    if data.results and data.fluids then
+      local source = data.source or PHANTOM_TILE
+      for _, tile in ipairs(data.results[source] or {}) do
+        local fluid = data.fluids[tile]
+        if fluid then
+          LAKE_FLUID_TILES[#LAKE_FLUID_TILES + 1] = fluid
+          LAKE_FLUID_LOOKUP[tile] = fluid
+          LAKE_FLUID_TILE_BY_FLUID[fluid] = tile
+        end
+      end
+      if #LAKE_FLUID_TILES > 0 then
+        return
+      end
+    end
+  end
   local lakes = (seed.map or {}).lakes or {}
   for _, lk in ipairs(lakes) do
     local tile = "randputf-lac-" .. lk.resource
     LAKE_FLUID_TILES[#LAKE_FLUID_TILES + 1] = lk.resource
     LAKE_FLUID_LOOKUP[tile] = lk.resource
+    LAKE_FLUID_TILE_BY_FLUID[lk.resource] = tile
   end
 end
 
@@ -555,7 +610,7 @@ local function fill_lake(surface, x0, y0, area)
   if not fluid then
     return
   end
-  local tile_name = "randputf-lac-" .. fluid
+  local tile_name = LAKE_FLUID_TILE_BY_FLUID[fluid] or ("randputf-lac-" .. fluid)
   local tiles = {}
   for i, p in ipairs(region) do
     tiles[i] = { position = p, name = tile_name }
@@ -713,6 +768,7 @@ local function place_patch_gisements_in_area(surface, area)
 end
 
 -- Calculé une fois au chargement module (indépendant de game).
+init_water_tiles()
 init_lake_fluids()
 
 

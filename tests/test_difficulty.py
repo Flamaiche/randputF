@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from tool.audit.difficulty import (
-    ROCKET_PARTS_TO_LAUNCH,
     compute_difficulty,
     unit_costs,
 )
@@ -100,27 +99,29 @@ def test_graphe_primaire_dag(seeds):
 
 
 def test_pas_doublon_rocket_part(seeds):
-    """rocket-part n'a AUCUNE recette générée : la recette exempte du silo est
-    réservée (data-final-fixes), jamais déployée en atelier (craft en double)."""
+    """La pièce de fusée n'a AUCUNE recette générée : la recette exempte du
+    silo est réservée (data-final-fixes), jamais déployée en atelier."""
     for s, seed in seeds.items():
+        product = seed["meta"]["rocket"]["rocket_part_product"]
         rps = [
             r["name"]
             for r in seed["recipes"]
-            if any(p.get("name") == "rocket-part" for p in r.get("results", []))
+            if any(p.get("name") == product for p in r.get("results", []))
         ]
-        assert not rps, f"seed {s}: doubler rocket-part {rps}"
+        assert not rps, f"seed {s}: doubler {product} {rps}"
 
 
 def test_ardoise_rocket_part_non_nul(seeds):
-    """Le coût unitaire de 100 rocket-part doit être non nul : la chaîne fusée
-    compte ses 3 ingrédients via leurs recettes primaires."""
+    """Le coût unitaire de la pièce de fusée doit être non nul : la chaîne
+    fusée compte ses ingrédients via leurs recettes primaires."""
     for s, seed in seeds.items():
         db = copy.deepcopy(DB)
         db.seed_value = s
         seed = generate_seed(db)
         report = compute_difficulty(seed)
-        cost = report.unit_costs["rocket-part"]
-        assert sum(cost.values()) > 0, f"seed {s}: rocket-part au coût nul"
+        product = seed["meta"]["rocket"]["rocket_part_product"]
+        cost = report.unit_costs[product]
+        assert sum(cost.values()) > 0, f"seed {s}: pièce de fusée au coût nul"
         assert sum(report.raw_totals.values()) > 0
 
 
@@ -164,8 +165,42 @@ def test_ardoise_couvre_toutes_les_techs(seeds):
         assert paid == pytest.approx(expected), f"seed {s}: coût recherche {paid} ≠ {expected}"
 
 
-def test_ardoise_rocket_parts_constant():
-    assert ROCKET_PARTS_TO_LAUNCH == 100
+def test_ardoise_chaines_moddees_sans_noms_vanilla():
+    """La chaîne de lancement vient entièrement de meta.rocket : des noms
+    inconnus (bâtiment, pièce, produit de lancement, recette réservée) sont
+    audités sans aucun repli vanilla."""
+    seed = {
+        "meta": {
+            "rocket": {
+                "launch_buildings": ["portail-spatial"],
+                "rocket_recipe": "piece-de-portail",
+                "rocket_recipe_data": {
+                    "name": "piece-de-portail",
+                    "ingredients": [{"name": "cristal", "amount": 5}],
+                    "results": [{"name": "piece-de-portail", "amount": 1}],
+                },
+                "rocket_part_product": "piece-de-portail",
+                "rocket_parts_required": 2,
+                "launch_items": ["sonde-orbitale"],
+            }
+        },
+        "pools": {"raw_resources": ["cristal", "fer"]},
+        "recipes": [
+            {
+                "name": "portail-spatial",
+                "ingredients": [{"name": "fer", "amount": 2}],
+                "results": [{"name": "portail-spatial", "amount": 1}],
+            },
+            {
+                "name": "sonde-orbitale",
+                "ingredients": [{"name": "fer", "amount": 1}],
+                "results": [{"name": "sonde-orbitale", "amount": 1}],
+            },
+        ],
+        "technologies": [],
+    }
+    report = compute_difficulty(seed)
+    assert dict(report.raw_totals) == {"cristal": 10.0, "fer": 3.0}
 
 
 def test_unit_costs_diamond_safe():

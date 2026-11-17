@@ -31,7 +31,7 @@ L'installation standard via `pip install .` inclut les assets (`mod/`, `data/`, 
 
 L'outil ne devine rien : il utilise un **dump JSON des prototypes** extrait de votre jeu par le mod compagnon `exporter/` :
 
-1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.6/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
+1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.8/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
 2. Lancez Factorio quelques secondes : le jeu génère `script-output/randputF/vanilla_dump.json` dans votre dossier utilisateur. L'export fonctionne aussi avec `randputF` actif, mais le dump est alors moddé.
 3. Déplacez ce fichier vers `data/vanilla_dump.json` dans le projet.
 4. Cet exporter est un outil de transition. Il sera intégré au mod principal ou supprimé.
@@ -81,7 +81,7 @@ L'option `--install` package le mod dans `factorio_mods/randputF_<version>/` (la
 | `tool/validator/solver.py` | Vérifie uniquement la solvabilité de la seed (absence de cycles, progressivité, complétude, `solver.py:15-23`). |
 | `mod/data.lua` | Gère uniquement les recettes, les technologies et la désactivation de l'arbre vanilla (`disable_vanilla_techs`, 241 lignes). |
 | `mod/data-updates.lua` | Ajuste les véhicules (duplication des armes §12.1), applique les dalles de lacs aux teintes pastel, uniformise les combustibles et renomme la pompe (lignes 701-708). |
-| `mod/data-final-fixes.lua` | Masquage des entités de ressources (`mod/data-final-fixes.lua:56-63` via autoplace et `size = 0`) et suppression des ressources vanilla au data-stage (lignes 78-83). |
+| `mod/data-final-fixes.lua` | Masquage des entités de ressources (`mod/data-final-fixes.lua:56-63` via autoplace et `size = 0`), suppression des ressources vanilla au data-stage (lignes 78-83) et remplacement du charbon des rochers par de la pierre (lignes 102-126). |
 | `mod/control.lua` | Exécution (runtime) : gère uniquement la purge de l'eau (`WATER_PURGE`, lignes 223-230), le remplissage des lacs par propagation (flood-fill), le placement déterministe des patchs, l'attribution du kit de départ et l'octroi des recherches gratuites (`free_researches`, ligne 728). |
 
 La génération valide une seed complète à partir de la base vanilla réelle (`data/vanilla_dump.json`, incluse dans le dépôt). La graine est définie via `--seed N` (par défaut, elle est calculée sur l'heure courante). Le fichier de configuration yaml ne contient **aucune seed** par défaut. Le mode démonstration (`parse --demo`) permet de tester le moteur sur une base synthétique allégée.

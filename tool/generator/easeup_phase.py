@@ -32,7 +32,7 @@ from __future__ import annotations
 import random
 from collections import Counter, defaultdict
 
-from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, SLOT_ITEM, VanillaDB
+from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_ITEM, VanillaDB
 from tool.common.rng import make_seeded_rng
 from tool.common.tagsets import ENDGAME_EXCLUDED
 from tool.generator.recipes import ProgressionState, _make_recipe
@@ -315,7 +315,7 @@ def _detect_heavy(
         item = db.items.get(name)
         if item is not None and item.is_science_pack:
             continue
-        if name in ROCKET_CHAIN or name in ENDGAME_EXCLUDED:
+        if name in db.rocket_chain_items() or name in ENDGAME_EXCLUDED:
             continue
         circular = _is_circular((kind, name), by_product, state)
         if not circular and depth < _config.depth_threshold:

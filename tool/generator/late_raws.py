@@ -111,16 +111,19 @@ def _claim_indexes(tech_order: list[str], tech_by_id: dict) -> dict[str, int]:
     return claim
 
 
-def _science_chain(claim: dict[str, int], recipes: list[dict]) -> list[str]:
+def _science_chain(
+    claim: dict[str, int], recipes: list[dict], science_packs=None
+) -> list[str]:
     """Ordonne les packs de science par déblocage.
 
-    ``claim`` associe une recette à son index de tech et ``recipes`` fournit les recettes du seed. Retourne la liste des noms de packs triés par index de déblocage puis alphabétiquement.
+    ``claim`` associe une recette à son index de tech, ``recipes`` fournit les recettes du seed et ``science_packs`` les noms déclarés par le dump. Retourne la liste des noms de packs triés par index de déblocage puis alphabétiquement ; sans packs déclarés, la chaîne est vide.
     """
+    allowed = {str(name) for name in (science_packs or ())}
     packs = {
         r["results"][0]["name"]
         for r in recipes
         if r.get("results") and r["results"][0].get("type") == SLOT_ITEM
-        and str(r["results"][0]["name"]).endswith("-science-pack")
+        and str(r["results"][0]["name"]) in allowed
     }
     return sorted(
         packs,
@@ -284,7 +287,7 @@ def plan_from_seed(seed: dict, cfg: LateRawsConfig) -> LateRawsPlan:
     tech_by_id = {t["id"]: t for t in seed["technologies"]}
     recipes = seed["recipes"]
     claim = _claim_indexes(tech_order, tech_by_id)
-    chain = _science_chain(claim, recipes)
+    chain = _science_chain(claim, recipes, (seed.get("meta") or {}).get("science_packs"))
     tiers = [_tech_tier(tech_by_id[t], chain) for t in tech_order]
 
     report = seed.get("extractor_timing") or {}

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import random
 
-from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_ITEM, ItemDef
+from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, SLOT_ITEM, ItemDef
 from tool.common.demo import build_demo_db
-from tool.generator.endgame_phase import ROCKET_CHAIN, ensure_rocket_chain
+from tool.generator.endgame_phase import ensure_rocket_chain
 from tool.generator.map_patches import Patch
 from tool.generator.starter_chain import build_starter_chain
 

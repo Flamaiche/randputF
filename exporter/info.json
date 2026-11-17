@@ -1,6 +1,6 @@
 {
   "name": "randputf-exporter",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "title": "randputF Exporter",
   "author": "Flamaiche",
   "description": "Mod compagnon de randputF : exporte les prototypes en JSON vers script-output pour le tool externe Python — inventaire A→Z de toutes les tables de prototypes, items, fluides, entités (avec règles de placement sur tuiles), tuiles (couches + fluide), recettes, technologies (avec enabled/hidden). Exporte aussi depuis une partie où randputF est actif : le dump contient alors le contenu randomisé et les prototypes mutés.",

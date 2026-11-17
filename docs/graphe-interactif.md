@@ -40,7 +40,7 @@ dépend de la version de Graphviz.
    - sinon l'icône **déclarée dans les prototypes installés** (ex.
      `raw-fish`→`fish.png`, `stone-wall`→`wall.png` ; lu depuis les `.lua`
      prototypes) ;
-   - sinon fût vide pour les `*-barrel`.
+   - sinon aucune icône (le nœud reste affiché sans image).
 
    Les variantes de stades (`-1/-2/-3`) et les icônes `technology/` sont
    exclues.

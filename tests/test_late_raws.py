@@ -317,3 +317,19 @@ def test_plan_exporte_remeasure_sur_la_seed_finale():
             for (kind, name) in recomputed.gated
         }, f"seed {seed_value}: jalons exportés != jalons remesurés"
     assert exported_seen >= 1, "aucune seed gatée exportée (test sans objet)"
+
+def test_science_chain_ne_devine_pas_les_packs_par_suffixe():
+    """Sans packs déclarés par le dump, aucun nom n'est supposé science pack."""
+    from tool.generator.late_raws import _science_chain
+
+    claim = {"randputf-golden-research": 2}
+    recipes = [
+        {
+            "name": "randputf-golden-research",
+            "results": [{"type": SLOT_ITEM, "name": "golden-research"}],
+        }
+    ]
+    assert _science_chain(claim, recipes, ["golden-research"]) == [
+        "golden-research"
+    ]
+    assert _science_chain(claim, recipes, []) == []

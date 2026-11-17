@@ -78,6 +78,8 @@ def _raw_resources(dump: dict) -> list[str]:
         pumped = entry.get("pumped_fluid")
         if pumped:
             raw.add(str(pumped))
+        for fluid in entry.get("pumped_fluids") or ():
+            raw.add(str(fluid))
     return sorted(raw)
 
 

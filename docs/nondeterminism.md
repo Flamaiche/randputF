@@ -156,8 +156,8 @@ et chaque seed = une combinaison unique de choix.
 - **Impact** : choisit quel bâtiment fabrique une recette d'un type donné
 
 ### 4e. Gun pour arme montée
-- **Fichier** : `tool/generator/recursive_phase.py:317-329` (`_assign_vehicle_weapons`, pool `VEHICLE_GUNS` à `:247`)
-- **Code** : `drawn = [rng.choice(pool) for _ in range(n)]` (`:323`)
+- **Fichier** : `tool/generator/recursive_phase.py:320-337` (`_assign_vehicle_weapons`, exclues `db.vehicle_guns` à `:252`)
+- **Code** : `drawn = [rng.choice(pool) for _ in range(n)]` (`:331`)
 - **Pool** : items `is_handheld_gun` = **6**
 - **Impact** : arme assignée aux véhicules (tank, spidertron, etc.)
 

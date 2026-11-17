@@ -250,3 +250,54 @@ def test_launch_products_come_from_dump() -> None:
     assert space["crafts"] == 1
     assert space["produced"] == 250
     assert analysis["item_stats"]["rocket-part"]["consumed"] == 100
+
+
+def test_lancement_reconnait_le_batiment_par_ses_faits_pas_son_type() -> None:
+    """Un bâtiment de lancement moddé (`portail-spatial`) est reconnu par
+    ``rocket_parts_required``, sans nom ni type vanilla en dur."""
+    seed = {
+        "meta": {"seed": "test"},
+        "pools": {"raw_resources": [], "item_resources": [], "fluid_resources": []},
+        "fluids": {},
+        "items": {"capsule": {"type": "item"}},
+        "entities": {
+            "portail-spatial": {
+                "type": "assembling-machine",
+                "rocket_parts_required": 7,
+                "rocket_launch_products": [
+                    {"name": "pack-etoile", "amount": 3}
+                ],
+            },
+            "atelier": {"type": "assembling-machine"},
+        },
+        "recipes": [
+            {
+                "name": "piece-fusee",
+                "crafted_in": "portail-spatial",
+                "ingredients": [],
+                "results": [{"name": "piece-fusee", "amount": 1}],
+            },
+            {
+                "name": "capsule",
+                "crafted_in": "atelier",
+                "ingredients": [],
+                "results": [{"name": "capsule", "amount": 1}],
+            },
+        ],
+        "technologies": [
+            {
+                "id": "etoile",
+                "prerequisites": [],
+                "research_trigger": {
+                    "type": "send-item-to-orbit",
+                    "item": "capsule",
+                },
+            }
+        ],
+        "progression_order": ["etoile"],
+    }
+    analysis = analyze_playthrough(seed)
+    star = analysis["item_stats"]["pack-etoile"]
+    assert star["crafts"] == 1
+    assert star["produced"] == 3
+    assert analysis["item_stats"]["piece-fusee"]["consumed"] == 7

@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tool.common.db import BuildingDef, FluidDef, ItemDef, RecipeRef, VanillaDB, has_hidden_recipe, ENVIRONMENTAL_ITEMS
-from tool.common.tagsets import RAIL_TYPES, VIRTUAL_ITEM_TYPES
+from tool.common.tagsets import RAIL_TYPES, VEHICLE_GUNS, VIRTUAL_ITEM_TYPES
 
 
 JUNK_PREFIXES = ("parameter-",)
@@ -146,13 +146,58 @@ def _resolve_pumped_fluid(entry: dict, layer_fluids: dict[str, set[str]]) -> str
     return None
 
 
+_LAKE_TILES_DATA_TYPE = "randputf.lake_tiles"
+
+
+def _lake_tile_fluids(dump: dict) -> tuple[str | None, dict[str, str]]:
+    """Mapping canonique expose par ``mod-data`` : tuile de lac -> fluide.
+
+    Retourne ``(source, {tuile: fluide})``. La source est la tuile fantome
+    remplacee au runtime ; les tuiles de ``results[source]`` sont les seules
+    ressources reelles (le fluide fantome n'y figure pas). Absent des dumps
+    vanilla : les appelants gardent alors leur repli par les faits des tuiles.
+    """
+    mod_data = dump.get("mod_data")
+    if not isinstance(mod_data, dict):
+        return None, {}
+    for entry in mod_data.values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("data_type") != _LAKE_TILES_DATA_TYPE:
+            continue
+        data = entry.get("data")
+        if not isinstance(data, dict):
+            continue
+        source = data.get("source")
+        results = data.get("results")
+        fluids = data.get("fluids")
+        if (
+            not isinstance(source, str)
+            or not isinstance(results, dict)
+            or not isinstance(fluids, dict)
+        ):
+            continue
+        tiles = results.get(source)
+        if not isinstance(tiles, list):
+            continue
+        mapping = {
+            str(tile): str(fluids[tile])
+            for tile in tiles
+            if isinstance(tile, str) and isinstance(fluids.get(tile), str)
+        }
+        return source, mapping
+    return None, {}
+
+
 def inject_pumped_fluids(dump: dict) -> dict:
-    """Resout et pose ``pumped_fluid`` sur chaque entite du dump, en place.
+    """Resout et pose ``pumped_fluid``/``pumped_fluids`` sur chaque entite.
 
     Le dump 0.1.5+ n'embarque plus de ``pumped_fluid`` (fin du litteral
     historique de l'exporter) : la valeur est RECALCULEE depuis les filtres
-    et les tuiles. Idempotent : rejouer sur un dump deja resolu redonne les
-    memes valeurs."""
+    et les tuiles. Un dump modde peut en plus porter ``mod_data``
+    (``randputf.lake_tiles``) : le mapping tuile -> fluide y est canonique et
+    remplace la deduction ambigue quand plusieurs lacs se partagent une couche.
+    Idempotent : rejouer sur un dump deja resolu redonne les memes valeurs."""
     tiles = dump.get("tiles")
     if not isinstance(tiles, dict):
         tiles = {}
@@ -165,6 +210,14 @@ def inject_pumped_fluids(dump: dict) -> dict:
             continue
         for layer in tile.get("collision_layers") or []:
             layer_fluids.setdefault(str(layer), set()).add(str(fluid))
+    source, lake_fluids = _lake_tile_fluids(dump)
+    source_layers: set[str] = set()
+    if source and isinstance(tiles.get(source), dict):
+        source_layers = {
+            str(layer)
+            for layer in (tiles[source].get("collision_layers") or [])
+        }
+    lake_fluid_names = sorted(set(lake_fluids.values()))
     entities = dump.get("entities")
     if not isinstance(entities, dict):
         return dump
@@ -172,10 +225,31 @@ def inject_pumped_fluids(dump: dict) -> dict:
         if not isinstance(entry, dict):
             continue
         resolved = _resolve_pumped_fluid(entry, layer_fluids)
-        if resolved:
-            entry["pumped_fluid"] = resolved
+        required_layers: set[str] = set()
+        for rule in entry.get("tile_buildability_rules") or []:
+            if isinstance(rule, dict):
+                required_layers.update(
+                    str(layer) for layer in (rule.get("required_tiles") or [])
+                )
+        uses_lake_source = bool(
+            lake_fluid_names and source_layers and required_layers & source_layers
+        )
+        if uses_lake_source and (
+            resolved is None or resolved in lake_fluid_names
+        ):
+            entry["pumped_fluids"] = lake_fluid_names
+            if resolved:
+                entry["pumped_fluid"] = resolved
+            elif len(lake_fluid_names) == 1:
+                entry["pumped_fluid"] = lake_fluid_names[0]
+            else:
+                entry.pop("pumped_fluid", None)
         else:
-            entry.pop("pumped_fluid", None)
+            entry.pop("pumped_fluids", None)
+            if resolved:
+                entry["pumped_fluid"] = resolved
+            else:
+                entry.pop("pumped_fluid", None)
     return dump
 
 
@@ -213,6 +287,41 @@ def science_pack_names(dump: dict) -> set[str]:
     return names
 
 
+def science_pack_order(dump: dict, names: set[str] | frozenset[str]) -> tuple[str, ...]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for entry in (dump.get("entities") or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        for name in entry.get("lab_inputs") or []:
+            name = str(name)
+            if name in names and name not in seen:
+                ordered.append(name)
+                seen.add(name)
+    ordered.extend(sorted(set(names) - seen))
+    return tuple(ordered)
+
+
+def _recipe_facts(name: str, recipe: dict) -> dict:
+    """Réduit une recette du dump aux faits consommés par l'audit.
+
+    Retourne ``{name, ingredients, results}`` avec des listes ``name``/``amount``
+    normalisées, sans aucun nom de produit inventé.
+    """
+    def rows(entries) -> list[dict]:
+        return [
+            {"name": str(entry["name"]), "amount": entry.get("amount", 1)}
+            for entry in entries or ()
+            if isinstance(entry, dict) and entry.get("name")
+        ]
+
+    return {
+        "name": name,
+        "ingredients": rows(recipe.get("ingredients")),
+        "results": rows(recipe.get("products") or recipe.get("results")),
+    }
+
+
 def rocket_chain_from_dump(dump: dict) -> dict:
     """Chaîne de lancement DÉRIVÉE des faits du dump (aucun nom en dur).
 
@@ -226,9 +335,9 @@ def rocket_chain_from_dump(dump: dict) -> dict:
     - les produits de lancement (science spatiale et équivalents moddés)
       viennent des ``rocket_launch_products`` des items et entités.
 
-    Retourne ``{launch_buildings, rocket_recipes, victory_items,
-    launch_products}`` — tout dérivé, donc correct pour tout mod qui
-    respecte ces faits, quel que soit le nom de ses items."""
+    Retourne ``{launch_buildings, rocket_recipes, rocket_recipe_data,
+    victory_items, launch_products}`` — tout dérivé, donc correct pour tout
+    mod qui respecte ces faits, quel que soit le nom de ses items."""
     entities = dump.get("entities") or {}
     recipes = dump.get("recipes") or {}
     launch_buildings = sorted(
@@ -254,19 +363,53 @@ def rocket_chain_from_dump(dump: dict) -> dict:
             if isinstance(ing, dict) and ing.get("name"):
                 victory_items.add(str(ing["name"]))
     launch_products: set[str] = set()
+    launch_items: set[str] = set()
     sections = [entities, dump.get("items") or {}]
-    for section in sections:
-        for entry in section.values():
-            if not isinstance(entry, dict):
-                continue
-            for product in entry.get("rocket_launch_products") or []:
-                if isinstance(product, dict) and product.get("name"):
-                    launch_products.add(str(product["name"]))
+    for name, entry in [(name, entry) for section in sections for name, entry in section.items()]:
+        if not isinstance(entry, dict):
+            continue
+        products = entry.get("rocket_launch_products") or []
+        if products:
+            launch_items.add(str(name))
+        for product in products:
+            if isinstance(product, dict) and product.get("name"):
+                launch_products.add(str(product["name"]))
+    ordered_recipes = sorted(rocket_recipes)
+    rocket_recipe = ordered_recipes[0] if ordered_recipes else ""
+    recipe = recipes.get(rocket_recipe) if rocket_recipe else None
+    rocket_part_product = ""
+    if isinstance(recipe, dict):
+        for result in recipe.get("products") or recipe.get("results") or []:
+            if isinstance(result, dict) and result.get("name"):
+                rocket_part_product = str(result["name"])
+                break
+    parts_required = [
+        int(entry["rocket_parts_required"])
+        for entry in entities.values()
+        if isinstance(entry, dict) and entry.get("rocket_parts_required")
+    ]
     return {
         "launch_buildings": launch_buildings,
-        "rocket_recipes": sorted(rocket_recipes),
+        "rocket_recipes": ordered_recipes,
+        "rocket_recipe": rocket_recipe,
+        "rocket_recipe_data": _recipe_facts(rocket_recipe, recipe) if isinstance(recipe, dict) else {},
+        "rocket_part_product": rocket_part_product,
+        "rocket_parts_required": max(parts_required) if parts_required else 0,
         "victory_items": sorted(victory_items),
         "launch_products": sorted(launch_products),
+        "launch_items": sorted(launch_items),
+    }
+
+
+def rocket_meta_from_chain(chain: dict) -> dict:
+    return {
+        "launch_buildings": list(chain.get("launch_buildings") or ()),
+        "rocket_recipe": chain.get("rocket_recipe") or "",
+        "rocket_recipe_data": dict(chain.get("rocket_recipe_data") or {}),
+        "rocket_part_product": chain.get("rocket_part_product") or "",
+        "rocket_parts_required": int(chain.get("rocket_parts_required") or 0),
+        "launch_items": list(chain.get("launch_items") or ()),
+        "victory_items": list(chain.get("victory_items") or ()),
     }
 
 
@@ -284,7 +427,16 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
     db.canonical_recipes = canonical_recipe_map(recipes)
     inject_pumped_fluids(dump)
     science = science_pack_names(dump)
+    db.science_packs = frozenset(science)
+    db.science_pack_order = science_pack_order(dump, science)
     db.rocket_chain = rocket_chain_from_dump(dump)
+    mounted_guns = {
+        gun
+        for entity in (dump.get("entities") or {}).values()
+        for gun in (entity.get("guns") or ())
+    }
+    mounted_guns.update(VEHICLE_GUNS)
+    db.vehicle_guns = frozenset(mounted_guns)
 
     for name, entry in (dump.get("items") or {}).items():
         if _is_stacked_randputf(name):
@@ -330,6 +482,7 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             is_virtual_item=_is_virtual_item(name, itype, entry.get("place_result")),
             is_module=itype == "module",
             is_capsule_throwable=itype == "capsule",
+            is_mounted_gun=name in mounted_guns,
         )
 
     for name, entry in (dump.get("fluids") or {}).items():
@@ -497,6 +650,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     supply_area = e.get("supply_area_distance")
     pumping_speed = e.get("pumping_speed")
     pumped_fluid = e.get("pumped_fluid")
+    pumped_fluids = frozenset(str(f) for f in (e.get("pumped_fluids") or ()))
+    if not pumped_fluids and pumped_fluid:
+        pumped_fluids = frozenset({str(pumped_fluid)})
     # Capacité posée par l'extracteur : machine à auto-sélection de recette
     # (interface sans sélecteur). Jamais recalculée ici.
     auto_select = bool(e.get("auto_select"))
@@ -539,6 +695,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     is_extractor = bool(
         resource_categories
         or pumped_fluid
+        or pumped_fluids
         or (pumping_speed is not None and fluid_in == 0 and fluid_out > 0)
         or is_void_fluid_source
     )
@@ -564,7 +721,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         not is_accumulator and (max_power > 0 or energy_prod > 0)
     )
 
-    if pumped_fluid:
+    if pumped_fluid or pumped_fluids:
         medium = "lake"
     elif "basic-fluid" in resource_categories:
         medium = "deposit"
@@ -758,7 +915,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         is_radar=is_radar,
         has_crafting=bool(craft_categories),
         has_mining=bool(resource_categories),
-        has_pumping=bool(pumped_fluid) or (pumping_speed is not None and fluid_in == 0 and fluid_out > 0),
+        has_pumping=bool(pumped_fluid or pumped_fluids) or (pumping_speed is not None and fluid_in == 0 and fluid_out > 0),
         has_fluid_input=fluid_in > 0,
         has_fluid_output=fluid_out > 0,
         has_fuel=energy_type == "burner",
@@ -771,6 +928,7 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         energy_type=energy_type,
         fuel_categories=tuple(energy_src.get("fuel_categories") or ()),
         pumped_fluid=pumped_fluid,
+        pumped_fluids=pumped_fluids,
         item_input_slots=int(e.get("ingredient_count") or 0),
         fluid_inputs=fluid_in,
         fluid_outputs=fluid_out,

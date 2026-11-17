@@ -16,12 +16,12 @@ Tous déterminés **par capacités intrinsèques** dans `tag_parse_entity`.
 | `is_crafter` | **Atelier** : sortie item/fluide, transforme des entrées en produit de craft (fours, assembling-machines, usine chimique, le personnage…) | catégories de craft, `rocket_parts_required`, `target_temperature` | `recursive_phase` (catégorie `transformer`), `starter_chain`, `recipes`, `building_fluids` |
 | `is_generator` | Producteur d'**énergie** (électricité OU chaleur : turbine, steam-engine, solar-panel, réacteur, heat-exchanger) | `max_power_output` > 0, `production` > 0, sortie chaleur ; jamais un `accumulator` | `recursive_phase` (catégorie `generator`), `building_fluids` |
 | `is_distribution` | Infrastructure de **distribution** (`supply_area_distance` : pylônes, beacon) | `supply_area_distance` non nul | `recursive_phase`, `electricity` (pylônes via `is_power_pole`) |
-| `is_extractor` | **Extrait** une ressource de l'environnement → item/fluide (minerais, offshore-pump, pumpjack) | `resource_categories`, `pumped_fluid`, pompage sans entrée | `recipes` (`_is_building_item_recipe`), `starter_chain` (`_extractors_for_resource`), `extractors_for_medium`, `recursive_phase` (catégorie `extractor`), audit |
+| `is_extractor` | **Extrait** une ressource de l'environnement → item/fluide (minerais, offshore-pump, pumpjack) | `resource_categories`, `pumped_fluid`/`pumped_fluids`, pompage sans entrée | `recipes` (`_is_building_item_recipe`), `starter_chain` (`_extractors_for_resource`), `extractors_for_medium`, `recursive_phase` (catégorie `extractor`), audit |
 | `is_other` | Aucune capacité reconnue (backup, jamais perdu) | = !(tous les rôles ci-dessus) | `summarize_db`, audit (invariant de partition) — non consommé par le générateur |
 
 `PRODUCING_TAGS = ("is_research", "is_crafter", "is_generator", "is_extractor")` (liste partagée dans `db.py`) regroupe les rôles ayant une production propre. Les « distribution » et « other » ne produisent rien.
 
-Exemples de comptage sur `data/vanilla_dump.json` : `is_research` 1, `is_crafter` 13, `is_generator` 6 (5 anciens + heat-exchanger), `is_distribution` 5, `is_extractor` 5 (4 anciens + character), `is_other` 509 (total 537 bâtiments, somme 539 = 537 + 2 double-tags).
+Exemples de comptage sur `data/vanilla_dump.json` (schéma 2) : `is_research` 1, `is_crafter` 13, `is_generator` 6 (5 anciens + heat-exchanger), `is_distribution` 5, `is_extractor` 5 (4 anciens + character), `is_other` 513 (total 541 bâtiments, somme 543 = 541 + 2 double-tags).
 
 ### 1.1. Raffinements de rôle (électricité, extraction, distribution)
 
@@ -58,7 +58,7 @@ Les transports du kit de départ sont sélectionnés **par tag** : `starter_chai
 
 ## 3. Train & véhicules (raffinement des `is_other`)
 
-Tags **usage en vue** : le pool d'armement des véhicules (§12.1) et la constante de test `ARMED_VEHICLES` restent pilotés par config tant que `is_mounted_gun` n'est pas exportable (le dump ne distingue pas une arme montée d'une arme de poing). Ces tags alimenteront ce pool dès que l'exporter exposera « can be used by hand » (gap IDEES).
+Tags **usage en vue** : le pool d'armement des véhicules (§12.1) reste piloté par config, mais la distinction arme montée / arme de poing vient désormais de `entity.guns` dans le dump (`is_mounted_gun`). La constante de test `ARMED_VEHICLES` subsiste comme assertion nominale.
 
 | Tag | Déterminé par |
 |-----|---------------|
@@ -99,13 +99,13 @@ boiler ET heat-exchanger partagent le type `'boiler'` dans le dump : on les dist
 
 ## 6. Extraction (raffinement d'`is_extractor`)
 
-`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium lac — le `pumped_fluid` n'est plus porté par le dump (0.1.5) : il est résolu côté Python par `inject_pumped_fluids` (fluidbox de sortie des sources pures, sinon chaîne de tuiles ; `docs/vanilladb.md` §6.5).
+`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium lac — le `pumped_fluid` n'est plus porté par le dump (0.1.5) : il est résolu côté Python par `inject_pumped_fluids` (fluidbox de sortie des sources pures, sinon chaîne de tuiles, puis `mod-data` pour les lacs multiples ; `docs/vanilladb.md` §6.5).
 
 | Tag | Déterminé par | Consommé par |
 |-----|---------------|--------------|
 | `is_mining_drill` | `type == 'mining-drill'` (minerai solide via médium ground) | via `is_extractor` + `medium` (`extractors_for_medium`), replay (vérif), audit |
 | `is_pumpjack` | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | via `is_extractor` + `fluid_outputs`/`resource_categories` (`starter_chain._extractors_for_resource`), replay (vérif), audit |
-| `is_offshore_pump` | `is_lake_extractor` (médium lac) | via `pumped_fluid` (`starter_chain`, lacs) ; `mod/control.lua` (`on_built_entity` offshore-pump, runtime) ; replay (vérif), audit |
+| `is_offshore_pump` | `is_lake_extractor` (médium lac) | via `pumped_fluid`/`pumped_fluids` (`starter_chain`, lacs) ; `mod/control.lua` (`on_built_entity` offshore-pump, runtime) ; replay (vérif), audit |
 | `is_well_pump` | `type == 'pump'` | raffinage **usage en vue** |
 
 ## 7. Sortie spéciale (orthogonale aux rôles)
@@ -204,7 +204,8 @@ Tags sur `ItemDef`, décidés par type brut du dump (`item_type`), sous-groupe e
 | `is_armor` | `item_type == 'armor'` | documenté, non consommé (usage en vue) |
 | `is_tool` | `item_type == 'tool'` OU fait-pack de science (`science_pack_names`) | `beltable_items` — l'exclut du transport, des pools et des patchs ; audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
 | `is_science_pack` | FAITS : `science_pack_names()` = coûts `unit.ingredients` des techs ∪ `lab_inputs` des labs (le `subgroup` « science-pack » n'est plus consulté — `space-science-pack` n'est dans aucun coût de tech, seulement dans les labs) | `starter_chain`, `map_patches` (exclusion), `recursive_phase`, `easeup_phase`, validator, audit, tests |
-| `is_handheld_gun` (propriété) | `is_gun` ET hors `VEHICLE_GUNS` (armes montées) | `VEHICLE_GUNS` (soft list, gap `is_mounted_gun`) |
+| `is_mounted_gun` | arme listée dans `entity.guns` d'une entité du dump | `vehicle_guns` (dump) ∪ `VEHICLE_GUNS` (repli) |
+| `is_handheld_gun` (propriété) | `is_gun` ET non `is_mounted_gun` | pools d'armes de poing, `starter_chain`, `tech_tree` |
 | `is_stackable` (propriété) | `stack_size > 1` du dump ; sinon déduit du type (`NON_STACKABLE_ITEM_TYPES`) | clamp des produits/ingrédients (§9.6) |
 
 Invariant vérifié par l'audit (`tool/audit/tags.py`) : un item environnemental ou virtuel n'est produit par AUCUNE recette (cycle/erreur Factorio).
@@ -225,9 +226,9 @@ Depuis le chantier D3, les listes figées sont centralisées dans `tool/common/t
 
 - `ENVIRONMENTAL_ITEMS` — items récoltés à la main ; **source de vérité** du tag `is_environmental` (`_is_environmental_item`) et consommée en plus par validator/solver/starters. Le tag est consommé par les générateurs ; la constante reste pour lecture directe.
 - `NON_STACKABLE_ITEM_TYPES` — types d'items non-empilables (fallback quand le dump n'emporte pas `stack_size`) : conservateur, fondé sur des TYPES.
-- `VEHICLE_GUNS` — armes MONTÉES uniquement ; `ItemDef.is_handheld_gun` en dépend. ⚠️ Aucune détection par capacités possible (`tank-machine-gun` et `pistol` sont indistinguables dans le dump) : cette soft list restera tant que l'exporter n'expose pas « can be used by hand » (`is_mounted_gun` ⏳).
+- `VEHICLE_GUNS` — armes MONTÉES historiques, désormais dérivées de `entity.guns` (`VanillaDB.vehicle_guns`). La constante reste en union comme repli des noms vanilla, utile quand un dump moddé remplace les liens (`is_mounted_gun` exporté depuis 0.1.8).
 - `ROCKET_CHAIN` — chaîne fusée (choix de conception, pas une donnée moteur).
-- `ARMED_VEHICLES` (tests) — constante de TEST nominale (tank/spidertron/artillery-wagon), définie dans `tests/test_pipeline_invariants.py` (pas dans `tagsets.py`) : subsiste comme assertion, remplacée par `is_vehicle` dès `is_mounted_gun`.
+- `ARMED_VEHICLES` (tests) — constante de TEST nominale (tank/spidertron/artillery-wagon), définie dans `tests/test_pipeline_invariants.py` (pas dans `tagsets.py`) : subsiste comme assertion des véhicules armés.
 - Autres ensembles regroupés (`VALID_RECIPE_CATEGORIES`, `RAIL_TYPES`, `VIRTUAL_ITEM_TYPES`, `FLUID_RECIPE_CATEGORIES`, `STARTER_TRANSFORMERS`, `EXCLUDED_BUILDINGS`, `ENDGAME_EXCLUDED`) — ex-constantes privées migrées sans changement de valeur.
 
 Migrés / supprimés : `POWER_POLES` (→ `is_power_pole`), `TOOL_LIKE_ITEMS` (→ `is_virtual_item`, constante supprimée), `transport_patterns` du kit de départ (→ §2, champ `StarterConfig` supprimé).

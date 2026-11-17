@@ -9,11 +9,9 @@ from __future__ import annotations
 import random
 
 from tool.common.db import (
-    ROCKET_CHAIN,
     SLOT_FLUID,
     SLOT_ITEM,
     VanillaDB,
-    VEHICLE_GUNS,
     is_fixed_fluid_crafter,
 )
 from tool.generator.heat import find_heat_roles
@@ -61,10 +59,6 @@ _raw_resources: frozenset[str] = frozenset()
 # qu'à cette assignation (les armes montées n'ont ni recette ni unlock).
 _vehicle_armament: dict[str, list[str]] = {}
 
-# Chaîne fusée (§14) : unlockée par sa propre tech de fin d'arbre, jamais par
-# la récursion (sinon doublon d'unlock avec randputf-endgame-rocket).
-_ROCKET_CHAIN_ITEM_NAMES = frozenset(ROCKET_CHAIN)
-
 # Balayage de couverture complète (§9.6) : items hors catégories fonctionnelles
 # (belts, inserters, chests, combinators...) → recette randputf-* + tech.
 # Exclus : chaîne fusée (endgame §14, y compris rocket-part, recette exempte du
@@ -73,8 +67,9 @@ _ROCKET_CHAIN_ITEM_NAMES = frozenset(ROCKET_CHAIN)
 
 def _rocket_chain_sweep_excluded(db: VanillaDB) -> frozenset[str]:
     """Items à exclure du balayage : chaîne fusée + silo retrouvé par tag."""
-    return _ROCKET_CHAIN_ITEM_NAMES | {
-        "rocket-part",
+    rocket_part = (db.rocket_chain or {}).get("rocket_part_product")
+    return db.rocket_chain_items() | {
+        *(name for name in (rocket_part,) if name),
         *(i.name for i in db.items_for_building_tag("is_rocket_parts_crafter")),
     }
 
@@ -252,9 +247,9 @@ def _coverage_items(db: VanillaDB, state: ProgressionState) -> list:
 
     Un item est « couvert » dès qu'une recette produit son nom (même déjà
     obtenable en patch). Exclus : chaîne fusée (endgame), armes montées
-    (VEHICLE_GUNS, jamais craftées — la seed les clone à la volée, §12.1),
-    ressources environnementales et outils."""
-    excluded_guns = VEHICLE_GUNS
+    (``entity.guns`` du dump, jamais craftées — la seed les clone à la volée,
+    §12.1), ressources environnementales et outils."""
+    excluded_guns = db.vehicle_guns
     excluded_rocket = _rocket_chain_sweep_excluded(db)
     return [
         i

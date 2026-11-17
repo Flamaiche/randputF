@@ -21,8 +21,8 @@ local pools = seed.pools or {}
 local ITEM_LIKE_TYPES = {
   "item", "gun", "tool", "capsule", "ammo", "armor",
   "repair-tool", "mining-tool", "module", "item-with-entity-data",
-  "selection-tool", "blueprint", "copy-paste-tool",
-  "deconstruction-item", "upgrade-item", "rail-planner",
+  "selection-tool", "blueprint", "blueprint-book", "copy-paste-tool",
+  "deconstruction-item", "upgrade-item", "rail-planner", "spidertron-remote",
 }
 
 -- Cherche un prototype item-like par nom dans data.raw (item d'abord, puis

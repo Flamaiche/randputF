@@ -22,7 +22,11 @@ from pathlib import Path
 
 from tool.audit.difficulty import difficulty_series
 from tool.exporters.html_ui import th as _th
-from tool.parsers.vanilla import load_db_from_dump
+from tool.parsers.vanilla import (
+    load_db_from_dump,
+    rocket_chain_from_dump,
+    rocket_meta_from_chain,
+)
 
 # Gisements bruts de vanilla (l'outil ne pose aucun patch ici : ce sont les
 # ressources extraites du sol du jeu de base ; les fluides d'extraction —
@@ -74,6 +78,7 @@ def vanilla_seed_from_dump(dump: dict) -> dict | None:
     db = load_db_from_dump(dump)
     raw = sorted(db.raw_resources(set(VANILLA_ORES)))
     return {
+        "meta": {"rocket": rocket_meta_from_chain(rocket_chain_from_dump(dump))},
         "technologies": technologies,
         "recipes": recipes,
         "progression_order": [],

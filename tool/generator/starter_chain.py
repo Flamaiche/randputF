@@ -371,7 +371,10 @@ def _extractors_for_resource(db: VanillaDB, kind: str, name: str, *, is_lake: bo
         if is_lake:
             # Un LAC est une TUILE fluide (copie de la tuile eau, §7.5) : la
             # pompe offshore extrait sans électricité ; le pumpjack n'y a rien.
-            water_pumps = [b for b in fluid_extractors if b.pumped_fluid == "water"]
+            water_pumps = [
+                b for b in fluid_extractors
+                if b.pumped_fluid == "water" or "water" in b.pumped_fluids
+            ]
             return water_pumps or [b for b in fluid_extractors if b.energy_type in ("void", "burner")]
         # Un PATCH fluide est une entité resource sur la TERRE (§6.5, §7.5) :
         # les pompes offshore ne minent que les tuiles d'eau — seul un drill de

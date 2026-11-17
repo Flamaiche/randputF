@@ -242,6 +242,15 @@ def _placement_summary(rules: Any) -> str:
     return "<br>".join(parts) if parts else '<span class="muted">—</span>'
 
 
+def _pumped_summary(entry: dict) -> str:
+    """Fluide pompé unique ou ensemble canonique (mod-data)."""
+    pumped = entry.get("pumped_fluid")
+    fluids = sorted(str(f) for f in (entry.get("pumped_fluids") or ()))
+    if fluids:
+        return ", ".join(fluids)
+    return str(pumped) if pumped else "—"
+
+
 def _entities_fragment(entities: dict) -> str:
     """Construit le tableau des entités du dump.
 
@@ -261,7 +270,7 @@ def _entities_fragment(entities: dict) -> str:
             f"<td>{_fluidbox_summary(e.get('fluidboxes'))}</td>"
             f"<td>{_esc(e.get('energy_source', {}).get('type') if isinstance(e.get('energy_source'), dict) else '')}</td>"
             f"<td>{_placement_summary(e.get('tile_buildability_rules'))}</td>"
-            f"<td class='mono'>{_esc(e.get('pumped_fluid') or '—')}</td>"
+            f"<td class='mono'>{_esc(_pumped_summary(e))}</td>"
             "</tr>"
         )
     head = (

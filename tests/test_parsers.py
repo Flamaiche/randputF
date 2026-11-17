@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from tool.common.db import VanillaDB
+from tool.exporters.mod_seed import build_vanilla_seed
 from tool.parsers.vanilla import (
     equivalent_functional_type,
     inject_pumped_fluids,
@@ -86,6 +87,81 @@ def test_pumped_fluid_filtre_fluidbox_prioritaire():
     assert dump["entities"]["custom-pump"]["pumped_fluid"] == "steam"
 
 
+def _lake_mod_data_dump() -> dict:
+    dump = _dump_with_tiles(
+        {
+            "randputf-lac-neutre": {
+                "collision_layers": ["water_tile"],
+                "fluid": "randputf-neutre",
+            },
+            "randputf-lac-water": {
+                "collision_layers": ["water_tile"],
+                "fluid": "water",
+            },
+            "randputf-lac-crude-oil": {
+                "collision_layers": ["water_tile"],
+                "fluid": "crude-oil",
+            },
+        },
+        {
+            "offshore-pump": {
+                "type": "offshore-pump",
+                "tile_buildability_rules": [
+                    {"required_tiles": ["water_tile"], "colliding_tiles": []}
+                ],
+            }
+        },
+    )
+    dump["mod_data"] = {
+        "randputf-lake-tiles": {
+            "name": "randputf-lake-tiles",
+            "data_type": "randputf.lake_tiles",
+            "data": {
+                "source": "randputf-lac-neutre",
+                "phantom_fluid": "randputf-neutre",
+                "results": {
+                    "randputf-lac-neutre": [
+                        "randputf-lac-water",
+                        "randputf-lac-crude-oil",
+                    ]
+                },
+                "fluids": {
+                    "randputf-lac-water": "water",
+                    "randputf-lac-crude-oil": "crude-oil",
+                },
+            },
+        }
+    }
+    return dump
+
+
+def test_mod_data_lake_tiles_resout_les_fluides_multiples():
+    """Le mapping canonique tranche l'ambiguite des tuiles partagees.
+
+    Le fluide fantome n'est jamais une ressource ; ``pumped_fluid`` reste
+    absent car deux fluides reels sont pompes, mais ``pumped_fluids`` les
+    expose tous les deux."""
+    dump = _lake_mod_data_dump()
+    inject_pumped_fluids(dump)
+    pump = dump["entities"]["offshore-pump"]
+    assert pump["pumped_fluids"] == ["crude-oil", "water"]
+    assert "pumped_fluid" not in pump
+    db = load_db_from_dump(dump)
+    bdef = db.buildings["offshore-pump"]
+    assert bdef.pumped_fluids == frozenset({"crude-oil", "water"})
+    assert bdef.pumped_fluid is None
+    assert bdef.has_pumping is True
+    assert bdef.is_lake_extractor is True
+    assert bdef.medium == "lake"
+
+
+def test_mod_data_lake_tiles_alimente_les_ressources_brutes():
+    seed = build_vanilla_seed(_lake_mod_data_dump())
+    raw = set(seed["pools"]["raw_resources"])
+    assert {"water", "crude-oil"} <= raw
+    assert "randputf-neutre" not in raw
+
+
 def test_pumped_fluid_ambigu_ou_absent_donne_none():
     """Plusieurs fluides distincts sur les couches requises : aucun invente.
 
@@ -106,6 +182,8 @@ def test_pumped_fluid_ambigu_ou_absent_donne_none():
     inject_pumped_fluids(dump)
     assert "pumped_fluid" not in dump["entities"]["ambiguous-pump"]
     assert "pumped_fluid" not in dump["entities"]["bare-pump"]
+    assert "pumped_fluids" not in dump["entities"]["ambiguous-pump"]
+    assert "pumped_fluids" not in dump["entities"]["bare-pump"]
 
 
 def test_pumped_fluid_convertisseur_non_resolu():
@@ -440,6 +518,15 @@ def test_rocket_chain_du_vrai_dump():
     chain = rocket_chain_from_dump(_real_dump())
     assert chain["launch_buildings"] == ["rocket-silo"]
     assert chain["rocket_recipes"] == ["rocket-part"]
+    assert chain["rocket_recipe_data"] == {
+        "name": "rocket-part",
+        "ingredients": [
+            {"name": "processing-unit", "amount": 10},
+            {"name": "low-density-structure", "amount": 10},
+            {"name": "rocket-fuel", "amount": 10},
+        ],
+        "results": [{"name": "rocket-part", "amount": 1}],
+    }
     assert chain["victory_items"] == [
         "low-density-structure",
         "processing-unit",
@@ -486,6 +573,11 @@ def test_rocket_chain_moddee_sans_nom_en_dur():
     chain = rocket_chain_from_dump(dump)
     assert chain["launch_buildings"] == ["portail-spatial"]
     assert chain["rocket_recipes"] == ["piece-de-portail"]
+    assert chain["rocket_recipe_data"] == {
+        "name": "piece-de-portail",
+        "ingredients": [{"name": "cristal", "amount": 2}],
+        "results": [{"name": "piece-de-portail", "amount": 1}],
+    }
     assert chain["victory_items"] == ["cristal", "portail-spatial"]
     assert chain["launch_products"] == ["science-orbital"]
 
@@ -496,6 +588,32 @@ def test_rocket_chain_absente_si_aucun_fait():
     assert rocket_chain_from_dump({"meta": {}, "items": {}, "entities": {}, "recipes": {}}) == {
         "launch_buildings": [],
         "rocket_recipes": [],
+        "rocket_recipe": "",
+        "rocket_recipe_data": {},
+        "rocket_part_product": "",
+        "rocket_parts_required": 0,
         "victory_items": [],
         "launch_products": [],
+        "launch_items": [],
     }
+
+
+def test_armes_montees_depuis_les_liens_du_dump():
+    dump = {
+        "meta": {},
+        "items": {
+            "pistolet": {"type": "gun"},
+            "canon-de-char": {"type": "gun"},
+        },
+        "fluids": {},
+        "entities": {
+            "char": {"type": "car", "guns": ["canon-de-char"]},
+        },
+        "recipes": {},
+    }
+    db = load_db_from_dump(dump)
+
+    assert "canon-de-char" in db.vehicle_guns
+    assert "tank-cannon" in db.vehicle_guns
+    assert db.items["pistolet"].is_handheld_gun
+    assert not db.items["canon-de-char"].is_handheld_gun

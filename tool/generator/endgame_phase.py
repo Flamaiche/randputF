@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import random
 
-from tool.common.db import ENVIRONMENTAL_ITEMS, ROCKET_CHAIN, SLOT_ITEM, VanillaDB
+from tool.common.db import ENVIRONMENTAL_ITEMS, SLOT_ITEM, VanillaDB
 from tool.generator.recipes import ProgressionState, ensure_obtainable
 
 
@@ -40,7 +40,7 @@ def ensure_rocket_chain(
     récursion s'arrête avant de déployer le silo, aucune seed ne finirait.
     Les 4 recettes sont unlockées par ``randputf-endgame-rocket``."""
     silo_items = {i.name for i in db.items_for_building_tag("is_rocket_parts_crafter")}
-    targets = sorted(set(ROCKET_CHAIN) | silo_items)
+    targets = sorted(db.rocket_chain_items() | silo_items)
     for item in targets:
         ensure_obtainable(
             rng,

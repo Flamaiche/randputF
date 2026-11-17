@@ -30,6 +30,85 @@ local function stack_size_of(proto)
   return nil
 end
 
+local function version_number(value)
+  if type(value) ~= "string" then
+    return 0
+  end
+  local major, minor, patch = value:match("^(%d+)%.(%d+)%.?(%d*)")
+  if not major then
+    return 0
+  end
+  return tonumber(major) * 10000 + tonumber(minor) * 100 + tonumber(patch or "0")
+end
+
+local function order_of(proto)
+  local ok, value = pcall(function()
+    return proto.order
+  end)
+  if ok and type(value) == "string" then
+    return value
+  end
+  return nil
+end
+
+local function color_of(value)
+  if type(value) ~= "table" then
+    return nil
+  end
+  local r = value[1] or value.r
+  local g = value[2] or value.g
+  local b = value[3] or value.b
+  local a = value[4] or value.a
+  if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+    return nil
+  end
+  if type(a) == "number" then
+    return { r, g, b, a }
+  end
+  return { r, g, b }
+end
+
+local function selection_box_of(proto)
+  local ok, box = pcall(function()
+    return proto.selection_box
+  end)
+  if not ok or type(box) ~= "table" then
+    return nil
+  end
+  local function xy(value)
+    if type(value) ~= "table" then
+      return nil
+    end
+    local x = value.x
+    local y = value.y
+    if type(x) ~= "number" or type(y) ~= "number" then
+      return nil
+    end
+    return { x = x, y = y }
+  end
+  local left_top = xy(box.left_top)
+  local right_bottom = xy(box.right_bottom)
+  if not left_top or not right_bottom then
+    return nil
+  end
+  return { left_top = left_top, right_bottom = right_bottom }
+end
+
+local function ref_name_of(value)
+  if type(value) == "string" then
+    return value
+  end
+  if type(value) == "table" then
+    local ok, name = pcall(function()
+      return value.name
+    end)
+    if ok and type(name) == "string" then
+      return name
+    end
+  end
+  return nil
+end
+
 -- Accès tolérant à `prototypes[key]` : retourne la table de prototypes ou nil
 -- si la clé n'existe pas dans cette version du jeu (aucune erreur propagée).
 local function prototypes_dict(key)
@@ -132,6 +211,7 @@ local function dump_all_items()
       -- pour la logique future et on expose ``display_type`` pour l'affichage.
       display_type = "item",
       subgroup = proto.subgroup and proto.subgroup.name or "",
+      order = order_of(proto),
       place_result = proto.place_result and proto.place_result.name or nil,
       fuel_value = fuel_value_of(proto),
       stack_size = stack_size_of(proto),
@@ -201,6 +281,24 @@ local function dump_all_items()
         end
       end
     end)
+    pcall(function()
+      local main_product = ref_name_of(proto.main_product)
+      if main_product then
+        entry.main_product = main_product
+      end
+    end)
+    pcall(function()
+      local used = proto.used_by_labs
+      if used ~= nil then
+        entry.used_by_labs = used == true
+      end
+    end)
+    pcall(function()
+      local capacity = proto.science_capacity
+      if type(capacity) == "number" then
+        entry.science_capacity = capacity
+      end
+    end)
     out[proto.name] = entry
   end
   for _, key in ipairs({"gun", "ammo", "tool", "capsule", "module", "armor"}) do
@@ -212,6 +310,7 @@ local function dump_all_items()
             type = proto.type,
             display_type = "item",
             subgroup = proto.subgroup and proto.subgroup.name or "",
+            order = order_of(proto),
             place_result = nil,
             fuel_value = fuel_value_of(proto),
             stack_size = stack_size_of(proto),
@@ -228,12 +327,36 @@ end
 local function dump_fluids()
   local out = {}
   for _, proto in pairs(prototypes.fluid) do
-    out[proto.name] = {
+    local entry = {
       type = "fluid",
       display_type = "fluid",
+      subgroup = proto.subgroup and proto.subgroup.name or nil,
+      order = order_of(proto),
       fuel_value = fuel_value_of(proto),
       default_temperature = proto.default_temperature,
     }
+    for _, key in ipairs({
+      "max_temperature", "heat_capacity", "gas_temperature", "emissions_multiplier",
+    }) do
+      local ok, value = pcall(function()
+        return proto[key]
+      end)
+      if ok and type(value) == "number" then
+        entry[key] = value
+      end
+    end
+    for _, key in ipairs({"base_color", "flow_color", "visualization_color"}) do
+      local ok, value = pcall(function()
+        return proto[key]
+      end)
+      if ok then
+        local color = color_of(value)
+        if color then
+          entry[key] = color
+        end
+      end
+    end
+    out[proto.name] = entry
   end
   return out
 end
@@ -334,6 +457,12 @@ local function energy_source_info(proto)
   if ok_fuel and categories then
     info.fuel_categories = string_list(categories)
   end
+  local ok_buffer, buffer = pcall(function()
+    return source.buffer_capacity
+  end)
+  if ok_buffer and type(buffer) == "number" then
+    info.buffer_capacity = buffer
+  end
   -- Production electrique (panneaux solaires : pas de max_power_output).
   local ok_prod, production = pcall(function()
     return source.production
@@ -400,6 +529,23 @@ local function dump_entities()
   local out = {}
   for _, proto in pairs(prototypes.entity) do
     local entry = {type = proto.type}
+    local order = order_of(proto)
+    if order then
+      entry.order = order
+    end
+    local selection_box = selection_box_of(proto)
+    if selection_box then
+      entry.selection_box = selection_box
+    end
+    local guns = non_empty(string_list(probe(proto, "guns")))
+    if guns then
+      entry.guns = guns
+    else
+      local gun = ref_name_of(probe(proto, "gun"))
+      if gun then
+        entry.guns = {gun}
+      end
+    end
 
     -- Capacite de transformation : categories de craft supportees.
     local cats = non_empty(string_list(probe(proto, "crafting_categories")))
@@ -641,8 +787,9 @@ local function dump_recipes()
         category = categories[1]
       end
     end
-    out[proto.name] = {
+    local entry = {
       category = category or "crafting",
+      order = order_of(proto),
       energy = proto.energy,
       ingredients = ingredients,
       products = products,
@@ -651,6 +798,11 @@ local function dump_recipes()
       enabled = probe(proto, "enabled"),
       hidden = probe(proto, "hidden"),
     }
+    local main_product = ref_name_of(probe(proto, "main_product"))
+    if main_product then
+      entry.main_product = main_product
+    end
+    out[proto.name] = entry
   end
   return out
 end
@@ -662,6 +814,16 @@ local function dump_technologies()
   local out = {}
   for _, proto in pairs(prototypes.technology) do
     local entry = {}
+    local order = order_of(proto)
+    if order then
+      entry.order = order
+    end
+    local ok_formula, formula = pcall(function()
+      return proto.research_unit_count_formula
+    end)
+    if ok_formula and type(formula) == "string" then
+      entry.research_unit_count_formula = formula
+    end
     -- Le runtime n'expose PAS TechnologyUnit : ni `unit`, ni `unit.time`. On
     -- lit les trois champs à plat (research_unit_*). `time` est mappé sur
     -- l'énergie par unité (research_unit_energy) : seule notion de coût
@@ -765,9 +927,37 @@ local function dump_technologies()
   return out
 end
 
+-- Données arbitraires exposées par les prototypes `mod-data` (2.1.20+).
+-- Aucune interprétation : le tool lit `data_type`/`data` tel quel. Absent des
+-- anciens jeux et des dumps sans mod-data.
+local function dump_mod_data()
+  local out = {}
+  local dict = prototypes_dict("mod_data")
+  if not dict then
+    return out
+  end
+  for name, proto in pairs(dict) do
+    local data = probe(proto, "data")
+    if data ~= nil then
+      out[name] = {
+        name = name,
+        data_type = probe(proto, "data_type"),
+        data = data,
+      }
+    end
+  end
+  return out
+end
+
 script.on_init(function()
+  local game_version = script.active_mods["base"]
   local payload = {
-    meta = {game_version = script.active_mods["base"]},
+    meta = {
+      game_version = game_version,
+      game_version_numeric = version_number(game_version),
+      schema_version = 2,
+      exporter_version = script.active_mods["randputf-exporter"] or "0.1.8",
+    },
     inventory = dump_inventory(),
     tiles = dump_tiles(),
     items = dump_all_items(),
@@ -776,6 +966,10 @@ script.on_init(function()
     recipes = dump_recipes(),
     technologies = dump_technologies(),
   }
+  local mod_data = dump_mod_data()
+  if next(mod_data) ~= nil then
+    payload.mod_data = mod_data
+  end
   local ok, err = pcall(function()
     helpers.write_file("randputF/vanilla_dump.json", helpers.table_to_json(payload))
   end)

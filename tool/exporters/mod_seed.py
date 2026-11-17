@@ -42,7 +42,10 @@ from tool.parsers.vanilla import (
     canonical_recipe_map,
     inject_pumped_fluids,
     is_hidden_prototype,
+    rocket_chain_from_dump,
+    rocket_meta_from_chain,
     science_pack_names,
+    science_pack_order,
 )
 
 LUA_HEADER = "-- Généré par randputF tool. Ne pas éditer à la main.\n"
@@ -56,8 +59,16 @@ def write_seed_files(seed: dict, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     # Difficulté injectée à l'export (jamais dans le pipeline) : le mod
     # l'affiche en chat au spawn. ``difficulty`` = total de l'ardoise.
-    exported = dict(seed)
     total = compute_difficulty(seed).total
+    exported = dict(seed)
+    if "meta" in seed:
+        meta = dict(seed.get("meta") or {})
+        rocket = meta.get("rocket")
+        if isinstance(rocket, dict):
+            rocket = dict(rocket)
+            rocket.pop("rocket_recipe_data", None)
+            meta["rocket"] = rocket
+        exported["meta"] = meta
     exported["difficulty"] = {
         "total": total,
         "total_k": int(round(total / 1000)),
@@ -436,6 +447,8 @@ def build_vanilla_seed(dump: dict) -> dict:
         pumped = entry.get("pumped_fluid")
         if pumped:
             raw_set.add(str(pumped))
+        for fluid in entry.get("pumped_fluids") or ():
+            raw_set.add(str(fluid))
 
     # Technologies prereq mapping pour topo sort
     prereqs: dict[str, list[str]] = {
@@ -446,10 +459,15 @@ def build_vanilla_seed(dump: dict) -> dict:
     )
 
     meta = dump.get("meta") or {}
+    rocket = rocket_meta_from_chain(rocket_chain_from_dump(dump))
+    science_order = science_pack_order(dump, science)
     return {
         "meta": {
             "seed": meta.get("seed", "vanilla"),
             "generator_version": meta.get("game_version", "2.0"),
+            "science_packs": sorted(science),
+            "science_pack_order": list(science_order),
+            "rocket": rocket,
         },
         "pools": {
             "item_resources": sorted(item_set),

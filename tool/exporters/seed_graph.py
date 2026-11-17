@@ -11,9 +11,9 @@ Un nœud par item/fluide, une arête par dépendance de craft (produit →
 ingrédient) étiquetée par la QUANTITÉ nécessaire au craft (`amount`).
 L'icône de chaque nœud est celle que le jeu affiche réellement : fichier
 exact ``<name>.png``, fluide ``fluid/<name>.png``, sinon icône déclarée
-dans les prototypes installés (``raw-fish``→``fish.png``, ``stone-wall``→
-``wall.png``…), sinon fût vide pour les ``*-barrel``. Les variantes de
-stades (``-1/-2/-3``) et les icônes ``technology/`` sont exclues.
+dans les prototypes installés. Les variantes de stades (``-1/-2/-3``) et
+les icônes ``technology/`` sont exclues. Aucun nom de prototype n'est
+supposé : les packs de science et les styles viennent de ``meta``.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def _find_icons_dir() -> Path | None:
         home / ".factorio/data/base/graphics/icons",
     ]
     for cand in candidates:
-        if (cand / "iron-plate.png").is_file():
+        if cand.is_dir():
             return cand
     return None
 
@@ -81,9 +81,7 @@ def _icon_path(name: str) -> Path | None:
 
     Priorité : icône item exacte (`<name>.png`), puis fluide
     (`fluid/<name>.png`), puis l'icône déclarée dans les prototypes du jeu
-    installé (cas où le fichier porte un autre nom : `raw-fish`→`fish.png`,
-    `stone-wall`→`wall.png`, `burner-generator`→`steam-engine.png`…), puis un
-    fût vide pour les `*-barrel` générés à la volée."""
+    installé (cas où le fichier porte un autre nom)."""
     icons = _icons_dir()
     if icons is None:
         return None
@@ -96,10 +94,6 @@ def _icon_path(name: str) -> Path | None:
     mapped = _prototype_icon(name)
     if mapped is not None and mapped.is_file():
         return mapped
-    if name.endswith("-barrel"):
-        barrel = icons / "fluid/barreling/empty-barrel.png"
-        if barrel.is_file():
-            return barrel
     return None
 
 
@@ -193,12 +187,24 @@ def _find_line(body: str, prefix: str) -> bool:
     return False
 
 
-_SCIENCE_ORDER = [
-    "automation-science-pack", "logistic-science-pack", "military-science-pack",
-    "chemical-science-pack", "production-science-pack", "utility-science-pack",
-    "space-science-pack",
-]
-_SCIENCE_RANK = {n: i for i, n in enumerate(_SCIENCE_ORDER, start=1)}
+def _science_order(seed: dict) -> tuple[str, ...]:
+    meta = seed.get("meta") or {}
+    order = meta.get("science_pack_order") or []
+    if order:
+        return tuple(str(name) for name in order)
+    return tuple(sorted(str(name) for name in (meta.get("science_packs") or [])))
+
+
+def _science_rank(seed: dict) -> dict[str, int]:
+    return {name: index for index, name in enumerate(_science_order(seed), start=1)}
+
+
+def _science_packs(seed: dict) -> frozenset[str]:
+    """Packs de recherche déclarés par la seed (faits du dump)."""
+    return frozenset(
+        str(name)
+        for name in ((seed.get("meta") or {}).get("science_packs") or ())
+    )
 
 
 def _tech_order(seed: dict) -> tuple[dict, dict[str, int], set[str], dict[str, list[str]]]:
@@ -372,6 +378,8 @@ def _item_tech_info(seed: dict) -> dict[str, dict]:
     croissant, "tech": affichage "3 · nom + 5 · nom", "primaryTech": première,
     "science": packs requis, "scienceRank": science la plus haute}}."""
     tmap, order, free, rec_by_recipe = _tech_order(seed)
+    science_rank = _science_rank(seed)
+    science_packs = _science_packs(seed)
     tech_by_item: dict[str, set[tuple[int, str]]] = {}
     for tid, num in order.items():
         t = tmap[tid]
@@ -391,12 +399,14 @@ def _item_tech_info(seed: dict) -> dict[str, dict]:
     def packs_of(tid: str) -> set[str]:
         """Retourne les packs de science exigés par une technologie.
 
-        ``tid`` est l'identifiant de tech ; lit ``unit.ingredients`` et ne conserve que les noms finissant par ``-science-pack``. Retourne un ensemble de noms.
+        ``tid`` est l'identifiant de tech ; lit ``unit.ingredients`` et ne
+        conserve que les noms déclarés dans ``meta.science_packs``. Retourne
+        un ensemble de noms.
         """
         return {
-            ing.get("name")
+            str(ing["name"])
             for ing in (tmap[tid].get("unit") or {}).get("ingredients") or []
-            if str(ing.get("name", "")).endswith("-science-pack")
+            if ing.get("name") in science_packs
         }
 
     out: dict[str, dict] = {}
@@ -409,17 +419,14 @@ def _item_tech_info(seed: dict) -> dict[str, dict]:
         all_packs: set[str] = set()
         for _, tid in items:
             all_packs |= packs_of(tid)
-        non_start = sorted(
-            (p for p in all_packs if p != "start"),
-            key=lambda p: _SCIENCE_RANK.get(p, 99),
-        )
+        ordered_packs = sorted(all_packs, key=lambda p: science_rank.get(p, 99))
         out[item] = {
             "rank": rank,
             "techs": tech_list,
             "tech": display,
             "primaryTech": tech_list[0]["name"] if tech_list else "",
-            "science": " + ".join(p.replace("-science-pack", "") for p in non_start) or "aucune",
-            "scienceRank": max((_SCIENCE_RANK.get(p, 0) for p in all_packs), default=0),
+            "science": " + ".join(ordered_packs) or "aucune",
+            "scienceRank": max((science_rank.get(p, 0) for p in all_packs), default=0),
         }
     return out
 
@@ -513,6 +520,7 @@ def build_seed_graph_dot(
     graphviz calcule alors des nœuds carrés centrés (l'original 120×64 en
     mipmap donnait des boîtes 1,875:1, l'item écrasé en haut-gauche)."""
     raw_sources = _seed_raw_sources(seed)
+    science_packs = _science_packs(seed)
 
     recipes = seed.get("recipes") or []
     edges: dict[tuple[str, str], set[int]] = {}
@@ -560,7 +568,7 @@ def build_seed_graph_dot(
             )
         elif name in raw_sources:
             lines.append(f'  {q} [shape=ellipse, style=filled, fillcolor="#eeeeff", label={q}];')
-        elif name.endswith("-science-pack"):
+        elif name in science_packs:
             lines.append(f'  {q} [shape=box, style="rounded,filled", fillcolor="#ffe8d0", label={q}];')
         else:
             lines.append(f'  {q} [shape=box, label={q}];')

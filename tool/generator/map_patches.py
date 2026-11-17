@@ -12,7 +12,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from tool.common.db import ROCKET_CHAIN, VanillaDB
+from tool.common.db import VanillaDB
 from tool.common import config as _cfg
 from tool.common.rng import make_seeded_rng
 
@@ -295,7 +295,7 @@ def _excludable_items(db: VanillaDB):
     }
     # Idem chaîne fusée (§14) et silo : la victoire exige leurs recettes
     # générées (unlockées par randputf-endgame-rocket) — jamais un patch.
-    hero = set(ROCKET_CHAIN) | {
+    hero = db.rocket_chain_items() | {
         i.name for i in db.items_for_building_tag("is_rocket_parts_crafter")
     }
     # Les science packs ne sont JAMAIS des patchs (§13) : leur économie repose

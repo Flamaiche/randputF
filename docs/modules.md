@@ -111,7 +111,7 @@ passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
 | Module | Lignes | Statut | Rôle |
 |--------|--------|--------|------|
 | `config.py` | 548 | Pipeline | Fusion defaults + surcharges, **schéma strict**, `ConfigError` |
-| `db.py` | 448 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
+| `db.py` | 504 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
 | `rng.py` | 22 | Pipeline | `make_seeded_rng` — **fabrique unique** des flux RNG |
 | `tagsets.py` | 119 | Pipeline | Ensembles de noms figés (D3), source unique par ensemble |
 | `version.py` | 45 | Accessoire | `VERSION`, `FACTORIO_VERSION`, `MOD_NAME_VERSIONED` — lus depuis `mod/info.json` |
@@ -143,7 +143,7 @@ maintenance, pas une tolérance (`tool/common/config.py:527-551`).
 
 ## 6. `tool/parsers/vanilla.py` — l'entrée
 
-630 lignes. Normalise `vanilla_dump.json` (produit par `exporter/control.lua`)
+941 lignes. Normalise `vanilla_dump.json` (produit par `exporter/control.lua`)
 vers `VanillaDB`.
 
 | Responsabilité | Détail |
@@ -153,6 +153,8 @@ vers `VanillaDB`.
 | Sépare le contenu déjà moddé | Items/fluides/entités préfixés vont dans `modded_items`/`modded_fluids`/`modded_buildings`, hors des pools de génération |
 | Ignore les doubles préfixes | Les noms `randputf-randputf-…` sont des artefacts de double randomisation et sont écartés |
 | Calcule les tags | Dérive `is_crafter`, `is_extractor`, `is_generator`… depuis les capacités |
+| Lit `mod-data` | `randputf.lake_tiles` fournit `pumped_fluids` quand plusieurs lacs partagent `water_tile` ; `randputf.water_tiles` fournit la liste des tuiles d'eau vanilla (hors lacs générés) ; le fluide fantôme reste hors des ressources |
+| Lit les liens d'armes | `entity.guns` alimente `VanillaDB.vehicle_guns` / `ItemDef.is_mounted_gun` ; les armes de véhicule sont exclues du pool « arme de poing » sans liste de noms |
 | Rejette un dump invalide | `DumpInvalidError` avec message → le CLI sort en 1 (`tool/__main__.py:57-59`) |
 
 ## 7. `tool/validator/` — deux validations distinctes

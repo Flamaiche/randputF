@@ -142,14 +142,15 @@ class ItemDef:
     is_virtual_item: bool = False     # blueprint/planner/remote (non fabricable)
     is_module: bool = False           # module d'assemblage
     is_capsule_throwable: bool = False  # capsule lançable (grenades, remotes)
+    is_mounted_gun: bool = False      # arme déclarée sur une entité (guns du dump)
 
     @property
     def is_handheld_gun(self) -> bool:
         """Indique si l'item est une arme utilisable à pied.
 
-        Retourne ``True`` pour les items ``is_gun`` qui ne figurent pas dans ``VEHICLE_GUNS`` ; les armes montées sur véhicule ou spidertron sont exclues.
+        Retourne ``True`` pour les items ``is_gun`` non déclarés dans le champ ``guns`` d'une entité du dump ; les armes montées sur véhicule ou spidertron sont exclues.
         """
-        return self.is_gun and self.name not in VEHICLE_GUNS
+        return self.is_gun and not self.is_mounted_gun
 
     @property
     def is_stackable(self) -> bool:
@@ -214,7 +215,11 @@ class BuildingDef:
     fluid_inputs: int = 0
     fluid_outputs: int = 0
     item_output_slots: int = 0
+    # Fluide unique historique + ensemble canonique des fluides de lac
+    # (mod-data). ``pumped_fluids`` évite de choisir un fluide arbitraire
+    # quand plusieurs lacs partagent la même couche de collision.
     pumped_fluid: str | None = None
+    pumped_fluids: frozenset[str] = frozenset()
     # Sorties « spéciales » NON recettables — TAGS ORTHOGONAUX cumulables.
     # ``produces_electricity`` = vrai producteur de courant (steam-engine,
     # turbine, burner-generator, solar-panel) ; ``produces_heat`` = producteur
@@ -362,6 +367,16 @@ class VanillaDB:
     # tool.parsers.vanilla.rocket_chain_from_dump. Vide si la base ne
     # contient aucune fusée : le rejoueur n'invente pas de condition.
     rocket_chain: dict = field(default_factory=dict)
+    science_packs: frozenset[str] = frozenset()
+    science_pack_order: tuple[str, ...] = ()
+    # Armes déclarées sur les entités via ``entity.guns`` du dump (avec repli
+    # statique si le champ n'existe pas). Source: les vrais liens prototypes.
+    vehicle_guns: frozenset[str] = frozenset()
+
+    def rocket_chain_items(self) -> frozenset[str]:
+        chain = self.rocket_chain or {}
+        items = frozenset(str(name) for name in chain.get("victory_items") or ())
+        return items or ROCKET_CHAIN
 
     def beltable_items(self) -> list[ItemDef]:
         """Retourne les items solides posables sur tapis.
@@ -384,13 +399,27 @@ class VanillaDB:
     def extraction_only_fluids(self) -> frozenset[str]:
         """Fluides sans recette de production DIRECTE : eau (offshore-pump),
         pétrole brut (pumpjack), vapeur (chaudière). Le barillage est un cycle
-        (fluide → baril → fluide) : recettes "barrel" ignorées. RESSOURCES
-        BRUTES extraites de l'environnement, jamais craftées — infinies ou non."""
+        (fluide → baril → fluide) : les recettes de barils sont ignorées.
+        RESSOURCES BRUTES extraites de l'environnement, jamais craftées —
+        infinies ou non."""
+        barrel_items = {
+            name for name, item in self.items.items() if item.subgroup == "barrel"
+        }
+        for recipe in self.recipes.values():
+            if any(
+                p[0] == SLOT_ITEM and p[1] in barrel_items for p in recipe.products
+            ):
+                barrel_items.update(
+                    i[1] for i in recipe.ingredients if i[0] == SLOT_ITEM
+                )
         produced = {
             p[1]
-            for r in self.recipes.values()
-            if "barrel" not in r.name
-            for p in r.products
+            for recipe in self.recipes.values()
+            if not any(
+                p[0] == SLOT_ITEM and p[1] in barrel_items
+                for p in recipe.products + recipe.ingredients
+            )
+            for p in recipe.products
             if p[0] == SLOT_FLUID
         }
         return frozenset(name for name in self.fluids if name not in produced)

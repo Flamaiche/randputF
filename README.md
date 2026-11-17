@@ -340,7 +340,7 @@ Le tool ne devine rien : il consomme un **dump JSON des prototypes** produit
 par ton propre jeu, via le mod compagnon `exporter/`. Nécessaire seulement
 pour re-générer ce dump (ajout de contenu, nouvelle version du jeu) :
 
-1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.6/` ;
+1. copie (ou symlink) `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.8/` ;
    si le symlink n'est pas détecté (sandbox Flatpak), utilise une copie du dossier ;
 2. lance Factorio une partie quelques secondes — à l'init, l'exporter écrit
    `script-output/randputF/vanilla_dump.json` dans le dossier user-data ;

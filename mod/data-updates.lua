@@ -114,8 +114,8 @@ end
 local ITEM_LIKE_TYPES = {
   "item", "gun", "tool", "capsule", "ammo", "armor",
   "repair-tool", "mining-tool", "module", "item-with-entity-data",
-  "selection-tool", "blueprint", "copy-paste-tool",
-  "deconstruction-item", "upgrade-item", "rail-planner",
+  "selection-tool", "blueprint", "blueprint-book", "copy-paste-tool",
+  "deconstruction-item", "upgrade-item", "rail-planner", "spidertron-remote",
 }
 
 -- Cherche un prototype item-like par nom dans data.raw (item puis armes,
@@ -413,7 +413,10 @@ end
 -- neutralisée (property_expression_names → -inf) et remplacée par la tuile
 -- fantôme randputf-lac-neutre (même autoplace water_base). Au runtime
 -- (control.lua) : flood-fill → randputf-lac-<fluide>.
-local water_tiles = water_tile_type_names or {}
+local water_tiles = {}
+for _, tname in ipairs(water_tile_type_names or {}) do
+  water_tiles[#water_tiles + 1] = tname
+end
 if #water_tiles == 0 then
   water_tiles = {
     "water", "deepwater", "water-shallow", "water-green",
@@ -499,6 +502,10 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles) -> " ..
     local lake_ctl_map = {}
     local lake_ctls = {}
     local lake_tiles = {}
+    -- Mapping canonique tuile fantôme -> tuiles de lac -> fluides, exposé via
+    -- mod-data (lisible au runtime et dans le dump de l'exporter).
+    local lake_tile_results = {}
+    local lake_tile_fluids = {}
     for i, lake in ipairs(lake_list) do
       local fluid = lake.resource
       if data.raw["fluid"][fluid] then
@@ -554,6 +561,8 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles) -> " ..
           end
           lake_ctl_map[tile_name] = ctl_name
           lake_tiles[tile_name] = new_tile
+          lake_tile_results[#lake_tile_results + 1] = tile_name
+          lake_tile_fluids[tile_name] = fluid
         end
       end
     end
@@ -574,6 +583,41 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles) -> " ..
       log("[randputF] created " .. #lake_array .. " lake tiles")
     else
       log("[randputF] FAIL lake tiles: " .. tostring(err))
+    end
+
+    -- Source canonique du mapping des lacs : un seul endroit pour le runtime
+    -- (control.lua) et le dump (exporter). Le fluide fantôme n'est pas une
+    -- ressource : `fluids` ne contient que les tuiles réelles de la seed.
+    ok, err = pcall(data.extend, data, {
+      {
+        type = "mod-data",
+        name = "randputf-lake-tiles",
+        data_type = "randputf.lake_tiles",
+        data = {
+          source = PHANTOM_TILE,
+          phantom_fluid = PHANTOM_FLUID,
+          results = { [PHANTOM_TILE] = lake_tile_results },
+          fluids = lake_tile_fluids,
+        },
+      },
+    })
+    if ok then
+      log("[randputF] lacs: mod-data randputf-lake-tiles (" .. #lake_tile_results .. " tuiles)")
+    else
+      log("[randputF] lacs: WARN mod-data indisponible (Factorio < 2.1.20 ?): " .. tostring(err))
+    end
+    ok, err = pcall(data.extend, data, {
+      {
+        type = "mod-data",
+        name = "randputf-water-tiles",
+        data_type = "randputf.water_tiles",
+        data = { tiles = water_tiles },
+      },
+    })
+    if ok then
+      log("[randputF] eau: mod-data randputf-water-tiles (" .. #water_tiles .. " tuiles)")
+    else
+      log("[randputF] eau: WARN mod-data indisponible (Factorio < 2.1.20 ?): " .. tostring(err))
     end
 
     -- Berges : ajoute les lacs `lake_borders` aux to_tiles des tuiles de terre.

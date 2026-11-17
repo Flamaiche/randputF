@@ -913,12 +913,16 @@ class _Playthrough:
             for name, entry in (seed.get("entities") or {}).items()
             if isinstance(entry, dict)
         }
-        # Fluides pompés déclarés par l'extracteur (``pumped_fluid``).
+        # Fluides pompés déclarés par l'extracteur (``pumped_fluid`` ou
+        # ensemble canonique ``pumped_fluids`` fourni par mod-data).
         self.fluid_sources: dict[str, list[str]] = defaultdict(list)
         for name, entry in self.entities.items():
             pumped = entry.get("pumped_fluid")
             if pumped:
                 self.fluid_sources[str(pumped)].append(name)
+            for fluid in entry.get("pumped_fluids") or ():
+                if str(fluid) != pumped:
+                    self.fluid_sources[str(fluid)].append(name)
         self.fluids = {
             str(name): entry
             for name, entry in (seed.get("fluids") or {}).items()
@@ -1329,54 +1333,53 @@ class _Playthrough:
         return entity_name
 
     def _rocket_parts_required(self) -> int | None:
-        """Nombre de pièces par fusée : déclaré par le silo du dump.
+        """Nombre de pièces par fusée : déclaré par un bâtiment du dump.
 
-        ``None`` si le dump ne le dit pas : sans cette donnée on ne lance
+        ``None`` si aucun bâtiment ne le dit : sans cette donnée on ne lance
         pas (pas de valeur vanilla inventée).
         """
-        for entry in self.entities.values():
-            if entry.get("type") == "rocket-silo":
-                parts = entry.get("rocket_parts_required")
-                if parts:
-                    return int(parts)
-        return None
+        parts = [
+            int(entry["rocket_parts_required"])
+            for entry in self.entities.values()
+            if entry.get("rocket_parts_required")
+        ]
+        return max(parts) if parts else None
 
     def _find_rocket_part(self) -> str | None:
-        """Retourne l'item fabriqué par le silo.
+        """Retourne l'item fabriqué par un bâtiment de lancement.
 
-        Parcourt les entités pour trouver ``rocket-silo`` puis les recettes de sa catégorie de craft. Retourne le nom du produit ou ``None`` si le dump ne décrit pas de silo/recette.
+        Un bâtiment de lancement se reconnaît à ``rocket_parts_required`` ;
+        ses recettes viennent de ``crafted_in`` ou de ses catégories de craft.
+        Retourne le nom du produit ou ``None`` si le dump ne décrit pas cette
+        chaîne.
         """
-        silo = next(
-            (
-                name
-                for name, entry in self.entities.items()
-                if entry.get("type") == "rocket-silo"
-            ),
-            None,
-        )
-        if silo is None:
-            return None
-        for recipe in self.recipes:
-            if recipe.get("crafted_in") != silo:
+        for building, entry in self.entities.items():
+            if not entry.get("rocket_parts_required"):
                 continue
-            results = [name for name, _qty in _item_amounts(recipe.get("results"))]
-            if results:
-                return results[0]
+            categories = {str(c) for c in entry.get("crafting_categories") or ()}
+            for recipe in self.recipes:
+                crafted_in = recipe.get("crafted_in")
+                if crafted_in != building and recipe.get("category") not in categories:
+                    continue
+                results = [
+                    name for name, _qty in _item_amounts(recipe.get("results"))
+                ]
+                if results:
+                    return results[0]
         return None
 
     def _launch_products(self, payload: str | None = None) -> list[tuple[str, int | float]]:
         """Produits d'un lancement déclarés par le dump (vide si absent).
 
         Source de vérité : l'ITEM lancé (``rocket_launch_products`` sur le
-        prototype de l'item, ex. satellite). Repli : le prototype du silo."""
+        prototype de l'item, ex. satellite). Repli : une entité du dump qui
+        déclare ces produits (bâtiment de lancement ou équivalent)."""
         if payload is not None:
             entry = self.items.get(payload) or {}
             products = _item_amounts(entry.get("rocket_launch_products"))
             if products:
                 return products
         for entry in self.entities.values():
-            if entry.get("type") != "rocket-silo":
-                continue
             products = _item_amounts(entry.get("rocket_launch_products"))
             if products:
                 return products

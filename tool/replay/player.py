@@ -249,11 +249,12 @@ class FakePlayer:
             for effect in tech.get("effects", []):
                 if effect.get("type") == "unlock-recipe":
                     claim.setdefault(effect["recipe"], index)
+        science_packs = getattr(self.db, "science_packs", frozenset())
         packs = {
             r["results"][0]["name"]
             for r in self.recipes
             if r.get("results") and r["results"][0].get("type") == SLOT_ITEM
-            and str(r["results"][0]["name"]).endswith("-science-pack")
+            and str(r["results"][0]["name"]) in science_packs
         }
         return sorted(
             packs,

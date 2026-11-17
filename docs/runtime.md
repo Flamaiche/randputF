@@ -11,10 +11,10 @@ Chaque référence `fichier:ligne` s'appuie directement sur le code.
 | Fichier | Lignes | Phase Factorio | Rôle |
 |---------|--------|----------------|------|
 | `mod/data.lua` | 241 | `data` | Recettes, technologies, sous-groupe d'inventaire |
-| `mod/data-updates.lua` | 931 | `data-updates` | Ressources au sol, véhicules armés, fluides génériques, tuiles de lac |
-| `mod/data-final-fixes.lua` | 101 | `data-final-fixes` | Neutralisation du vanilla, enregistrement des autoplace controls |
-| `mod/control.lua` | 927 | runtime | Kit de départ, loot du crash, purge d'eau, lacs, gisements |
-| `exporter/control.lua` | 806 | runtime (mod compagnon) | Dump `vanilla_dump.json` pour le tool Python |
+| `mod/data-updates.lua` | 975 | `data-updates` | Ressources au sol, véhicules armés, fluides génériques, tuiles de lac |
+| `mod/data-final-fixes.lua` | 128 | `data-final-fixes` | Neutralisation du vanilla, autoplace controls, rochers sans charbon |
+| `mod/control.lua` | 983 | runtime | Kit de départ, loot du crash, purge d'eau, lacs, gisements |
+| `exporter/control.lua` | 981 | runtime (mod compagnon) | Dump `vanilla_dump.json` pour le tool Python |
 
 Le fichier `mod/seed/seed.lua` (plusieurs milliers de lignes) ne constitue pas du code du mod. Il représente le miroir produit à partir de `seed.json` (`tool/exporters/mod_seed.py:63-65`). Sa documentation figure dans [`seed.md`](seed.md).
 
@@ -187,25 +187,63 @@ Le fonctionnement repose sur trois étapes.
 | Objet | Nom | Ligne |
 |-------|-----|-------|
 | Fluide fantôme | `randputf-neutre` | 430-442 |
-| Tuile fantôme | `randputf-lac-neutre` | 443-466 |
+| Tuile fantôme | `randputf-lac-neutre` | 446-469 |
 
 La tuile fantôme consiste en une **copie de `water`** paramétrée avec `autoplace = {probability_expression = "water_base(0, 100)"}`. Le moteur d'altitude la place exactement aux emplacements prévus pour l'eau. Elle s'affiche en blanc, sans shader (`effect = nil`, `map_color` blanc, `tint` forcé).
 
-**b. Neutralisation de l'eau vanilla** (`mod/data-updates.lua:471-493`)
+**b. Neutralisation de l'eau vanilla** (`mod/data-updates.lua:474-496`)
 
-Une `noise-expression` `randputf-no-water = "-999"` est générée. Chaque tuile d'eau de nauvis reçoit ensuite `property_expression_names["tile:<nom>:probability"]` → `randputf-no-water`. Ce traitement couvre l'intégralité des 7 tuiles d'eau (`mod/data-updates.lua:416-422`, avec liste de secours en cas d'absence de `water_tile_type_names`).
+Une `noise-expression` `randputf-no-water = "-999"` est générée. Chaque tuile d'eau de nauvis reçoit ensuite `property_expression_names["tile:<nom>:probability"]` → `randputf-no-water`. Ce traitement couvre l'intégralité des 7 tuiles d'eau (`mod/data-updates.lua:416-424`, avec liste de secours en cas d'absence de `water_tile_type_names`).
 
-**c. Une tuile par fluide de lac** (`mod/data-updates.lua:495-579`)
+**c. Une tuile par fluide de lac** (`mod/data-updates.lua:500-621`)
 
 | Action | Ligne | Détail |
 |--------|-------|--------|
-| `autoplace-control` | 506-518 | `randputf-lac-ctl-<i>` par lac, catégorie `resource` pour apparaître dans le menu de carte |
-| Tuile `randputf-lac-<fluide>` | 519-566 | Clone de `water`, `fluid = <fluide>`, couleurs alignées sur la couleur corrigée |
-| `autoplace = {probability_expression = 0}` | 546 | Jamais générée : posée par `surface.set_tiles` au runtime |
-| Berges | 579-638 | Les tuiles de lac sont ajoutées aux `transitions[].to_tiles` des 7 tuiles d'eau ; `bordered` est **trié** (ligne 570) pour un data-stage déterministe |
-| Inscription mapgen | 640-671 | La tuile fantôme **et** les tuiles-par-fluide sont inscrites dans `autoplace_settings.tile` : sans cela `set_tiles` refuse la tuile |
+| `autoplace-control` | 512-523 | `randputf-lac-ctl-<i>` par lac, catégorie `resource` pour apparaître dans le menu de carte |
+| Tuile `randputf-lac-<fluide>` | 524-565 | Clone de `water`, `fluid = <fluide>`, couleurs alignées sur la couleur corrigée |
+| `autoplace = {probability_expression = 0}` | 550 | Jamais générée : posée par `surface.set_tiles` au runtime |
+| `mod-data` | 591-621 | `randputf-lake-tiles` : source fantôme, `results` (fantôme → tuiles), `fluids` (tuile → fluide) ; `randputf-water-tiles` : liste des tuiles d'eau vanilla (hors lacs générés). Source unique des mappings runtime/dump |
+| Berges | 609-666 | Les tuiles de lac sont ajoutées aux `transitions[].to_tiles` des 7 tuiles d'eau ; `bordered` est **trié** (ligne 609) pour un data-stage déterministe |
+| Inscription mapgen | 669-697 | La tuile fantôme **et** les tuiles-par-fluide sont inscrites dans `autoplace_settings.tile` : sans cela `set_tiles` refuse la tuile |
 
-> Le booleen `has_border` (`mod/data-updates.lua:543`) vaut constamment `true` à cet endroit, car il est assigné la ligne précédente au cours de l'itération. Le traitement du cas « lac sans bordure » (lignes 547-553) s'avère donc **inerte** sans s'exécuter.
+> Le booleen `has_border` (`mod/data-updates.lua:547`) vaut constamment `true` à cet endroit, car il est assigné la ligne précédente au cours de l'itération. Le traitement du cas « lac sans bordure » (lignes 552-558) s'avère donc **inerte** sans s'exécuter.
+
+### 4.5.1 Cycle de vie du `mod-data` des lacs
+
+Le mapping des lacs n'est plus duplicate entre la data-stage, le runtime et le tool. Il est publié **une seule fois** par `mod/data-updates.lua` sous forme de prototype `mod-data`, puis consommé par les trois étages.
+
+```json
+{
+  "randputf-lake-tiles": {
+    "name": "randputf-lake-tiles",
+    "data_type": "randputf.lake_tiles",
+    "data": {
+      "source": "randputf-lac-neutre",
+      "phantom_fluid": "randputf-neutre",
+      "results": {
+        "randputf-lac-neutre": ["randputf-lac-heavy-oil"]
+      },
+      "fluids": {
+        "randputf-lac-heavy-oil": "heavy-oil"
+      }
+    }
+  }
+}
+```
+
+| Étage | Lecture | Usage |
+|-------|---------|-------|
+| Data-stage | `data-updates.lua` construit `results` depuis `seed.map.lakes` | Publie le mapping ; la seed reste la source du **tirage**, `mod-data` celle du **mapping** |
+| Runtime | `control.lua` lit `prototypes.mod_data["randputf-lake-tiles"].data` | `LAKE_FLUID_TILES` (ordre de tirage), `LAKE_FLUID_LOOKUP` (tuile → fluide) et `LAKE_FLUID_TILE_BY_FLUID` (fluide → tuile) pilotent le flood-fill et `set_tiles` |
+| Exporter | `dump_mod_data()` copie `data_type`/`data` dans le payload `mod_data` | Le dump moddé transporte le mapping sans interprétation Lua |
+| Parser | `_lake_tile_fluids()` lit `data_type = "randputf.lake_tiles"` | `inject_pumped_fluids()` pose `pumped_fluids` sur les entités dont les règles de placement exigent une couche de la tuile `source` |
+
+Deux points importants :
+
+* Le fluide fantôme (`phantom_fluid`) n'est **jamais** une ressource : il n'apparaît ni dans `fluids`, ni dans `pumped_fluids`, ni dans les ressources brutes de la seed.
+* Quand plusieurs lacs partagent la couche `water_tile`, la déduction par les tuiles seule est ambiguë : le parser pose l'ensemble trié `pumped_fluids`. `pumped_fluid` n'est renseigné que s'il reste un seul fluide réel.
+
+`mod-data` est disponible en Factorio 2.1.20+. Le mod garde deux repli : `control.lua` reconstruit les tables depuis la seed si `prototypes.mod_data` est absent, et le parser retombe sur la chaîne `tile_buildability_rules` → tuiles → `fluid` pour un dump sans `mod_data`.
 
 ### 4.6 Catégories de combustible unifiées
 
@@ -213,11 +251,11 @@ Une `noise-expression` `randputf-no-water = "-999"` est générée. Chaque tuile
 
 ### 4.7 Pompe offshore requalifiée
 
-`mod/data-updates.lua:701-711` : la pompe vanilla **ne reçoit aucun** `resource_categories`. Son rôle consiste à pomper directement une **tuile** de lac sans électricité (`energy_source` void). Les patchs fluides demeurent extraits par pumpjack. Seuls le nom et la description font l'objet d'un remplacement.
+`mod/data-updates.lua:727-737` : la pompe vanilla **ne reçoit aucun** `resource_categories`. Son rôle consiste à pomper directement une **tuile** de lac sans électricité (`energy_source` void). Les patchs fluides demeurent extraits par pumpjack. Seuls le nom et la description font l'objet d'un remplacement.
 
 ### 4.8 Fluides génériques
 
-`mod/data-updates.lua:712-870` s'articule autour de trois fonctions d'aide et de deux passes.
+`mod/data-updates.lua:739-900` s'articule autour de trois fonctions d'aide et de deux passes.
 
 | Helper | Ligne | Rôle |
 |--------|-------|------|
@@ -267,6 +305,7 @@ Ce fichier s'exécute en dernier après l'ensemble des mods.
 | Contrôles d'autoplace masqués | 58-62 | Les contrôles vanilla de catégorie `resource` sont `hidden = true` : le menu de génération de carte ne propose que randputF |
 | Ressources vanilla à `size = 0` | 79-83 | Elles **restent listées** (sinon `default_enable_all` les réactiverait) mais ne sont jamais posées |
 | Contrôles randputF enregistrés | 86-97 | Par **planète** : `randputf-ctl-<i>` et l'entité associée, `frequency = 1, size = 1` |
+| Rochers sans charbon | 102-126 | Tout `simple-entity` rocheux qui donne du `coal` reçoit à la place le **même montant** de `stone` (`huge-rock` en vanilla) |
 
 Chaque neutralisation utilise `pcall` : un prototype en lecture seule génère un journal d'avertissement sans bloquer le jeu (`mod/data-final-fixes.lua:27`, `42`).
 
@@ -360,24 +399,26 @@ Le conteneur utilise un générateur RNG local : `game.create_random_generator(b
 | Balayage en anneau | 827-862 | Curseur `(ring, x, y)` persisté, spirale jusqu'à `|R| > 256` |
 | Amorce | 864-866 | `water_purge_done` empêche de rescanner une carte neuve |
 
-L'appel `surface.set_tiles(tiles, false)` (`mod/control.lua:262`) transmet `false` en second paramètre pour couper `correct_tiles` : l'action vise à **altérer** le terrain sans effectuer de correction de bordure.
+L'appel `surface.set_tiles(tiles, false)` (`mod/control.lua:287`) transmet `false` en second paramètre pour couper `correct_tiles` : l'action vise à **altérer** le terrain sans effectuer de correction de bordure.
 
 ### 6.7 Lacs : flood-fill au runtime
 
 | Fonction | Ligne | Rôle |
 |----------|-------|------|
-| `init_lake_fluids` | 478-487 | Construit `LAKE_FLUID_TILES` (ordre de la seed) et `LAKE_FLUID_LOOKUP` |
-| `next_lake_fluid_tile` | 490-498 | Tourniquet **persisté** dans `storage.randputf.lake_index` |
-| `flood_fill_phantom` | 501-532 | BFS sur la tuile fantôme, borné à l'`area` du chunk |
-| `neighbor_lake_fluid` | 534-549 | Cherche un voisin déjà coloré → **propagation inter-chunks** |
-| `fill_lake` | 551-566 | `voisin coloré` sinon `tourniquet`, puis `set_tiles` avec `correct_tiles` (**activé**) |
-| `fill_lakes_in_area` | 569-581 | Parcourt le chunk, un fill par tuile fantôme trouvée |
+| `randputf_mod_data` | 225-242 | Lit `prototypes.mod_data` par nom, avec repli `nil` |
+| `init_water_tiles` | 243-268 | Construit `WATER_TILES` depuis `mod-data` `randputf-water-tiles`, avec repli statique |
+| `init_lake_fluids` | 514-544 | Construit `LAKE_FLUID_TILES`, `LAKE_FLUID_LOOKUP` et `LAKE_FLUID_TILE_BY_FLUID` depuis `mod-data` `randputf-lake-tiles`, avec repli sur l'ordre de la seed |
+| `next_lake_fluid_tile` | 545-555 | Tourniquet **persisté** dans `storage.randputf.lake_index` |
+| `flood_fill_phantom` | 556-588 | BFS sur la tuile fantôme, borné à l'`area` du chunk |
+| `neighbor_lake_fluid` | 589-605 | Cherche un voisin déjà coloré → **propagation inter-chunks** |
+| `fill_lake` | 606-623 | `voisin coloré` sinon `tourniquet`, puis `set_tiles` avec `correct_tiles` (**activé**) ; le nom de tuile vient du mapping mod-data |
+| `fill_lakes_in_area` | 624-644 | Parcourt le chunk, un fill par tuile fantôme trouvée |
 
 Le traitement favorise la **continuité spatiale** par rapport à la séquence de la seed. Deux lacs adjacents adoptent le même fluide, tandis qu'un plan d'eau isolé prend le fluide suivant du tourniquet.
 
-`init_lake_fluids()` s'exécute lors du **chargement du module** (`mod/control.lua:716`). Sans dépendance envers `game`, son exécution est garantie pendant `on_load`.
+`init_water_tiles()` puis `init_lake_fluids()` s'exécutent lors du **chargement du module** (`mod/control.lua:771-772`). Sans dépendance envers `game`, leur exécution est garantie pendant `on_load`.
 
-Poser une `offshore-pump` sur une tuile fantôme déclenche un remplissage local dans un rayon de 128 (`mod/control.lua:891-900`), permettant d'anticiper la génération automatique du chunk.
+Poser une `offshore-pump` sur une tuile fantôme déclenche un remplissage local dans un rayon de 128 (`mod/control.lua:947-968`), permettant d'anticiper la génération automatique du chunk.
 
 ### 6.8 Gisements au runtime
 
@@ -411,12 +452,14 @@ Mod autonome de collecte, hors chaîne de génération randputF. Son exécution 
 
 | Action | Ligne | Détail |
 |--------|-------|--------|
-| `dump_all_items` | 125-226 | `fuel_value`, `stack_size`, `subgroup`, `place_result`, `burnt_result`, `ammo_category` |
-| `dump_fluids` | 228-239 | `default_temperature` en plus |
-| `dump_entities` | 399-622 | Classement par **capacité** : craft (`crafting_categories`), extraction (`resource_categories`), pompage (`pumping_speed`), fluides, énergie, production |
-| `dump_recipes` | 624-658 | Ingrédients, produits, catégorie, énergie, `enabled`, `hidden` |
-| `dump_technologies` | 661-761 | Prérequis, unité de recherche, effets, `enabled`, `hidden` |
-| Écriture | 780-787 | `helpers.write_file("randputF/vanilla_dump.json")` sous `pcall` |
+| `dump_all_items` | 204-326 | `fuel_value`, `stack_size`, `subgroup`, `order`, `place_result`, `burnt_result`, `ammo_category`, `main_product`, `used_by_labs`, `science_capacity` |
+| `dump_fluids` | 327-527 | `subgroup`, `order`, `default_temperature`, `max_temperature`, `heat_capacity`, `gas_temperature`, `emissions_multiplier`, couleurs `base/flow/visualization` |
+| `dump_entities` | 528-769 | Classement par **capacité** : craft (`crafting_categories`), extraction (`resource_categories`), pompage (`pumping_speed`), fluides, énergie, production ; `order`, `selection_box`, `guns`, `energy_source.buffer_capacity` |
+| `dump_recipes` | 770-812 | Ingrédients, produits, catégorie, énergie, `enabled`, `hidden`, `order`, `main_product` |
+| `dump_technologies` | 813-932 | Prérequis, unité de recherche, effets, `enabled`, `hidden`, `order`, `research_unit_count_formula` |
+| `dump_mod_data` | 933-950 | Prototypes `mod-data` : `data_type` et `data` bruts, ajoutés au payload sous `mod_data` |
+| `meta` | 955-960 | `game_version`, `game_version_numeric`, `schema_version = 2`, `exporter_version` |
+| Écriture | 961-975 | `helpers.write_file("randputF/vanilla_dump.json")` sous `pcall` |
 
 Trois spécificités liées à la version 2.0 font l'objet de commentaires dans le code :
 
@@ -430,7 +473,7 @@ Trois spécificités liées à la version 2.0 font l'objet de commentaires dans 
 
 `exporter/control.lua` n'a plus de garde-fou : l'export s'écrit même si `randputF` est actif. Le dump contient alors du contenu vanilla, des recettes `randputf-*` et des altérations de prototypes : modification de `fuel_value` des fluides fixée à 200 kJ (`mod/data-updates.lua:861`), suppression de filtres (`mod/data-updates.lua:818`), ou encore élargissement de `fuel_categories` (`mod/data-updates.lua:687`).
 
-Ce dump moddé est une photographie complète : les recettes et technologies vanilla neutralisées restent présentes avec leurs liens, mais portent `enabled = false` et `hidden = true`. Le tool ne filtre plus les clés `randputf-*` et n'essaie plus de rejeter les mutations : il canonise à la lecture. Pour un produit `X`, une recette `randputf-X` active devient la recette canonique ; la recette vanilla `X` est ignorée pour la génération. La clé logique est normalisée (`X`), tandis que `VanillaDB.recipes` conserve le nom réel `randputf-X` pour ne pas casser les effets de technologies. Les recettes `randputf-ease-*`, `randputf-relay-*` et les recettes de fluides restent des alternatives. Les items, fluides et entités déjà préfixés sont conservés dans des buckets `modded_*` hors des pools de génération, et les artefacts `randputf-randputf-…` sont ignorés. Un dump moddé peut donc produire une seed différente du dump vanilla historique, ce qui est attendu.
+Depuis l'exporter 0.1.7, le dump embarque aussi `mod_data` quand le jeu expose `prototypes.mod_data` (2.1.20+) : randputF y publie `randputf-lake-tiles` et, depuis 0.1.8, `randputf-water-tiles`, les mappings canoniques des lacs. Le schéma 2 (exporter 0.1.8) ajoute en plus `meta.schema_version`, `meta.game_version_numeric`, des `order` FactoriO, les armes montées (`entity.guns`), `energy_source.buffer_capacity`, les températures/couleurs de fluides et `research_unit_count_formula`. Ce dump moddé est une photographie complète : les recettes et technologies vanilla neutralisées restent présentes avec leurs liens, mais portent `enabled = false` et `hidden = true`. Le tool ne filtre plus les clés `randputf-*` et n'essaie plus de rejeter les mutations : il canonise à la lecture. Pour un produit `X`, une recette `randputf-X` active devient la recette canonique ; la recette vanilla `X` est ignorée pour la génération. La clé logique est normalisée (`X`), tandis que `VanillaDB.recipes` conserve le nom réel `randputf-X` pour ne pas casser les effets de technologies. Les recettes `randputf-ease-*`, `randputf-relay-*` et les recettes de fluides restent des alternatives. Les items, fluides et entités déjà préfixés sont conservés dans des buckets `modded_*` hors des pools de génération, et les artefacts `randputf-randputf-…` sont ignorés. Un dump moddé peut donc produire une seed différente du dump vanilla historique, ce qui est attendu.
 
 ## 8. Clés de seed consommées, par fichier
 

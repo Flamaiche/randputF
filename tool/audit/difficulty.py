@@ -4,8 +4,10 @@ Mesure la difficulté d'une seed par le nombre de ressources brutes
 (``pools.raw_resources``) consommées pour :
   1. la recherche de TOUTES les techs (coût en science packs de chaque tech,
      ``unit.count * amount`` par ingrédient) ;
-  2. la chaîne de la fusée : 1 rocket-silo, 100 rocket-part (recette vanilla
-     EXEMPTE du silo, jamais désactivée), 1 satellite.
+  2. la chaîne de lancement : bâtiments, pièces de fusée et produits de
+     lancement décrits par ``seed['meta']['rocket']`` (faits du dump, y
+     compris la recette réservée exempte du silo). Aucun nom vanilla n'est
+     supposé ici.
 
 L'expansion descend chaque produit vers ses INGRÉDIENTS via sa RECETTE
 PRIMAIRE (``randputf-<produit>``, sinon relais/ease comme solution de secours) :
@@ -27,18 +29,6 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-
-# Chaîne de la fusée : rocket-part se crafe dans le SILO via la recette vanilla
-# EXEMPTE (data-final-fixes), jamais désactivée ni déployée par la génération.
-ROCKET_PART_RECIPE = {
-    "results": [{"name": "rocket-part", "amount": 1}],
-    "ingredients": [
-        {"name": "processing-unit", "type": "item", "amount": 10},
-        {"name": "low-density-structure", "type": "item", "amount": 10},
-        {"name": "rocket-fuel", "type": "item", "amount": 10},
-    ],
-}
-ROCKET_PARTS_TO_LAUNCH = 100
 
 _PREFIX = "randputf-"
 
@@ -62,13 +52,31 @@ class DifficultyReport:
         return sum(self.raw_totals.values())
 
 
-def _primary_recipe(by_product: dict[str, list[dict]], product: str) -> dict | None:
+def _rocket_meta(seed: dict) -> dict:
+    """Faits de lancement portés par la seed (aucun repli inventé)."""
+    rocket = (seed.get("meta") or {}).get("rocket") or {}
+    return {
+        "launch_buildings": list(rocket.get("launch_buildings") or ()),
+        "rocket_recipe": str(rocket.get("rocket_recipe") or ""),
+        "rocket_recipe_data": dict(rocket.get("rocket_recipe_data") or {}),
+        "rocket_part_product": str(rocket.get("rocket_part_product") or ""),
+        "rocket_parts_required": int(rocket.get("rocket_parts_required") or 0),
+        "launch_items": list(rocket.get("launch_items") or ()),
+    }
+
+
+def _primary_recipe(
+    by_product: dict[str, list[dict]],
+    product: str,
+    reserved_recipes: dict[str, dict] | None = None,
+) -> dict | None:
     """Retourne la recette primaire d'un produit.
 
-    `by_product` indexe les recettes par produit et `product` est le nom recherché. Privilégie `randputf-<produit>`, sinon la première alternative ; `rocket-part` est réservé à la recette du silo. Retourne `None` si le produit n'a aucune recette.
+    `by_product` indexe les recettes par produit et `product` est le nom recherché. Une recette réservée (ex. pièce de fusée exempte du silo) prend le pas. Sinon, privilégie `randputf-<produit>`, puis la première alternative. Retourne `None` si le produit n'a aucune recette.
     """
-    if product == "rocket-part":
-        return ROCKET_PART_RECIPE
+    reserved = (reserved_recipes or {}).get(product)
+    if reserved is not None:
+        return reserved
     cands = by_product.get(product, [])
     if not cands:
         return None
@@ -93,12 +101,15 @@ def _produced_amount(recipe: dict, product: str) -> float:
 
 
 def unit_costs(
-    raw: set[str], by_product: dict[str, list[dict]]
+    raw: set[str],
+    by_product: dict[str, list[dict]],
+    reserved_recipes: dict[str, dict] | None = None,
 ) -> dict[str, Counter[str]]:
     """Calcule le coût unitaire brut de chaque produit.
 
-    `raw` est l'ensemble des ressources brutes et `by_product` l'index produit → recettes. Retourne `{produit: Counter({ressource: quantité})}` ; les cycles sont cassés en traitant le produit comme une feuille.
+    `raw` est l'ensemble des ressources brutes, `by_product` l'index produit → recettes et `reserved_recipes` les recettes imposées (produit → recette). Retourne `{produit: Counter({ressource: quantité})}` ; les cycles sont cassés en traitant le produit comme une feuille.
     """
+    reserved = reserved_recipes or {}
     memo: dict[str, Counter[str]] = {}
     visiting: set[str] = set()
 
@@ -118,7 +129,7 @@ def unit_costs(
             # baseline vanilla, elle, peut boucler : kovarex, coal-liquefaction).
             # On casse en traitant le produit comme une feuille.
             return Counter({product: 1.0})
-        recipe = _primary_recipe(by_product, product)
+        recipe = _primary_recipe(by_product, product, reserved)
         if recipe is None:
             memo[product] = Counter({product: 1.0})
             return memo[product]
@@ -137,14 +148,15 @@ def unit_costs(
     # Calcule tous les produits (y compris les bruts, mémoïsés en feuille).
     for p in by_product:
         cost(p)
-    cost("rocket-part")
+    for p in reserved:
+        cost(p)
     return memo
 
 
 def compute_difficulty(seed: dict) -> DifficultyReport:
     """Calcule l'ardoise de difficulté complète d'une seed.
 
-    `seed` fournit recettes, technologies et ressources brutes. Additionne les packs de toutes les recherches et la chaîne de la fusée (silo, 100 rocket-part, satellite). Retourne un `DifficultyReport` renseigné.
+    `seed` fournit recettes, technologies et ressources brutes. Additionne les packs de toutes les recherches et la chaîne de lancement décrite par ``meta.rocket``. Retourne un `DifficultyReport` renseigné.
     """
     report = DifficultyReport()
 
@@ -154,7 +166,11 @@ def compute_difficulty(seed: dict) -> DifficultyReport:
             by_product[res["name"]].append(r)
 
     raw = set(seed["pools"]["raw_resources"])
-    costs = unit_costs(raw, by_product)
+    rocket = _rocket_meta(seed)
+    reserved = {}
+    if rocket["rocket_part_product"] and rocket["rocket_recipe_data"]:
+        reserved[rocket["rocket_part_product"]] = rocket["rocket_recipe_data"]
+    costs = unit_costs(raw, by_product, reserved)
     report.unit_costs = costs
 
     # 1. Coût de recherche : somme sur toutes les techs (hors prologue/ease,
@@ -172,12 +188,15 @@ def compute_difficulty(seed: dict) -> DifficultyReport:
             self_bill.update(cost)
     report.spent_per_tech = spent_per_tech
 
-    # 2. Chaîne de la fusée : 1 silo, 100 rocket-part (recette exempte du silo),
-    #    1 satellite.
+    # 2. Chaîne de lancement : bâtiments, pièces (recette réservée) et
+    #    produits exigés par le lancement.
     launch_bill = Counter()
-    launch_bill["rocket-silo"] += 1
-    launch_bill["rocket-part"] += ROCKET_PARTS_TO_LAUNCH
-    launch_bill["satellite"] += 1
+    for building in rocket["launch_buildings"]:
+        launch_bill[building] += 1
+    if rocket["rocket_part_product"]:
+        launch_bill[rocket["rocket_part_product"]] += rocket["rocket_parts_required"]
+    for item in rocket["launch_items"]:
+        launch_bill[item] += 1
 
     totals: Counter[str] = Counter()
     for product, qty in self_bill.items():
@@ -251,8 +270,8 @@ def difficulty_series(seed: dict) -> list[dict]:
     Chaque point porte : le rang, l'id/le nom de la tech, le coût brut de SA
     recherche (``raw``), le cumul depuis le début (``cumulative``) et la liste
     des produits qu'elle débloque (``products`` = « items à crafter »). Un point
-    final « Fusée » ferme la chaîne (silo + 100 rocket-part + satellite), de
-    sorte que le cumul final égale ``compute_difficulty(seed).total``.
+    final « Lancement » ferme la chaîne décrite par ``meta.rocket``, de sorte
+    que le cumul final égale ``compute_difficulty(seed).total``.
     """
     report = compute_difficulty(seed)
     tmap, ordered = _tech_sequence(seed)
@@ -284,22 +303,25 @@ def difficulty_series(seed: dict) -> list[dict]:
             "products": products,
         })
 
-    launch_bill: Counter[str] = Counter({
-        "rocket-silo": 1.0,
-        "rocket-part": float(ROCKET_PARTS_TO_LAUNCH),
-        "satellite": 1.0,
-    })
+    rocket = _rocket_meta(seed)
+    launch_bill: Counter[str] = Counter()
+    for building in rocket["launch_buildings"]:
+        launch_bill[building] += 1.0
+    if rocket["rocket_part_product"]:
+        launch_bill[rocket["rocket_part_product"]] += float(rocket["rocket_parts_required"])
+    for item in rocket["launch_items"]:
+        launch_bill[item] += 1.0
     launch_raw = _expand_to_raw(report.unit_costs, launch_bill)
     cumulative.update(launch_raw)
     series.append({
         "num": len(series) + 1,
         "id": "randputf-rocket",
-        "name": "Lancement (fusée)",
+        "name": "Lancement",
         "raw": dict(launch_raw),
         "raw_total": sum(launch_raw.values()),
         "cumulative": dict(cumulative),
         "cumulative_total": sum(cumulative.values()),
-        "products": ["rocket-part"],
+        "products": [rocket["rocket_part_product"]] if rocket["rocket_part_product"] else [],
     })
     return series
 

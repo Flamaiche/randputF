@@ -27,7 +27,7 @@ from tool.exporters.mod_seed import build_vanilla_seed
 from tool.exporters.report import write_full_report
 from tool.exporters.seed_graph import write_seed_graph_html
 from tool.generator.pipeline import generate_seed
-from tool.parsers.vanilla import summarize_db
+from tool.parsers.vanilla import rocket_chain_from_dump, summarize_db
 from tool.service import (
     DUMP_PATH_DEFAULT,
     OUTPUT_DIR,
@@ -252,34 +252,23 @@ def cmd_report(args: argparse.Namespace) -> None:
         name
         for name, entity in entities.items()
         if isinstance(entity, dict)
-        and (
-            entity.get("type") == "offshore-pump"
-            or entity.get("pumping_speed") is not None
-        )
+        and entity.get("pumping_speed") is not None
         and not entity.get("pumped_fluid")
+        and not entity.get("pumped_fluids")
     ]
     if pumps:
         print(
             f"[ATTENTION] pumped_fluid absent ({', '.join(pumps[:5])}) : "
             "relance l'exporter récent"
         )
-    # Produits de lancement : source de vérité = l'ITEM lancé (ex. satellite,
-    # ItemWithInventoryPrototype::rocket_launch_products) ; repli : le silo.
+    # Produits de lancement : source de vérité = ``rocket_launch_products``
+    # déclaré par les items ou les entités du dump, sans nom supposé.
     launch_products_sources = [
         entry.get("rocket_launch_products")
-        for entry in (dump.get("items") or {}).values()
+        for section in ((dump.get("items") or {}), entities)
+        for entry in section.values()
         if isinstance(entry, dict) and entry.get("rocket_launch_products")
     ]
-    silo = next(
-        (
-            entity
-            for entity in entities.values()
-            if isinstance(entity, dict) and entity.get("type") == "rocket-silo"
-        ),
-        {},
-    )
-    if silo.get("rocket_launch_products"):
-        launch_products_sources.append(silo["rocket_launch_products"])
     if not launch_products_sources:
         print("[ATTENTION] produits de lancement absents : relance l'exporter récent")
 
@@ -295,11 +284,13 @@ def cmd_report(args: argparse.Namespace) -> None:
         f"({prog.get('packs', 0)} packs de science)"
     )
 
-    space = stats.get("space-science-pack")
-    if space is not None:
+    for product in rocket_chain_from_dump(dump).get("launch_products") or ():
+        row = stats.get(product)
+        if row is None:
+            continue
         print(
-            f"[OK] space science : {space.get('crafts', 0)} lancement(s), "
-            f"{space.get('produced', 0)} packs"
+            f"[OK] lancement ({product}) : {row.get('crafts', 0)} lancement(s), "
+            f"{row.get('produced', 0)} produits"
         )
     print(f"Rapport : {out}")
 

@@ -29,7 +29,13 @@ DB = load_db_from_dump(json.loads((Path(__file__).parent.parent / "data/vanilla_
 def _tiny_seed() -> dict:
     """Seed miniature pour tester le format (déterministe, sans génération)."""
     return {
-        "meta": {"seed": "mini", "generator_version": "0.1.0", "factorio_version": "2.0"},
+        "meta": {
+            "seed": "mini",
+            "generator_version": "0.1.0",
+            "factorio_version": "2.0",
+            "science_packs": ["golden-research"],
+            "science_pack_order": ["golden-research"],
+        },
         "pools": {"raw_resources": ["wood", "stone", "nickel-ore"]},
         "map": {"patches": [], "lakes": []},
         "recipes": [
@@ -47,7 +53,7 @@ def _tiny_seed() -> dict:
                     {"type": "item", "name": "iron-stick", "amount": 1},
                     {"type": "fluid", "name": 'water"X', "amount": 5},
                 ],
-                "results": [{"type": "item", "name": "golden-science-pack", "amount": 1}],
+                "results": [{"type": "item", "name": "golden-research", "amount": 1}],
             },
         ],
     }
@@ -167,11 +173,15 @@ def test_graph_format_mini(monkeypatch) -> None:
     assert "digraph seed {" in dot
     assert '"iron-stick" -> "wood" [label="2"];' in dot
     assert '"iron-stick" -> "nickel-ore" [label="3"];' in dot
-    assert '"golden-science-pack" -> "iron-stick" [label="1"];' in dot
+    assert '"golden-research" -> "iron-stick" [label="1"];' in dot
     # source brute sans icône vanilla (nickel-ore) → ellipse grise ;
-    # science pack sans icône → orange
+    # pack de science déclaré par meta (nom arbitraire) → orange
     assert '"nickel-ore" [shape=ellipse, style=filled, fillcolor="#eeeeff", label="nickel-ore"];' in dot
-    assert '"golden-science-pack" [shape=box, style="rounded,filled", fillcolor="#ffe8d0", label="golden-science-pack"];' in dot
+    assert '"golden-research" [shape=box, style="rounded,filled", fillcolor="#ffe8d0", label="golden-research"];' in dot
+    # Un nom hors convention ``-science-pack`` reste stylé par ``meta``.
+    no_meta = copy.deepcopy(_tiny_seed())
+    no_meta["meta"].pop("science_packs")
+    assert '"golden-research" [shape=box, label="golden-research"];' in build_seed_graph_dot(no_meta)
     # wood (icône dispo) → nœud image ; sinon on retombe sur l'ellipse source
     wood_line = next(line for line in dot.splitlines() if '"wood"' in line)
     assert 'image=' in wood_line or 'shape=ellipse' in wood_line
@@ -209,7 +219,13 @@ def test_ressource_brute_jamais_consommee_toujours_visible() -> None:
     # Seed miniature SANS consommation d'eau : le lac/fluide d'extraction
     # (water) n'apparaît dans aucune recette, il doit quand même être rendu.
     seed = {
-        "meta": {"seed": "mini", "generator_version": "0.1.0", "factorio_version": "2.0"},
+        "meta": {
+            "seed": "mini",
+            "generator_version": "0.1.0",
+            "factorio_version": "2.0",
+            "science_packs": ["golden-research"],
+            "science_pack_order": ["golden-research"],
+        },
         "pools": {"raw_resources": ["water", "wood", "stone", "raw-fish"]},
         "map": {"patches": [], "lakes": [{"resource": "water"}]},
         "recipes": [

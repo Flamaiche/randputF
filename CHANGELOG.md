@@ -22,6 +22,70 @@ figurent dans **cette** version : la v0.0.1 publiée ne les contient pas
 (étiquetage erroné corrigé dans les docs — le tag `v0.0.1` et son témoin font
 foi).
 
+### Outils — plus de noms vanilla en dur
+
+- `tool/audit/difficulty.py` lit la chaîne de lancement dans `meta.rocket`
+  (bâtiments, recette, pièce, quantité, produits) : plus de recette ni de
+  quantité codées en dur.
+- `tool/exporters/seed_graph.py` prend les packs et leur ordre dans
+  `meta.science_packs` ; l'ancien fallback `*-barrel` d'icône disparaît.
+- `tool/generator/late_raws.py`, `tool/replay/player.py` et
+  `tools/classify_late_raws.py` n'acceptent un pack que s'il est déclaré par
+  le dump ; `tool/__main__.py` affiche les produits de lancement dérivés.
+- `tool/exporters/complexity_graph.py` reconnaît un bâtiment de lancement par
+  `rocket_parts_required`, et `tool/common/db.py` les barils par leur
+  sous-groupe. La baseline `build_vanilla_seed` garde ses exclusions
+  historiques (rapport vanilla uniquement).
+
+### Rochers — le charbon devient de la pierre
+
+- `huge-rock` produit en vanilla de la pierre **et du charbon**. Le charbon
+  n'appartient pas au pool environnemental (`wood`, `stone`, `raw-fish`) ;
+  `mod/data-final-fixes.lua` remplace donc chaque résultat `coal` d'un
+  `simple-entity` rocheux par le **même montant** de `stone`.
+- Vérifié sur un dump réel du jeu avec le mod chargé : `huge-rock` ne contient
+  plus que deux résultats `stone` (`24..50` chacun), sans erreur de prototype.
+
+### Exporter 0.1.8 — dump schéma 2, liaisons brutes
+
+- `exporter/control.lua` émet `meta.game_version_numeric`,
+  `meta.schema_version = 2` et `meta.exporter_version`. `seed_value` n'est plus
+  figé à 0 : il vient de la version réelle du jeu.
+- Le dump expose les faits déjà présents dans les prototypes : `order` sur les
+  items/entités/recettes/technologies, `main_product`, `used_by_labs`,
+  `science_capacity`, `selection_box`, `guns`, `energy_source.buffer_capacity`,
+  les températures/couleurs de fluides et `research_unit_count_formula`.
+- `mod/data-updates.lua` publie aussi `randputf-water-tiles`
+  (`data_type = "randputf.water_tiles"`) ; `mod/control.lua` lit ce `mod-data`
+  en priorité, avec repli statique pour les jeux sans `mod-data`.
+- Le tool consomme ces liaisons au lieu de recréer des listes : packs de science
+  et leur ordre, chaîne de fusée, armes montées (`entity.guns`), recette/parts
+  de lancement. Les champs legacy restent émis pour les dumps anciens.
+- `ITEM_LIKE_TYPES` inclut désormais `blueprint-book` et `spidertron-remote`.
+- Dump clean régénéré : SHA-256
+  `3a272ee9440e020ebc36f9a92c222720af1c53c4c6b65ce2b136d7ebee2c84ea`.
+  Témoin seed 5 : `12872b9249f37a5f56c0440b3361a0c6` (vérifié depuis un wheel
+  installé hors checkout). **765 tests** verts.
+
+### Exporter 0.1.7 — `mod-data` pour les lacs
+
+- `mod/data-updates.lua` publie le prototype `mod-data` `randputf-lake-tiles`
+  (`data_type = "randputf.lake_tiles"`) : tuile fantôme source, fluide fantôme,
+  `results` (fantôme → tuiles de lac) et `fluids` (tuile → fluide). C'est la
+  source unique du mapping, lue au runtime et exportée dans le dump.
+- `exporter/control.lua` ajoute `dump_mod_data()` et le champ `mod_data` du
+  payload. `mod/control.lua` lit `prototypes.mod_data` en priorité (fluides
+  et nom réel de tuile), avec repli sur la seed pour les versions sans
+  `mod-data` (< 2.1.20).
+- `inject_pumped_fluids` pose `pumped_fluids` quand plusieurs lacs partagent
+  `water_tile` : la pompe offshore n'est plus ambiguë, et le fluide fantôme
+  n'est jamais compté comme ressource. `pumped_fluid` reste renseigné quand un
+  seul lac est réellement pompé.
+- `VanillaDB.pumped_fluids`, les ressources brutes, le graphe de complexité et
+  le navigateur de dump prennent en compte l'ensemble des fluides pompés.
+- Validé sur un dump moddé réel Factorio 2.1.24 (seed 5) : `mod_data` et
+  `pumped_fluid = "heavy-oil"` sont produits. **764 tests** verts.
+
 ### Exporter 0.1.6 — export moddé autorisé
 
 - Le garde-fou qui annulait l'export quand `randputF` était actif est retiré :
@@ -126,7 +190,7 @@ foi).
 ### Déterminisme vérifiable
 
 - **Témoin de reproductibilité** : `randputf witness --seed 5 --expect
-  b900d57712f212010d1c40e6405f4e0a` (état courant du dépôt, dump 0.1.6 ;
+  12872b9249f37a5f56c0440b3361a0c6` (état courant du dépôt, dump 0.1.8 ;
   vérifié depuis un wheel installé hors checkout, comme le job CI). Il
   **changera** au bump vers 0.0.2 (préfixe racine `randputF_<version>`) et la
   seed 5 est touchée par le correctif d'auto-sélection. Les sorties HTML
@@ -135,7 +199,7 @@ foi).
 
 ### Garanties mesurées
 
-- **762 tests** verts sur le dump réel 0.1.6.
+- **765 tests** verts sur le dump réel 0.1.8 (schéma 2).
 - Parité du rapport vanilla inchangée (64 entrées, 10 090 834 crafts,
   13 850 040 s de minage, 3 lancements, offshore-pump en bâtiments).
 

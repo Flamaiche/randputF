@@ -12,6 +12,7 @@ import logging
 from tool.common import config as _cfg
 from tool.common.db import SLOT_ITEM, VanillaDB
 from tool.common.version import FACTORIO_VERSION, VERSION
+from tool.parsers.vanilla import rocket_meta_from_chain
 from tool.generator import (
     building_fluids,
     easeup_phase,
@@ -435,6 +436,9 @@ def _finalize_pipeline(
             "seed": db.seed_value,
             "generator_version": VERSION,
             "factorio_version": FACTORIO_VERSION,
+            "science_packs": sorted(db.science_packs),
+            "science_pack_order": list(db.science_pack_order),
+            "rocket": rocket_meta_from_chain(db.rocket_chain),
         },
         "pools": {
             "item_resources": sorted(i.name for i in db.beltable_items()),
