@@ -269,9 +269,9 @@ Les versions 0.1.4 et 0.1.5 refusaient l'export quand un artefact `randputf-*` �
 | Assemblage | `tool/exporters/mod_seed.py` | `seed.json`, `seed.lua`, `locale/*/seed.cfg` |
 | Navigation | `tool/exporters/dump_html.py` | `randputf dump` → `<mod_label>.dump.html` |
 | Rapport | `tool/exporters/report.py` | `randputf report` → `<mod_label>.report.html` |
-| Testeur | `tool/tester.py` | `randputf test` → `<mod_label>.dump.html`, `<mod_label>.graph.html`, `<mod_label>.report.html`, contrôle + rejeu |
+| Testeur | `tool/tester.py` | `randputf test` → `<mod_label>/<mod_label>.dump.html`, `<mod_label>.graph.html`, `<mod_label>.report.html`, contrôle + rejeu |
 
-`generate --install` désactive `randputf-exporter` dans `mod-list.json` : les deux mods ne doivent pas être actifs en même temps pendant une partie jouée. Le dump moddé reste utile pour le diagnostic, pas pour la partie finale.
+`generate --install` copie le mod dans `paths.factorio_mods` et met à jour `mod-list.json` sans modifier l'état de `randputf-exporter` ; l'exporter reste exclu de `active_mods` dans les dumps.
 
 ---
 

@@ -28,6 +28,9 @@ from pathlib import Path
 from tool.common.db import seed_environmental_items
 from tool.common.png_icon import crop_mip
 
+LARGE_GRAPH_RECIPES = 2000
+LARGE_GRAPH_TECHS = 1000
+
 DOT_HEADER = """// randputF seed {seed} - graphe de production (IDEES C9)
 digraph seed {{
   bgcolor="#141419";
@@ -582,16 +585,26 @@ def build_seed_graph_dot(
     return DOT_HEADER.format(seed=seed.get("meta", {}).get("seed", "?")) + body + footer
 
 
+def _graph_engine(seed: dict) -> str:
+    """Choisit le moteur Graphviz adapté à la taille du graphe."""
+    if (
+        len(seed.get("recipes") or []) > LARGE_GRAPH_RECIPES
+        or len(seed.get("technologies") or []) > LARGE_GRAPH_TECHS
+    ):
+        return "sfdp" if shutil.which("sfdp") else "dot"
+    return "dot"
+
+
 def write_seed_graph_html(seed: dict, path: Path) -> None:
     """Écrit ``path`` (HTML interactif, autonome) du graphe de la seed.
 
-    Rendu SVG via ``dot -Tsvg`` (Graphviz requis) ; les icônes locale reconsultées
-    sont embarquées en data-URI pour que le fichier soit déplaçable seul. Le
-    JS intégré gère zoom/pan (molette + drag) et affiche au clic d'un nœud sa
-    fiche (icône agrandie, ingrédients, utilisateurs).
+    Rendu SVG via Graphviz ; les icônes locale reconsultées sont embarquées en
+    data-URI pour que le fichier soit déplaçable seul. Le JS intégré gère
+    zoom/pan (molette + drag) et affiche au clic d'un nœud sa fiche (icône
+    agrandie, ingrédients, utilisateurs).
     """
-    dot = shutil.which("dot")
-    if dot is None:
+    engine = _graph_engine(seed)
+    if shutil.which(engine) is None:
         print(f"Graphviz introuvable : l'export HTML interactif ({path}) est ignoré")
         return
     import tempfile
@@ -601,7 +614,7 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
         dot_path = _dot_for(seed, image_dir)
         try:
             svg = subprocess.run(
-                [dot, "-Tsvg", str(dot_path)],
+                [engine, "-Tsvg", str(dot_path)],
                 capture_output=True,
                 check=True,
                 text=True,

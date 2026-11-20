@@ -10,6 +10,7 @@ TOUJOURS valide — le mod était alors déposé à la racine du dépôt (plus u
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -62,3 +63,49 @@ def test_install_factorio_mods_vide_retombe_sur_output(empty_user_config):
     assert (asm / "info.json").is_file()
     assert (asm / "data.lua").is_file()
     assert not (asm / "seed.graph.html").exists()  # pas de graphe avec --install
+
+
+@pytest.fixture
+def user_config_mods(tmp_path: Path):
+    """Isole le test avec un dossier mods temporaire et l'exporter actif."""
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    (mods / "mod-list.json").write_text(
+        json.dumps(
+            {
+                "mods": [
+                    {"name": "base", "enabled": True},
+                    {"name": "randputf-exporter", "enabled": True},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    user = ROOT / "config" / "user.yaml"
+    backup = None
+    if user.exists():
+        backup = tmp_path / "user.yaml"
+        shutil.copy2(user, backup)
+        user.unlink()
+    user.write_text(f"paths:\n  factorio_mods: {mods.as_posix()}\n", encoding="utf-8")
+    try:
+        yield mods
+    finally:
+        user.unlink(missing_ok=True)
+        if backup is not None:
+            shutil.copy2(backup, user)
+
+
+def test_install_ne_desactive_pas_l_exporter(user_config_mods: Path):
+    out = subprocess.run(
+        [sys.executable, "-m", "tool", "generate", "--seed", "5", "--install"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+
+    data = json.loads((user_config_mods / "mod-list.json").read_text(encoding="utf-8"))
+    exporter = next(m for m in data["mods"] if m["name"] == "randputf-exporter")
+    assert exporter["enabled"] is True

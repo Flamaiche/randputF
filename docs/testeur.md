@@ -23,7 +23,13 @@ Dans les deux cas, le dump fourni reste la source de vérité pour l'identité, 
 | `mesure` | `write_full_report()` / `compute_difficulty()` | calcule complexité, difficulté et partie simulée |
 | `rapport` | `run_dump_test()` | écrit les trois HTML préfixés par la source |
 
-Ces noms sont exposés dans `tool.tester.STAGES` et servent de référence commune à la CLI, aux tests et à cette documentation.
+Ces noms sont exposés dans `tool.tester.STAGES` et servent de référence commune à la CLI, aux tests et à cette documentation. `tool.tester.STAGE_LABELS` donne les libellés affichés par la barre de progression : « Acquisition du dump », « Contrôle de l'état », « Rejeu joueur », « Mesure de la difficulté » et « Rapport HTML ».
+
+La CLI `randputf test` affiche cette progression en Python pur, sans dépendance : nom de l'étape, barre, pourcentage de l'étape courante, numéro de l'étape sur le total, action en cours, temps écoulé en secondes et fin estimée de l'étape. Sur un terminal, la ligne est rafraîchie sur place ; sinon chaque changement d'étape produit une ligne.
+
+```text
+Rejeu joueur [████████░░░░░░░░░░░░]  40% 3/5 — partie simulée ·   3.2s · fin étape ~5s
+```
 
 Le rejeu ne suit pas un ordre linéaire : à chaque passe, il cherche toutes les techs dont les prérequis sont satisfaits et dont le coût est abordable, en recherche une, puis recalcule la fermeture. Un blocage n'est donc signalé que si aucune tech disponible ne peut être financée. C'est indispensable aux arbres moddés où une tech tardive dans l'ordre topologique peut être le prochain déblocage utile.
 
@@ -34,12 +40,14 @@ Un échec de contrôle ou de rejeu n'est pas masqué : il est affiché en consol
 Pour un dump `vanilla_dump.json` identifié `vanilla` :
 
 ```text
-output/vanilla.dump.html     navigateur du dump
-output/vanilla.graph.html    graphe de production
-output/vanilla.report.html   contrôles + complexité + difficulté + partie simulée
+output/vanilla/vanilla.dump.html     navigateur du dump
+output/vanilla/vanilla.graph.html    graphe de production
+output/vanilla/vanilla.report.html   contrôles + complexité + difficulté + partie simulée
 ```
 
-Les dumps très volumineux utilisent une vue de rapport allégée : résumé du dump et contrôles complets, sans les courbes de complexité coûteuses. Si Graphviz ne peut pas rendre le graphe, la page graphe contient une vue textuelle des technologies et recettes.
+Le dossier porte le nom du dump (`meta.mod_label`, sinon le nom du fichier), ou le nom du dossier du mod avec `--mod-dir`.
+
+Au-delà de 10 000 recettes, le rapport passe en vue réduite : résumé, contrôles, couverture et difficulté sont conservés ; les courbes de complexité et la partie simulée détaillée sont omises. Les grands graphes utilisent `sfdp` au lieu de `dot` pour éviter les erreurs mémoire ; si Graphviz ne peut pas rendre le SVG, la page graphe contient une vue textuelle des technologies et recettes.
 
 Les ancres stables du rapport sont décrites par `tool.tester.SECTIONS` : `controles`, `couverture-dump`, `complexite-courbes`, `difficulte`, `partie-simulee`.
 

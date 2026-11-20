@@ -23,7 +23,7 @@ _REPORT_CSS = '\nbody{padding-right:250px}\n.report-section{margin-top:40px;padd
 
 _TOC = '\n<nav class="toc" aria-label="Sommaire">\n  <div class="toc-title">Sommaire</div>\n  <a href="#controles">Contrôles</a>\n  <a href="#couverture-dump">Couverture du dump</a>\n  <a href="#complexite-courbes">Complexité — courbes</a>\n  <a href="#complexite-ateliers">Complexité — ateliers</a>\n  <a href="#complexite-detail-table">Détail par technologie</a>\n  <a href="#difficulte">Difficulté</a>\n  <a class="toc-sub" href="#difficulte-table">Tableau de difficulté</a>\n  <a href="#partie-simulee">Partie simulée</a>\n  <a class="toc-sub" href="#partie-simulee-table">Tableau par item</a>\n</nav>\n'
 
-_FULL_REPORT_MAX_RECIPES = 2000
+_FULL_REPORT_MAX_RECIPES = 10000
 
 _TOC_LIGHT = (
     '<nav class="toc" aria-label="Sommaire">'
@@ -31,6 +31,7 @@ _TOC_LIGHT = (
     '<a href="#resume">Résumé</a>'
     '<a href="#controles">Contrôles</a>'
     '<a href="#couverture-dump">Couverture du dump</a>'
+    '<a href="#difficulte">Difficulté</a>'
     "</nav>\n"
 )
 
@@ -146,8 +147,9 @@ def _summary_section(seed: dict, dump: dict | None) -> str:
     )
     return (
         "<section class='report-section' id='resume'><h2>Résumé du dump testé</h2>"
-        "<p>Analyse détaillée désactivée : le dump dépasse la taille gérable par "
-        "les vues de complexité. Les contrôles et le rejeu restent complets.</p>"
+        "<p>Vue réduite : courbes de complexité et partie simulée détaillée omises "
+        "sur ce dump volumineux. Les contrôles, la couverture et la difficulté "
+        "restent complets.</p>"
         f"<table><tbody>{rows}</tbody></table></section>"
     )
 
@@ -185,14 +187,26 @@ def write_full_report(
         dump_coverage = classify_dump_fields(dump)
     coverage_section = _coverage_section(dump_coverage)
     if lightweight:
+        try:
+            difficulty_html = difficulty_table_html(seed, label=mod_label)
+        except (ArithmeticError, KeyError, TypeError, ValueError):
+            difficulty_html = '<p class="muted">Aucune donnée de difficulté.</p>'
+        difficulty_section = (
+            "<section class='report-section' id='difficulte'>"
+            "<h2>Difficulté (ressources brutes)</h2>"
+            "<details class='table-fold' id='difficulte-table'><summary>Tableau de difficulté</summary>"
+            f"<div class='cols'>{difficulty_html}</div>"
+            "</details></section>"
+        )
         body = (
             _TOC_LIGHT
             + _summary_section(seed, dump)
             + coverage_section
             + _checks_section(checks)
+            + difficulty_section
             + _TOC_SCRIPT
         )
-        style = f"{_COMPLEXITY_CSS}\n{_REPORT_CSS}"
+        style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{_REPORT_CSS}"
         document = (
             "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"

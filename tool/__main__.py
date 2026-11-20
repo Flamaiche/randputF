@@ -43,7 +43,7 @@ from tool.service import build_mod as _build_mod
 from tool.service import install_mod as _install_mod
 from tool.service import load_config as _load_config
 from tool.service import load_db as _load_db_raising
-from tool.tester import run_dump_test
+from tool.tester import Progress, run_dump_test
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
@@ -318,24 +318,44 @@ def cmd_test(args: argparse.Namespace) -> None:
     directement du dump. Avec `mod_dir`, l'état déjà assemblé du mod est lu
     depuis `seed/seed.json`. Aucune graine n'est tirée et aucun mod n'est généré.
     """
-    dump_path = Path(args.dump)
+    progress = Progress()
+    progress.start()
     try:
-        dump = json.loads(dump_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as err:
-        sys.exit(f"Dump illisible ({dump_path}) : {err}")
-
-    state = None
-    if args.mod_dir:
-        state_path = Path(args.mod_dir) / "seed" / "seed.json"
+        dump_path = Path(args.dump)
+        progress.enter("acquisition", f"lecture de {dump_path.name}")
         try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
+            dump = json.loads(dump_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as err:
-            sys.exit(f"État du mod illisible ({state_path}) : {err}")
+            sys.exit(f"Dump illisible ({dump_path}) : {err}")
+        progress.update(30, "dump lu")
 
-    db = _load_db(False, dump_path)
-    source = _source_label(str(dump_path), dump)
-    out_dir = Path(args.out) if args.out else OUTPUT_DIR
-    result = run_dump_test(db, dump, out_dir, source=source, state=state)
+        state = None
+        if args.mod_dir:
+            state_path = Path(args.mod_dir) / "seed" / "seed.json"
+            progress.update(60, "lecture de l'état du mod")
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as err:
+                sys.exit(f"État du mod illisible ({state_path}) : {err}")
+            progress.update(70, "état du mod lu")
+
+        progress.update(80, "chargement de la base vanilla")
+        db = _load_db(False, dump_path)
+        progress.update(90, "base vanilla chargée")
+        source = _source_label(str(dump_path), dump)
+        out_name = Path(args.mod_dir).name if args.mod_dir else None
+        out_dir = Path(args.out) if args.out else OUTPUT_DIR
+        result = run_dump_test(
+            db,
+            dump,
+            out_dir,
+            source=source,
+            state=state,
+            out_name=out_name,
+            progress=progress,
+        )
+    finally:
+        progress.finish("arrêt du testeur")
 
     check = result.check
     print(f"Source : {dump_path} → {source}")

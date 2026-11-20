@@ -235,9 +235,8 @@ Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
 vanilla alternatif).
 
 `generate` a une option propre : `--install`, qui copie le mod dans
-`paths.factorio_mods` et met à jour `mod-list.json`
-(`tool/service.py:162-197`) — et **désactive** `randputf-exporter`, pour
-qu'aucun dump ne puisse être pris depuis une partie randomisée.
+`paths.factorio_mods` et met à jour `mod-list.json` (`tool/service.py:162-194`)
+sans modifier l'état de `randputf-exporter`.
 
 ## 12. Récapitulatif des statuts
 

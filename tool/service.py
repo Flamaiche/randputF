@@ -162,7 +162,7 @@ def build_mod(seed: dict, dest: Path) -> Path:
 def install_mod(seed: dict, mods_dir: Path) -> None:
     """Installe le mod assemblé dans Factorio.
 
-    `seed` est la seed finale et `mods_dir` le dossier `mods` du jeu. Copie le mod, met à jour `mod-list.json` et désactive `randputf-exporter` ; retourne `None`.
+    `seed` est la seed finale et `mods_dir` le dossier `mods` du jeu. Copie le mod, met à jour `mod-list.json` sans modifier l'état de `randputf-exporter` ; retourne `None`.
     """
     mod_name = MOD_NAME_VERSIONED
     dest = mods_dir / mod_name
@@ -190,10 +190,6 @@ def install_mod(seed: dict, mods_dir: Path) -> None:
         for m in data["mods"]:
             if m["name"] == mod_list_name:
                 m["enabled"] = True
-    for m in data["mods"]:
-        if m["name"] == "randputf-exporter":
-            m["enabled"] = False
-
     mod_list.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 

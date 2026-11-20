@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 from tool.common.db import ENVIRONMENTAL_ITEMS
 from tool.exporters.seed_graph import (
+    _graph_engine,
     _node_info,
     _technology_info,
     build_seed_graph_dot,
@@ -244,3 +245,13 @@ def test_ressource_brute_jamais_consommee_toujours_visible() -> None:
     water_lines = [l for l in dot.splitlines() if l.startswith('  "water"')]
     assert water_lines, "water doit avoir un nœud"
     assert "-->" not in water_lines[0]
+
+
+def test_graph_engine_sfdp_pour_grand_graphe(monkeypatch):
+    monkeypatch.setattr(
+        "tool.exporters.seed_graph.shutil.which",
+        lambda name: f"/bin/{name}" if name == "sfdp" else None,
+    )
+    assert _graph_engine({"recipes": [{}] * 2001, "technologies": []}) == "sfdp"
+    assert _graph_engine({"recipes": [], "technologies": [{}] * 1001}) == "sfdp"
+    assert _graph_engine({"recipes": [{}], "technologies": []}) == "dot"

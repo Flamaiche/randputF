@@ -37,6 +37,20 @@ foi).
   sous-groupe. La baseline `build_vanilla_seed` garde ses exclusions
   historiques (rapport vanilla uniquement).
 
+### Testeur — progression par étape
+
+- `randputf test` affiche une barre Python pure, sans dépendance : nom de
+  l'étape, barre, pourcentage de l'étape courante, numéro `n/5`, action, temps
+  écoulé et fin estimée. Sur terminal la ligne est rafraîchie sur place ;
+  sinon un changement visible produit une ligne.
+- Le découpage en cinq étapes vient de `tool.tester.STAGES` et
+  `STAGE_LABELS` : acquisition du dump, contrôle de l'état, rejeu joueur,
+  mesure de la difficulté et rapport HTML. Le contrôle et le rejeu remontent
+  leur progression réelle à chaque affichage, sans saut direct de 0 à 100 %.
+- Le testeur unifié joueur + contrôle est la source commune : la commande
+  `test` enchaîne validation, rejeu et trois vues HTML dans
+  `output/<source>/`, pour vanilla, le mod seul et le modpack.
+
 ### Rochers — le charbon devient de la pierre
 
 - `huge-rock` produit en vanilla de la pierre **et du charbon**. Le charbon

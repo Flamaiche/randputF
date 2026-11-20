@@ -9,6 +9,8 @@ Implémente génériquement sur la structure seed :
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from tool.common.cycles import find_recipe_cycle
 from tool.common.db import seed_environmental_items
 
@@ -16,14 +18,18 @@ MAX_CYCLE_DEPTH = 5
 MAX_CYCLE_EXPANSIONS = 2000
 
 
-def validate_seed(seed: dict) -> list[str]:
+def validate_seed(
+    seed: dict, on_progress: Callable[[int], None] | None = None
+) -> list[str]:
     """Valide la graine (anti-cycle, progressivité, complétude d'une tech
     finale — le joueur a une voie vers le lancement) et renvoie la liste des
     problèmes éventuels (vide si la seed est valide)."""
     issues: list[str] = []
     issues += _check_anti_cycle(seed)
-    issues += _check_progressivity(seed)
+    issues += _check_progressivity(seed, on_progress)
     issues += _check_completeness(seed)
+    if on_progress is not None:
+        on_progress(100)
     return issues
 
 
@@ -89,7 +95,9 @@ def _initial_pool(seed: dict) -> set[str]:
     return pool
 
 
-def _check_progressivity(seed: dict) -> list[str]:
+def _check_progressivity(
+    seed: dict, on_progress: Callable[[int], None] | None = None
+) -> list[str]:
     """Vérifie que chaque recette n'utilise que des items déjà atteignables.
 
     Une seed générée est ordonnée : parcours séquentiel, comme le joueur qui
@@ -100,8 +108,8 @@ def _check_progressivity(seed: dict) -> list[str]:
     """
     ordered = (seed.get("meta") or {}).get("origin") != "dump"
     if ordered:
-        return _check_progressivity_ordered(seed)
-    return _check_progressivity_unordered(seed)
+        return _check_progressivity_ordered(seed, on_progress)
+    return _check_progressivity_unordered(seed, on_progress)
 
 
 def _find_obtainable_cycle(
@@ -125,10 +133,13 @@ def _find_obtainable_cycle(
     )
 
 
-def _check_progressivity_ordered(seed: dict) -> list[str]:
+def _check_progressivity_ordered(
+    seed: dict, on_progress: Callable[[int], None] | None = None
+) -> list[str]:
     issues: list[str] = []
     pool = _initial_pool(seed)
-    for recipe in seed.get("recipes", []):
+    recipes = seed.get("recipes", [])
+    for index, recipe in enumerate(recipes, 1):
         missing = [
             ing["name"]
             for ing in recipe.get("ingredients", [])
@@ -142,11 +153,16 @@ def _check_progressivity_ordered(seed: dict) -> list[str]:
             pool.add(product["name"])
         for ingredient in recipe.get("ingredients", []):
             pool.add(ingredient["name"])
+        if on_progress is not None:
+            on_progress(index * 100 // len(recipes) if recipes else 100)
     return issues
 
 
-def _check_progressivity_unordered(seed: dict) -> list[str]:
+def _check_progressivity_unordered(
+    seed: dict, on_progress: Callable[[int], None] | None = None
+) -> list[str]:
     pending = list(seed.get("recipes", []))
+    total = len(pending)
     pool = _initial_pool(seed)
     while True:
         progressed = False
@@ -176,6 +192,8 @@ def _check_progressivity_unordered(seed: dict) -> list[str]:
                 if product_name and product_name not in pool:
                     pool.add(product_name)
                     progressed = True
+        if on_progress is not None:
+            on_progress((total - len(pending)) * 100 // total if total else 100)
         if not progressed:
             targets = sorted(
                 {

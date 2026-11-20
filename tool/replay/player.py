@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from tool.common.cycles import find_recipe_cycle
@@ -1212,7 +1213,9 @@ class FakePlayer:
 
     # ── Progression des techs (le « quand j'ai de quoi → je recherche ») ──
 
-    def play(self) -> ReplayReport:
+    def play(
+        self, on_progress: Callable[[int], None] | None = None
+    ) -> ReplayReport:
         """Rejoue la seed de bout en bout : pour chaque tech non maîtrisée, on
         calcule la fermeture craftable, on évalue le coût (packs + déclencheur)
         et on dépense si la tech est entièrement abordable — sinon ça bloque.
@@ -1282,6 +1285,10 @@ class FakePlayer:
                 report.researched_order.append(tech_id)
                 pending.remove(tech)
                 progressed = True
+                if on_progress is not None:
+                    on_progress(
+                        len(self.researched) * 100 // (report.total_techs or 1)
+                    )
                 break
             if progressed:
                 continue
@@ -1304,6 +1311,8 @@ class FakePlayer:
             )
             break
         report.researched = len(self.researched)
+        if on_progress is not None:
+            on_progress(100)
         report.all_techs_researched = report.researched == len(self.techs)
         # Victoire : chaîne fusée atteignable une fois l'arbre consommé.
         items, fluids, power, generator = self.closure()
@@ -1673,9 +1682,13 @@ class FakePlayer:
         return f"{target} ({recipe['name']}): " + " ; ".join(bits) if bits else f"{target} (recette incomplète)"
 
 
-def play(db: VanillaDB, seed: dict) -> ReplayReport:
+def play(
+    db: VanillaDB,
+    seed: dict,
+    on_progress: Callable[[int], None] | None = None,
+) -> ReplayReport:
     """Joue une seed et retourne le verdict du rejeu.
 
     ``db`` est la base vanilla et ``seed`` la seed finale. Construit un ``FakePlayer`` puis retourne son ``ReplayReport`` (victoire, techs recherchées, blocage, maîtrise).
     """
-    return FakePlayer(db, seed).play()
+    return FakePlayer(db, seed).play(on_progress)
