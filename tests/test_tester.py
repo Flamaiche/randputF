@@ -142,6 +142,119 @@ def test_progressivite_dump_independante_de_l_ordre():
     assert validate_seed(seed) == []
 
 
+def test_progressivite_dump_cycle_positif_avec_starter_externe():
+    seed = {
+        "meta": {"origin": "dump"},
+        "pools": {"raw_resources": ["starter", "catalyseur"]},
+        "recipes": [
+            {
+                "name": "faire-a",
+                "ingredients": [
+                    {"name": "b", "amount": 1},
+                    {"name": "starter", "amount": 1},
+                ],
+                "results": [{"name": "a", "amount": 8}],
+            },
+            {
+                "name": "faire-b",
+                "ingredients": [
+                    {"name": "a", "amount": 1},
+                    {"name": "catalyseur", "amount": 1},
+                ],
+                "results": [{"name": "b", "amount": 50}],
+            },
+        ],
+    }
+
+    assert validate_seed(seed) == []
+
+
+def test_progressivite_dump_cycle_equilibre_avec_conteneur():
+    seed = {
+        "meta": {"origin": "dump"},
+        "pools": {"raw_resources": ["conteneur"]},
+        "recipes": [
+            {
+                "name": "remplir",
+                "ingredients": [
+                    {"name": "fluide", "amount": 50},
+                    {"name": "conteneur", "amount": 1},
+                ],
+                "results": [{"name": "conteneur-fluide", "amount": 1}],
+            },
+            {
+                "name": "vider",
+                "ingredients": [{"name": "conteneur-fluide", "amount": 1}],
+                "results": [
+                    {"name": "fluide", "amount": 50},
+                    {"name": "conteneur", "amount": 1},
+                ],
+            },
+        ],
+    }
+
+    assert validate_seed(seed) == []
+
+
+def test_progressivite_dump_residu_combustion_et_lancement():
+    seed = {
+        "meta": {"origin": "dump"},
+        "pools": {"raw_resources": ["minerai"]},
+        "items": {
+            "combustible": {"burnt_result": "cendre"},
+            "lançable": {
+                "rocket_launch_products": [{"name": "retour", "amount": 1}]
+            },
+        },
+        "recipes": [
+            {
+                "name": "faire-combustible",
+                "ingredients": [{"name": "minerai", "amount": 1}],
+                "results": [{"name": "combustible", "amount": 1}],
+            },
+            {
+                "name": "faire-lançable",
+                "ingredients": [{"name": "minerai", "amount": 1}],
+                "results": [{"name": "lançable", "amount": 1}],
+            },
+            {
+                "name": "utiliser-cendre",
+                "ingredients": [{"name": "cendre", "amount": 1}],
+                "results": [{"name": "produit", "amount": 1}],
+            },
+            {
+                "name": "utiliser-retour",
+                "ingredients": [{"name": "retour", "amount": 1}],
+                "results": [{"name": "produit", "amount": 1}],
+            },
+        ],
+    }
+
+    assert validate_seed(seed) == []
+
+
+def test_progressivite_dump_fluide_de_procede():
+    seed = {
+        "meta": {"origin": "dump"},
+        "pools": {
+            "raw_resources": ["sel"],
+            "process_fluids": ["fluide-procede"],
+        },
+        "recipes": [
+            {
+                "name": "chauffer",
+                "ingredients": [
+                    {"name": "fluide-procede", "amount": 100},
+                    {"name": "sel", "amount": 1},
+                ],
+                "results": [{"name": "sel-chaud", "amount": 1}],
+            }
+        ],
+    }
+
+    assert validate_seed(seed) == []
+
+
 def test_dump_vanilla_passe_controle_et_rejeu():
     dump = json.loads(
         (Path(__file__).parent.parent / "data" / "vanilla_dump.json").read_text(

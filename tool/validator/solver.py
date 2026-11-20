@@ -9,7 +9,11 @@ Implémente génériquement sur la structure seed :
 
 from __future__ import annotations
 
+from tool.common.cycles import find_recipe_cycle
 from tool.common.db import seed_environmental_items
+
+MAX_CYCLE_DEPTH = 5
+MAX_CYCLE_EXPANSIONS = 2000
 
 
 def validate_seed(seed: dict) -> list[str]:
@@ -80,6 +84,7 @@ def _initial_pool(seed: dict) -> set[str]:
     }
     pool |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
     pool |= set((seed.get("pools") or {}).get("raw_resources") or ())
+    pool |= set((seed.get("pools") or {}).get("process_fluids") or ())
     pool |= seed_environmental_items(seed)
     return pool
 
@@ -97,6 +102,27 @@ def _check_progressivity(seed: dict) -> list[str]:
     if ordered:
         return _check_progressivity_ordered(seed)
     return _check_progressivity_unordered(seed)
+
+
+def _find_obtainable_cycle(
+    target: str, pending: list[dict], pool: set[str]
+) -> set[str] | None:
+    producers: dict[str, list[dict]] = {}
+    for recipe in pending:
+        for res in recipe.get("results") or []:
+            name = res.get("name")
+            if name:
+                producers.setdefault(name, []).append(recipe)
+    return find_recipe_cycle(
+        target,
+        pending,
+        producers,
+        infinite=pool,
+        available=pool,
+        require_positive=False,
+        max_depth=MAX_CYCLE_DEPTH,
+        max_expansions=MAX_CYCLE_EXPANSIONS,
+    )
 
 
 def _check_progressivity_ordered(seed: dict) -> list[str]:
@@ -138,6 +164,34 @@ def _check_progressivity_unordered(seed: dict) -> list[str]:
             for ingredient in recipe.get("ingredients", []):
                 pool.add(ingredient["name"])
             progressed = True
+        for name, item in (seed.get("items") or {}).items():
+            if not isinstance(item, dict) or name not in pool:
+                continue
+            burnt = item.get("burnt_result")
+            if burnt and burnt not in pool:
+                pool.add(burnt)
+                progressed = True
+            for product in item.get("rocket_launch_products") or []:
+                product_name = product.get("name") if isinstance(product, dict) else None
+                if product_name and product_name not in pool:
+                    pool.add(product_name)
+                    progressed = True
+        if not progressed:
+            targets = sorted(
+                {
+                    ing["name"]
+                    for recipe in pending
+                    for ing in recipe.get("ingredients") or []
+                    if ing["name"] not in pool
+                }
+            )
+            for target in targets:
+                cycle = _find_obtainable_cycle(target, pending, pool)
+                if cycle is None:
+                    continue
+                pool |= cycle
+                progressed = True
+                break
         if not progressed:
             break
     issues: list[str] = []

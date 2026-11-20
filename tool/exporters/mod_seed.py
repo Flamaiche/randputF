@@ -529,6 +529,8 @@ def build_vanilla_seed(dump: dict) -> dict:
             ]
             if launch_products:
                 item["rocket_launch_products"] = launch_products
+            if entry.get("burnt_result"):
+                item["burnt_result"] = str(entry["burnt_result"])
             item["used_by_labs"] = bool(entry.get("used_by_labs"))
             item["science_capacity"] = int(entry.get("science_capacity") or 0)
             item["is_science_pack"] = str(name) in science
@@ -632,6 +634,27 @@ def build_vanilla_seed(dump: dict) -> dict:
     meta = dump.get("meta") or {}
     rocket = rocket_meta_from_chain(rocket_chain_from_dump(dump))
     science_order = science_pack_order(dump, science)
+    produced_fluids = {
+        str(res["name"])
+        for recipe in recipes
+        for res in recipe.get("results") or []
+        if res.get("type") == SLOT_FLUID and res.get("name")
+    }
+    process_fluids: set[str] = set()
+    for entity in (dump.get("entities") or {}).values():
+        if not isinstance(entity, dict):
+            continue
+        detail = (entity.get("fluidboxes") or {}).get("detail") or {}
+        for box in detail.values():
+            if not isinstance(box, dict):
+                continue
+            name = box.get("filter")
+            if (
+                box.get("production_type") == "input"
+                and name in fluid_set
+                and name not in produced_fluids
+            ):
+                process_fluids.add(str(name))
     return {
         "meta": {
             "seed": meta.get("seed", "vanilla"),
@@ -646,6 +669,7 @@ def build_vanilla_seed(dump: dict) -> dict:
             "fluid_resources": sorted(fluid_set),
             "raw_resources": sorted(raw_set),
             "environmental_resources": sorted(environmental_items_from_dump(dump)),
+            "process_fluids": sorted(process_fluids),
         },
         "technologies": technologies,
         "progression_order": progression,

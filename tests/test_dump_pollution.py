@@ -96,6 +96,26 @@ def test_double_prefixe_reste_un_artefact_ignore():
     assert "randputf-randputf-iron-plate" not in db.recipes
 
 
+def test_build_vanilla_seed_derive_residu_et_fluide_de_procede():
+    dump = copy.deepcopy(CLEAN)
+    dump["items"]["coal"]["burnt_result"] = "stone"
+    dump["fluids"]["test-flux"] = copy.deepcopy(dump["fluids"]["water"])
+    boiler = copy.deepcopy(dump["entities"]["boiler"])
+    boiler["fluidboxes"] = {
+        "input": 1,
+        "output": 0,
+        "detail": {
+            "1": {"production_type": "input", "filter": "test-flux"}
+        },
+    }
+    dump["entities"]["test-boiler"] = boiler
+
+    seed = build_vanilla_seed(dump)
+
+    assert seed["items"]["coal"]["burnt_result"] == "stone"
+    assert "test-flux" in seed["pools"]["process_fluids"]
+
+
 def test_build_vanilla_seed_ignore_hidden_et_suit_la_recette_canonique():
     modded = _add_prefixed_recipe(CLEAN)
 

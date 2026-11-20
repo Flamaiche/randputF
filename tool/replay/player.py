@@ -34,6 +34,7 @@ import math
 from collections import Counter, deque
 from dataclasses import dataclass, field
 
+from tool.common.cycles import find_recipe_cycle
 from tool.common.db import SLOT_FLUID, SLOT_ITEM, VanillaDB
 
 MAX_DEPTH = 5          # profondeur de l'explication d'un blocage
@@ -806,189 +807,46 @@ class FakePlayer:
         if key in self._cycle_search_cache:
             return self._cycle_search_cache[key]
 
-        distances: dict[str, int] = {target: 0}
-        changed = True
-        while changed:
-            changed = False
-            for recipe in self.recipes:
-                if recipe["name"] not in self.unlocked:
-                    continue
-                known = [
-                    distances[ing["name"]]
-                    for ing in recipe.get("ingredients") or []
-                    if ing.get("name") in distances
-                ]
-                if not known:
-                    continue
-                step = min(known) + 1
-                for res in recipe.get("results") or []:
-                    name = res.get("name")
-                    if name and distances.get(name, step + 1) > step:
-                        distances[name] = step
-                        changed = True
-
-        def producers(name: str) -> list[dict]:
-            candidates = [
-                self.recipes_by_name[n]
-                for n in self.producers_by_name.get(name, [])
-                if n in self.unlocked
+        unlocked = [
+            recipe for recipe in self.recipes if recipe["name"] in self.unlocked
+        ]
+        producers = {
+            name: [
+                self.recipes_by_name[recipe_name]
+                for recipe_name in recipe_names
+                if recipe_name in self.unlocked
             ]
-            return sorted(
-                candidates,
-                key=lambda r: (
-                    len(r.get("ingredients") or []),
-                    r["name"],
-                ),
-            )
+            for name, recipe_names in self.producers_by_name.items()
+        }
+        infinite = inf_items | inf_fluids
+        available = infinite | items | fluids
 
-        def evaluate(nodes: tuple[str, ...], recipes: tuple[dict, ...]) -> set[str] | None:
-            members = set(nodes)
-            flows: list[tuple[Counter[str], Counter[str]]] = []
-            for recipe in recipes:
-                prod: Counter[str] = Counter()
-                cons: Counter[str] = Counter()
-                for res in recipe.get("results") or []:
-                    if (
-                        res.get("type") in (SLOT_ITEM, SLOT_FLUID)
-                        and res.get("name") in members
-                    ):
-                        prod[res["name"]] += int(res.get("amount", 1))
-                for ing in recipe.get("ingredients") or []:
-                    if ing.get("name") in members:
-                        cons[ing["name"]] += int(ing.get("amount", 1))
-                flows.append((prod, cons))
-            multipliers = [1] * len(recipes)
+        def recipe_ok(recipe: dict) -> bool:
+            crafted_in = recipe.get("crafted_in")
+            if crafted_in and crafted_in not in items and crafted_in not in inf_items:
+                return False
+            building = self._building_for(crafted_in)
+            if building is not None and not self._energy_ok(building, items, power):
+                return False
+            return True
 
-            def net_flows() -> tuple[Counter[str], Counter[str]]:
-                produced: Counter[str] = Counter()
-                consumed: Counter[str] = Counter()
-                for count, (prod, cons) in zip(multipliers, flows):
-                    for name, amount in prod.items():
-                        produced[name] += amount * count
-                    for name, amount in cons.items():
-                        consumed[name] += amount * count
-                return produced, consumed
-
-            balanced = False
-            for _ in range(64):
-                produced, consumed = net_flows()
-                if produced[target] > consumed[target] and all(
-                    produced[m] >= consumed[m] for m in members
-                ):
-                    balanced = True
-                    break
-                deficits = [
-                    m for m in members if produced[m] < consumed[m]
-                ]
-                if not deficits:
-                    return None
-                deficit = max(
-                    deficits, key=lambda m: consumed[m] - produced[m]
-                )
-                choices = [
-                    i for i, (prod, cons) in enumerate(flows)
-                    if prod[deficit] - cons[deficit] > 0
-                ]
-                if not choices:
-                    return None
-                index = max(
-                    choices, key=lambda i: flows[i][0][deficit] - flows[i][1][deficit]
-                )
-                gain = flows[index][0][deficit] - flows[index][1][deficit]
-                step = max(1, math.ceil((consumed[deficit] - produced[deficit]) / gain))
-                if multipliers[index] + step > 64:
-                    return None
-                multipliers[index] += step
-            if not balanced:
-                return None
-            for recipe in recipes:
-                crafted_in = recipe.get("crafted_in")
-                if crafted_in and crafted_in not in items and crafted_in not in inf_items:
-                    return None
-                building = self._building_for(crafted_in)
-                if building is not None and not self._energy_ok(building, items, power):
-                    return None
-                for ing in recipe.get("ingredients") or []:
-                    if ing.get("name") in members:
-                        continue
-                    bucket = inf_items if ing.get("type") == SLOT_ITEM else inf_fluids
-                    if ing["name"] not in bucket:
-                        return None
-            starter = any(
-                m in inf_items or m in inf_fluids or m in items or m in fluids
-                for m in members
-            )
-            if not starter:
-                starter = any(
-                    ing.get("name") not in members
-                    and (
-                        ing.get("name") in inf_items
-                        or ing.get("name") in inf_fluids
-                        or ing.get("name") in items
-                        or ing.get("name") in fluids
-                    )
-                    for recipe in recipes
-                    for ing in recipe.get("ingredients") or []
-                    if ing.get("name")
-                )
-            if require_starter and not starter:
-                return None
-            return {
-                m for m in members
-                if m in self.items_db or m in self.db.fluids
-            }
-
-        result: set[str] | None = None
-        visits = 0
-
-        def dfs(
-            current: str,
-            nodes: tuple[str, ...],
-            recipes: tuple[dict, ...],
-            used: frozenset[str],
-        ) -> None:
-            nonlocal result, visits
-            if (
-                result is not None
-                or len(recipes) > MAX_CYCLE_DEPTH
-                or visits > MAX_CYCLE_EXPANSIONS
-            ):
-                return
-            for recipe in producers(current):
-                recipe_name = recipe["name"]
-                if recipe_name in used:
-                    continue
-                visits += 1
-                if visits > MAX_CYCLE_EXPANSIONS:
-                    return
-                next_recipes = recipes + (recipe,)
-                next_used = used | {recipe_name}
-                ingredients = sorted(
-                    recipe.get("ingredients") or [],
-                    key=lambda ing: (
-                        distances.get(ing.get("name"), 10**9),
-                        ing.get("name") or "",
-                    ),
-                )
-                for ing in ingredients:
-                    name = ing.get("name")
-                    if not name:
-                        continue
-                    if name == target:
-                        found = evaluate(nodes, next_recipes)
-                        if found is not None:
-                            result = found
-                            return
-                    elif (
-                        name in distances
-                        and name in self.producers_by_name
-                        and name not in nodes
-                    ):
-                        dfs(name, nodes + (name,), next_recipes, next_used)
-                        if result is not None:
-                            return
-
-        dfs(target, (target,), (), frozenset())
+        members = find_recipe_cycle(
+            target,
+            unlocked,
+            producers,
+            infinite=infinite,
+            available=available,
+            require_infinite_external=True,
+            require_starter=require_starter,
+            check_recipe=recipe_ok,
+            max_depth=MAX_CYCLE_DEPTH,
+            max_expansions=MAX_CYCLE_EXPANSIONS,
+        )
+        result = (
+            {member for member in members if member in self.items_db or member in self.db.fluids}
+            if members is not None
+            else None
+        )
         self._cycle_search_cache[key] = result
         return result
 
