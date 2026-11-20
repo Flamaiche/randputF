@@ -18,7 +18,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tool.common.db import BuildingDef, is_fixed_fluid_crafter
+from tool.common.db import (
+    BuildingDef,
+    has_hidden_recipe,
+    is_fixed_fluid_crafter,
+)
 from tool.parsers.vanilla import (
     equivalent_functional_type,
     load_db_from_dump,
@@ -51,6 +55,25 @@ def test_accumulateur_jamais_generateur():
     assert tb is not None
     assert tb.is_generator is False
     assert tb.produces_electricity is False
+
+
+def test_generateur_fluide_input_output_n_est_pas_une_recette_cachee():
+    entity = {
+        "type": "generator",
+        "energy_source": {"type": "electric"},
+        "max_power_output": 1000000.0,
+        "fluidboxes": {
+            "input": 1,
+            "output": 1,
+            "detail": {
+                "1": {"production_type": "input-output", "filter": "pressured-steam"}
+            },
+        },
+    }
+    tb = tag_parse_entity("turbine-test", entity)
+    assert tb is not None
+    assert tb.is_generator is True
+    assert has_hidden_recipe(tb) is False
 
 
 def test_batiment_non_classable_est_tagge_other():

@@ -26,6 +26,12 @@ SLOT_FUEL = "fuel"
 SLOT_ENERGY = "energy"
 
 
+def seed_environmental_items(seed: dict) -> set[str]:
+    """Items environnementaux d'une seed, avec repli vanilla pour les anciens formats."""
+    pool = set((seed.get("pools") or {}).get("environmental_resources") or ())
+    return pool or set(ENVIRONMENTAL_ITEMS)
+
+
 # TAGS de bâtiment qui possèdent une production propre (« ont une recette ») :
 # ils transforment une entrée en une sortie. Les « distribution » (pylônes) et
 # « other » ne produisent rien : jamais des fabricateurs à recette fixe.
@@ -50,9 +56,15 @@ def has_hidden_recipe(b: "BuildingDef") -> bool:
     sorties non-recettables : le réacteur est RÉVÉLÉ. Les générateurs/
     extracteurs/lab restants n'ont pas cette signature.
 
+    Un générateur sans catégorie d'atelier ni résidu de combustion n'est
+    jamais une recette cachée, même si son fluide de travail est déclaré
+    ``input-output`` (turbines moddées).
+
     ``is_fixed_crafter`` / ``is_fixed_fluid_crafter`` restreignent au
     sous-ensemble qui reçoit réellement une recette randomisée."""
     if not any(getattr(b, tag, False) for tag in PRODUCING_TAGS):
+        return False
+    if not (getattr(b, "is_crafter", False) or getattr(b, "fuel_residues", ())):
         return False
     has_atelier_category = any(
         c in VALID_RECIPE_CATEGORIES for c in getattr(b, "crafting_categories", ())
@@ -137,6 +149,8 @@ class ItemDef:
     # Stack size réel (0 = inconnu : dump non régénéré). Quand il est connu,
     # il fait foi ; sinon on déduit la stackabilité du type.
     stack_size: int = 0
+    used_by_labs: bool = False
+    science_capacity: int = 0
     # --- Tags §9 : items (docs/tags.md §12) ---
     is_environmental: bool = False    # récolté à la main (wood/stone/raw-fish)
     is_virtual_item: bool = False     # blueprint/planner/remote (non fabricable)
@@ -210,6 +224,9 @@ class BuildingDef:
     crafting_speed: float | None = None
     productivity: float = 0.0
     energy_type: str = "burner"
+    energy_usage: float | None = None
+    mining_speed: float | None = None
+    buffer_capacity: float = 0.0
     fuel_categories: tuple[str, ...] = ()
     item_input_slots: int = 0
     fluid_inputs: int = 0
@@ -330,6 +347,7 @@ class RecipeRef:
     ingredients: tuple = ()
     products: tuple = ()
     energy: float = 0.5
+    main_product: str = ""
     # État runtime exporté : une recette neutralisée garde ses liens mais porte
     # ``hidden=True`` (et souvent ``enabled=False``). ``None`` = champ absent
     # d'un dump ancien, pas « inactif ».
@@ -342,8 +360,11 @@ class VanillaDB:
     """Base vanilla parsée : items/fluides/bâtiments/recettes du dump, plus
     les pools dérivées (beltable, pipable, combustibles, extracteurs…). C'est
     la source de vérité en lecture pour toutes les phases du générateur.
-    ``seed_value`` porte la seed courante associée à cette base."""
+    ``seed_value`` porte la seed courante associée à cette base.
+    ``is_modded`` indique un dump chargé avec des mods actifs : certains
+    invariants vanilla (item environnemental non fabriqué) y sont assouplis."""
     seed_value: int = 0
+    is_modded: bool = False
     items: dict[str, ItemDef] = field(default_factory=dict)
     fluids: dict[str, FluidDef] = field(default_factory=dict)
     buildings: dict[str, BuildingDef] = field(default_factory=dict)
@@ -377,6 +398,13 @@ class VanillaDB:
         chain = self.rocket_chain or {}
         items = frozenset(str(name) for name in chain.get("victory_items") or ())
         return items or ROCKET_CHAIN
+
+    def environmental_items(self) -> frozenset[str]:
+        """Items récoltables à la main d'après les tags du dump, avec repli vanilla."""
+        tagged = {
+            name for name, item in self.items.items() if item.is_environmental
+        }
+        return frozenset(tagged | set(ENVIRONMENTAL_ITEMS))
 
     def beltable_items(self) -> list[ItemDef]:
         """Retourne les items solides posables sur tapis.
@@ -429,7 +457,7 @@ class VanillaDB:
         environnementaux récoltables à la main, fluides d'extraction. Un
         science pack ne doit JAMAIS être crafté avec une ressource brute :
         exclue en génération (forbidden) et vérifiée par pipeline_validator."""
-        return frozenset(patch_resources) | set(ENVIRONMENTAL_ITEMS) | self.extraction_only_fluids
+        return frozenset(patch_resources) | self.environmental_items() | self.extraction_only_fluids
 
     def fuel_items(self) -> list[ItemDef]:
         """Retourne les items combustibles, triés par nom.

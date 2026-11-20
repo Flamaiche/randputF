@@ -196,7 +196,7 @@ ITEM_INVARIANTS = (
 def audit_item_tags(db: VanillaDB) -> AuditReport:
     """Audite les tags des items d'une base vanilla.
 
-    `db` est la `VanillaDB`. Vérifie l'orthogonalité des tags et détecte les items environnementaux ou virtuels produits par une recette. Retourne un `AuditReport` dédié aux items.
+    `db` est la `VanillaDB`. Vérifie l'orthogonalité des tags et détecte les items environnementaux ou virtuels produits par une recette. Un dump moddé peut produire des items environnementaux (bois/pierre) : le cas reste signalé comme information, mais n'est pas une violation. Retourne un `AuditReport` dédié aux items.
     """
     report = AuditReport()
 
@@ -219,9 +219,10 @@ def audit_item_tags(db: VanillaDB) -> AuditReport:
                 f"{iname} : environnemental mais recette le produisant : "
                 f"{', '.join(sorted(produced[iname]))}"
             )
-            report.item_violations.append(
-                f"{iname} : environnemental produit par une recette (cycle)"
-            )
+            if not db.is_modded:
+                report.item_violations.append(
+                    f"{iname} : environnemental produit par une recette (cycle)"
+                )
         if i.is_virtual_item and iname in produced:
             report.item_violations.append(
                 f"{iname} : virtuel mais recette le produisant : "

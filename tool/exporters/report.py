@@ -1,4 +1,4 @@
-"""Rapport complet : complexité + difficulté + partie simulée."""
+"""Rapport complet : contrôles + complexité + difficulté + partie simulée."""
 from __future__ import annotations
 
 import html as _html
@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tool.audit.fields import classify_dump_fields
 from tool.exporters.complexity_graph import _CSS as _COMPLEXITY_CSS
 from tool.exporters.complexity_graph import render_complexity_html
 from tool.exporters.difficulty_graph import (
@@ -20,7 +21,18 @@ _BODY_RE = re.compile("<body>(.*?)</body>", re.DOTALL)
 _FIRST_H1_RE = re.compile("<h1>.*?</h1>", re.DOTALL)
 _REPORT_CSS = '\nbody{padding-right:250px}\n.report-section{margin-top:40px;padding-top:12px;border-top:1px solid #3a3a45}\n.report-section>h2{margin-top:0}\nsection{scroll-margin-top:18px}\ndetails.table-fold{scroll-margin-top:18px}\n.scroll{overflow:auto;max-height:70vh;scrollbar-gutter:stable}\n.flow{color:#8f8fa0;font-size:11px;max-width:260px}\ntd.num{white-space:nowrap}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}\n.toc{position:fixed;top:16px;right:16px;width:214px;\n  max-height:calc(100vh - 32px);overflow:auto;background:#1d1d24;\n  border:1px solid #3a3a45;border-radius:10px;padding:12px;z-index:40;\n  font-size:12px}\n.toc-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;\n  color:#8f8fa0;margin:0 0 8px;padding:0 8px}\n.toc a{display:block;padding:5px 8px;border-radius:6px;color:#c9c9d6;\n  text-decoration:none;overflow-wrap:anywhere}\n.toc a:hover{background:rgba(111,111,230,.15);color:#fff}\n.toc .toc-sub{padding-left:20px;font-size:11px;color:#9a9aac}\n@media(max-width:1700px){\n  body{padding-right:0}\n  .toc{position:static;width:auto;max-height:none;margin:0 24px 18px}\n}\n@media(max-width:1000px){.two{grid-template-columns:1fr}}\n'
 
-_TOC = '\n<nav class="toc" aria-label="Sommaire">\n  <div class="toc-title">Sommaire</div>\n  <a href="#complexite-courbes">Complexité — courbes</a>\n  <a href="#complexite-ateliers">Complexité — ateliers</a>\n  <a href="#complexite-detail-table">Détail par technologie</a>\n  <a href="#difficulte">Difficulté</a>\n  <a class="toc-sub" href="#difficulte-table">Tableau de difficulté</a>\n  <a href="#partie-simulee">Partie simulée</a>\n  <a class="toc-sub" href="#partie-simulee-table">Tableau par item</a>\n</nav>\n'
+_TOC = '\n<nav class="toc" aria-label="Sommaire">\n  <div class="toc-title">Sommaire</div>\n  <a href="#controles">Contrôles</a>\n  <a href="#couverture-dump">Couverture du dump</a>\n  <a href="#complexite-courbes">Complexité — courbes</a>\n  <a href="#complexite-ateliers">Complexité — ateliers</a>\n  <a href="#complexite-detail-table">Détail par technologie</a>\n  <a href="#difficulte">Difficulté</a>\n  <a class="toc-sub" href="#difficulte-table">Tableau de difficulté</a>\n  <a href="#partie-simulee">Partie simulée</a>\n  <a class="toc-sub" href="#partie-simulee-table">Tableau par item</a>\n</nav>\n'
+
+_FULL_REPORT_MAX_RECIPES = 2000
+
+_TOC_LIGHT = (
+    '<nav class="toc" aria-label="Sommaire">'
+    '<div class="toc-title">Sommaire</div>'
+    '<a href="#resume">Résumé</a>'
+    '<a href="#controles">Contrôles</a>'
+    '<a href="#couverture-dump">Couverture du dump</a>'
+    "</nav>\n"
+)
 
 _TOC_SCRIPT = "\n<script>\n(function () {\n  function openTarget() {\n    var el = location.hash ? document.querySelector(location.hash) : null;\n    if (el && el.tagName === 'DETAILS') el.open = true;\n  }\n  window.addEventListener('hashchange', openTarget);\n  openTarget();\n})();\n</script>\n"
 
@@ -56,6 +68,90 @@ def _playthrough_section(report: dict) -> str:
     )
 
 
+def _checks_section(checks: dict | None) -> str:
+    """Construit la section « contrôles du testeur » du rapport complet.
+
+    `checks` porte les résultats de la validation statique et du rejeu. Quand
+    il est absent (rapport vanilla), la section indique que les contrôles n'ont
+    pas été exécutés, pour garder un sommaire stable.
+    """
+    if checks is None:
+        return (
+            "<section class='report-section' id='controles'>"
+            "<h2>Contrôles du testeur</h2><p>Non exécutés pour ce rapport.</p></section>"
+        )
+    ok = bool(checks.get("ok"))
+    status = "OK" if ok else "ÉCHEC"
+    issues = checks.get("issues") or []
+    issue_html = "".join(
+        f"<li>{_html.escape(str(issue))}</li>" for issue in issues
+    ) or "<li>Aucun problème détecté.</li>"
+    replay = (
+        f"<p>Rejeu : {'victoire' if checks.get('victory') else 'défaite'}"
+        f" — {checks.get('researched', 0)}/{checks.get('total_techs', 0)} techs"
+        f"{' — ' + _html.escape(str(checks['blocker'])) if checks.get('blocker') else ''}</p>"
+    )
+    return (
+        "<section class='report-section' id='controles'><h2>Contrôles du testeur</h2>"
+        f"<p><strong>{status}</strong> — contrôle de structure puis rejeu complet.</p>"
+        f"{replay}<ul>{issue_html}</ul></section>"
+    )
+
+
+def _coverage_section(audit: dict | None) -> str:
+    """Construit la section « couverture du dump » du rapport complet."""
+    if not audit:
+        return ""
+    counts = audit.get("counts") or {}
+    summary = " · ".join(
+        f"{status} : {counts.get(status, 0)}"
+        for status in ("Consommé", "Partiel", "À consommer", "Cosmétique")
+    )
+    rows = "".join(
+        "<tr>"
+        f"<td>{_html.escape(str(field['section']))}</td>"
+        f"<td>{_html.escape(str(field['field']))}</td>"
+        f"<td>{_html.escape(str(field['status']))}</td>"
+        f"<td>{_html.escape(str(field['reason']))}</td>"
+        "</tr>"
+        for field in audit.get("fields") or []
+    )
+    return (
+        "<section class='report-section' id='couverture-dump'><h2>Couverture du dump</h2>"
+        f"<p><strong>{summary}</strong></p>"
+        "<details class='table-fold' id='couverture-dump-table'><summary>Tableau des champs présents</summary>"
+        f"<div class='scroll'><table><thead><tr><th>Section</th><th>Champ</th><th>État</th><th>Usage</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table></div></details></section>"
+    )
+
+
+def _summary_section(seed: dict, dump: dict | None) -> str:
+    """Construit la section « résumé » d'un rapport sur un très gros dump."""
+    meta = (seed.get("meta") or {})
+    dump_meta = ((dump or {}).get("meta") or {})
+    raw = (seed.get("pools") or {}).get("raw_resources") or []
+    pairs = [
+        ("Jeu", dump_meta.get("game_version", "inconnu")),
+        ("Exporteur", dump_meta.get("exporter_version", "inconnu")),
+        ("Source", dump_meta.get("mod_label") or meta.get("origin", "dump")),
+        ("Technologies", len(seed.get("technologies") or [])),
+        ("Recettes", len(seed.get("recipes") or [])),
+        ("Items", len(seed.get("items") or {})),
+        ("Fluides", len(seed.get("fluids") or {})),
+        ("Ressources brutes", len(raw)),
+    ]
+    rows = "".join(
+        f"<tr><th>{_html.escape(str(label))}</th><td>{_html.escape(str(value))}</td></tr>"
+        for label, value in pairs
+    )
+    return (
+        "<section class='report-section' id='resume'><h2>Résumé du dump testé</h2>"
+        "<p>Analyse détaillée désactivée : le dump dépasse la taille gérable par "
+        "les vues de complexité. Les contrôles et le rejeu restent complets.</p>"
+        f"<table><tbody>{rows}</tbody></table></section>"
+    )
+
+
 def write_full_report(
     seed: dict,
     path: Path,
@@ -67,19 +163,51 @@ def write_full_report(
     playthrough_title: str | None = None,
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
+    checks: dict | None = None,
+    lightweight: bool | None = None,
+    dump_coverage: dict | None = None,
 ) -> dict:
     """Assemble et écrit le rapport HTML complet de la seed.
 
-    Le document réunit trois vues dans un seul fichier autonome : complexité,
-    difficulté comparée (si ``vanilla_seed`` est fourni) et partie simulée.
-    Les documents HTML existants sont réutilisés pour ne maintenir qu'un seul
-    jeu de styles et de scripts. Retourne les données de simulation et le
-    chemin du fichier écrit.
+    Le document réunit quatre vues dans un seul fichier autonome : contrôles
+    du testeur, complexité, difficulté comparée (si ``vanilla_seed`` est
+    fourni) et partie simulée. Les documents HTML existants sont réutilisés
+    pour ne maintenir qu'un seul jeu de styles et de scripts. Retourne les
+    données de simulation et le chemin du fichier écrit.
     """
     meta = seed.get("meta") or {}
     if title is None:
         label = meta.get("seed", meta.get("generator_version", "?"))
         title = f"randputF seed {label}"
+    if lightweight is None:
+        lightweight = len(seed.get("recipes") or []) > _FULL_REPORT_MAX_RECIPES
+    if dump_coverage is None and dump is not None:
+        dump_coverage = classify_dump_fields(dump)
+    coverage_section = _coverage_section(dump_coverage)
+    if lightweight:
+        body = (
+            _TOC_LIGHT
+            + _summary_section(seed, dump)
+            + coverage_section
+            + _checks_section(checks)
+            + _TOC_SCRIPT
+        )
+        style = f"{_COMPLEXITY_CSS}\n{_REPORT_CSS}"
+        document = (
+            "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+            f"<title>{_html.escape(title)}</title><style>{style}</style></head><body>{body}</body></html>"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(document, encoding="utf-8")
+        return {
+            "seed": seed,
+            "analysis": {},
+            "rows": [],
+            "progression": {},
+            "coverage": dump_coverage,
+            "path": path,
+        }
     complexity_doc = render_complexity_html(seed, db, title=title)
     _, complexity_body = _document_parts(complexity_doc)
     body = complexity_body
@@ -110,7 +238,8 @@ def write_full_report(
         title=playthrough_title or f"{title} — partie simulée",
     )
     playthrough_section = _playthrough_section(playthrough)
-    inserted = difficulty_section + playthrough_section
+    controls_section = _checks_section(checks)
+    inserted = controls_section + coverage_section + difficulty_section + playthrough_section
     if "</main>" in body:
         body = body.replace("</main>", f"{inserted}</main>", 1)
     else:
@@ -133,5 +262,6 @@ def write_full_report(
         "analysis": playthrough["analysis"],
         "rows": playthrough["rows"],
         "progression": playthrough["progression"],
+        "coverage": dump_coverage,
         "path": path,
     }

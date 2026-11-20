@@ -119,3 +119,29 @@ dérive des faits du dump. Avancement (2026-11-17) :
   `kovarex` et retraitement du combustible ; `tool/prototypes/usage.py` lit
   `usage.terminal_buildings` depuis la config (`lab`, `rocket-silo` par
   défaut, surchargeable).
+
+## Mode « tout atteindre / tout crafter 10 » et règles dynamiques
+
+> **Idée du 2026-11-19.** Une fois qu’un joueur arrive à finir le modpack
+> correctement, ajouter un **2e mode** : pouvoir tout atteindre et tout crafter
+> à au moins 10 à la fin. Le mode actuel ne cherche que la fin du jeu ; le
+> second servira de base pour mesurer les limites réelles du mod.
+>
+> Objectif : si tout est bien détecté et bien utilisé, on saura tout ce que le
+> modpack permet et ne permet pas. Le modpack est énorme, mais il contient
+> aussi tout ce qu’un joueur peut faire avec des **cycles bien faits**, des
+> techs recherchables bien plus tard, etc. Il faut donc pouvoir refaire les
+> chaînes encore et encore quand on en a besoin ; tout est utilisé et
+> tellement bien pensé.
+>
+> But : se rapprocher des règles à implémenter dans ce modpack, et au besoin
+> faire des modules si c’est trop compliqué. Exemples de règles : « à ce
+> moment-là je place une boucle », « à tel moment je déplace la tech plus tôt
+> alors qu’on en aura besoin bien plus tard », etc. Ces règles rendront le mod
+> plus dynamique.
+>
+> Conséquence : le testeur doit être bon pour produire de bons résultats et des
+> sorties claires. Aujourd’hui on galère déjà à savoir ce qui ne va pas ; ce
+> n’est pas automatique. Un mode 2 avec un diagnostic explicite (cycle
+> productif, starter manquant, atelier absent, tech trop tardive…) est donc
+> aussi important que le mode victoire.

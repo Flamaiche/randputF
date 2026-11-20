@@ -1364,6 +1364,9 @@ class _Playthrough:
                 results = [
                     name for name, _qty in _item_amounts(recipe.get("results"))
                 ]
+                main_product = str(recipe.get("main_product") or "")
+                if main_product in results:
+                    return main_product
                 if results:
                     return results[0]
         return None

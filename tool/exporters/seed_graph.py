@@ -25,7 +25,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tool.common.db import ENVIRONMENTAL_ITEMS
+from tool.common.db import seed_environmental_items
 from tool.common.png_icon import crop_mip
 
 DOT_HEADER = """// randputF seed {seed} - graphe de production (IDEES C9)
@@ -627,7 +627,7 @@ def _seed_raw_sources(seed: dict) -> set[str]:
     extrait sur la carte) : le pool ``raw_resources`` du seed (= patches posés
     au sol + environnementaux + fluides d'extraction, généré par
     ``db.raw_resources``) complété par les environnementaux vanilla."""
-    return set(ENVIRONMENTAL_ITEMS) | set((seed.get("pools") or {}).get("raw_resources") or ())
+    return seed_environmental_items(seed) | set((seed.get("pools") or {}).get("raw_resources") or ())
 
 
 def _dot_for(seed: dict, image_dir: Path | None = None) -> Path:

@@ -537,6 +537,11 @@ local function dump_entities()
     if selection_box then
       entry.selection_box = selection_box
     end
+    local flags = string_list(probe(proto, "flags"))
+    if #flags > 0 then
+      table.sort(flags)
+      entry.flags = flags
+    end
     local guns = non_empty(string_list(probe(proto, "guns")))
     if guns then
       entry.guns = guns
@@ -949,14 +954,68 @@ local function dump_mod_data()
   return out
 end
 
+local function sanitize_label_part(value)
+  local text = tostring(value or "")
+  text = text:gsub("[^%w%.%-]", "-")
+  text = text:gsub("%-+", "-")
+  text = text:gsub("^%-", ""):gsub("%-$", "")
+  return text
+end
+
+local function label_hash(text)
+  local hash = 5381
+  for i = 1, #text do
+    hash = (hash * 33 + text:byte(i)) % 2147483647
+  end
+  return string.format("%08x", hash)
+end
+
+local function sorted_active_mods()
+  local entries = {}
+  for name, version in pairs(script.active_mods or {}) do
+    if name ~= "randputf-exporter" then
+      entries[#entries + 1] = { name = name, version = tostring(version) }
+    end
+  end
+  table.sort(entries, function(a, b) return a.name < b.name end)
+  return entries
+end
+
+local function dump_identity(entries, exporter_version)
+  local parts = {}
+  for _, entry in ipairs(entries) do
+    if entry.name ~= "base" then
+      parts[#parts + 1] = sanitize_label_part(entry.name) .. "-" .. sanitize_label_part(entry.version)
+    end
+  end
+  local mod_count = #parts
+  local full = table.concat(parts, "__")
+  if full == "" then
+    full = "vanilla"
+  end
+  local label = full
+  if #full > 120 then
+    label = full:sub(1, 120) .. "__n" .. mod_count .. "-" .. label_hash(full)
+  end
+  local filename = "dump_mods_" .. label .. "_exporter_" .. sanitize_label_part(exporter_version) .. ".json"
+  return label, full, filename
+end
+
 script.on_init(function()
   local game_version = script.active_mods["base"]
+  local exporter_version = script.active_mods["randputf-exporter"] or "0.1.8"
+  local active_mods = sorted_active_mods()
+  local label, full_label, dump_filename = dump_identity(active_mods, exporter_version)
   local payload = {
     meta = {
       game_version = game_version,
       game_version_numeric = version_number(game_version),
       schema_version = 2,
-      exporter_version = script.active_mods["randputf-exporter"] or "0.1.8",
+      exporter_version = exporter_version,
+      active_mods = active_mods,
+      mod_label = label,
+      mod_label_full = full_label,
+      dump_file = dump_filename,
     },
     inventory = dump_inventory(),
     tiles = dump_tiles(),
@@ -971,10 +1030,12 @@ script.on_init(function()
     payload.mod_data = mod_data
   end
   local ok, err = pcall(function()
-    helpers.write_file("randputF/vanilla_dump.json", helpers.table_to_json(payload))
+    local json = helpers.table_to_json(payload)
+    helpers.write_file(dump_filename, json)
+    helpers.write_file("randputF/vanilla_dump.json", json)
   end)
   if ok then
-    log("randputF exporter: vanilla_dump.json écrit")
+    log("randputF exporter: " .. dump_filename .. " et vanilla_dump.json écrits")
   else
     log("randputF exporter: échec d'écriture: " .. tostring(err))
   end

@@ -12,9 +12,11 @@ import copy
 import json
 from pathlib import Path
 
+from tool.common.db import SLOT_FLUID
 from tool.exporters.mod_seed import build_vanilla_seed
 from tool.generator.pipeline import generate_seed
-from tool.parsers.vanilla import load_db_from_dump
+from tool.generator.starter_chain import _extractors_for_resource
+from tool.parsers.vanilla import load_db_from_dump, rocket_chain_from_dump
 
 DUMP_PATH = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json"
 CLEAN = json.loads(DUMP_PATH.read_text(encoding="utf-8"))
@@ -125,6 +127,236 @@ def test_build_vanilla_seed_ignore_hidden_et_suit_la_recette_canonique():
     assert "randputf-hidden-tech" not in tech_ids
 
 
+def test_build_vanilla_seed_preserve_les_types_de_slots():
+    modded = copy.deepcopy(CLEAN)
+    modded["recipes"]["test-fluid-recipe"] = {
+        "category": "crafting",
+        "energy": 1,
+        "ingredients": [{"type": "fluid", "name": "water", "amount": 10}],
+        "products": [{"type": "item", "name": "iron-gear-wheel", "amount": 1}],
+        "enabled": True,
+        "hidden": False,
+    }
+
+    seed = build_vanilla_seed(modded)
+    recipe = next(r for r in seed["recipes"] if r["name"] == "test-fluid-recipe")
+
+    assert recipe["ingredients"][0]["type"] == "fluid"
+    assert recipe["results"][0]["type"] == "item"
+
+
+def test_build_vanilla_seed_garde_les_recettes_cachees_actives_sur_ressources_brutes():
+    modded = copy.deepcopy(CLEAN)
+    modded["recipes"]["test-hidden-raw"] = {
+        "category": "crafting",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-ore", "amount": 1}],
+        "products": [{"type": "item", "name": "iron-plate", "amount": 1}],
+        "enabled": True,
+        "hidden": True,
+    }
+    modded["recipes"]["test-hidden-crafted"] = {
+        "category": "crafting",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-gear-wheel", "amount": 1}],
+        "products": [{"type": "item", "name": "iron-plate", "amount": 1}],
+        "enabled": True,
+        "hidden": True,
+    }
+
+    seed = build_vanilla_seed(modded)
+    names = {recipe["name"] for recipe in seed["recipes"]}
+
+    assert "test-hidden-raw" in names
+    assert "test-hidden-crafted" not in names
+
+
+def test_produit_sans_quantite_devient_une_unite():
+    modded = copy.deepcopy(CLEAN)
+    modded["recipes"]["test-no-amount"] = {
+        "category": "crafting",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-ore", "amount": 1}],
+        "products": [{"type": "item", "name": "iron-plate"}],
+        "enabled": True,
+        "hidden": False,
+    }
+
+    seed = build_vanilla_seed(modded)
+    recipe = next(recipe for recipe in seed["recipes"] if recipe["name"] == "test-no-amount")
+
+    assert recipe["results"][0]["amount"] == 1
+
+
+def test_build_vanilla_seed_ajoute_la_conversion_du_boiler():
+    seed = build_vanilla_seed(CLEAN)
+    recipe = next(
+        recipe for recipe in seed["recipes"]
+        if recipe["name"] == "dump-boiler-steam"
+    )
+
+    assert recipe["ingredients"] == [
+        {"type": "fluid", "name": "water", "amount": 100}
+    ]
+    assert recipe["results"] == [
+        {"type": "fluid", "name": "steam", "amount": 100}
+    ]
+    assert recipe["crafted_in"] == "boiler"
+    assert recipe["enabled"] is True
+
+
+def test_atelier_reference_resout_la_variante_vers_son_item():
+    modded = copy.deepcopy(CLEAN)
+    modded["items"]["wpu-mk01"] = copy.deepcopy(modded["items"]["iron-plate"])
+    modded["items"]["wpu-mk01"]["place_result"] = "wpu-mk01"
+    modded["entities"]["wpu-mk01-turd"] = {
+        "type": "assembling-machine",
+        "crafting_categories": ["wpu"],
+        "crafting_speed": 0.333333,
+        "energy_source": {"type": "electric"},
+        "items_to_place_this": ["wpu-mk01"],
+    }
+    modded["recipes"]["test-wpu-recipe"] = {
+        "category": "wpu",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-ore", "amount": 1}],
+        "products": [{"type": "item", "name": "iron-plate", "amount": 1}],
+        "enabled": False,
+        "hidden": False,
+    }
+
+    seed = build_vanilla_seed(modded)
+    recipe = next(r for r in seed["recipes"] if r["name"] == "test-wpu-recipe")
+
+    assert recipe["crafted_in"] == "wpu-mk01"
+
+
+def test_atelier_reference_ignore_l_item_a_recette_cachee():
+    modded = copy.deepcopy(CLEAN)
+    for item, entity, hidden in (
+        ("usine-cachee", "usine-cachee-turd", True),
+        ("usine-mk01", "usine-mk01", False),
+    ):
+        modded["items"][item] = copy.deepcopy(modded["items"]["iron-plate"])
+        modded["items"][item]["place_result"] = entity
+        modded["entities"][entity] = {
+            "type": "assembling-machine",
+            "crafting_categories": ["usinage-test"],
+            "crafting_speed": 1.0,
+            "energy_source": {"type": "electric"},
+            "items_to_place_this": [item],
+        }
+        modded["recipes"][item] = {
+            "category": "crafting",
+            "energy": 1,
+            "ingredients": [{"type": "item", "name": "iron-ore", "amount": 1}],
+            "products": [{"type": "item", "name": item, "amount": 1}],
+            "enabled": False,
+            "hidden": hidden,
+        }
+    modded["recipes"]["test-usinage"] = {
+        "category": "usinage-test",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-ore", "amount": 1}],
+        "products": [{"type": "item", "name": "iron-plate", "amount": 1}],
+        "enabled": False,
+        "hidden": False,
+    }
+
+    seed = build_vanilla_seed(modded)
+    recipe = next(r for r in seed["recipes"] if r["name"] == "test-usinage")
+
+    assert recipe["crafted_in"] == "usine-mk01"
+
+
+def test_fluidbox_de_type_quelconque_devient_conversion():
+    modded = copy.deepcopy(CLEAN)
+    modded["fluids"]["ae-fluor"] = copy.deepcopy(modded["fluids"]["water"])
+    modded["fluids"]["ae-vapeur"] = copy.deepcopy(modded["fluids"]["steam"])
+    modded["entities"]["ae-transformeur"] = {
+        "type": "assembling-machine",
+        "fluidboxes": {
+            "input": 1,
+            "output": 1,
+            "detail": {
+                "1": {"production_type": "input", "filter": "ae-fluor"},
+                "2": {"production_type": "output", "filter": "ae-vapeur"},
+            },
+        },
+    }
+
+    seed = build_vanilla_seed(modded)
+    recipe = next(r for r in seed["recipes"] if r["name"] == "dump-ae-transformeur-ae-vapeur")
+
+    assert recipe["ingredients"] == [
+        {"type": "fluid", "name": "ae-fluor", "amount": 100}
+    ]
+    assert recipe["results"] == [
+        {"type": "fluid", "name": "ae-vapeur", "amount": 100}
+    ]
+    assert recipe["crafted_in"] == "ae-transformeur"
+
+
+def test_fluidbox_en_boucle_ne_cree_pas_de_conversion():
+    modded = copy.deepcopy(CLEAN)
+    modded["entities"]["ae-boucle"] = {
+        "type": "generator",
+        "fluidboxes": {
+            "input": 1,
+            "output": 1,
+            "detail": {
+                "1": {"production_type": "input-output", "filter": "steam"},
+            },
+        },
+    }
+
+    seed = build_vanilla_seed(modded)
+
+    assert not any(r["name"].startswith("dump-ae-boucle-") for r in seed["recipes"])
+
+
+def test_lac_generique_utilise_un_extracteur_sans_nom_vanilla():
+    modded = copy.deepcopy(CLEAN)
+    modded["fluids"]["ae-lac"] = copy.deepcopy(modded["fluids"]["water"])
+    modded["entities"]["ae-pompe"] = {
+        "type": "offshore-pump",
+        "energy_source": {"type": "void"},
+        "fluidboxes": {
+            "input": 0,
+            "output": 1,
+            "detail": {"1": {"production_type": "output", "filter": "ae-lac"}},
+        },
+    }
+
+    db = load_db_from_dump(modded)
+    candidates = _extractors_for_resource(db, SLOT_FLUID, "ae-lac", is_lake=True)
+
+    assert [b.name for b in candidates][0] == "ae-pompe"
+
+
+def test_chaine_fusee_ignore_les_categories_non_rocket_d_un_silo():
+    modded = copy.deepcopy(CLEAN)
+    modded["entities"]["ae-ferme"] = {
+        "type": "rocket-silo",
+        "rocket_parts_required": 1,
+        "crafting_categories": ["ae-ferme"],
+    }
+    modded["recipes"]["ae-recette-ferme"] = {
+        "category": "ae-ferme",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-ore", "amount": 1}],
+        "products": [{"type": "item", "name": "iron-plate", "amount": 1}],
+        "enabled": True,
+        "hidden": False,
+    }
+
+    chain = rocket_chain_from_dump(modded)
+
+    assert "rocket-silo" in chain["launch_buildings"]
+    assert "ae-ferme" not in chain["launch_buildings"]
+    assert "ae-recette-ferme" not in chain["rocket_recipes"]
+
+
 def test_build_vanilla_seed_repli_prefixe_sans_champs_d_etat():
     modded = copy.deepcopy(CLEAN)
     for recipe in modded["recipes"].values():
@@ -139,3 +371,93 @@ def test_build_vanilla_seed_repli_prefixe_sans_champs_d_etat():
 
     assert "randputf-iron-plate" in recipe_names
     assert "iron-plate" not in recipe_names
+
+
+def test_build_vanilla_seed_garde_main_product_lab_et_formule():
+    modded = copy.deepcopy(CLEAN)
+    modded["recipes"]["dual-sortie"] = {
+        "category": "crafting",
+        "energy": 1,
+        "ingredients": [{"type": "item", "name": "iron-plate", "amount": 1}],
+        "products": [
+            {"type": "item", "name": "principal", "amount": 1},
+            {"type": "item", "name": "secondaire", "amount": 1},
+        ],
+        "main_product": "secondaire",
+        "enabled": True,
+        "hidden": False,
+    }
+    modded["items"]["pack-lab"] = {
+        "type": "item",
+        "used_by_labs": True,
+        "science_capacity": 1,
+    }
+    modded["technologies"]["tech-formule"] = {
+        "unit": {"count": 1, "time": 1, "ingredients": []},
+        "research_unit_count_formula": "1000*(L-4)",
+        "prerequisites": [],
+        "effects": [],
+    }
+    seed = build_vanilla_seed(modded)
+    recipe = next(r for r in seed["recipes"] if r["name"] == "dual-sortie")
+    tech = next(t for t in seed["technologies"] if t["id"] == "tech-formule")
+
+    assert recipe["main_product"] == "secondaire"
+    assert seed["items"]["pack-lab"]["used_by_labs"] is True
+    assert seed["items"]["pack-lab"]["science_capacity"] == 1
+    assert seed["items"]["pack-lab"]["is_science_pack"] is True
+    assert tech["research_unit_count_formula"] == "1000*(L-4)"
+
+
+def test_build_vanilla_seed_garde_le_barrel_mais_pas_le_barillage():
+    seed = build_vanilla_seed(copy.deepcopy(CLEAN))
+    names = {recipe["name"] for recipe in seed["recipes"]}
+
+    assert "barrel" in names
+    assert "water-barrel" not in names
+    assert "empty-water-barrel" not in names
+
+
+def test_build_vanilla_seed_garde_un_baril_utilise_hors_barillage():
+    modded = copy.deepcopy(CLEAN)
+    modded["items"]["water-barrel"] = {
+        "type": "item",
+        "subgroup": "barrel",
+        "stack_size": 50,
+    }
+    modded["recipes"]["water-barrel"] = {
+        "category": "py-unbarreling",
+        "enabled": False,
+        "hidden": False,
+        "ingredients": [
+            {"type": "item", "name": "barrel", "amount": 1},
+            {"type": "fluid", "name": "water", "amount": 50},
+        ],
+        "products": [{"type": "item", "name": "water-barrel", "amount": 1}],
+    }
+    modded["recipes"]["empty-water-barrel"] = {
+        "category": "py-barreling",
+        "enabled": False,
+        "hidden": False,
+        "ingredients": [{"type": "item", "name": "water-barrel", "amount": 1}],
+        "products": [
+            {"type": "item", "name": "barrel", "amount": 1},
+            {"type": "fluid", "name": "water", "amount": 50},
+        ],
+    }
+    modded["recipes"]["consomme-eau-barrel"] = {
+        "category": "crafting",
+        "enabled": True,
+        "hidden": False,
+        "ingredients": [
+            {"type": "item", "name": "water-barrel", "amount": 1},
+            {"type": "item", "name": "iron-plate", "amount": 1},
+        ],
+        "products": [{"type": "item", "name": "bidon-utilise", "amount": 1}],
+    }
+
+    names = {recipe["name"] for recipe in build_vanilla_seed(modded)["recipes"]}
+
+    assert "water-barrel" in names
+    assert "consomme-eau-barrel" in names
+    assert "empty-water-barrel" not in names

@@ -208,7 +208,7 @@ Tags sur `ItemDef`, décidés par type brut du dump (`item_type`), sous-groupe e
 | `is_handheld_gun` (propriété) | `is_gun` ET non `is_mounted_gun` | pools d'armes de poing, `starter_chain`, `tech_tree` |
 | `is_stackable` (propriété) | `stack_size > 1` du dump ; sinon déduit du type (`NON_STACKABLE_ITEM_TYPES`) | clamp des produits/ingrédients (§9.6) |
 
-Invariant vérifié par l'audit (`tool/audit/tags.py`) : un item environnemental ou virtuel n'est produit par AUCUNE recette (cycle/erreur Factorio).
+Invariant vérifié par l'audit (`tool/audit/tags.py`) : en vanilla, un item environnemental ou virtuel n'est produit par AUCUNE recette (cycle/erreur Factorio). Un dump moddé (`VanillaDB.is_modded`) peut produire `wood`/`stone` : l'audit les liste en information, sans violation, car le dump expose aussi leur source récoltable (arbres, gisement).
 
 ## 13. Helpers / API
 

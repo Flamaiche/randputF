@@ -19,7 +19,7 @@ def _read_info() -> dict:
     Lit le fichier JSON voisin du paquet et retourne au minimum les clés
     ``name``, ``version`` et ``factorio_version``. Si le fichier n'existe pas
     (wheel installé hors dépôt), retourne un dict équivalent construit depuis
-    les métadonnées du paquet ``randputf``, avec ``factorio_version = "2.0"``.
+    les métadonnées du paquet ``randputf``, avec ``factorio_version = "2.1"``.
     Ne lève pas d'erreur pour un fichier absent ; une erreur de décodage JSON
     reste propagée.
     """

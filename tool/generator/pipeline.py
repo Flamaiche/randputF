@@ -443,6 +443,7 @@ def _finalize_pipeline(
         "pools": {
             "item_resources": sorted(i.name for i in db.beltable_items()),
             "fluid_resources": sorted(f.name for f in db.pipable_fluids()),
+            "environmental_resources": sorted(db.environmental_items()),
             # Pool des armes montées (§7/§12.1) : items gun tirés pour les
             # véhicules — aucune valeur en dur dans le mod.
             "vehicle_weapons": recursive_phase.vehicle_weapons_pool(),

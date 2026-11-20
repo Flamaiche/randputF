@@ -162,6 +162,23 @@ def test_bootstrap_inline_20_seeds() -> None:
         assert not missing, f"seed {s}: promesses non atteignables {missing}"
 
 
+def test_solveur_utilise_les_environnementaux_du_dump() -> None:
+    seed = {
+        "meta": {"origin": "dump"},
+        "pools": {"environmental_resources": ["poisson"], "raw_resources": []},
+        "map": {"patches": [], "lakes": []},
+        "recipes": [
+            {
+                "name": "farine-de-poisson",
+                "ingredients": [{"type": "item", "name": "poisson", "amount": 1}],
+                "results": [{"type": "item", "name": "farine", "amount": 1}],
+            }
+        ],
+        "technologies": [],
+    }
+    assert validate_seed(seed) == []
+
+
 def test_bootstrap_promesses_atteignables_20_seeds() -> None:
     """Chaque promesse du starter est dans le watershed pré-électricité de la
     seed finale (correct-by-construction, aucun gap)."""

@@ -284,6 +284,11 @@ def science_pack_names(dump: dict) -> set[str]:
             continue
         for name in entry.get("lab_inputs") or []:
             names.add(str(name))
+    for name, entry in (dump.get("items") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("used_by_labs") and _number(entry.get("science_capacity"), 0) > 0:
+            names.add(str(name))
     return names
 
 
@@ -328,10 +333,9 @@ def rocket_chain_from_dump(dump: dict) -> dict:
     Le joueur « devine » comment gagner, comme il le ferait en jeu :
     - un bâtiment de lancement se reconnaît à ``rocket_parts_required``
       (il assemble des pièces de fusée) ;
-    - ses catégories de craft désignent les recettes de fusée (leurs
-      ingrédients + le bâtiment = ce qu'il faut fabriquer pour lancer ;
-      les pseudo-recettes de paramétrage, sans ingrédients, ne comptent
-      pas) ;
+    - la catégorie générique ``rocket-building`` désigne les recettes de
+      fusée (les autres catégories d'une entité rocket-silo — fermes,
+      paramètres — ne sont pas des étapes de lancement) ;
     - les produits de lancement (science spatiale et équivalents moddés)
       viennent des ``rocket_launch_products`` des items et entités.
 
@@ -340,16 +344,24 @@ def rocket_chain_from_dump(dump: dict) -> dict:
     mod qui respecte ces faits, quel que soit le nom de ses items."""
     entities = dump.get("entities") or {}
     recipes = dump.get("recipes") or {}
-    launch_buildings = sorted(
-        name
-        for name, entry in entities.items()
+    parts_entries = {
+        name: entry for name, entry in entities.items()
         if isinstance(entry, dict) and entry.get("rocket_parts_required")
-    )
+    }
+    rocket_building_category = "rocket-building"
+    standard_silos = [
+        name for name, entry in parts_entries.items()
+        if rocket_building_category in (entry.get("crafting_categories") or [])
+    ]
+    launch_buildings = sorted(standard_silos or parts_entries)
     categories: set[str] = set()
     for name in launch_buildings:
         entry = entities[name]
         if isinstance(entry, dict):
-            categories |= {str(c) for c in entry.get("crafting_categories") or []}
+            available = {str(c) for c in entry.get("crafting_categories") or []}
+            if standard_silos:
+                available &= {rocket_building_category}
+            categories |= available
     victory_items: set[str] = set(launch_buildings)
     rocket_recipes: list[str] = []
     for name, recipe in recipes.items():
@@ -364,6 +376,7 @@ def rocket_chain_from_dump(dump: dict) -> dict:
                 victory_items.add(str(ing["name"]))
     launch_products: set[str] = set()
     launch_items: set[str] = set()
+    launch_requirements: dict[str, dict] = {}
     sections = [entities, dump.get("items") or {}]
     for name, entry in [(name, entry) for section in sections for name, entry in section.items()]:
         if not isinstance(entry, dict):
@@ -372,17 +385,44 @@ def rocket_chain_from_dump(dump: dict) -> dict:
         if products:
             launch_items.add(str(name))
         for product in products:
-            if isinstance(product, dict) and product.get("name"):
-                launch_products.add(str(product["name"]))
+            if not isinstance(product, dict) or not product.get("name"):
+                continue
+            product_name = str(product["name"])
+            launch_products.add(product_name)
+            launch_requirements.setdefault(
+                product_name,
+                {
+                    "item": str(name),
+                    "amount": product.get("amount", 1),
+                },
+            )
+    item_requirements: dict[str, dict] = {}
+    for name, entry in (dump.get("items") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        for product in entry.get("rocket_launch_products") or []:
+            if not isinstance(product, dict) or not product.get("name"):
+                continue
+            item_requirements[str(product["name"])] = {
+                "item": str(name),
+                "amount": product.get("amount", 1),
+            }
+    launch_requirements.update(item_requirements)
     ordered_recipes = sorted(rocket_recipes)
     rocket_recipe = ordered_recipes[0] if ordered_recipes else ""
     recipe = recipes.get(rocket_recipe) if rocket_recipe else None
     rocket_part_product = ""
     if isinstance(recipe, dict):
-        for result in recipe.get("products") or recipe.get("results") or []:
-            if isinstance(result, dict) and result.get("name"):
-                rocket_part_product = str(result["name"])
-                break
+        result_names = [
+            str(result["name"])
+            for result in recipe.get("products") or recipe.get("results") or []
+            if isinstance(result, dict) and result.get("name")
+        ]
+        main_product = str(recipe.get("main_product") or "")
+        rocket_part_product = (
+            main_product if main_product in result_names
+            else (result_names[0] if result_names else "")
+        )
     parts_required = [
         int(entry["rocket_parts_required"])
         for entry in entities.values()
@@ -398,6 +438,7 @@ def rocket_chain_from_dump(dump: dict) -> dict:
         "victory_items": sorted(victory_items),
         "launch_products": sorted(launch_products),
         "launch_items": sorted(launch_items),
+        "launch_requirements": launch_requirements,
     }
 
 
@@ -423,6 +464,11 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
     et les prototypes préfixés restent disponibles pour les liens."""
     meta = dump.get("meta", {})
     db = VanillaDB(seed_value=int(meta.get("game_version_numeric", 0)))
+    active_mods = meta.get("active_mods") or ()
+    db.is_modded = any(
+        isinstance(mod, dict) and mod.get("name") not in (None, "", "base")
+        for mod in active_mods
+    )
     recipes = dump.get("recipes") or {}
     db.canonical_recipes = canonical_recipe_map(recipes)
     inject_pumped_fluids(dump)
@@ -437,6 +483,7 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
     }
     mounted_guns.update(VEHICLE_GUNS)
     db.vehicle_guns = frozenset(mounted_guns)
+    environmental = environmental_items_from_dump(dump)
 
     for name, entry in (dump.get("items") or {}).items():
         if _is_stacked_randputf(name):
@@ -477,8 +524,10 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             fuel_category=fuel_category,
             burnt_result=entry.get("burnt_result"),
             stack_size=int(entry.get("stack_size") or 0),
+            used_by_labs=bool(entry.get("used_by_labs")),
+            science_capacity=int(_number(entry.get("science_capacity"), 0) or 0),
             # --- Tags §9 : items (docs/tags.md §12) ---
-            is_environmental=_is_environmental_item(name, subgroup, itype),
+            is_environmental=_is_environmental_item(name, subgroup, itype, environmental),
             is_virtual_item=_is_virtual_item(name, itype, entry.get("place_result")),
             is_module=itype == "module",
             is_capsule_throwable=itype == "capsule",
@@ -525,8 +574,9 @@ def load_db_from_dump(dump: dict) -> VanillaDB:
             name=name,
             category=entry.get("category") or "",
             ingredients=tuple(_parse_stack(i) for i in entry.get("ingredients", [])),
-            products=tuple(_parse_stack(p) for p in entry.get("products", [])),
+            products=tuple(_parse_stack(p) for p in (entry.get("products") or entry.get("results") or [])),
             energy=float(entry.get("energy", 0.5)),
+            main_product=str(entry.get("main_product") or ""),
             enabled=entry.get("enabled"),
             hidden=entry.get("hidden"),
         )
@@ -555,6 +605,17 @@ def _safe_group(entry: dict) -> str:
     return group or ""
 
 
+def _number(raw, default: float | None = None) -> float | None:
+    if raw is None:
+        return default
+    if isinstance(raw, dict):
+        raw = raw.get("value")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 def _fuel_value(raw) -> float | None:
     """Normalise une valeur énergétique du dump en nombre de joules.
 
@@ -576,18 +637,46 @@ def _parse_stack(stack: dict) -> tuple:
     """Convertit une ligne ingrédient/produit du dump en tuple canonique.
 
     Retourne ``(type, name, amount)`` avec ``type`` par défaut ``"item"``,
-    ``name`` par défaut ``""`` et ``amount`` converti en ``float`` (0 si
+    ``name`` par défaut ``""`` et ``amount`` converti en ``float`` (1 si
     absent). Utilisé pour les ingrédients comme pour les produits.
     """
-    return (stack.get("type", "item"), stack.get("name", ""), float(stack.get("amount", 0)))
+    return (stack.get("type", "item"), stack.get("name", ""), float(stack.get("amount", 1)))
 
 
-def _is_environmental_item(name: str, subgroup: str, itype: str) -> bool:
-    """Item récoltable à la main (wood/stone/raw-fish) : enrichissement de
-    ``ENVIRONMENTAL_ITEMS`` via un tag. Le dump ne distingue pas récolté à la
-    main / miné (même type ``raw-resource``) : on se rabat sur l'ensemble
-    existant comme source de vérité."""
-    return name in ENVIRONMENTAL_ITEMS
+def _entity_flags(entry: dict) -> set[str]:
+    raw = entry.get("flags")
+    if isinstance(raw, dict):
+        return {str(name) for name, active in raw.items() if active}
+    if isinstance(raw, (list, tuple, set)):
+        return {str(flag) for flag in raw}
+    return set()
+
+
+def environmental_items_from_dump(dump: dict) -> set[str]:
+    """Items récoltables déduits des prototypes d'entités du dump.
+
+    Une entité posable sur l'eau (``placeable-water``) dont l'item porte le
+    même nom est une ressource environnementale. Les dumps sans ``flags``
+    retombent sur le type ``fish`` ; le lien vanille ``fish`` → ``raw-fish``
+    reste couvert par ``ENVIRONMENTAL_ITEMS``.
+    """
+    items = dump.get("items") or {}
+    derived: set[str] = set()
+    for name, entry in (dump.get("entities") or {}).items():
+        if not isinstance(entry, dict) or str(name) not in items:
+            continue
+        flags = _entity_flags(entry)
+        water = "placeable-water" in flags if flags else entry.get("type") == "fish"
+        if water:
+            derived.add(str(name))
+    return derived | {str(name) for name in ENVIRONMENTAL_ITEMS if name in items}
+
+
+def _is_environmental_item(
+    name: str, subgroup: str, itype: str, derived: set[str] | None = None
+) -> bool:
+    """Item récoltable à la main : liste vanilla et entités aquatiques du dump."""
+    return name in ENVIRONMENTAL_ITEMS or bool(derived and name in derived)
 
 
 def _is_virtual_item(name: str, itype: str, place_result: str) -> bool:
@@ -646,6 +735,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     target_temp = e.get("target_temperature")
     max_power = float(e.get("max_power_output") or 0)
     energy_prod = float((e.get("energy_source") or {}).get("production") or 0)
+    energy_usage = _number(e.get("energy_usage"))
+    mining_speed = _number(e.get("mining_speed"))
+    buffer_capacity = _number(energy_src.get("buffer_capacity"), 0.0) or 0.0
     has_heat = bool(e.get("has_heat_output"))
     supply_area = e.get("supply_area_distance")
     pumping_speed = e.get("pumping_speed")
@@ -742,7 +834,11 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
     # Stockage d'énergie : le dump n'emporte pas ``buffer_capacity`` (exporter) —
     # on se rabat sur le seul accumulateur de type (indice API 2.0, pas une
     # liste de noms). À rouvrir quand l'exporter émettra la capacité réelle.
-    is_energy_storage = is_accumulator
+    is_energy_storage = is_accumulator or (
+        buffer_capacity > 0
+        and entity_type != "roboport"
+        and not (is_research or is_crafter or is_generator or is_distribution or is_extractor)
+    )
     is_offgrid = produces_electricity and (
         energy_type != "electric" or entity_type == "solar-panel"
     )
@@ -926,6 +1022,9 @@ def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
         crafting_speed=crafting_speed,
         productivity=productivity,
         energy_type=energy_type,
+        energy_usage=energy_usage,
+        mining_speed=mining_speed,
+        buffer_capacity=buffer_capacity,
         fuel_categories=tuple(energy_src.get("fuel_categories") or ()),
         pumped_fluid=pumped_fluid,
         pumped_fluids=pumped_fluids,

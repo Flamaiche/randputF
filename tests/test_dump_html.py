@@ -4,6 +4,7 @@ seule (fluide pompé résolu, packs de science par les faits)."""
 
 from __future__ import annotations
 
+import html as _html
 import json
 from pathlib import Path
 
@@ -19,9 +20,15 @@ def test_navigateur_du_vrai_dump(tmp_path: Path) -> None:
     html = path.read_text(encoding="utf-8")
     # En-tête et sections.
     assert "Dump Factorio" in html and "navigateur A→Z" in html
-    for section in ("Inventaire A→Z", "Tuiles", "Entités", "Items", "Fluides",
-                    "Recettes", "Technologies"):
+    for section in ("Identité du dump", "Données de mods", "Inventaire A→Z",
+                    "Tuiles", "Entités", "Items", "Fluides", "Recettes",
+                    "Technologies"):
         assert section in html, f"section absente : {section}"
+    assert "Aucune donnée de mod déclarée" in html
+    assert "Mod actif" in html and "Version" in html
+    assert '<td class="mono">base</td>' in html
+    assert '<td class="mono">2.1.24</td>' in html
+    assert "Préfixe HTML" in html and "dump_mods_vanilla_exporter_0.1.8.json" in html
     # Inventaire complet : les tables attendues du dump 0.1.5.
     for table in ("entity", "item", "fluid", "tile", "recipe", "technology"):
         assert f">{table} <span class=\"count\">" in html
@@ -46,4 +53,26 @@ def test_navigateur_dump_incomplet(tmp_path: Path) -> None:
     html = write_dump_html(dump, out).read_text(encoding="utf-8")
     assert "Inventaire absent" in html
     assert "Section tuiles absente" in html
+    assert "Aucun mod actif déclaré" in html
+    assert "Aucune donnée de mod déclarée" in html
     assert ">coin<" in html
+
+
+def test_navigateur_avec_mod_data(tmp_path: Path) -> None:
+    dump = {
+        "meta": {"game_version": "2.1.24"},
+        "mod_data": {
+            "demo-lakes": {
+                "data_type": "demo.lake_tiles",
+                "name": "demo-lakes",
+                "data": {"phantom_fluid": "demo-neutre", "tiles": ["water"]},
+            }
+        },
+    }
+    page = write_dump_html(dump, tmp_path / "dump.html").read_text(encoding="utf-8")
+    html = _html.unescape(page)
+    assert "Données de mods" in html
+    assert "demo-lakes" in html
+    assert "demo.lake_tiles" in html
+    assert "demo-neutre" in html
+    assert '"tiles": [' in html

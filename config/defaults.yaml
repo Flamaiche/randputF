@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Version Factorio cible. Inerte : lue depuis mod/info.json (source unique).
-factorio_version: "2.0"
+factorio_version: "2.1"
 
 paths:
   # Dossier du mod source (inerte pour la génération : résolu par l'asset).

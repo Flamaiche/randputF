@@ -3,11 +3,12 @@ réservé aux labs, les accumulateurs ne sont jamais des générateurs."""
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
 from tool.common.db import VanillaDB
-from tool.exporters.mod_seed import build_vanilla_seed
+from tool.exporters.mod_seed import _building_by_category, _extract_recipes, build_vanilla_seed
 from tool.parsers.vanilla import (
     equivalent_functional_type,
     inject_pumped_fluids,
@@ -260,6 +261,46 @@ def test_accumulateur_pas_generateur():
     assert bdef.is_generator is False
 
 
+def test_capacites_energetiques_et_stockage_generique():
+    entity = {
+        "type": "container",
+        "energy_source": {"type": "electric", "buffer_capacity": 5000},
+        "energy_usage": 10,
+        "mining_speed": 2,
+    }
+    bdef = tag_parse_entity("batterie", entity)
+    assert bdef.buffer_capacity == 5000
+    assert bdef.energy_usage == 10
+    assert bdef.mining_speed == 2
+    assert bdef.is_energy_storage is True
+    roboport = tag_parse_entity(
+        "roboport",
+        {"type": "roboport", "energy_source": {"type": "electric", "buffer_capacity": 5000}},
+    )
+    assert roboport.is_energy_storage is False
+
+
+def test_recette_garde_main_product():
+    dump = {
+        "meta": {},
+        "items": {},
+        "fluids": {},
+        "entities": {},
+        "recipes": {
+            "dual": {
+                "products": [
+                    {"name": "principal", "amount": 1},
+                    {"name": "secondaire", "amount": 1},
+                ],
+                "main_product": "secondaire",
+            }
+        },
+        "technologies": {},
+    }
+    db = load_db_from_dump(dump)
+    assert db.recipes["dual"].main_product == "secondaire"
+
+
 def test_batiment_recherche_dans_db():
     dump = {
         "meta": {},
@@ -308,6 +349,50 @@ def test_tags_items_s9():
     assert items["effectivity-module"].is_module
     assert items["grenade"].is_capsule_throwable
     assert not items["iron-plate"].is_module
+
+
+def test_items_environnementaux_derives_des_flags_placeable_water():
+    dump = {
+        "meta": {},
+        "items": {
+            "fish": {"type": "module", "subgroup": "py-alienlife-fish"},
+            "seaweed": {"type": "module", "subgroup": "py-alienlife-seaweed"},
+            "fake-fish": {"type": "module", "subgroup": "py-alienlife-fish"},
+            "raw-fish": {"type": "capsule", "subgroup": "raw-resource"},
+            "iron-plate": {"type": "item", "subgroup": "intermediate"},
+        },
+        "fluids": {},
+        "entities": {
+            "fish": {"type": "fish", "flags": ["placeable-water"]},
+            "seaweed": {"type": "fish", "flags": ["placeable-water"]},
+            "fake-fish": {"type": "fish", "flags": ["not-on-map"]},
+        },
+        "recipes": {},
+    }
+    db: VanillaDB = load_db_from_dump(dump)
+    assert db.items["fish"].is_environmental
+    assert db.items["seaweed"].is_environmental
+    assert db.items["raw-fish"].is_environmental
+    assert not db.items["fake-fish"].is_environmental
+    assert not db.items["iron-plate"].is_environmental
+
+    seed = build_vanilla_seed(copy.deepcopy(dump))
+    assert {"fish", "seaweed", "raw-fish"} <= set(
+        seed["pools"]["environmental_resources"]
+    )
+    assert "fake-fish" not in set(seed["pools"]["environmental_resources"])
+
+
+def test_items_environnementaux_repli_type_fish_sans_flags():
+    dump = {
+        "meta": {},
+        "items": {"poisson": {"type": "module", "subgroup": "mod-poisson"}},
+        "fluids": {},
+        "entities": {"poisson": {"type": "fish"}},
+        "recipes": {},
+    }
+    db: VanillaDB = load_db_from_dump(dump)
+    assert db.items["poisson"].is_environmental
 
 
 def test_fuel_categories_compatibilite_ancien_et_nouveau_format():
@@ -469,6 +554,19 @@ def test_science_pack_names_via_unites_et_labs():
     assert science_pack_names(dump_list) == {"alien-science-pack"}
 
 
+def test_science_pack_names_utilise_used_by_labs_et_science_capacity():
+    dump = {
+        "technologies": {},
+        "entities": {},
+        "items": {
+            "pack-valide": {"used_by_labs": True, "science_capacity": 1},
+            "pack-vide": {"used_by_labs": True, "science_capacity": 0},
+            "pack-inactif": {"used_by_labs": False, "science_capacity": 1},
+        },
+    }
+    assert science_pack_names(dump) == {"pack-valide"}
+
+
 def test_science_pack_tagg_par_faits_pas_par_subgroup():
     """Un pack modde (subgroup quelconque) est tagge parce qu'une tech le
     consomme ; un item au subgroup vanilla sans consommateur ne l'est pas."""
@@ -580,6 +678,38 @@ def test_rocket_chain_moddee_sans_nom_en_dur():
     }
     assert chain["victory_items"] == ["cristal", "portail-spatial"]
     assert chain["launch_products"] == ["science-orbital"]
+    assert chain["launch_requirements"] == {
+        "science-orbital": {"item": "sonde-mod", "amount": 50}
+    }
+
+
+def test_rocket_chain_prefere_main_product():
+    dump = {
+        "meta": {},
+        "items": {},
+        "fluids": {},
+        "entities": {
+            "silo": {
+                "type": "rocket-silo",
+                "rocket_parts_required": 10,
+                "crafting_categories": ["fusee"],
+            },
+        },
+        "recipes": {
+            "piece": {
+                "category": "fusee",
+                "ingredients": [{"name": "acier", "amount": 2}],
+                "products": [
+                    {"name": "coque", "amount": 1},
+                    {"name": "moteur", "amount": 1},
+                ],
+                "main_product": "moteur",
+            },
+        },
+        "technologies": {},
+    }
+    chain = rocket_chain_from_dump(dump)
+    assert chain["rocket_part_product"] == "moteur"
 
 
 def test_rocket_chain_absente_si_aucun_fait():
@@ -595,6 +725,7 @@ def test_rocket_chain_absente_si_aucun_fait():
         "victory_items": [],
         "launch_products": [],
         "launch_items": [],
+        "launch_requirements": {},
     }
 
 
@@ -617,3 +748,126 @@ def test_armes_montees_depuis_les_liens_du_dump():
     assert "tank-cannon" in db.vehicle_guns
     assert db.items["pistolet"].is_handheld_gun
     assert not db.items["canon-de-char"].is_handheld_gun
+
+
+def test_atelier_categorie_choisi_par_deblocage_pas_par_flottant():
+    dump = {
+        "technologies": {
+            "precoce": {
+                "prerequisites": [],
+                "effects": [{"type": "unlock-recipe", "recipe": "bench-mk01"}],
+            },
+            "tardif": {
+                "prerequisites": ["precoce"],
+                "effects": [{"type": "unlock-recipe", "recipe": "bench-mk04"}],
+            },
+        },
+        "recipes": {
+            "bench-mk01": {
+                "enabled": False,
+                "products": [{"type": "item", "name": "bench-mk01", "amount": 1}],
+            },
+            "bench-mk04": {
+                "enabled": False,
+                "products": [{"type": "item", "name": "bench-mk04", "amount": 1}],
+            },
+        },
+        "items": {
+            "bench-mk01": {"place_result": "bench-mk01"},
+            "bench-mk04": {"place_result": "bench-mk04"},
+        },
+        "entities": {
+            "bench-mk01": {
+                "type": "assembling-machine",
+                "crafting_categories": ["korlex"],
+                "crafting_speed": 0.05,
+                "items_to_place_this": ["bench-mk01"],
+            },
+            "bench-mk04": {
+                "type": "assembling-machine",
+                "crafting_categories": ["korlex"],
+                "crafting_speed": 0.04999999999999999,
+                "items_to_place_this": ["bench-mk04"],
+            },
+        },
+    }
+    assert _building_by_category(dump)["korlex"] == "bench-mk01"
+
+
+def test_conversion_baril_conservee_si_fluide_consomme():
+    dump = {
+        "technologies": {},
+        "items": {
+            "barrel": {"type": "item", "subgroup": "barrel"},
+            "jelly-barrel": {"type": "item", "subgroup": "barrel"},
+        },
+        "fluids": {"jelly": {"type": "fluid"}},
+        "recipes": {
+            "jelly-01": {
+                "category": "arqad",
+                "ingredients": [{"name": "stone", "amount": 1}],
+                "products": [{"name": "jelly-barrel", "amount": 1}],
+                "enabled": True,
+            },
+            "consume-jelly": {
+                "category": "research",
+                "ingredients": [{"type": "fluid", "name": "jelly", "amount": 1}],
+                "products": [{"name": "science", "amount": 1}],
+                "enabled": True,
+            },
+            "empty-jelly-barrel": {
+                "category": "py-barreling",
+                "ingredients": [{"name": "jelly-barrel", "amount": 1}],
+                "products": [
+                    {"type": "fluid", "name": "jelly", "amount": 50},
+                    {"name": "barrel", "amount": 1},
+                ],
+                "enabled": True,
+            },
+            "fill-jelly-barrel": {
+                "category": "py-barreling",
+                "ingredients": [
+                    {"type": "fluid", "name": "jelly", "amount": 50},
+                    {"name": "barrel", "amount": 1},
+                ],
+                "products": [{"name": "jelly-barrel", "amount": 1}],
+                "enabled": True,
+            },
+        },
+    }
+    names = {recipe["name"] for recipe in _extract_recipes(dump)}
+    assert "empty-jelly-barrel" in names
+    assert "fill-jelly-barrel" in names
+
+
+def test_recette_cachee_debloquee_par_tech_est_conservee():
+    dump = {
+        "technologies": {
+            "fusee": {
+                "prerequisites": [],
+                "effects": [{"type": "unlock-recipe", "recipe": "rocket-part"}],
+            }
+        },
+        "recipes": {
+            "rocket-part": {
+                "category": "rocket-building",
+                "enabled": False,
+                "hidden": True,
+                "ingredients": [
+                    {"type": "item", "name": "low-density-structure", "amount": 4}
+                ],
+                "products": [{"type": "item", "name": "rocket-part", "amount": 1}],
+            },
+            "neutralisee": {
+                "category": "crafting",
+                "enabled": False,
+                "hidden": True,
+                "ingredients": [{"type": "item", "name": "stone", "amount": 1}],
+                "products": [{"type": "item", "name": "poussiere", "amount": 1}],
+            },
+        },
+    }
+    recipes = {recipe["name"]: recipe for recipe in _extract_recipes(dump)}
+    assert "rocket-part" in recipes
+    assert recipes["rocket-part"]["hidden_active"] is False
+    assert "neutralisee" not in recipes

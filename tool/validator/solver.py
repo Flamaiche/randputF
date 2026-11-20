@@ -9,7 +9,7 @@ Implémente génériquement sur la structure seed :
 
 from __future__ import annotations
 
-from tool.common.db import ENVIRONMENTAL_ITEMS
+from tool.common.db import seed_environmental_items
 
 
 def validate_seed(seed: dict) -> list[str]:
@@ -69,30 +69,87 @@ def _check_anti_cycle(seed: dict) -> list[str]:
     return []
 
 
+def _initial_pool(seed: dict) -> set[str]:
+    """Ressources disponibles sans aucune recette.
+
+    Patchs, lacs, ressources brutes du dump et items environnementaux
+    (récoltables à la main) sont toujours acquis au départ.
+    """
+    pool: set[str] = {
+        p["resource"] for p in seed.get("map", {}).get("patches", [])
+    }
+    pool |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
+    pool |= set((seed.get("pools") or {}).get("raw_resources") or ())
+    pool |= seed_environmental_items(seed)
+    return pool
+
+
 def _check_progressivity(seed: dict) -> list[str]:
     """Vérifie que chaque recette n'utilise que des items déjà atteignables.
 
-    Le pool initial contient les ressources des patchs, des lacs et les items
-    environnementaux (récoltables à la main). Les recettes sont parcourues
-    dans l'ordre de la seed ; une recette dont un ingrédient manque au pool
-    est signalée, sauf si elle porte ``on_the_spot_unlock``. Après contrôle,
-    ses résultats et ingrédients rejoignent le pool. Retourne la liste des
-    messages de violation (vide si tout est progressif).
+    Une seed générée est ordonnée : parcours séquentiel, comme le joueur qui
+    débloque les recettes. Un dump est un état statique sans ordre de
+    déblocage : on calcule le point fixe des recettes fabricables, sinon
+    l'ordre du JSON inventerait des violations. ``on_the_spot_unlock`` reste
+    toujours franchissable. Retourne la liste des violations.
     """
+    ordered = (seed.get("meta") or {}).get("origin") != "dump"
+    if ordered:
+        return _check_progressivity_ordered(seed)
+    return _check_progressivity_unordered(seed)
+
+
+def _check_progressivity_ordered(seed: dict) -> list[str]:
     issues: list[str] = []
-    # Pool initial : patchs + lacs + ressources environnementales
-    # (toujours récoltables à la main).
-    pool: set[str] = {p["resource"] for p in seed.get("map", {}).get("patches", [])}
-    pool |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
-    pool |= set(ENVIRONMENTAL_ITEMS)
+    pool = _initial_pool(seed)
     for recipe in seed.get("recipes", []):
-        missing = [ing["name"] for ing in recipe.get("ingredients", []) if ing["name"] not in pool]
+        missing = [
+            ing["name"]
+            for ing in recipe.get("ingredients", [])
+            if ing["name"] not in pool
+        ]
         if missing and not recipe.get("on_the_spot_unlock"):
-            issues.append(f"progressivité: {recipe['name']} utilise {missing} avant obtention")
+            issues.append(
+                f"progressivité: {recipe['name']} utilise {missing} avant obtention"
+            )
         for product in recipe.get("results", []):
             pool.add(product["name"])
         for ingredient in recipe.get("ingredients", []):
             pool.add(ingredient["name"])
+    return issues
+
+
+def _check_progressivity_unordered(seed: dict) -> list[str]:
+    pending = list(seed.get("recipes", []))
+    pool = _initial_pool(seed)
+    while True:
+        progressed = False
+        for recipe in list(pending):
+            missing = [
+                ing["name"]
+                for ing in recipe.get("ingredients", [])
+                if ing["name"] not in pool
+            ]
+            if missing and not recipe.get("on_the_spot_unlock"):
+                continue
+            pending.remove(recipe)
+            for product in recipe.get("results", []):
+                pool.add(product["name"])
+            for ingredient in recipe.get("ingredients", []):
+                pool.add(ingredient["name"])
+            progressed = True
+        if not progressed:
+            break
+    issues: list[str] = []
+    for recipe in pending:
+        missing = [
+            ing["name"]
+            for ing in recipe.get("ingredients", [])
+            if ing["name"] not in pool
+        ]
+        issues.append(
+            f"progressivité: {recipe['name']} utilise {missing} jamais obtenable"
+        )
     return issues
 
 
@@ -106,8 +163,7 @@ def _check_completeness(seed: dict) -> list[str]:
     """
     required = seed.get("victory_requirements", [])
     produced = {p["name"] for r in seed.get("recipes", []) for p in r.get("results", [])}
-    patched = {p["resource"] for p in seed.get("map", {}).get("patches", [])}
-    patched |= {la["resource"] for la in seed.get("map", {}).get("lakes", [])}
+    patched = _initial_pool(seed)
     missing = [req for req in required if req not in produced | patched]
     if missing:
         return [f"complétude: exigences de victoire inatteignables: {missing}"]

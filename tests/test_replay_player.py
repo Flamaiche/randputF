@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from tool.common.db import SLOT_ITEM
+from tool.common.db import SLOT_ITEM, ItemDef
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump
 from tool.replay import player as rp
@@ -135,6 +135,29 @@ def test_patches_item_ramassables_a_la_main(seeds):
     assert fp.item_patch_resources <= items
 
 
+def test_residu_de_combustion_obtenable_des_le_spawn(seeds):
+    """Le charbon posé en patch produit son ``burnt_result`` sans recette.
+
+    Le dump moddé porte ``burnt_result`` sur le charbon (→ ash). Le joueur
+    peut miner ce patch à la main puis brûler le charbon : le résidu doit
+    entrer dans la clôture dès le spawn, sans atelier ni technologie.
+    """
+    dump = json.loads((Path(__file__).parent.parent / "data/vanilla_dump.json").read_text())
+    dump["items"]["test-ash"] = copy.deepcopy(dump["items"]["stone"])
+    dump["items"]["coal"]["burnt_result"] = "test-ash"
+    db = load_db_from_dump(dump)
+    db.seed_value = 5
+    seed = copy.deepcopy(seeds[5])
+    seed["map"]["patches"].append({"kind": SLOT_ITEM, "resource": "coal"})
+
+    fp = rp.FakePlayer(db, seed)
+    items, _fluids, _power, _generator = fp.closure()
+
+    assert "coal" in items
+    assert "test-ash" in items
+    assert fp._craft("test-ash", 2)
+
+
 def test_seed1043_gagnable_apres_regen_extracteur(seeds):
     """C3 + régénération : la seed 1043 était bloquée en QUANTITÉ — le
     military-science-pack (tech idx 4) requiert ≈32 electric-mining-drills dont
@@ -201,6 +224,23 @@ def test_le_joueur_fabrique_reellement_la_chaine(seeds):
             assert product in fp.mastered, (seed_value, product)
 
 
+def test_cloture_inclut_les_produits_de_lancement(seeds):
+    db = copy.deepcopy(DB)
+    db.seed_value = 5
+    fp = rp.FakePlayer(db, seeds[5])
+    fp.launch_buildings = []
+    fp.rocket_part_product = "offshore-pump"
+    fp.rocket_parts_required = 1
+    fp.launch_requirements = {
+        "produit-de-lancement": {"item": "offshore-pump", "amount": 1}
+    }
+
+    items, fluids, power, _ = fp.closure()
+
+    assert "offshore-pump" in items
+    assert "produit-de-lancement" in items
+
+
 def test_closure_est_un_point_fixe_deterministe(seeds):
     """Deux clôtures successives au même état → identiques (le rejoueur est
     déterministe, pas de course entre extracteurs / électricité / recettes)."""
@@ -225,6 +265,325 @@ def test_fermeture_initiale_respecte_les_sources(seeds):
     assert kit <= items
     for la in seed["map"]["lakes"]:
         assert la["resource"] in fluids
+
+
+def test_explication_quantifie_les_fluides_par_leur_vraie_sortie():
+    """Le diagnostic d'un fluide absent doit trouver ses producteurs et diviser
+    par le rendement réel (pas 1), même s'il n'est pas encore dans la fermeture."""
+    from collections import Counter
+
+    from tool.common.demo import build_demo_db
+
+    db = build_demo_db()
+    recipe = {
+        "name": "demo-vapeur",
+        "ingredients": [{"type": "fluid", "name": "water", "amount": 1}],
+        "results": [{"type": "fluid", "name": "steam-demo", "amount": 100}],
+        "crafted_in": None,
+    }
+    seed = {
+        "meta": {},
+        "recipes": [recipe],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+    }
+    fp = rp.FakePlayer(db, seed)
+    fp.unlocked.add(recipe["name"])
+
+    txt = fp._explain_qty(
+        "steam-demo", 100, Counter(), (set(), set()), set(), set(), True, 0
+    )
+
+    assert "steam-demo×100 (demo-vapeur)" in txt
+    assert "water×1" in txt
+
+
+def test_explication_detecte_un_cycle_de_fabrication():
+    from collections import Counter
+
+    from tool.common.demo import build_demo_db
+
+    db = build_demo_db()
+    seed = {
+        "meta": {},
+        "recipes": [
+            {
+                "name": "demo-a",
+                "ingredients": [{"type": "item", "name": "demo-b", "amount": 1}],
+                "results": [{"type": "item", "name": "demo-a", "amount": 1}],
+                "crafted_in": None,
+            },
+            {
+                "name": "demo-b",
+                "ingredients": [{"type": "item", "name": "demo-a", "amount": 1}],
+                "results": [{"type": "item", "name": "demo-b", "amount": 1}],
+                "crafted_in": None,
+            },
+        ],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+    }
+    fp = rp.FakePlayer(db, seed)
+    fp.unlocked.update({"demo-a", "demo-b"})
+
+    txt = fp._explain_qty(
+        "demo-a", 1, Counter(), (set(), set()), set(), set(), True, 0
+    )
+
+    assert "cycle de fabrication" in txt
+
+
+def _cycle_demo_seed(starter: list[dict]) -> dict:
+    return {
+        "meta": {},
+        "recipes": [
+            {
+                "name": "demo-fer",
+                "ingredients": [
+                    {"type": "item", "name": "copper-plate", "amount": 1},
+                    {"type": "item", "name": "iron-plate", "amount": 1},
+                ],
+                "results": [{"type": "item", "name": "iron-plate", "amount": 3}],
+                "crafted_in": None,
+            },
+            {
+                "name": "demo-cuivre",
+                "ingredients": [{"type": "item", "name": "iron-plate", "amount": 1}],
+                "results": [{"type": "item", "name": "copper-plate", "amount": 1}],
+                "crafted_in": None,
+            },
+        ],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+        "starter_kit": starter,
+    }
+
+
+def test_cycle_positif_avec_starter_devient_source_infinie():
+    from collections import Counter
+
+    from tool.common.demo import build_demo_db
+
+    db = build_demo_db()
+    seed = _cycle_demo_seed(
+        [{"name": "iron-plate", "type": "item", "count": 1}]
+    )
+    fp = rp.FakePlayer(db, seed)
+    fp.unlocked.update({"demo-fer", "demo-cuivre"})
+    fp._invalidate_caches()
+
+    items, fluids, power, _ = fp.closure()
+    fp._world_items, fp._world_fluids, fp._world_power = items, fluids, power
+    inf = fp._infinite_items(items, fluids, power)
+    assert "iron-plate" not in inf[0]
+
+    assert fp._craft("iron-plate", 25)
+    assert "iron-plate" in fp._cycle_infinite_items
+    assert "copper-plate" in fp._cycle_infinite_items
+
+    txt = fp._explain_qty(
+        "iron-plate", 25, Counter(), (set(), set()), items, fluids, power, 0
+    )
+    assert "cycle productif" in txt
+
+
+def test_cycle_positif_avec_multiplicateurs_de_recette():
+    from tool.common.demo import build_demo_db
+
+    seed = {
+        "meta": {},
+        "recipes": [
+            {
+                "name": "demo-a",
+                "ingredients": [
+                    {"type": "item", "name": "copper-plate", "amount": 2},
+                    {"type": "item", "name": "steel-plate", "amount": 10},
+                ],
+                "results": [{"type": "item", "name": "iron-plate", "amount": 8}],
+                "crafted_in": None,
+            },
+            {
+                "name": "demo-b",
+                "ingredients": [
+                    {"type": "item", "name": "iron-plate", "amount": 1}
+                ],
+                "results": [{"type": "item", "name": "copper-plate", "amount": 50}],
+                "crafted_in": None,
+            },
+            {
+                "name": "demo-c",
+                "ingredients": [
+                    {"type": "item", "name": "copper-plate", "amount": 2}
+                ],
+                "results": [{"type": "item", "name": "steel-plate", "amount": 1}],
+                "crafted_in": None,
+            },
+        ],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+        "starter_kit": [{"name": "iron-plate", "type": "item", "count": 1}],
+    }
+    fp = rp.FakePlayer(build_demo_db(), seed)
+    fp.unlocked.update({"demo-a", "demo-b", "demo-c"})
+    fp._invalidate_caches()
+
+    items, fluids, power, _ = fp.closure()
+    fp._world_items, fp._world_fluids, fp._world_power = items, fluids, power
+    inf = fp._infinite_items(items, fluids, power)
+    assert "iron-plate" not in inf[0]
+
+    assert fp._craft("iron-plate", 100)
+    assert {"iron-plate", "copper-plate", "steel-plate"} <= fp._cycle_infinite_items
+
+
+def test_cycle_positif_avec_starter_externe_catalyseur():
+    from tool.common.demo import build_demo_db
+
+    seed = {
+        "meta": {},
+        "recipes": [
+            {
+                "name": "demo-a",
+                "ingredients": [
+                    {"type": "item", "name": "copper-plate", "amount": 2}
+                ],
+                "results": [{"type": "item", "name": "iron-plate", "amount": 3}],
+                "crafted_in": None,
+            },
+            {
+                "name": "demo-b",
+                "ingredients": [
+                    {"type": "item", "name": "iron-plate", "amount": 1},
+                    {"type": "item", "name": "stone", "amount": 1},
+                ],
+                "results": [
+                    {"type": "item", "name": "copper-plate", "amount": 10},
+                    {"type": "item", "name": "stone", "amount": 2},
+                ],
+                "crafted_in": None,
+            },
+        ],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+        "starter_kit": [{"name": "stone", "type": "item", "count": 1}],
+    }
+    fp = rp.FakePlayer(build_demo_db(), seed)
+    fp.unlocked.update({"demo-a", "demo-b"})
+    fp._invalidate_caches()
+
+    items, fluids, power, _ = fp.closure()
+    fp._world_items, fp._world_fluids, fp._world_power = items, fluids, power
+    inf = fp._infinite_items(items, fluids, power)
+    assert "iron-plate" not in inf[0]
+    assert "copper-plate" not in inf[0]
+
+    assert fp._ensure_cycle_inf("iron-plate", inf, items, fluids, power)
+    assert "iron-plate" in fp._cycle_infinite_items
+    assert "copper-plate" in fp._cycle_infinite_items
+
+
+def test_cycle_negatif_avec_starter_reste_bloquant():
+    from tool.common.demo import build_demo_db
+
+    db = build_demo_db()
+    seed = {
+        "meta": {},
+        "recipes": [
+            {
+                "name": "demo-a",
+                "ingredients": [{"type": "item", "name": "demo-b", "amount": 1}],
+                "results": [{"type": "item", "name": "demo-a", "amount": 1}],
+                "crafted_in": None,
+            },
+            {
+                "name": "demo-b",
+                "ingredients": [{"type": "item", "name": "demo-a", "amount": 1}],
+                "results": [{"type": "item", "name": "demo-b", "amount": 1}],
+                "crafted_in": None,
+            },
+        ],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+        "starter_kit": [{"name": "demo-a", "type": "item", "count": 1}],
+    }
+    fp = rp.FakePlayer(db, seed)
+    fp.unlocked.update({"demo-a", "demo-b"})
+    fp._invalidate_caches()
+
+    items, fluids, power, _ = fp.closure()
+    fp._world_items, fp._world_fluids, fp._world_power = items, fluids, power
+    inf = fp._infinite_items(items, fluids, power)
+    assert not fp._ensure_cycle_inf("demo-a", inf, items, fluids, power)
+
+
+def test_cycle_positif_sans_starter_reste_bloquant():
+    from collections import Counter
+
+    from tool.common.demo import build_demo_db
+
+    db = build_demo_db()
+    fp = rp.FakePlayer(db, _cycle_demo_seed([]))
+    fp.unlocked.update({"demo-fer", "demo-cuivre"})
+    fp._invalidate_caches()
+
+    items, fluids, power, _ = fp.closure()
+    fp._world_items, fp._world_fluids, fp._world_power = items, fluids, power
+    inf = fp._infinite_items(items, fluids, power)
+    assert not fp._ensure_cycle_inf("iron-plate", inf, items, fluids, power)
+
+    txt = fp._explain_qty(
+        "iron-plate", 25, Counter(), inf, items, fluids, power, 0
+    )
+    assert "cycle de fabrication" in txt
+    assert not fp._cycle_infinite_items
+    brief = fp.explain_qty("iron-plate", items, fluids, power, need=25)
+    assert "cycle productif sans starter" in brief
+
+
+def test_rejoueur_utilise_le_tag_environnemental_de_la_db():
+    from tool.common.demo import build_demo_db
+
+    db = build_demo_db()
+    db.items["mod-fish"] = ItemDef(name="mod-fish", is_environmental=True)
+    seed = {
+        "meta": {},
+        "recipes": [],
+        "technologies": [],
+        "map": {"patches": [], "lakes": []},
+        "pools": {"raw_resources": []},
+    }
+    fp = rp.FakePlayer(db, seed)
+
+    assert "mod-fish" in fp.base_infinite
+    items, _fluids, _power, _generator = fp.closure()
+    assert "mod-fish" in items
+
+
+def test_message_de_blocage_est_court_et_explicite():
+    blocker = rp.Blocker(
+        "coal-mk02",
+        "cost",
+        "logistic-science-pack",
+        "cottongut×12 : cycle de fabrication",
+        previous="coal-mk01",
+        done=142,
+        attempted=7,
+    )
+
+    txt = str(blocker)
+
+    assert "avant : coal-mk01 (142 techs recherchées)" in txt
+    assert "blocage : coal-mk02" in txt
+    assert "erreur : coût — logistic-science-pack" in txt
+    assert "pourquoi : cottongut×12" in txt
+    assert "7 tech(s) disponible(s) essayée(s)" in txt
+    assert blocker.brief() == "coal-mk02:cost"
 
 
 def test_explication_de_blocage_bornee(seeds):
@@ -282,6 +641,27 @@ def test_extraction_par_capacite_physique(seeds):
     assert isinstance(power, bool)
     assert generator is None or isinstance(generator, str)
     rp.play(db, seed)                            # jouable sans crash, les deux formats
+
+
+def test_declencheur_mine_entity_consomme_les_produits_du_dump(seeds):
+    seed = copy.deepcopy(seeds[5])
+    seed["entities"] = {}
+    seed["entities"]["ae-ressource"] = {
+        "type": "resource",
+        "mineable_products": [{"name": "ae-minerai", "amount": 1}],
+    }
+    fp = rp.FakePlayer(copy.deepcopy(DB), seed)
+    tech = {
+        "research_trigger": {"type": "mine-entity", "entities": ["ae-ressource"]},
+        "unit": {},
+    }
+
+    fp.fluids_obtainable = set()
+    failed, _ = fp._evaluate_tech(tech, set(), set(), False)
+    assert failed == "ae-ressource"
+
+    fp.fluids_obtainable = {"ae-minerai"}
+    assert fp._evaluate_tech(tech, set(), {"ae-minerai"}, False) == (None, None)
 
 
 def test_mastery_sweep_est_un_point_fixe_deterministe(seeds):

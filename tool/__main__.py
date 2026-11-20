@@ -1,7 +1,7 @@
 """Point d'entrée CLI de randputF (``python -m tool``).
 
 Expose les commandes ``parse``, ``audit``, ``difficulty``, ``compare``,
-``generate`` et ``witness``. Chaque commande valide ses arguments via
+``report``, ``test``, ``dump``, ``generate`` et ``witness``. Chaque commande valide ses arguments via
 ``argparse`` puis délègue à ``tool.service`` (chargement de la base, config,
 génération, assemblage) ; ce module ne fait que traduire les exceptions du
 service en codes de sortie et formater la sortie console.
@@ -9,6 +9,7 @@ service en codes de sortie et formater la sortie console.
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -42,6 +43,7 @@ from tool.service import build_mod as _build_mod
 from tool.service import install_mod as _install_mod
 from tool.service import load_config as _load_config
 from tool.service import load_db as _load_db_raising
+from tool.tester import run_dump_test
 
 
 def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
@@ -83,6 +85,20 @@ def cmd_audit(args: argparse.Namespace) -> None:
     report.items_checked = item_report.items_checked
     print(summarize_tags(db, report))
     sys.exit(0 if report.ok else 1)
+
+
+def _source_label(dump_path: str, dump: dict) -> str:
+    """Retourne le préfixe des trois HTML à partir de l'identité du dump."""
+    meta = (dump.get("meta") or {})
+    label = meta.get("mod_label") or meta.get("dump_label")
+    if isinstance(label, str) and label:
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-")
+        if cleaned:
+            return cleaned
+    stem = Path(dump_path).stem
+    if stem.endswith("_dump"):
+        stem = stem[:-5]
+    return stem or "dump"
 
 
 def _vanilla_seed_from_path(dump_path: str) -> dict | None:
@@ -295,6 +311,64 @@ def cmd_report(args: argparse.Namespace) -> None:
     print(f"Rapport : {out}")
 
 
+def cmd_test(args: argparse.Namespace) -> None:
+    """Teste un dump fixe ou un mod existant et écrit trois pages HTML.
+
+    `args` porte `dump`, `mod_dir` et `out`. Sans `mod_dir`, l'état testé vient
+    directement du dump. Avec `mod_dir`, l'état déjà assemblé du mod est lu
+    depuis `seed/seed.json`. Aucune graine n'est tirée et aucun mod n'est généré.
+    """
+    dump_path = Path(args.dump)
+    try:
+        dump = json.loads(dump_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        sys.exit(f"Dump illisible ({dump_path}) : {err}")
+
+    state = None
+    if args.mod_dir:
+        state_path = Path(args.mod_dir) / "seed" / "seed.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as err:
+            sys.exit(f"État du mod illisible ({state_path}) : {err}")
+
+    db = _load_db(False, dump_path)
+    source = _source_label(str(dump_path), dump)
+    out_dir = Path(args.out) if args.out else OUTPUT_DIR
+    result = run_dump_test(db, dump, out_dir, source=source, state=state)
+
+    check = result.check
+    print(f"Source : {dump_path} → {source}")
+    print(f"Contrôle : {'OK' if not check.issues else f'{len(check.issues)} problème(s)'}")
+    counts = result.coverage.get("counts") or {}
+    print(
+        "Couverture : "
+        + " · ".join(
+            f"{label} {counts.get(label, 0)}"
+            for label in ("Consommé", "Partiel", "À consommer", "Cosmétique")
+        )
+    )
+    for issue in check.issues[:10]:
+        print(f"[INVALIDE] {issue}")
+    print(
+        f"Rejeu : {check.researched}/{check.total_techs} techs, "
+        f"{'victoire' if check.victory else 'défaite'}"
+    )
+    if check.blocker:
+        print("[BLOQUÉ]")
+        for line in str(check.blocker).splitlines():
+            print(f"  {line}")
+    if result.difficulty_total is None:
+        print("Difficulté : non calculable sur ce dump")
+    else:
+        print(f"Difficulté : {result.difficulty_total:,.0f} ressources brutes")
+    print(f"Dump    : {result.dump_html}")
+    print(f"Graphe  : {result.graph_html or 'ignoré (Graphviz absent)'}")
+    print(f"Rapport : {result.report_html}")
+    if not check.ok:
+        sys.exit(2)
+
+
 def cmd_dump(args: argparse.Namespace) -> None:
     """Écrit le navigateur HTML du dump.
 
@@ -387,6 +461,20 @@ def main(argv: list[str] | None = None) -> None:
         help="Chemin du HTML (defaut: output/vanilla.report.html)",
     )
     p_report.set_defaults(func=cmd_report)
+
+    p_test = sub.add_parser(
+        "test", help="Teste un dump ou un mod existant et ecrit trois HTML"
+    )
+    p_test.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
+    p_test.add_argument(
+        "--mod-dir", default=None,
+        help="Mod deja assemble : utilise son seed/seed.json sans rien generer",
+    )
+    p_test.add_argument(
+        "--out", default=None,
+        help="Dossier de sortie (defaut: output/)",
+    )
+    p_test.set_defaults(func=cmd_test)
 
     p_dump = sub.add_parser(
         "dump", help="Navigateur HTML du dump : inventaire A→Z, tuiles, entités…"

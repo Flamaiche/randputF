@@ -5,7 +5,8 @@ vue sur les prototypes) ; cette page est la nôtre : l'inventaire A→Z des 39
 tables de prototypes, les tuiles (couches de collision + fluide), les
 entités avec leurs faits structurels (catégories, fluidboxes, énergie,
 règles de placement sur tuiles), les items/fluides (avec le badge « science »
-issu des faits), les recettes et les technologies.
+issu des faits), les recettes et les technologies. Il expose aussi les métadonnées complètes du
+dump, avec les mods actifs et leur version, ainsi que les données de mods.
 
 Le dump reste la seule source : aucun nom, aucune valeur inventée. La
 seule structuration est celle du pipeline (``inject_pumped_fluids`` pour le
@@ -18,6 +19,7 @@ correspondent pas, dans toutes les tables de la page."""
 from __future__ import annotations
 
 import html as _html
+import json as _json
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,9 @@ h1{margin:0;font-size:22px}
 .stat .lab{color:var(--muted);font-size:10px;text-transform:uppercase;
   letter-spacing:.06em}
 .stat .val{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:10px;margin-bottom:14px}
+.meta-grid .stat .val{font-size:13px;overflow-wrap:anywhere}
 .filterbar{position:sticky;top:0;z-index:5;background:var(--bg);
   padding:10px 24px;border-bottom:1px solid var(--line)}
 .filterbar input{width:100%;padding:8px 12px;border-radius:8px;
@@ -70,6 +75,8 @@ details.inv > summary{cursor:pointer;padding:8px 12px;font-size:12px;
   font-family:ui-monospace,Menlo,Consolas,monospace}
 details.inv[open] > summary{border-bottom:1px solid var(--line)}
 .names{padding:10px 14px;line-height:2}
+.payload{margin:0;padding:10px 14px;white-space:pre-wrap;overflow-wrap:anywhere;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
 .muted{color:var(--muted)}
 .count{color:var(--muted);font-weight:400}
 """
@@ -163,6 +170,101 @@ def _section(title: str, anchor: str, body: str) -> str:
     ``title`` est le titre, ``anchor`` l'identifiant de section et ``body`` le HTML déjà construit. Retourne la section complète.
     """
     return f'<section id="{anchor}"><h2>{_esc(title)}</h2>{body}</section>'
+
+
+_META_LABELS = {
+    "game_version": "Version du jeu",
+    "game_version_numeric": "Version numérique",
+    "schema_version": "Schéma",
+    "exporter_version": "Exporteur",
+    "mod_label": "Préfixe HTML",
+    "mod_label_full": "Libellé complet",
+    "dump_file": "Fichier source",
+}
+
+
+def _meta_value(value: Any) -> str:
+    """Formate une valeur de métadonnée pour l'affichage.
+
+    Les collections sont sérialisées en JSON lisible ; les valeurs simples sont converties en texte, avec un tiret pour ``None``.
+    """
+    if value is None:
+        return "—"
+    if isinstance(value, (dict, list)):
+        try:
+            return _json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
+def _meta_fragment(meta: Any) -> str:
+    """Rend l'identité complète du dump, avec les mods actifs en tableau.
+
+    Toutes les clés de ``meta`` sont affichées ; ``active_mods`` reçoit un
+    tableau dédié avec le nom et la version de chaque mod actif. Retourne un
+    fragment HTML autonome.
+    """
+    if not isinstance(meta, dict) or not meta:
+        return '<p class="muted">Métadonnées absentes (dump ancien).</p>'
+    fields = "".join(
+        _stat(_META_LABELS.get(key, key), _meta_value(value))
+        for key, value in sorted(meta.items())
+        if key != "active_mods"
+    )
+    entries = meta.get("active_mods")
+    rows: list[str] = []
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict):
+                name = _esc(entry.get("name"))
+                version = _esc(entry.get("version"))
+            else:
+                name, version = _esc(entry), "—"
+            rows.append(
+                f'<tr data-search="{name} {version}">'
+                f'<td class="mono">{name}</td><td class="mono">{version}</td></tr>'
+            )
+    if rows:
+        mods = (
+            '<table><thead><tr><th>Mod actif</th><th>Version</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>'
+        )
+    elif entries:
+        mods = f'<p class="muted">{_esc(_meta_value(entries))}</p>'
+    else:
+        mods = '<p class="muted">Aucun mod actif déclaré (dump ancien).</p>'
+    return f'<div class="meta-grid">{fields}</div>{mods}'
+
+
+def _mod_data_fragment(mod_data: Any) -> str:
+    """Rend les données déclarées par les mods en blocs repliables lisibles.
+
+    Chaque entrée affiche son type et son payload JSON tel quel ; le filtre
+    global porte sur le nom, le type et le contenu. Retourne un fragment HTML.
+    """
+    if not isinstance(mod_data, dict) or not mod_data:
+        return '<p class="muted">Aucune donnée de mod déclarée.</p>'
+    blocks = []
+    for name in sorted(mod_data):
+        entry = mod_data[name] or {}
+        data_type = entry.get("data_type") if isinstance(entry, dict) else None
+        payload = entry.get("data") if isinstance(entry, dict) else entry
+        if isinstance(payload, (dict, list)):
+            try:
+                pretty = _json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+            except (TypeError, ValueError):
+                pretty = _meta_value(payload)
+        else:
+            pretty = _meta_value(payload)
+        hay = _esc(f"{name} {data_type or ''} {pretty}")
+        type_chip = f' <span class="chip">{_esc(data_type)}</span>' if data_type else ""
+        blocks.append(
+            f'<details class="inv" data-search="{hay}">'
+            f'<summary>{_esc(name)}{type_chip}</summary>'
+            f'<pre class="payload">{_esc(pretty)}</pre></details>'
+        )
+    return "".join(blocks)
 
 
 def _inventory_fragment(inventory: dict) -> str:
@@ -410,7 +512,7 @@ def _technologies_fragment(technologies: dict) -> str:
 
 
 def write_dump_html(dump: dict, out: Path) -> Path:
-    """Écrit le navigateur du dump (inventaire A→Z + sections profondes).
+    """Écrit le navigateur du dump (métadonnées, mod_data et sections profondes).
 
     ``out`` reçoit la page HTML autonome ; retourne le chemin écrit. La
     structuration appliquée est celle du pipeline (fluide pompé résolu par
@@ -426,11 +528,16 @@ def write_dump_html(dump: dict, out: Path) -> Path:
     technologies = dump.get("technologies") or {}
     tiles = dump.get("tiles") or {}
     inventory = dump.get("inventory") or {}
+    mod_data = dump.get("mod_data") or {}
     meta = dump.get("meta") or {}
+    active_mods = meta.get("active_mods") or []
 
     stats = "".join(
         [
             _stat("Version du jeu", meta.get("game_version", "?")),
+            _stat("Mods actifs", len(active_mods) if isinstance(active_mods, list) else "?"),
+            _stat("Préfixe", meta.get("mod_label") or "—"),
+            _stat("Données de mods", len(mod_data) if isinstance(mod_data, dict) else "?"),
             _stat("Tables (inventaire)", len(inventory)),
             _stat("Tuiles", len(tiles)),
             _stat("Items", len(items)),
@@ -453,6 +560,8 @@ def write_dump_html(dump: dict, out: Path) -> Path:
         "<div class='filterbar'><input id='dump-filter' type='text' "
         "placeholder='Filtrer partout (items, entités, tuiles, recettes, techs…)'></div>"
         "<main>"
+        + _section("Identité du dump (métadonnées)", "identite", _meta_fragment(meta))
+        + _section("Données de mods", "donnees-mods", _mod_data_fragment(mod_data))
         + _section("Inventaire A→Z (toutes les tables de prototypes)", "inventaire",
                    _inventory_fragment(inventory))
         + _section("Tuiles (couches + fluide)", "tuiles", _tiles_fragment(tiles))

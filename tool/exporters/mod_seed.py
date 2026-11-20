@@ -9,6 +9,7 @@ Structure seed :
 {
   meta: {seed, generator_version, factorio_version},
   pools: {item_resources: [...], fluid_resources: [...],
+          raw_resources: [...], environmental_resources: [...],
           vehicle_weapons: [<items gun de la pool montée §7>],
           vehicle_range_scaling: {base_size, scale}},
   map:   {patches: [{kind, resource, richness,
@@ -38,8 +39,10 @@ import json
 from pathlib import Path
 
 from tool.audit.difficulty import compute_difficulty
+from tool.common.db import SLOT_FLUID, SLOT_ITEM
 from tool.parsers.vanilla import (
     canonical_recipe_map,
+    environmental_items_from_dump,
     inject_pumped_fluids,
     is_hidden_prototype,
     rocket_chain_from_dump,
@@ -172,14 +175,131 @@ def _extract_entities(dump: dict) -> dict[str, dict]:
     return entities
 
 
+def _slot_type(entry: dict, name: str, dump: dict) -> str:
+    """Conserve le type de slot déclaré par le dump, avec repli par prototype."""
+    kind = entry.get("type")
+    if kind in (SLOT_ITEM, SLOT_FLUID):
+        return str(kind)
+    if name in (dump.get("fluids") or {}):
+        return SLOT_FLUID
+    return SLOT_ITEM
+
+
+def _fluidbox_recipes(dump: dict) -> list[dict]:
+    """Conversions de fluides déduites des ``fluidboxes`` de toutes les entités.
+
+    Toute entité qui déclare des filtres d'entrée et de sortie distincts décrit
+    une conversion réelle du dump. Les boucles de transport (même fluide en
+    entrée et sortie, ``input-output``) ne produisent rien.
+    """
+    out: list[dict] = []
+    for name, entry in _extract_entities(dump).items():
+        detail = (entry.get("fluidboxes") or {}).get("detail") or {}
+        inputs: list[dict] = []
+        results: list[dict] = []
+        seen_inputs: set[str] = set()
+        seen_outputs: set[str] = set()
+        for part in detail.values():
+            if not isinstance(part, dict) or not part.get("filter"):
+                continue
+            fluid = str(part["filter"])
+            slot = {"type": SLOT_FLUID, "name": fluid, "amount": 100}
+            production = part.get("production_type")
+            if production in ("input", "input-output") and fluid not in seen_inputs:
+                inputs.append(slot)
+                seen_inputs.add(fluid)
+            if production in ("output", "input-output") and fluid not in seen_outputs:
+                results.append(slot)
+                seen_outputs.add(fluid)
+        if not inputs or not results or seen_outputs <= seen_inputs:
+            continue
+        suffix = "-".join(str(result["name"]) for result in results)
+        out.append(
+            {
+                "name": f"dump-{name}-{suffix}",
+                "results": results,
+                "ingredients": inputs,
+                "enabled": True,
+                "hidden_active": False,
+                "energy": 0,
+                "crafting_categories": [],
+                "crafting_speed": 1,
+                "crafted_in": name,
+            }
+        )
+    return out
+
+
 def _extract_recipes(dump: dict) -> list[dict]:
     """Extrait les recettes du dump pour le seed vanilla.
 
-    ``dump`` est le JSON de l'exporteur. Exclut les barils, Kovarex, le retraitement du combustible nucléaire, les recettes paramétrées et les prototypes ``hidden``. Pour un dump moddé, ``randputf-X`` remplace la recette vanilla ``X`` ; pour un ancien dump sans champs d'état, le même choix est déduit du préfixe. Retourne une liste de recettes normalisées (nom, catégorie, ingrédients, produits).
+    ``dump`` est le JSON de l'exporteur. Exclut les barils sans consommateur hors barillage (un baril réellement utilisé comme intermédiaire moddé est conservé), Kovarex, le retraitement du combustible nucléaire, les recettes paramétrées et les prototypes neutralisés (``hidden`` et désactivés). Les recettes cachées encore actives, ou débloquées par une tech, sont conservées : les mods les utilisent comme vraies voies de production (ex. fusée). Pour un dump moddé, ``randputf-X`` remplace la recette vanilla ``X`` ; pour un ancien dump sans champs d'état, le même choix est déduit du préfixe. Retourne une liste de recettes normalisées (nom, catégorie, ingrédients, produits).
     """
     recipes: list[dict] = []
     all_recipes = dump.get("recipes") or {}
+    tech_unlocked_recipes = {
+        str(effect.get("recipe"))
+        for tech in (dump.get("technologies") or {}).values()
+        if isinstance(tech, dict)
+        for effect in tech.get("effects") or []
+        if isinstance(effect, dict)
+        and effect.get("type") == "unlock-recipe"
+        and effect.get("recipe")
+    }
     canonical = canonical_recipe_map(all_recipes)
+    barrel_items = {
+        str(name)
+        for name, item in (dump.get("items") or {}).items()
+        if isinstance(item, dict) and item.get("subgroup") == "barrel"
+    }
+    if "barrel" in (dump.get("items") or {}):
+        barrel_items.add("barrel")
+    barrel_products: dict[str, set[str]] = {}
+    for name, entry in all_recipes.items():
+        if not isinstance(entry, dict):
+            continue
+        barrel_products[str(name)] = {
+            str(product.get("name"))
+            for product in entry.get("products") or entry.get("results") or []
+            if isinstance(product, dict) and product.get("name") in barrel_items
+        }
+    barrel_conversions = {
+        str(name)
+        for name, products in barrel_products.items()
+        if name != "barrel"
+        and products
+        and (
+            "barrel" in name
+            or "barrel" in str((all_recipes.get(name) or {}).get("category") or "")
+        )
+    }
+    pumped_fluids: set[str] = set()
+    for entry in (dump.get("entities") or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("pumped_fluid"):
+            pumped_fluids.add(str(entry["pumped_fluid"]))
+        pumped_fluids.update(str(fluid) for fluid in entry.get("pumped_fluids") or ())
+
+    needed_barrels: set[str] = set()
+    needed_fluids: set[str] = set()
+    primary_barrels: set[str] = set()
+    for name, entry in all_recipes.items():
+        if name in barrel_conversions or not isinstance(entry, dict):
+            continue
+        for ingredient in entry.get("ingredients") or []:
+            if not isinstance(ingredient, dict) or not ingredient.get("name"):
+                continue
+            if ingredient.get("name") in barrel_items:
+                needed_barrels.add(str(ingredient["name"]))
+            if _slot_type(ingredient, str(ingredient["name"]), dump) == SLOT_FLUID:
+                needed_fluids.add(str(ingredient["name"]))
+        for product in entry.get("products") or entry.get("results") or []:
+            if not isinstance(product, dict) or not product.get("name"):
+                continue
+            if _slot_type(product, str(product["name"]), dump) == SLOT_FLUID:
+                needed_fluids.add(str(product["name"]))
+        primary_barrels.update(barrel_products.get(str(name), set()))
     for name, entry in all_recipes.items():
         if not isinstance(entry, dict):
             continue
@@ -187,26 +307,56 @@ def _extract_recipes(dump: dict) -> list[dict]:
             continue
         # Un dump moddé expose l'état réel : les prototypes neutralisés restent
         # dans le JSON (liens intacts) mais ne participent pas à la génération.
-        if is_hidden_prototype(entry):
+        hidden_active = is_hidden_prototype(entry)
+        if hidden_active and not entry.get("enabled") and name not in tech_unlocked_recipes:
             continue
         # Repli pour les dumps anciens sans hidden : randputf-X remplace X.
         if not name.startswith("randputf-") and name in canonical:
             continue
-        if any(part in name for part in ("barrel", "kovarex", "nuclear-fuel-reprocessing", "parameter-0")):
+        if any(part in name for part in ("kovarex", "nuclear-fuel-reprocessing", "parameter-0")):
             continue
+        if name in barrel_conversions:
+            produced_barrels = barrel_products[name]
+            conversion_fluids = {
+                str(res.get("name"))
+                for res in (entry.get("products") or entry.get("results") or [])
+                if isinstance(res, dict)
+                and res.get("name")
+                and _slot_type(res, str(res["name"]), dump) == SLOT_FLUID
+            }
+            conversion_fluids.update(
+                str(ing.get("name"))
+                for ing in entry.get("ingredients") or []
+                if isinstance(ing, dict)
+                and ing.get("name")
+                and _slot_type(ing, str(ing["name"]), dump) == SLOT_FLUID
+            )
+            useful_fluids = (conversion_fluids & needed_fluids) - pumped_fluids
+            if produced_barrels & primary_barrels and not useful_fluids:
+                continue
+            if not (produced_barrels & needed_barrels) and not useful_fluids:
+                continue
         category = entry.get("category")
         if category and category.startswith("parameter-"):
             continue
         products = entry.get("products") or entry.get("results") or []
         results = [
-            {"name": p.get("name"), "amount": p.get("amount", 0)}
+            {
+                "type": _slot_type(p, str(p.get("name")), dump),
+                "name": p.get("name"),
+                "amount": p.get("amount", 1),
+            }
             for p in products
             if isinstance(p, dict) and p.get("name")
         ]
         if not results:
             continue
         ingredients = [
-            {"name": ing.get("name"), "amount": ing.get("amount", 0)}
+            {
+                "type": _slot_type(ing, str(ing.get("name")), dump),
+                "name": ing.get("name"),
+                "amount": ing.get("amount", 0),
+            }
             for ing in (entry.get("ingredients") or [])
             if isinstance(ing, dict) and ing.get("name")
         ]
@@ -216,9 +366,12 @@ def _extract_recipes(dump: dict) -> list[dict]:
                 "name": name,
                 "results": results,
                 "ingredients": ingredients,
+                "enabled": bool(entry.get("enabled", False)),
+                "hidden_active": hidden_active and name not in tech_unlocked_recipes,
                 "energy": entry.get("energy", 0),
                 "crafting_categories": entry.get("crafting_categories") or [],
                 "crafting_speed": entry.get("crafting_speed", 1),
+                "main_product": str(entry.get("main_product") or ""),
                 "crafted_in": buildings.get(entry.get("category")),
             }
         )
@@ -256,6 +409,7 @@ def _extract_technologies(dump: dict) -> list[dict]:
                 "unit": {"count": unit_count, "time": unit_time, "ingredients": ingredients},
                 "effects": entry.get("effects") or [],
                 "research_trigger": entry.get("research_trigger"),
+                "research_unit_count_formula": entry.get("research_unit_count_formula"),
             }
         )
     return techs
@@ -310,6 +464,12 @@ def build_vanilla_seed(dump: dict) -> dict:
     science = science_pack_names(dump)
     entities = _extract_entities(dump)
     recipes = _extract_recipes(dump)
+    all_recipes = dump.get("recipes") or {}
+    for recipe in recipes:
+        raw = all_recipes.get(recipe["name"]) or {}
+        if raw.get("category") == "crafting":
+            recipe["crafted_in"] = None
+    recipes.extend(_fluidbox_recipes(dump))
     technologies = _extract_technologies(dump)
 
     # Catégories de forage déduites des foreuses du dump (solide vs fluide).
@@ -369,6 +529,8 @@ def build_vanilla_seed(dump: dict) -> dict:
             ]
             if launch_products:
                 item["rocket_launch_products"] = launch_products
+            item["used_by_labs"] = bool(entry.get("used_by_labs"))
+            item["science_capacity"] = int(entry.get("science_capacity") or 0)
             item["is_science_pack"] = str(name) in science
             items_dict[str(name)] = item
     for name, entry in (dump.get("fluids") or {}).items():
@@ -450,6 +612,13 @@ def build_vanilla_seed(dump: dict) -> dict:
         for fluid in entry.get("pumped_fluids") or ():
             raw_set.add(str(fluid))
 
+    recipes = [
+        recipe
+        for recipe in recipes
+        if not recipe.pop("hidden_active", False)
+        or all(ing["name"] in raw_set for ing in recipe["ingredients"])
+    ]
+
     # Technologies prereq mapping pour topo sort
     prereqs: dict[str, list[str]] = {
         t["id"]: t["prerequisites"] for t in technologies
@@ -457,6 +626,8 @@ def build_vanilla_seed(dump: dict) -> dict:
     progression = _topo_sort(
         [t["id"] for t in technologies], prereqs
     )
+    tech_by_id = {t["id"]: t for t in technologies}
+    technologies = [tech_by_id[tid] for tid in progression if tid in tech_by_id]
 
     meta = dump.get("meta") or {}
     rocket = rocket_meta_from_chain(rocket_chain_from_dump(dump))
@@ -464,6 +635,7 @@ def build_vanilla_seed(dump: dict) -> dict:
     return {
         "meta": {
             "seed": meta.get("seed", "vanilla"),
+            "origin": "dump",
             "generator_version": meta.get("game_version", "2.0"),
             "science_packs": sorted(science),
             "science_pack_order": list(science_order),
@@ -473,6 +645,7 @@ def build_vanilla_seed(dump: dict) -> dict:
             "item_resources": sorted(item_set),
             "fluid_resources": sorted(fluid_set),
             "raw_resources": sorted(raw_set),
+            "environmental_resources": sorted(environmental_items_from_dump(dump)),
         },
         "technologies": technologies,
         "progression_order": progression,
@@ -518,26 +691,100 @@ def tag_progression(seed: dict, analysis: dict) -> dict:
 def _building_by_category(dump: dict) -> dict[str, str]:
     """Choisit un atelier de référence par catégorie de recette.
 
-    On prend l'atelier le plus lent (palier de base) pour rester proche d'une
-    partie ``normale`` : ``assembling-machine-1`` pour ``crafting``,
+    On prend l'atelier débloqué le plus tôt, puis le plus lent, pour rester
+    proche d'une partie ``normale`` : ``assembling-machine-1`` pour ``crafting``,
     ``stone-furnace`` pour ``smelting``, etc. ``character`` est ignoré sauf pour
     ``hand-crafting`` afin que les recettes d'atelier ne soient pas comptées à la main.
+    Les variantes d'entité (``*-turd``/``*-legacy``) sont résolues vers
+    l'item qui les pose : ``crafted_in`` doit rester un item craftable.
     """
     from collections import defaultdict
-    options: dict[str, list[tuple[float, str]]] = defaultdict(list)
+    options: dict[str, list[tuple[bool, bool, int, float, str, str | None]]] = defaultdict(list)
     entities = _extract_entities(dump)
+    recipes = dump.get("recipes") or {}
+    items = dump.get("items") or {}
+    techs = dump.get("technologies") or {}
+    tech_order = {
+        tid: index
+        for index, tid in enumerate(
+            _topo_sort(
+                list(techs),
+                {
+                    tid: (tech.get("prerequisites") or [])
+                    for tid, tech in techs.items()
+                    if isinstance(tech, dict)
+                },
+            )
+        )
+    }
+    unlock_rank: dict[str, int] = {}
+    for tid, tech in techs.items():
+        if not isinstance(tech, dict):
+            continue
+        rank = tech_order.get(tid, len(tech_order))
+        for effect in tech.get("effects") or []:
+            if not isinstance(effect, dict) or effect.get("type") != "unlock-recipe":
+                continue
+            recipe = str(effect.get("recipe") or "")
+            if recipe:
+                unlock_rank[recipe] = min(unlock_rank.get(recipe, rank), rank)
+    far = len(tech_order) + 1
+    craftable = {
+        product.get("name")
+        for recipe in recipes.values()
+        if isinstance(recipe, dict) and not recipe.get("hidden")
+        for product in recipe.get("products") or []
+        if product.get("type") in (None, "item")
+    }
+
+    def placing_item(name: str, entry: dict) -> str | None:
+        item = items.get(name)
+        if isinstance(item, dict):
+            placed = item.get("place_result")
+            if placed in (None, "", name):
+                return name
+        for candidate in entry.get("items_to_place_this") or []:
+            candidate = str(candidate)
+            if isinstance(items.get(candidate), dict):
+                return candidate
+        return None
+
     for name, entry in entities.items():
         if not isinstance(entry, dict):
             continue
         categories = entry.get("crafting_categories") or []
         speed = float(entry.get("crafting_speed") or 0)
+        item_name = placing_item(name, entry)
+        rank = min(
+            unlock_rank.get(name, far),
+            unlock_rank.get(item_name, far) if item_name else far,
+        )
         for category in categories:
             if category in {"hand-crafting"}:
                 continue
-            options[category].append((speed, name))
+            options[category].append(
+                (
+                    item_name is None,
+                    item_name not in craftable,
+                    rank,
+                    round(speed, 6),
+                    name,
+                    item_name,
+                )
+            )
 
     chosen: dict[str, str] = {}
     for category, candidates in options.items():
-        candidates.sort(key=lambda pair: (pair[0], pair[1]))
-        chosen[category] = candidates[0][1]
+        candidates.sort(
+            key=lambda cand: (
+                cand[0],
+                cand[1],
+                not bool((recipes.get(cand[4]) or {}).get("enabled", False)),
+                cand[2],
+                cand[3],
+                cand[5] or cand[4],
+                cand[4],
+            )
+        )
+        chosen[category] = candidates[0][5] or candidates[0][4]
     return chosen

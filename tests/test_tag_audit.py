@@ -13,7 +13,7 @@ import pytest
 from conftest import dump_has_fuel_categories
 from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 from tool.common.demo import build_demo_db
-from tool.common.db import has_hidden_recipe, is_fixed_crafter
+from tool.common.db import ItemDef, RecipeRef, VanillaDB, has_hidden_recipe, is_fixed_crafter
 from tool.parsers.vanilla import load_db_from_dump
 
 DUMP_PATH = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json"
@@ -63,6 +63,19 @@ def test_audit_items_environnementaux_non_fabriques():
         if i.is_environmental:
             assert name not in produced, f"{name} : environnemental mais crafté"
     assert any(i.is_environmental for i in db.items.values())
+
+
+def test_audit_modde_signale_sans_violer_l_environnemental_produit():
+    db = VanillaDB(is_modded=True)
+    db.items["wood"] = ItemDef(name="wood", is_environmental=True)
+    db.recipes["log-wood"] = RecipeRef(
+        name="log-wood", products=(("item", "wood", 1),)
+    )
+
+    report = audit_item_tags(db)
+
+    assert any("wood" in msg for msg in report.uncraftable_violations)
+    assert not any("wood" in msg for msg in report.item_violations)
 
 
 def test_audit_item_virtual_rail_pas_virtuel():
