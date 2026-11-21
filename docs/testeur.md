@@ -25,7 +25,7 @@ Dans les deux cas, le dump fourni reste la source de vérité pour l'identité, 
 
 Ces noms sont exposés dans `tool.tester.STAGES` et servent de référence commune à la CLI, aux tests et à cette documentation. `tool.tester.STAGE_LABELS` donne les libellés affichés par la barre de progression : « Acquisition du dump », « Contrôle de l'état », « Rejeu joueur », « Mesure de la difficulté » et « Rapport HTML ».
 
-La CLI `randputf test` affiche cette progression en Python pur, sans dépendance : nom de l'étape, barre, pourcentage de l'étape courante, numéro de l'étape sur le total, action en cours, temps écoulé en secondes et fin estimée de l'étape. Sur un terminal, la ligne est rafraîchie sur place ; sinon chaque changement d'étape produit une ligne. L'ETA n'est calculée qu'au changement de pourcentage : si une phase détaillée reste au même pourcentage, la ligne affiche `fin étape —` plutôt qu'une estimation qui grandit avec le temps seul.
+La CLI `randputf test` affiche cette progression en Python pur, sans dépendance : nom de l'étape, barre, pourcentage de l'étape courante, numéro de l'étape sur le total, action en cours, temps écoulé en secondes et fin estimée de l'étape. Sur un terminal, la ligne est rafraîchie sur place ; sinon chaque changement d'étape produit une ligne. L'ETA par pourcentage est recalculée au changement de pourcentage puis maintenue ; elle ne grandit pas avec le seul temps écoulé. Le rejeu fournit une ETA propre depuis `techs recherchées/total`, et les phases sans total connu affichent `fin étape —`.
 
 ```text
 Rejeu joueur [████████░░░░░░░░░░░░]  40% 3/5 — partie simulée · 78/196 techs · 3.2s · fin étape ~5s

@@ -31,7 +31,7 @@ class ProgressRecorder:
         self.percent = 0
         self.events.append(("enter", stage, detail))
 
-    def update(self, percent: int, detail: str | None = None) -> None:
+    def update(self, percent: int, detail: str | None = None, eta=None) -> None:
         self.percent = percent
         self.events.append(("update", self.stage, percent, detail))
 
@@ -122,8 +122,20 @@ def test_progress_ne_fait_pas_grandir_leta_quand_le_pourcentage_est_fige(monkeyp
     second = stream.getvalue().splitlines()[-1]
 
     assert "fin étape ~9s" in first
-    assert "fin étape —" in second
+    assert "fin étape ~9s" in second
     assert "fin étape ~891s" not in second
+
+
+def test_progress_affiche_un_eta_explicite_ou_la_absence():
+    stream = io.StringIO()
+    progress = Progress(stream, enabled=True, refresh=0)
+
+    progress.enter("rejeu")
+    progress.update(6, "partie simulée · 64/934 techs", 42.0)
+    assert "fin étape ~42s" in stream.getvalue().splitlines()[-1]
+
+    progress.update(6, "complexité — dépliage · 2 étapes", None)
+    assert stream.getvalue().splitlines()[-1].endswith("fin étape —")
 
 
 def test_progress_desactivee_necrit_rien():

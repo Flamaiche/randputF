@@ -58,9 +58,10 @@ foi).
   du rapport avancent la barre sans bloc muet sur les gros dumps. Les phases de
   dépliage affichent aussi un compteur d'étapes quand leur total n'est pas connu
   à l'avance.
-- Le rejeu affiche `techs recherchées/total` dans son détail. L'ETA n'est plus
-  extrapolée du seul temps écoulé quand le pourcentage reste figé : elle passe
-  en `fin étape —` tant que le pourcentage ne bouge pas.
+- Le rejeu affiche `techs recherchées/total` dans son détail et en tire son ETA.
+  L'ETA par pourcentage reste figée au dernier changement au lieu de grandir
+  avec le seul temps écoulé ; les phases sans total connu affichent
+  `fin étape —`.
 
 ### Rochers — le charbon devient de la pierre
 

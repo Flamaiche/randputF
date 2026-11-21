@@ -44,6 +44,7 @@ STAGE_LABELS = {
     "rapport": "Rapport HTML",
 }
 SECTIONS = ("controles", "couverture-dump", "complexite-courbes", "difficulte", "partie-simulee")
+_AUTO_ETA = object()
 
 
 class Progress:
@@ -72,8 +73,10 @@ class Progress:
         self._last_signature = None
         self._eta_percent: int | None = None
         self._eta_value: float | None = None
-        self._eta_at = self._started
-        self._source: Callable[[], tuple[int, str | None] | int] | None = None
+        self._eta_override: float | None | object = _AUTO_ETA
+        self._source: Callable[
+            [], tuple[int, str | None] | tuple[int, str | None, float | None] | int
+        ] | None = None
 
     @property
     def stage(self) -> str | None:
@@ -111,24 +114,33 @@ class Progress:
         self._stage_started = time.monotonic()
         self._eta_percent = None
         self._eta_value = None
-        self._eta_at = self._stage_started
+        self._eta_override = _AUTO_ETA
         self._percent = 0
         self._detail = detail or STAGE_LABELS[stage]
         self._render()
         self._launch()
 
-    def update(self, percent: int, detail: str | None = None) -> None:
+    def update(
+        self,
+        percent: int,
+        detail: str | None = None,
+        eta: float | None | object = _AUTO_ETA,
+    ) -> None:
         """Met à jour le pourcentage de l'étape courante."""
         if not self.enabled:
             return
         self._percent = max(0, min(100, int(percent)))
         if detail is not None:
             self._detail = detail
+        self._eta_override = eta
         self._render()
         self._launch()
 
     def watch(
-        self, source: Callable[[], tuple[int, str | None] | int] | None
+        self,
+        source: Callable[
+            [], tuple[int, str | None] | tuple[int, str | None, float | None] | int
+        ] | None,
     ) -> None:
         """Relit les informations de l'étape à chaque affichage."""
         self._source = source
@@ -173,7 +185,11 @@ class Progress:
         if self._source is not None:
             info = self._source()
             if isinstance(info, tuple):
-                value, detail = info
+                if len(info) == 3:
+                    value, detail, eta = info
+                    self._eta_override = eta
+                else:
+                    value, detail = info
                 if detail is not None:
                     self._detail = detail
             else:
@@ -192,20 +208,21 @@ class Progress:
         self._last_signature = signature
         if percent >= 100:
             remaining = "terminé"
+        elif self._eta_override is not _AUTO_ETA:
+            if self._eta_override is None:
+                remaining = "fin étape —"
+            else:
+                remaining = f"fin étape ~{float(self._eta_override):.0f}s"
         elif not percent:
             remaining = "fin étape —"
-        elif self._eta_percent != percent:
-            self._eta_percent = percent
-            self._eta_value = elapsed_stage * (100 - percent) / percent
-            self._eta_at = now
-            remaining = f"fin étape ~{self._eta_value:.0f}s"
-        elif (
-            self._eta_value is not None
-            and now - self._eta_at <= max(1.0, self.refresh * 2)
-        ):
-            remaining = f"fin étape ~{self._eta_value:.0f}s"
         else:
-            remaining = "fin étape —"
+            if self._eta_percent != percent:
+                self._eta_percent = percent
+                self._eta_value = elapsed_stage * (100 - percent) / percent
+            if self._eta_value is None:
+                remaining = "fin étape —"
+            else:
+                remaining = f"fin étape ~{self._eta_value:.0f}s"
         text = (
             f"{STAGE_LABELS[stage]} [{bar}] {percent:3d}% {step} — "
             f"{self._detail} · {elapsed_stage:5.1f}s · {remaining}"
@@ -281,19 +298,36 @@ def check_state(
         progress.enter("rejeu", "partie simulée")
 
     total_techs = len(state.get("technologies") or [])
+    started = time.monotonic()
     replay_state = {
         "percent": 0,
         "detail": f"partie simulée · 0/{total_techs} techs",
+        "researched": 0,
+        "total": total_techs,
+        "started": started,
+        "last_change": started,
     }
 
     def on_play(percent: int, researched: int, total: int) -> None:
         replay_state["percent"] = percent
         replay_state["detail"] = f"partie simulée · {researched}/{total} techs"
+        replay_state["researched"] = researched
+        replay_state["total"] = total
+        replay_state["last_change"] = time.monotonic()
         if progress is not None:
             progress.update(percent, replay_state["detail"])
 
+    def replay_info() -> tuple[int, str, float | None]:
+        now = time.monotonic()
+        researched = replay_state["researched"]
+        total = replay_state["total"]
+        eta = None
+        if researched and now - replay_state["last_change"] <= 5.0:
+            eta = (now - replay_state["started"]) * (total - researched) / researched
+        return replay_state["percent"], replay_state["detail"], eta
+
     if progress is not None:
-        progress.watch(lambda: (replay_state["percent"], replay_state["detail"]))
+        progress.watch(replay_info)
     replay = play(db, state, on_play)
     return CheckReport(
         issues=list(issues),
@@ -350,7 +384,9 @@ def run_dump_test(
         title = f"randputF — test de {source} (Factorio {game_version})"
     def on_report(percent: int, detail: str) -> None:
         if progress is not None:
-            progress.update(percent, detail)
+            progress.update(
+                percent, detail, None if "étapes" in detail else _AUTO_ETA
+            )
 
     result = write_full_report(
         tested,
