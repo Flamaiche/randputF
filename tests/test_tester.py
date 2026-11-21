@@ -182,15 +182,16 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
 
     def fake_report(seed, path, db, **kwargs):
         captured.update(kwargs)
+        kwargs["on_progress"](25, "série de difficulté")
         Path(path).write_text("rapport", encoding="utf-8")
-        return {"path": Path(path)}
+        return {"path": Path(path), "difficulty_total": 42.0}
 
     monkeypatch.setattr(tester, "write_full_report", fake_report)
-    monkeypatch.setattr(
-        tester,
-        "compute_difficulty",
-        lambda seed: SimpleNamespace(total=12.5),
-    )
+
+    def interdit(seed, on_progress=None):
+        raise AssertionError("difficulté recalculée alors que le rapport la fournit")
+
+    monkeypatch.setattr(tester, "compute_difficulty", interdit)
 
     progress = ProgressRecorder("acquisition")
     kwargs = {} if out_name is None else {"out_name": out_name}
@@ -207,7 +208,8 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
         "rapport",
     ]
     assert ("update", "acquisition", 100, "normalisation terminée") in progress.events
-    assert ("update", "mesure", 50, "rapport complet écrit") in progress.events
+    assert ("update", "mesure", 25, "série de difficulté") in progress.events
+    assert ("update", "mesure", 96, "rapport complet écrit") in progress.events
     assert ("update", "rapport", 50, "navigateur écrit") in progress.events
     assert progress.events[-1] == ("finish", "rapport", "vues HTML écrites")
     assert result.dump_html == tmp_path / folder / "vanilla.dump.html"
@@ -215,11 +217,51 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
     assert result.graph_html == tmp_path / folder / "vanilla.graph.html"
     assert result.report_html == tmp_path / folder / "vanilla.report.html"
     assert "vue textuelle" in result.graph_html.read_text(encoding="utf-8")
-    assert result.difficulty_total == 12.5
+    assert result.difficulty_total == 42.0
     assert result.check.ok
     assert captured["checks"]["ok"] is True
     assert captured["mod_label"] == "état testé"
     assert captured["vanilla_label"] == "dump"
+
+
+def test_run_dump_test_fragmentle_calcul_de_difficulté(monkeypatch, tmp_path):
+    state = {"meta": {"origin": "dump"}, "recipes": [], "technologies": []}
+    monkeypatch.setattr(tester, "build_vanilla_seed", lambda dump: state)
+    monkeypatch.setattr(
+        tester,
+        "check_state",
+        lambda db, tested, progress=None: CheckReport(victory=True),
+    )
+    monkeypatch.setattr(
+        tester,
+        "write_dump_html",
+        lambda dump, path: Path(path).write_text("dump", encoding="utf-8") or Path(path),
+    )
+    monkeypatch.setattr(
+        tester,
+        "write_seed_graph_html",
+        lambda tested, path: Path(path).write_text("graphe", encoding="utf-8"),
+    )
+
+    def fake_report(seed, path, db, **kwargs):
+        Path(path).write_text("rapport", encoding="utf-8")
+        return {"path": Path(path)}
+
+    def fake_compute(seed, on_progress=None):
+        assert on_progress is not None
+        on_progress(40)
+        return SimpleNamespace(total=8.0)
+
+    monkeypatch.setattr(tester, "write_full_report", fake_report)
+    monkeypatch.setattr(tester, "compute_difficulty", fake_compute)
+
+    progress = ProgressRecorder("acquisition")
+    result = run_dump_test(
+        SimpleNamespace(), {"meta": {}}, tmp_path, source="vanilla", progress=progress
+    )
+
+    assert ("update", "mesure", 97, "difficulté calculée") in progress.events
+    assert result.difficulty_total == 8.0
 
 
 def test_classification_des_champs_presents():

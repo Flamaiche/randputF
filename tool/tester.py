@@ -328,6 +328,10 @@ def run_dump_test(
     game_version = (dump.get("meta") or {}).get("game_version", "inconnue")
     if title is None:
         title = f"randputF — test de {source} (Factorio {game_version})"
+    def on_report(percent: int, detail: str) -> None:
+        if progress is not None:
+            progress.update(percent, detail)
+
     result = write_full_report(
         tested,
         out_dir / f"{source}.report.html",
@@ -340,14 +344,23 @@ def run_dump_test(
         vanilla_label="dump",
         checks=check.as_dict(),
         dump_coverage=coverage,
+        on_progress=on_report,
     )
     if progress is not None:
-        progress.update(50, "rapport complet écrit")
+        progress.update(96, "rapport complet écrit")
 
-    try:
-        difficulty_total = float(compute_difficulty(tested).total)
-    except (ArithmeticError, KeyError, TypeError, ValueError):
-        difficulty_total = None
+    difficulty_total = result.get("difficulty_total")
+    if difficulty_total is None:
+        def on_difficulty(percent: int) -> None:
+            if progress is not None:
+                progress.update(95 + percent * 5 // 100, "difficulté calculée")
+
+        try:
+            difficulty_total = float(
+                compute_difficulty(tested, on_difficulty).total
+            )
+        except (ArithmeticError, KeyError, TypeError, ValueError):
+            difficulty_total = None
     if progress is not None:
         progress.update(100, "difficulté calculée")
 

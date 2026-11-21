@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import html
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from tool.audit.difficulty import difficulty_series
@@ -32,6 +33,15 @@ from tool.parsers.vanilla import (
 # ressources extraites du sol du jeu de base ; les fluides d'extraction —
 # eau, pétrole brut — et l'environnement sont ajoutés par la base).
 VANILLA_ORES = frozenset({"iron-ore", "copper-ore", "coal", "stone", "uranium-ore"})
+
+
+def _progress_slice(
+    on_progress: Callable[[int], None] | None, low: int, high: int
+) -> Callable[[int], None] | None:
+    if on_progress is None:
+        return None
+    span = high - low
+    return lambda percent: on_progress(low + percent * span // 100)
 
 _MOD_COLOR = "#e8734a"
 _VANILLA_COLOR = "#5aa9e6"
@@ -261,16 +271,24 @@ def _chart_svg(
     return "".join(parts), json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
 
-def _table(series: list[dict], label: str, color: str, cls: str) -> str:
+def _table(
+    series: list[dict],
+    label: str,
+    color: str,
+    cls: str,
+    *,
+    on_progress: Callable[[int], None] | None = None,
+) -> str:
     """Construit le tableau HTML lié d'une série de difficulté.
 
     ``series`` fournit les points (num, name, products, raw_total,
     cumulative_total), ``label``/``color`` titrent la colonne et ``cls`` marque
     les lignes pour la synchronisation JS avec le SVG. Retourne un fragment
-    ``<div class="col">…</div>`` ; les textes sont échappés HTML.
+    ``<div class="col">…</div>`` ; les textes sont échappés HTML. ``on_progress``,
+    s'il est fourni, reçoit un pourcentage du rendu des lignes.
     """
     rows = []
-    for point in series:
+    for index, point in enumerate(series, 1):
         products = ", ".join(point.get("products") or [])
         item_count = len(point.get("products") or [])
         raw = point.get("raw_total", 0.0)
@@ -287,6 +305,8 @@ def _table(series: list[dict], label: str, color: str, cls: str) -> str:
             f'<td class="prod" data-key="products">{html.escape(products)}</td>'
             "</tr>"
         )
+        if on_progress is not None:
+            on_progress(index * 100 // max(1, len(series)))
     return (
         f'<div class="col"><h2 style="color:{color}">{html.escape(label)}</h2>'
         '<table data-table><thead><tr>'
@@ -524,13 +544,18 @@ def render_difficulty_graph_html(
     *,
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
+    on_progress: Callable[[int], None] | None = None,
 ) -> str:
     """Rend le HTML comparatif de deux séries de difficulté.
 
-    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``mod_label``/``vanilla_label`` les libellés. Retourne une chaîne HTML autonome et lève ``ValueError`` si l'une des séries est vide.
+    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``mod_label``/``vanilla_label`` les libellés. Retourne une chaîne HTML autonome et lève ``ValueError`` si l'une des séries est vide. ``on_progress`` reçoit un pourcentage global du rendu.
     """
-    vanilla_series = difficulty_series(vanilla_seed)
-    mod_series = difficulty_series(mod_seed)
+    vanilla_series = difficulty_series(
+        vanilla_seed, on_progress=_progress_slice(on_progress, 0, 25)
+    )
+    mod_series = difficulty_series(
+        mod_seed, on_progress=_progress_slice(on_progress, 25, 50)
+    )
     if not vanilla_series or not mod_series:
         raise ValueError("série de difficulté vide")
 
@@ -552,20 +577,50 @@ def render_difficulty_graph_html(
         mod_label=html.escape(mod_label),
         svg=svg,
         data_json=data_json,
-        tables=_table(vanilla_series, vanilla_label, _VANILLA_COLOR, "v")
-        + _table(mod_series, mod_label, _MOD_COLOR, "m"),
+        tables=_table(
+            vanilla_series,
+            vanilla_label,
+            _VANILLA_COLOR,
+            "v",
+            on_progress=_progress_slice(on_progress, 50, 75),
+        )
+        + _table(
+            mod_series,
+            mod_label,
+            _MOD_COLOR,
+            "m",
+            on_progress=_progress_slice(on_progress, 75, 100),
+        ),
     )
 
 
-def difficulty_table_html(seed: dict, *, label: str = "seed") -> str:
+def difficulty_table_html(
+    seed: dict,
+    *,
+    label: str = "seed",
+    series: list[dict] | None = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> str:
     """Rend le tableau de difficulté d'une seule série.
 
-    ``seed`` fournit la série et ``label`` le nom affiché. Retourne un fragment HTML ; une série vide donne un message discret.
+    ``seed`` fournit la série et ``label`` le nom affiché. ``series`` permet de
+    réutiliser une série déjà calculée. Retourne un fragment HTML ; une série
+    vide donne un message discret. ``on_progress`` reçoit un pourcentage du
+    calcul puis du rendu.
     """
-    series = difficulty_series(seed)
+    if series is None:
+        series = difficulty_series(seed, on_progress=_progress_slice(on_progress, 0, 70))
+    elif on_progress is not None:
+        on_progress(70)
     if not series:
         return '<p class="muted">Aucune donnée de difficulté.</p>'
-    return _table(series, label, _MOD_COLOR, "m")
+    return _table(
+        series,
+        label,
+        _MOD_COLOR,
+        "m",
+        on_progress=_progress_slice(on_progress, 70, 100),
+    )
 
 
 def write_difficulty_graph_html(
@@ -575,16 +630,18 @@ def write_difficulty_graph_html(
     *,
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
+    on_progress: Callable[[int], None] | None = None,
 ) -> Path:
     """Écrit le HTML comparatif de difficulté dans ``path``.
 
-    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``path`` le fichier de sortie et les libellés sont optionnels. Crée le dossier parent, écrit le document et retourne ``path`` ; lève ``ValueError`` si une série est vide.
+    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``path`` le fichier de sortie et les libellés sont optionnels. Crée le dossier parent, écrit le document et retourne ``path`` ; lève ``ValueError`` si une série est vide. ``on_progress`` est transmis au rendu.
     """
     doc = render_difficulty_graph_html(
         mod_seed,
         vanilla_seed,
         mod_label=mod_label,
         vanilla_label=vanilla_label,
+        on_progress=on_progress,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(doc, encoding="utf-8")

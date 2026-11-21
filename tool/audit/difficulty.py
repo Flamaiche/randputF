@@ -28,9 +28,19 @@ calculé qu'UNE fois, puis réutilisé (mémoïsation du coût unitaire brut).
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 _PREFIX = "randputf-"
+
+
+def _scaled_progress(
+    on_progress: Callable[[int], None] | None, low: int, high: int
+) -> Callable[[int], None] | None:
+    if on_progress is None:
+        return None
+    span = high - low
+    return lambda percent: on_progress(low + percent * span // 100)
 
 
 @dataclass
@@ -104,10 +114,11 @@ def unit_costs(
     raw: set[str],
     by_product: dict[str, list[dict]],
     reserved_recipes: dict[str, dict] | None = None,
+    on_progress: Callable[[int], None] | None = None,
 ) -> dict[str, Counter[str]]:
     """Calcule le coût unitaire brut de chaque produit.
 
-    `raw` est l'ensemble des ressources brutes, `by_product` l'index produit → recettes et `reserved_recipes` les recettes imposées (produit → recette). Retourne `{produit: Counter({ressource: quantité})}` ; les cycles sont cassés en traitant le produit comme une feuille.
+    `raw` est l'ensemble des ressources brutes, `by_product` l'index produit → recettes et `reserved_recipes` les recettes imposées (produit → recette). Retourne `{produit: Counter({ressource: quantité})}` ; les cycles sont cassés en traitant le produit comme une feuille. `on_progress`, s'il est fourni, reçoit un pourcentage de cette phase.
     """
     reserved = reserved_recipes or {}
     memo: dict[str, Counter[str]] = {}
@@ -146,17 +157,25 @@ def unit_costs(
         return acc
 
     # Calcule tous les produits (y compris les bruts, mémoïsés en feuille).
-    for p in by_product:
+    products = list(by_product)
+    for index, p in enumerate(products, 1):
         cost(p)
-    for p in reserved:
+        if on_progress is not None:
+            on_progress(index * 70 // max(1, len(products)))
+    reserved_products = list(reserved)
+    for index, p in enumerate(reserved_products, 1):
         cost(p)
+        if on_progress is not None:
+            on_progress(70 + index * 30 // max(1, len(reserved_products)))
     return memo
 
 
-def compute_difficulty(seed: dict) -> DifficultyReport:
+def compute_difficulty(
+    seed: dict, on_progress: Callable[[int], None] | None = None
+) -> DifficultyReport:
     """Calcule l'ardoise de difficulté complète d'une seed.
 
-    `seed` fournit recettes, technologies et ressources brutes. Additionne les packs de toutes les recherches et la chaîne de lancement décrite par ``meta.rocket``. Retourne un `DifficultyReport` renseigné.
+    `seed` fournit recettes, technologies et ressources brutes. Additionne les packs de toutes les recherches et la chaîne de lancement décrite par ``meta.rocket``. Retourne un `DifficultyReport` renseigné. `on_progress`, s'il est fourni, reçoit un pourcentage du calcul.
     """
     report = DifficultyReport()
 
@@ -170,14 +189,20 @@ def compute_difficulty(seed: dict) -> DifficultyReport:
     reserved = {}
     if rocket["rocket_part_product"] and rocket["rocket_recipe_data"]:
         reserved[rocket["rocket_part_product"]] = rocket["rocket_recipe_data"]
-    costs = unit_costs(raw, by_product, reserved)
+    costs = unit_costs(
+        raw,
+        by_product,
+        reserved,
+        _scaled_progress(on_progress, 0, 30),
+    )
     report.unit_costs = costs
 
     # 1. Coût de recherche : somme sur toutes les techs (hors prologue/ease,
     #    craft_trigger sans coût). unit.count * amount par ingrédient.
     self_bill = Counter()
     spent_per_tech: dict[str, Counter] = {}
-    for tech in seed.get("technologies", []):
+    techs = seed.get("technologies", [])
+    for index, tech in enumerate(techs, 1):
         unit = tech.get("unit") or {}
         ings = unit.get("ingredients") or []
         cost = Counter()
@@ -186,6 +211,8 @@ def compute_difficulty(seed: dict) -> DifficultyReport:
         if cost:
             spent_per_tech[tech["id"]] = cost
             self_bill.update(cost)
+        if on_progress is not None:
+            on_progress(30 + index * 20 // max(1, len(techs)))
     report.spent_per_tech = spent_per_tech
 
     # 2. Chaîne de lancement : bâtiments, pièces (recette réservée) et
@@ -199,14 +226,16 @@ def compute_difficulty(seed: dict) -> DifficultyReport:
         launch_bill[item] += 1
 
     totals: Counter[str] = Counter()
-    for product, qty in self_bill.items():
+    final_items = list(self_bill.items()) + list(launch_bill.items())
+    for index, (product, qty) in enumerate(final_items, 1):
         for k, v in costs.get(product, Counter()).items():
             totals[k] += v * qty
-    for product, qty in launch_bill.items():
-        for k, v in costs.get(product, Counter()).items():
-            totals[k] += v * qty
+        if on_progress is not None:
+            on_progress(50 + index * 40 // max(1, len(final_items)))
 
     report.raw_totals = totals
+    if on_progress is not None:
+        on_progress(100)
     return report
 
 
@@ -264,18 +293,30 @@ def _expand_to_raw(
     return raw
 
 
-def difficulty_series(seed: dict) -> list[dict]:
+def difficulty_series(
+    seed: dict,
+    *,
+    report: DifficultyReport | None = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> list[dict]:
     """Série de difficulté par tech, dans l'ordre de progression.
 
     Chaque point porte : le rang, l'id/le nom de la tech, le coût brut de SA
     recherche (``raw``), le cumul depuis le début (``cumulative``) et la liste
     des produits qu'elle débloque (``products`` = « items à crafter »). Un point
     final « Lancement » ferme la chaîne décrite par ``meta.rocket``, de sorte
-    que le cumul final égale ``compute_difficulty(seed).total``.
+    que le cumul final égale ``compute_difficulty(seed).total``. ``report`` évite
+    de recalculer l'ardoise ; ``on_progress`` reçoit un pourcentage de la série.
     """
-    report = compute_difficulty(seed)
+    if report is None:
+        report = compute_difficulty(seed, _scaled_progress(on_progress, 0, 30))
+    else:
+        if on_progress is not None:
+            on_progress(30)
     tmap, ordered = _tech_sequence(seed)
     prodmap = _recipe_products(seed)
+    if on_progress is not None:
+        on_progress(32)
 
     cumulative: Counter[str] = Counter()
     series: list[dict] = []
@@ -302,6 +343,8 @@ def difficulty_series(seed: dict) -> list[dict]:
             "cumulative_total": sum(cumulative.values()),
             "products": products,
         })
+        if on_progress is not None:
+            on_progress(32 + index * 48 // max(1, len(ordered)))
 
     rocket = _rocket_meta(seed)
     launch_bill: Counter[str] = Counter()
@@ -323,6 +366,8 @@ def difficulty_series(seed: dict) -> list[dict]:
         "cumulative_total": sum(cumulative.values()),
         "products": [rocket["rocket_part_product"]] if rocket["rocket_part_product"] else [],
     })
+    if on_progress is not None:
+        on_progress(100)
     return series
 
 

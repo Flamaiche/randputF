@@ -18,8 +18,10 @@ import pytest
 
 from tool.audit.difficulty import (
     compute_difficulty,
+    difficulty_series,
     unit_costs,
 )
+from tool.exporters.difficulty_graph import difficulty_table_html
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump
 
@@ -216,3 +218,44 @@ def test_unit_costs_diamond_safe():
     # Chaque coût unitaire est stable : recalculer ne change rien (pure).
     again = unit_costs(raw, by_product)
     assert dict(costs) == dict(again)
+
+
+def test_difficulty_series_et_tableau_fragmentent_la_progression():
+    seed = {
+        "meta": {"origin": "dump"},
+        "pools": {"raw_resources": ["fer"]},
+        "recipes": [
+            {
+                "name": "randputf-planche",
+                "ingredients": [{"name": "fer", "amount": 2}],
+                "results": [{"name": "planche", "amount": 1}],
+            }
+        ],
+        "technologies": [
+            {
+                "id": "tech-a",
+                "unit": {"count": 2, "ingredients": [{"name": "planche", "amount": 1}]},
+                "effects": [{"type": "unlock-recipe", "recipe": "randputf-planche"}],
+            }
+        ],
+        "progression_order": ["tech-a"],
+    }
+    report = compute_difficulty(seed)
+    series_events: list[int] = []
+    series = difficulty_series(
+        seed, report=report, on_progress=series_events.append
+    )
+
+    assert series_events == sorted(series_events)
+    assert series_events[0] == 30
+    assert series_events[-1] == 100
+    assert len(set(series_events)) >= 3
+    assert series[-1]["cumulative_total"] == report.total
+
+    table_events: list[int] = []
+    difficulty_table_html(seed, series=series, on_progress=table_events.append)
+
+    assert table_events == sorted(table_events)
+    assert table_events[0] == 70
+    assert table_events[-1] == 100
+    assert len(set(table_events)) >= 2

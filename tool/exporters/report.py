@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import html as _html
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from tool.audit.difficulty import difficulty_series
 from tool.audit.fields import classify_dump_fields
 from tool.exporters.complexity_graph import _CSS as _COMPLEXITY_CSS
 from tool.exporters.complexity_graph import render_complexity_html
@@ -168,15 +170,22 @@ def write_full_report(
     checks: dict | None = None,
     lightweight: bool | None = None,
     dump_coverage: dict | None = None,
+    on_progress: Callable[[int, str], None] | None = None,
 ) -> dict:
     """Assemble et écrit le rapport HTML complet de la seed.
 
     Le document réunit quatre vues dans un seul fichier autonome : contrôles
     du testeur, complexité, difficulté comparée (si ``vanilla_seed`` est
     fourni) et partie simulée. Les documents HTML existants sont réutilisés
-    pour ne maintenir qu'un seul jeu de styles et de scripts. Retourne les
-    données de simulation et le chemin du fichier écrit.
+    pour ne maintenir qu'un seul jeu de styles et de scripts. ``on_progress``,
+    s'il est fourni, reçoit un pourcentage et une action. Retourne les données
+    de simulation, le total de difficulté et le chemin du fichier écrit.
     """
+    def emit(percent: int, detail: str) -> None:
+        if on_progress is not None:
+            on_progress(max(0, min(100, int(percent))), detail)
+
+    difficulty_total = None
     meta = seed.get("meta") or {}
     if title is None:
         label = meta.get("seed", meta.get("generator_version", "?"))
@@ -187,9 +196,26 @@ def write_full_report(
         dump_coverage = classify_dump_fields(dump)
     coverage_section = _coverage_section(dump_coverage)
     if lightweight:
+        emit(5, "série de difficulté")
+        series: list[dict] = []
         try:
-            difficulty_html = difficulty_table_html(seed, label=mod_label)
+            series = difficulty_series(
+                seed,
+                on_progress=lambda percent: emit(
+                    5 + percent * 60 // 100, "série de difficulté"
+                ),
+            )
+            difficulty_total = series[-1]["cumulative_total"] if series else None
+            difficulty_html = difficulty_table_html(
+                seed,
+                label=mod_label,
+                series=series,
+                on_progress=lambda percent: emit(
+                    65 + percent * 20 // 100, "tableau de difficulté"
+                ),
+            )
         except (ArithmeticError, KeyError, TypeError, ValueError):
+            difficulty_total = None
             difficulty_html = '<p class="muted">Aucune donnée de difficulté.</p>'
         difficulty_section = (
             "<section class='report-section' id='difficulte'>"
@@ -198,6 +224,7 @@ def write_full_report(
             f"<div class='cols'>{difficulty_html}</div>"
             "</details></section>"
         )
+        emit(88, "assemblage du rapport")
         body = (
             _TOC_LIGHT
             + _summary_section(seed, dump)
@@ -214,20 +241,29 @@ def write_full_report(
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(document, encoding="utf-8")
+        emit(95, "rapport complet écrit")
         return {
             "seed": seed,
             "analysis": {},
             "rows": [],
             "progression": {},
             "coverage": dump_coverage,
+            "difficulty_total": difficulty_total,
             "path": path,
         }
+    emit(15, "complexité")
     complexity_doc = render_complexity_html(seed, db, title=title)
     _, complexity_body = _document_parts(complexity_doc)
     body = complexity_body
     if vanilla_seed is not None:
         difficulty_doc = render_difficulty_graph_html(
-            seed, vanilla_seed, mod_label=mod_label, vanilla_label=vanilla_label
+            seed,
+            vanilla_seed,
+            mod_label=mod_label,
+            vanilla_label=vanilla_label,
+            on_progress=lambda percent: emit(
+                20 + percent * 40 // 100, "difficulté comparée"
+            ),
         )
         _, difficulty_body = _document_parts(difficulty_doc)
         difficulty_body = _FIRST_H1_RE.sub(
@@ -242,9 +278,10 @@ def write_full_report(
         difficulty_section = (
             "<section class='report-section' id='difficulte'><h2>Difficulté (ressources brutes)</h2>"
             "<details class='table-fold' id='difficulte-table'><summary>Détail par technologie</summary><div class='cols'>"
-            f"{difficulty_table_html(seed, label='seed')}"
+            f"{difficulty_table_html(seed, label='seed', on_progress=lambda percent: emit(20 + percent * 40 // 100, 'tableau de difficulté'))}"
             "</div></details></section>"
         )
+    emit(65, "partie simulée")
     playthrough = playthrough_report(
         dump,
         db,
@@ -271,11 +308,13 @@ def write_full_report(
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(document, encoding="utf-8")
+    emit(95, "rapport complet écrit")
     return {
         "seed": seed,
         "analysis": playthrough["analysis"],
         "rows": playthrough["rows"],
         "progression": playthrough["progression"],
         "coverage": dump_coverage,
+        "difficulty_total": difficulty_total,
         "path": path,
     }

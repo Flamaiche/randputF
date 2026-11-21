@@ -50,6 +50,9 @@ foi).
 - Le testeur unifié joueur + contrôle est la source commune : la commande
   `test` enchaîne validation, rejeu et trois vues HTML dans
   `output/<source>/`, pour vanilla, le mod seul et le modpack.
+- La mesure de la difficulté est découpée : ardoise, série par technologie et
+  tableau remontent leur progression. Le total calculé pour le rapport est
+  réutilisé au lieu d'être recalculé une seconde fois.
 
 ### Rochers — le charbon devient de la pierre
 
