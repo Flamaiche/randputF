@@ -105,6 +105,27 @@ def test_progress_relit_les_infos_a_chaque_affichage():
     assert "première lecture" not in output
 
 
+def test_progress_ne_fait_pas_grandir_leta_quand_le_pourcentage_est_fige(monkeypatch):
+    stream = io.StringIO()
+    now = [1000.0]
+    monkeypatch.setattr(tester.time, "monotonic", lambda: now[0])
+    progress = Progress(stream, enabled=True, refresh=0)
+
+    progress.start()
+    progress.enter("mesure")
+    now[0] = 1001.0
+    progress.update(10, "dépliage · 1 étape")
+    first = stream.getvalue().splitlines()[-1]
+
+    now[0] = 1100.0
+    progress.update(10, "dépliage · 2 étapes")
+    second = stream.getvalue().splitlines()[-1]
+
+    assert "fin étape ~9s" in first
+    assert "fin étape —" in second
+    assert "fin étape ~891s" not in second
+
+
 def test_progress_desactivee_necrit_rien():
     stream = io.StringIO()
     progress = Progress(stream, enabled=False, refresh=0)
@@ -126,12 +147,12 @@ def test_check_state_pilote_controle_puis_rejeu(monkeypatch):
 
     def fake_play(db, state, on_progress=None):
         if on_progress is not None:
-            on_progress(75)
+            on_progress(75, 3, 4)
         return SimpleNamespace(
             victory=True,
             blocker=None,
-            researched=1,
-            total_techs=1,
+            researched=3,
+            total_techs=4,
         )
 
     monkeypatch.setattr(tester, "validate_seed", fake_validate)
@@ -145,7 +166,7 @@ def test_check_state_pilote_controle_puis_rejeu(monkeypatch):
         "rejeu",
     ]
     assert ("update", "controle", 50, "validation des invariants") in progress.events
-    assert ("update", "rejeu", 75, "partie simulée") in progress.events
+    assert ("update", "rejeu", 75, "partie simulée · 3/4 techs") in progress.events
 
 
 @pytest.mark.parametrize(

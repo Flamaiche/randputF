@@ -1214,7 +1214,7 @@ class FakePlayer:
     # ── Progression des techs (le « quand j'ai de quoi → je recherche ») ──
 
     def play(
-        self, on_progress: Callable[[int], None] | None = None
+        self, on_progress: Callable[[int, int, int], None] | None = None
     ) -> ReplayReport:
         """Rejoue la seed de bout en bout : pour chaque tech non maîtrisée, on
         calcule la fermeture craftable, on évalue le coût (packs + déclencheur)
@@ -1287,7 +1287,9 @@ class FakePlayer:
                 progressed = True
                 if on_progress is not None:
                     on_progress(
-                        len(self.researched) * 100 // (report.total_techs or 1)
+                        len(self.researched) * 100 // (report.total_techs or 1),
+                        len(self.researched),
+                        report.total_techs,
                     )
                 break
             if progressed:
@@ -1312,7 +1314,7 @@ class FakePlayer:
             break
         report.researched = len(self.researched)
         if on_progress is not None:
-            on_progress(100)
+            on_progress(100, report.researched, report.total_techs)
         report.all_techs_researched = report.researched == len(self.techs)
         # Victoire : chaîne fusée atteignable une fois l'arbre consommé.
         items, fluids, power, generator = self.closure()
@@ -1685,7 +1687,7 @@ class FakePlayer:
 def play(
     db: VanillaDB,
     seed: dict,
-    on_progress: Callable[[int], None] | None = None,
+    on_progress: Callable[[int, int, int], None] | None = None,
 ) -> ReplayReport:
     """Joue une seed et retourne le verdict du rejeu.
 

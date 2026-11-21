@@ -224,6 +224,22 @@ def test_le_joueur_fabrique_reellement_la_chaine(seeds):
             assert product in fp.mastered, (seed_value, product)
 
 
+def test_rejeu_remonte_le_nombre_de_techs_recherchees(seeds):
+    seed_value = WINNING[0]
+    db = copy.deepcopy(DB)
+    db.seed_value = seed_value
+    events = []
+    report = rp.FakePlayer(db, seeds[seed_value]).play(
+        lambda percent, researched, total: events.append((percent, researched, total))
+    )
+
+    assert report.victory
+    assert events
+    assert all(0 <= researched <= total for _, researched, total in events)
+    assert events[-1] == (100, report.researched, report.total_techs)
+    assert any(researched for _, researched, _ in events[:-1])
+
+
 def test_cloture_inclut_les_produits_de_lancement(seeds):
     db = copy.deepcopy(DB)
     db.seed_value = 5

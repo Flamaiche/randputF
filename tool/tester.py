@@ -70,6 +70,9 @@ class Progress:
         self._thread: threading.Thread | None = None
         self._width = 0
         self._last_signature = None
+        self._eta_percent: int | None = None
+        self._eta_value: float | None = None
+        self._eta_at = self._started
         self._source: Callable[[], tuple[int, str | None] | int] | None = None
 
     @property
@@ -106,6 +109,9 @@ class Progress:
             self._source = None
         self._stage_index = STAGES.index(stage)
         self._stage_started = time.monotonic()
+        self._eta_percent = None
+        self._eta_value = None
+        self._eta_at = self._stage_started
         self._percent = 0
         self._detail = detail or STAGE_LABELS[stage]
         self._render()
@@ -186,9 +192,18 @@ class Progress:
         self._last_signature = signature
         if percent >= 100:
             remaining = "terminé"
-        elif percent:
-            eta = elapsed_stage * (100 - percent) / percent
-            remaining = f"fin étape ~{eta:.0f}s"
+        elif not percent:
+            remaining = "fin étape —"
+        elif self._eta_percent != percent:
+            self._eta_percent = percent
+            self._eta_value = elapsed_stage * (100 - percent) / percent
+            self._eta_at = now
+            remaining = f"fin étape ~{self._eta_value:.0f}s"
+        elif (
+            self._eta_value is not None
+            and now - self._eta_at <= max(1.0, self.refresh * 2)
+        ):
+            remaining = f"fin étape ~{self._eta_value:.0f}s"
         else:
             remaining = "fin étape —"
         text = (
@@ -265,15 +280,20 @@ def check_state(
     if progress is not None:
         progress.enter("rejeu", "partie simulée")
 
-    replay_state = {"percent": 0}
+    total_techs = len(state.get("technologies") or [])
+    replay_state = {
+        "percent": 0,
+        "detail": f"partie simulée · 0/{total_techs} techs",
+    }
 
-    def on_play(percent: int) -> None:
+    def on_play(percent: int, researched: int, total: int) -> None:
         replay_state["percent"] = percent
+        replay_state["detail"] = f"partie simulée · {researched}/{total} techs"
         if progress is not None:
-            progress.update(percent, "partie simulée")
+            progress.update(percent, replay_state["detail"])
 
     if progress is not None:
-        progress.watch(lambda: (replay_state["percent"], "partie simulée"))
+        progress.watch(lambda: (replay_state["percent"], replay_state["detail"]))
     replay = play(db, state, on_play)
     return CheckReport(
         issues=list(issues),
