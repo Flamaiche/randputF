@@ -445,8 +445,8 @@ def playthrough_report(
     analysis = analyze_playthrough(
         seed,
         db,
-        on_progress=lambda percent: emit(
-            5 + percent * 65 // 100, "simulation de la partie"
+        on_progress=lambda percent, detail: emit(
+            5 + percent * 65 // 100, f"simulation de la partie — {detail}"
         ),
     )
     emit(72, "progression des tags")

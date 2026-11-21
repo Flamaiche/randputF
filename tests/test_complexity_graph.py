@@ -116,21 +116,39 @@ def test_html_is_autonomous(tmp_path: Path) -> None:
 
 
 def test_complexite_et_tableau_fragmentent_la_progression() -> None:
-    analyze_events: list[int] = []
-    analyze_complexity(_tiny_seed(), on_progress=analyze_events.append)
-    assert analyze_events == [0, 100]
+    analyze_events: list[tuple[int, str]] = []
+    analyze_complexity(
+        _tiny_seed(),
+        on_progress=lambda percent, detail: analyze_events.append((percent, detail)),
+    )
+    analyze_values = [percent for percent, _ in analyze_events]
+    assert analyze_values[0] == 0
+    assert analyze_values[-1] == 100
+    assert analyze_values == sorted(analyze_values)
+    assert any("dépliage des recettes" in detail for _, detail in analyze_events)
 
-    render_events: list[int] = []
-    document = render_complexity_html(_tiny_seed(), on_progress=render_events.append)
+    render_events: list[tuple[int, str]] = []
+    document = render_complexity_html(
+        _tiny_seed(),
+        on_progress=lambda percent, detail: render_events.append((percent, detail)),
+    )
+    render_values = [percent for percent, _ in render_events]
     assert "<html" in document
-    assert render_events[0] == 0
-    assert render_events[-1] == 100
-    assert any(70 <= value < 100 for value in render_events)
+    assert render_values == sorted(render_values)
+    assert render_values[0] == 0
+    assert render_values[-1] == 100
+    assert any("graphiques" in detail for _, detail in render_events)
+    assert any("tableau" in detail for _, detail in render_events)
 
 
 def test_playthrough_remonte_sa_progression() -> None:
-    events: list[int] = []
-    analyze_playthrough(_tiny_seed(), on_progress=events.append)
-    assert events[0] == 0
-    assert events[-1] == 100
-    assert len(events) >= 3
+    events: list[tuple[int, str]] = []
+    analyze_playthrough(
+        _tiny_seed(),
+        on_progress=lambda percent, detail: events.append((percent, detail)),
+    )
+    values = [percent for percent, _ in events]
+    assert values[0] == 0
+    assert values[-1] == 100
+    assert values == sorted(values)
+    assert any("simulation technologique" in detail for _, detail in events)

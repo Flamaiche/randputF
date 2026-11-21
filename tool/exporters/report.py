@@ -258,7 +258,9 @@ def write_full_report(
         seed,
         db,
         title=title,
-        on_progress=lambda percent: emit(10 + percent * 25 // 100, "complexité"),
+        on_progress=lambda percent, detail: emit(
+            10 + percent * 25 // 100, f"complexité — {detail}"
+        ),
     )
     _, complexity_body = _document_parts(complexity_doc)
     body = complexity_body

@@ -31,6 +31,7 @@ from __future__ import annotations
 import html as _html
 import json
 import math
+import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -47,12 +48,50 @@ HAND = "main"
 
 
 def _progress_slice(
-    on_progress: Callable[[int], None] | None, low: int, high: int
-) -> Callable[[int], None] | None:
+    on_progress: Callable[[int, str], None] | None, low: int, high: int
+) -> Callable[[int, str], None] | None:
     if on_progress is None:
         return None
     span = high - low
-    return lambda percent: on_progress(low + percent * span // 100)
+    return lambda percent, detail: on_progress(low + percent * span // 100, detail)
+
+
+class _StepProgress:
+    """Progression monotone d'une phase dont le nombre d'étapes est inconnu."""
+
+    def __init__(
+        self,
+        on_progress: Callable[[int, str], None] | None,
+        low: int,
+        high: int,
+        detail: str,
+        interval: float = 0.15,
+    ) -> None:
+        self.on_progress = on_progress
+        self.low = low
+        self.high = high
+        self.detail = detail
+        self.value = low
+        self.steps = 0
+        self.interval = interval
+        self.last = time.monotonic()
+
+    def tick(self) -> None:
+        if self.on_progress is None:
+            return
+        self.steps += 1
+        now = time.monotonic()
+        if now - self.last < self.interval:
+            return
+        self.last = now
+        if self.value < self.high:
+            self.value += 1
+        label = f"{self.detail} · {self.steps} étapes"
+        self.on_progress(self.value, label)
+
+    def done(self) -> None:
+        if self.on_progress is not None:
+            self.on_progress(self.high, self.detail)
 
 
 def _crafting_speeds(db: Any = None) -> dict[str, float]:
@@ -175,11 +214,14 @@ def _expand(
     exp: _Expansion,
     stack: tuple[str, ...],
     max_depth: int = 64,
+    tick: Callable[[], None] | None = None,
 ) -> None:
     """Ajoute à ``exp`` ce qu'il faut pour produire ``amount`` unités de ``item``.
 
-    ``index`` fournit les recettes, ``speeds`` les vitesses machines, ``terminal`` les produits considérés bruts, ``stack`` la pile de récursion et ``max_depth`` la profondeur maximale. Les cycles et les produits sans recette sont repliés en ressources brutes. Retourne ``None`` et mute ``exp``.
+    ``index`` fournit les recettes, ``speeds`` les vitesses machines, ``terminal`` les produits considérés bruts, ``stack`` la pile de récursion et ``max_depth`` la profondeur maximale. ``tick`` reçoit un signal à chaque étape de dépliage. Les cycles et les produits sans recette sont repliés en ressources brutes. Retourne ``None`` et mute ``exp``.
     """
+    if tick is not None:
+        tick()
     if amount <= 0:
         return
     if item in terminal:
@@ -223,6 +265,7 @@ def _expand(
             exp=exp,
             stack=stack + (item,),
             max_depth=max_depth,
+            tick=tick,
         )
 
 
@@ -298,11 +341,11 @@ def _format_number(value: float) -> str:
 def analyze_complexity(
     seed: dict,
     db: Any = None,
-    on_progress: Callable[[int], None] | None = None,
+    on_progress: Callable[[int, str], None] | None = None,
 ) -> dict:
     """Calcule le rapport de complexité complet d'une seed.
 
-    ``seed`` fournit recettes, technologies, ordre de progression et pools ; ``db`` est optionnel et sert de repli pour les entités. ``on_progress`` reçoit un pourcentage pendant le dépliage des technologies. Retourne un dict sérialisable contenant les totaux, le score, les usages de bâtiments/ressources et une ligne détaillée par technologie (``tech_rows``).
+    ``seed`` fournit recettes, technologies, ordre de progression et pools ; ``db`` est optionnel et sert de repli pour les entités. ``on_progress`` reçoit un pourcentage et une action pendant le dépliage des technologies. Retourne un dict sérialisable contenant les totaux, le score, les usages de bâtiments/ressources et une ligne détaillée par technologie (``tech_rows``).
     """
     recipes = seed.get("recipes") or []
     technologies = seed.get("technologies") or []
@@ -334,12 +377,19 @@ def analyze_complexity(
         "crafts": 0,
     }
 
+    if on_progress is not None:
+        on_progress(0, "dépliage des recettes")
     total_techs = max(1, len(progression))
     for position, tech_id in enumerate(progression, start=1):
-        if on_progress is not None:
-            on_progress((position - 1) * 100 // total_techs)
+        step = _StepProgress(
+            on_progress,
+            (position - 1) * 100 // total_techs,
+            position * 100 // total_techs,
+            "dépliage des recettes",
+        )
         tech = tech_by_id.get(tech_id)
         if not tech:
+            step.done()
             continue
 
         tech_exp = _Expansion()
@@ -357,6 +407,7 @@ def analyze_complexity(
                     terminal=terminal,
                     exp=tech_exp,
                     stack=(),
+                    tick=step.tick,
                 )
         global_exp.add(tech_exp)
 
@@ -404,9 +455,10 @@ def analyze_complexity(
                 "cumulative_score": round(cumulative_score, 2),
             }
         )
+        step.done()
 
     if on_progress is not None:
-        on_progress(100)
+        on_progress(100, "complexité calculée")
 
     total_research = cumulative["time"]
     total_craft_seconds = global_exp.machine_seconds
@@ -695,11 +747,11 @@ def render_complexity_html(
     db: Any = None,
     *,
     title: str | None = None,
-    on_progress: Callable[[int], None] | None = None,
+    on_progress: Callable[[int, str], None] | None = None,
 ) -> str:
     """Rend le rapport de complexité autonome d'une seed.
 
-    ``seed`` est la seed, ``db`` une base optionnelle et ``title`` un titre personnalisé. ``on_progress`` reçoit un pourcentage du calcul et du rendu du tableau. Retourne une chaîne HTML complète, sans ressource externe, prête à être écrite ou affichée.
+    ``seed`` est la seed, ``db`` une base optionnelle et ``title`` un titre personnalisé. ``on_progress`` reçoit un pourcentage et une action pendant le calcul, les graphiques et le tableau. Retourne une chaîne HTML complète, sans ressource externe, prête à être écrite ou affichée.
     """
     data = analyze_complexity(seed, db, on_progress=_progress_slice(on_progress, 0, 70))
     rows = data["tech_rows"]
@@ -736,16 +788,24 @@ def render_complexity_html(
         ]
     )
 
-    charts = "".join(
-        [
-            f'<div class="card">{_chart_svg("Temps de recherche par tech (s)", [r["research_time"] for r in rows], labels, "#5c6bc0")}</div>',
-            f'<div class="card">{_chart_svg("Ressources brutes par tech", [r["raw_total"] for r in rows], labels, "#29b6f6")}</div>',
-            f'<div class="card">{_chart_svg("Ateliers de fabrication distincts par tech", [r["building_count"] for r in rows], labels, "#4caf50")}</div>',
-            f'<div class="card">{_chart_svg("Ratio ressources / atelier par tech", [r["ratio"] for r in rows], labels, "#ff9800")}</div>',
-            f'<div class="card">{_chart_svg("Score de complexité cumulé", [r["cumulative_score"] for r in rows], labels, "#6f6fe6")}</div>',
-            f'<div class="card">{_chart_svg("Crafts cumulés", [r["cumulative_crafts"] for r in rows], labels, "#26a69a")}</div>',
-        ]
-    )
+    chart_specs = [
+        ("Temps de recherche par tech (s)", [r["research_time"] for r in rows], "#5c6bc0"),
+        ("Ressources brutes par tech", [r["raw_total"] for r in rows], "#29b6f6"),
+        ("Ateliers de fabrication distincts par tech", [r["building_count"] for r in rows], "#4caf50"),
+        ("Ratio ressources / atelier par tech", [r["ratio"] for r in rows], "#ff9800"),
+        ("Score de complexité cumulé", [r["cumulative_score"] for r in rows], "#6f6fe6"),
+        ("Crafts cumulés", [r["cumulative_crafts"] for r in rows], "#26a69a"),
+    ]
+    chart_parts: list[str] = []
+    for position, (title, values, color) in enumerate(chart_specs, start=1):
+        chart_parts.append(
+            f'<div class="card">{_chart_svg(title, values, labels, color)}</div>'
+        )
+        if on_progress is not None:
+            on_progress(
+                70 + position * 5 // len(chart_specs), "graphiques de complexité"
+            )
+    charts = "".join(chart_parts)
 
     building_rows = _bar_list(
         "Ateliers les plus utilisés (crafts)",
@@ -788,9 +848,9 @@ def render_complexity_html(
             f"<td data-key='used'>{buildings}</td></tr>"
         )
         if on_progress is not None:
-            on_progress(70 + position * 30 // total_rows)
+            on_progress(75 + position * 25 // total_rows, "tableau de complexité")
     if on_progress is not None:
-        on_progress(100)
+        on_progress(100, "complexité prête")
 
     unknown_note = ""
     if data["unknown_terminals"]:
@@ -854,7 +914,7 @@ def write_complexity_html(
     seed: dict,
     path: Path,
     db: Any = None,
-    on_progress: Callable[[int], None] | None = None,
+    on_progress: Callable[[int, str], None] | None = None,
 ) -> None:
     """Écrit le rapport de complexité d'une seed dans ``path``.
 
@@ -927,7 +987,7 @@ class _Playthrough:
         self,
         seed: dict,
         db: Any = None,
-        on_progress: Callable[[int], None] | None = None,
+        on_progress: Callable[[int, str], None] | None = None,
     ) -> None:
         """Prépare l'état complet de la simulation.
 
@@ -940,6 +1000,7 @@ class _Playthrough:
         self.seed = seed
         self.db = db
         self.on_progress = on_progress
+        self.progress_step: _StepProgress | None = None
         self.recipes = [
             r for r in (seed.get("recipes") or []) if isinstance(r, dict) and r.get("name")
         ]
@@ -1290,6 +1351,8 @@ class _Playthrough:
         lancement de fusée, conversion de fluide, puis fourniture externe.
         Tous les compteurs de simulation sont mis à jour au passage.
         """
+        if self.progress_step is not None:
+            self.progress_step.tick()
         if amount <= 0:
             return
         if item in stack:
@@ -1331,6 +1394,8 @@ class _Playthrough:
 
         ``item`` est le nom, ``amount`` la quantité et ``stack`` la pile de récursion. Puise d'abord dans l'inventaire, puis produit ou fournit en externe ; les compteurs de consommation/production sont mis à jour. Retourne ``None``.
         """
+        if self.progress_step is not None:
+            self.progress_step.tick()
         if amount <= 0:
             return
         if item in stack:
@@ -1599,27 +1664,37 @@ class _Playthrough:
         nécessaires sont fabriqués, puis les statistiques finales sont
         retournées.
         """
+        if self.on_progress is not None:
+            self.on_progress(0, "simulation technologique")
         total_techs = max(1, len(self.progression))
         for position, tech_id in enumerate(self.progression, start=1):
-            if self.on_progress is not None:
-                self.on_progress((position - 1) * 90 // total_techs)
+            step = _StepProgress(
+                self.on_progress,
+                (position - 1) * 90 // total_techs,
+                position * 90 // total_techs,
+                "simulation technologique",
+            )
+            self.progress_step = step
             tech = self.tech_by_id.get(tech_id)
             if tech is None:
+                step.done()
                 continue
             self._process_tech(tech)
             self.processed.add(tech_id)
+            step.done()
+        self.progress_step = None
         if self.on_progress is not None:
-            self.on_progress(92)
+            self.on_progress(92, "bâtiments utilisés")
         self._craft_used_buildings()
         if self.on_progress is not None:
-            self.on_progress(100)
+            self.on_progress(100, "partie simulée")
         return self._result()
 
 
 def analyze_playthrough(
     seed: dict,
     db: Any = None,
-    on_progress: Callable[[int], None] | None = None,
+    on_progress: Callable[[int, str], None] | None = None,
 ) -> dict:
     """Simule une partie complète sans carte et renvoie les statistiques.
 
