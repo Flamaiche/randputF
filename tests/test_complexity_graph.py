@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from tool.exporters.complexity_graph import analyze_complexity, write_complexity_html
+from tool.exporters.complexity_graph import (
+    analyze_complexity,
+    analyze_playthrough,
+    render_complexity_html,
+    write_complexity_html,
+)
 
 
 def _tiny_seed() -> dict:
@@ -108,3 +113,24 @@ def test_html_is_autonomous(tmp_path: Path) -> None:
     assert "http://" not in text and "https://" not in text
     assert text.count("<svg") == 6
     assert "assembling-machine-1" in text
+
+
+def test_complexite_et_tableau_fragmentent_la_progression() -> None:
+    analyze_events: list[int] = []
+    analyze_complexity(_tiny_seed(), on_progress=analyze_events.append)
+    assert analyze_events == [0, 100]
+
+    render_events: list[int] = []
+    document = render_complexity_html(_tiny_seed(), on_progress=render_events.append)
+    assert "<html" in document
+    assert render_events[0] == 0
+    assert render_events[-1] == 100
+    assert any(70 <= value < 100 for value in render_events)
+
+
+def test_playthrough_remonte_sa_progression() -> None:
+    events: list[int] = []
+    analyze_playthrough(_tiny_seed(), on_progress=events.append)
+    assert events[0] == 0
+    assert events[-1] == 100
+    assert len(events) >= 3

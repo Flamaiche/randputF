@@ -32,6 +32,7 @@ import html as _html
 import json
 import math
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,15 @@ from tool.exporters.html_ui import TIP_HTML, UI_CSS, UI_SCRIPT, th as _th
 # ---------------------------------------------------------------------------
 
 HAND = "main"
+
+
+def _progress_slice(
+    on_progress: Callable[[int], None] | None, low: int, high: int
+) -> Callable[[int], None] | None:
+    if on_progress is None:
+        return None
+    span = high - low
+    return lambda percent: on_progress(low + percent * span // 100)
 
 
 def _crafting_speeds(db: Any = None) -> dict[str, float]:
@@ -285,10 +295,14 @@ def _format_number(value: float) -> str:
     return f"{value:,.2f}".replace(",", " ").rstrip("0").rstrip(".")
 
 
-def analyze_complexity(seed: dict, db: Any = None) -> dict:
+def analyze_complexity(
+    seed: dict,
+    db: Any = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> dict:
     """Calcule le rapport de complexité complet d'une seed.
 
-    ``seed`` fournit recettes, technologies, ordre de progression et pools ; ``db`` est optionnel et sert de repli pour les entités. Retourne un dict sérialisable contenant les totaux, le score, les usages de bâtiments/ressources et une ligne détaillée par technologie (``tech_rows``).
+    ``seed`` fournit recettes, technologies, ordre de progression et pools ; ``db`` est optionnel et sert de repli pour les entités. ``on_progress`` reçoit un pourcentage pendant le dépliage des technologies. Retourne un dict sérialisable contenant les totaux, le score, les usages de bâtiments/ressources et une ligne détaillée par technologie (``tech_rows``).
     """
     recipes = seed.get("recipes") or []
     technologies = seed.get("technologies") or []
@@ -320,7 +334,10 @@ def analyze_complexity(seed: dict, db: Any = None) -> dict:
         "crafts": 0,
     }
 
+    total_techs = max(1, len(progression))
     for position, tech_id in enumerate(progression, start=1):
+        if on_progress is not None:
+            on_progress((position - 1) * 100 // total_techs)
         tech = tech_by_id.get(tech_id)
         if not tech:
             continue
@@ -387,6 +404,9 @@ def analyze_complexity(seed: dict, db: Any = None) -> dict:
                 "cumulative_score": round(cumulative_score, 2),
             }
         )
+
+    if on_progress is not None:
+        on_progress(100)
 
     total_research = cumulative["time"]
     total_craft_seconds = global_exp.machine_seconds
@@ -671,13 +691,17 @@ def _stat(lab: str, val: str, cls: str = "", hint: str = "") -> str:
 
 
 def render_complexity_html(
-    seed: dict, db: Any = None, *, title: str | None = None
+    seed: dict,
+    db: Any = None,
+    *,
+    title: str | None = None,
+    on_progress: Callable[[int], None] | None = None,
 ) -> str:
     """Rend le rapport de complexité autonome d'une seed.
 
-    ``seed`` est la seed, ``db`` une base optionnelle et ``title`` un titre personnalisé. Retourne une chaîne HTML complète, sans ressource externe, prête à être écrite ou affichée.
+    ``seed`` est la seed, ``db`` une base optionnelle et ``title`` un titre personnalisé. ``on_progress`` reçoit un pourcentage du calcul et du rendu du tableau. Retourne une chaîne HTML complète, sans ressource externe, prête à être écrite ou affichée.
     """
-    data = analyze_complexity(seed, db)
+    data = analyze_complexity(seed, db, on_progress=_progress_slice(on_progress, 0, 70))
     rows = data["tech_rows"]
     labels = [str(row["num"]) for row in rows]
 
@@ -735,7 +759,8 @@ def render_complexity_html(
     )
 
     table_rows = []
-    for row in rows:
+    total_rows = max(1, len(rows))
+    for position, row in enumerate(rows, start=1):
         badge = "free" if row["free"] else "pay"
         label = "Starter" if row["free"] else "Payante"
         buildings = "".join(
@@ -762,6 +787,10 @@ def render_complexity_html(
             f"{_format_number(row['crafts'])}</td>"
             f"<td data-key='used'>{buildings}</td></tr>"
         )
+        if on_progress is not None:
+            on_progress(70 + position * 30 // total_rows)
+    if on_progress is not None:
+        on_progress(100)
 
     unknown_note = ""
     if data["unknown_terminals"]:
@@ -821,12 +850,17 @@ def render_complexity_html(
     return document
 
 
-def write_complexity_html(seed: dict, path: Path, db: Any = None) -> None:
+def write_complexity_html(
+    seed: dict,
+    path: Path,
+    db: Any = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> None:
     """Écrit le rapport de complexité d'une seed dans ``path``.
 
-    ``seed`` est la seed, ``path`` le fichier HTML de sortie et ``db`` une base optionnelle. Crée/écrase le fichier et retourne ``None``.
+    ``seed`` est la seed, ``path`` le fichier HTML de sortie et ``db`` une base optionnelle. ``on_progress`` est transmis au rendu. Crée/écrase le fichier et retourne ``None``.
     """
-    document = render_complexity_html(seed, db)
+    document = render_complexity_html(seed, db, on_progress=on_progress)
     path.write_text(document, encoding="utf-8")
 
 
@@ -889,16 +923,23 @@ class _Playthrough:
     fourniture externe (pompage, récolte, orbite).
     """
 
-    def __init__(self, seed: dict, db: Any = None) -> None:
+    def __init__(
+        self,
+        seed: dict,
+        db: Any = None,
+        on_progress: Callable[[int], None] | None = None,
+    ) -> None:
         """Prépare l'état complet de la simulation.
 
         L'index recense recettes, producteurs, entités, fluides, sources
         pompées, conversions, technologies, déblocages, gisements, foreuses et
-        compteurs. Aucune ressource n'est produite ici : :meth:`run` déroule
-        ensuite la progression technologique.
+        compteurs. ``on_progress`` reçoit un pourcentage pendant :meth:`run`.
+        Aucune ressource n'est produite ici : :meth:`run` déroule ensuite la
+        progression technologique.
         """
         self.seed = seed
         self.db = db
+        self.on_progress = on_progress
         self.recipes = [
             r for r in (seed.get("recipes") or []) if isinstance(r, dict) and r.get("name")
         ]
@@ -1558,26 +1599,38 @@ class _Playthrough:
         nécessaires sont fabriqués, puis les statistiques finales sont
         retournées.
         """
-        for tech_id in self.progression:
+        total_techs = max(1, len(self.progression))
+        for position, tech_id in enumerate(self.progression, start=1):
+            if self.on_progress is not None:
+                self.on_progress((position - 1) * 90 // total_techs)
             tech = self.tech_by_id.get(tech_id)
             if tech is None:
                 continue
             self._process_tech(tech)
             self.processed.add(tech_id)
+        if self.on_progress is not None:
+            self.on_progress(92)
         self._craft_used_buildings()
+        if self.on_progress is not None:
+            self.on_progress(100)
         return self._result()
 
 
-def analyze_playthrough(seed: dict, db: Any = None) -> dict:
+def analyze_playthrough(
+    seed: dict,
+    db: Any = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> dict:
     """Simule une partie complète sans carte et renvoie les statistiques.
 
     Contrairement à :func:`analyze_complexity`, l'inventaire est porté d'une
     technologie à l'autre : un sous-produit (huile lourde, uranium 238…) est
     réutilisé au lieu d'être recrafté, les déclencheurs de recherche (miner,
     crafter, lancer une fusée) sont simulés, et le craquage du pétrole réduit
-    la consommation de brut.
+    la consommation de brut. ``on_progress`` reçoit un pourcentage de la
+    simulation.
     """
-    return _Playthrough(seed, db).run()
+    return _Playthrough(seed, db, on_progress=on_progress).run()
 
 
 __all__ = [

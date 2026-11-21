@@ -192,8 +192,10 @@ def write_full_report(
         title = f"randputF seed {label}"
     if lightweight is None:
         lightweight = len(seed.get("recipes") or []) > _FULL_REPORT_MAX_RECIPES
+    emit(2, "couverture du dump")
     if dump_coverage is None and dump is not None:
         dump_coverage = classify_dump_fields(dump)
+    emit(5, "couverture du dump terminée")
     coverage_section = _coverage_section(dump_coverage)
     if lightweight:
         emit(5, "série de difficulté")
@@ -251,8 +253,13 @@ def write_full_report(
             "difficulty_total": difficulty_total,
             "path": path,
         }
-    emit(15, "complexité")
-    complexity_doc = render_complexity_html(seed, db, title=title)
+    emit(10, "complexité")
+    complexity_doc = render_complexity_html(
+        seed,
+        db,
+        title=title,
+        on_progress=lambda percent: emit(10 + percent * 25 // 100, "complexité"),
+    )
     _, complexity_body = _document_parts(complexity_doc)
     body = complexity_body
     if vanilla_seed is not None:
@@ -262,7 +269,7 @@ def write_full_report(
             mod_label=mod_label,
             vanilla_label=vanilla_label,
             on_progress=lambda percent: emit(
-                20 + percent * 40 // 100, "difficulté comparée"
+                35 + percent * 30 // 100, "difficulté comparée"
             ),
         )
         _, difficulty_body = _document_parts(difficulty_doc)
@@ -278,7 +285,7 @@ def write_full_report(
         difficulty_section = (
             "<section class='report-section' id='difficulte'><h2>Difficulté (ressources brutes)</h2>"
             "<details class='table-fold' id='difficulte-table'><summary>Détail par technologie</summary><div class='cols'>"
-            f"{difficulty_table_html(seed, label='seed', on_progress=lambda percent: emit(20 + percent * 40 // 100, 'tableau de difficulté'))}"
+            f"{difficulty_table_html(seed, label='seed', on_progress=lambda percent: emit(35 + percent * 30 // 100, 'tableau de difficulté'))}"
             "</div></details></section>"
         )
     emit(65, "partie simulée")
@@ -287,9 +294,13 @@ def write_full_report(
         db,
         seed=seed,
         title=playthrough_title or f"{title} — partie simulée",
+        on_progress=lambda percent, detail: emit(
+            65 + percent * 23 // 100, detail
+        ),
     )
     playthrough_section = _playthrough_section(playthrough)
     controls_section = _checks_section(checks)
+    emit(90, "assemblage du rapport")
     inserted = controls_section + coverage_section + difficulty_section + playthrough_section
     if "</main>" in body:
         body = body.replace("</main>", f"{inserted}</main>", 1)

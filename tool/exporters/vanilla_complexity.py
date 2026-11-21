@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html as _html
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -422,20 +423,39 @@ def playthrough_report(
     *,
     seed: dict | None = None,
     title: str | None = None,
+    on_progress: Callable[[int, str], None] | None = None,
 ) -> dict:
     """Produit le rapport de partie simulée sous forme de fragments et de données.
 
     Si ``seed`` n'est pas fournie, elle est construite depuis le dump. La
     fonction exécute l'analyse de partie, marque la progression puis prépare
-    les lignes et fragments HTML destinés au rapport complet.
+    les lignes et fragments HTML destinés au rapport complet. ``on_progress``
+    reçoit un pourcentage et une action.
     """
+    def emit(percent: int, detail: str) -> None:
+        if on_progress is not None:
+            on_progress(max(0, min(100, int(percent))), detail)
+
+    emit(0, "préparation de la simulation")
     dump = dump or {}
     if seed is None:
+        emit(2, "construction de la seed")
         seed = build_vanilla_seed(dump)
-    analysis = analyze_playthrough(seed, db)
+    emit(5, "simulation de la partie")
+    analysis = analyze_playthrough(
+        seed,
+        db,
+        on_progress=lambda percent: emit(
+            5 + percent * 65 // 100, "simulation de la partie"
+        ),
+    )
+    emit(72, "progression des tags")
     progression = tag_progression(seed, analysis)
+    emit(78, "lignes du tableau")
     rows = _rows(dump, seed, analysis)
+    emit(86, "fragments HTML")
     fragments = _fragments(seed, analysis, rows)
+    emit(100, "rapport de partie prêt")
     fragments["seed"] = seed
     fragments["title"] = title
     fragments["progression"] = progression

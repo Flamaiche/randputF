@@ -53,6 +53,9 @@ foi).
 - La mesure de la difficulté est découpée : ardoise, série par technologie et
   tableau remontent leur progression. Le total calculé pour le rapport est
   réutilisé au lieu d'être recalculé une seconde fois.
+- La complexité et la partie simulée remontent aussi leur progression : dépliage
+  des recettes, tableau de complexité, simulation technologique et assemblage
+  du rapport avancent la barre sans bloc muet sur les gros dumps.
 
 ### Rochers — le charbon devient de la pierre
 
