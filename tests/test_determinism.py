@@ -43,7 +43,7 @@ def _generate(seed: int, hash_seed: str, out: Path) -> Path:
         capture_output=True,
         timeout=120,
     )
-    return out / MOD_NAME_VERSIONED / "seed" / "seed.json"
+    return out / "mods" / MOD_NAME_VERSIONED / "seed" / "seed.json"
 
 
 @pytest.mark.parametrize("seed", [1337, 1299])

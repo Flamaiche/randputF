@@ -15,7 +15,13 @@ from tool.audit.fields import CONSUMED, COSMETIC, PARTIAL, classify_dump_fields
 from tool.exporters.mod_seed import build_vanilla_seed
 from tool.exporters.report import write_full_report
 from tool.parsers.vanilla import load_db_from_dump
-from tool.tester import CheckReport, Progress, check_state, run_dump_test
+from tool.tester import (
+    CheckReport,
+    Progress,
+    TesterReport as ReportData,
+    check_state,
+    run_dump_test,
+)
 from tool.validator.solver import validate_seed
 
 
@@ -138,6 +144,36 @@ def test_progress_affiche_un_eta_explicite_ou_la_absence():
     assert stream.getvalue().splitlines()[-1].endswith("fin étape —")
 
 
+def test_parse_complexity_detail_extrait_l_index_et_les_etapes():
+    assert tester._parse_complexity_detail(
+        "complexité — dépliage des recettes · 12/934 techs · 1 234 étapes"
+    ) == (12, 934, 1234)
+    assert tester._parse_complexity_detail("partie simulée · 2 étapes") is None
+
+
+def test_check_state_peut_ignorer_les_controles():
+    check = check_state(SimpleNamespace(), {}, skip=frozenset({"checks"}))
+
+    assert check.skipped is True
+    assert check.ok is False
+    assert check.as_dict()["skipped"] is True
+
+
+def test_step_eta_estime_depuis_les_techs_terminees():
+    assert tester._step_eta(
+        3, 5, 20, [100, 200], 25.0, 100.0, 101.0
+    ) == pytest.approx(12.0)
+    assert tester._step_eta(5, 5, 20, [100], 25.0, 100.0, 101.0) is None
+    assert tester._step_eta(3, 5, 20, [0, 0], 25.0, 100.0, 101.0) is None
+    assert tester._step_eta(3, 5, 20, [100], 25.0, 90.0, 100.0) is None
+
+
+def test_format_eta_passe_en_minutes_et_heures():
+    assert tester._format_eta(51) == "51s"
+    assert tester._format_eta(732) == "12m12s"
+    assert tester._format_eta(3723) == "1h02m"
+
+
 def test_progress_desactivee_necrit_rien():
     stream = io.StringIO()
     progress = Progress(stream, enabled=False, refresh=0)
@@ -182,11 +218,14 @@ def test_check_state_pilote_controle_puis_rejeu(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("out_name", "folder"),
-    [(None, "vanilla"), ("randputF_0.0.1", "randputF_0.0.1")],
+    ("out_name", "folder", "prefix"),
+    [
+        (None, "vanilla", "vanilla"),
+        ("randputF_0.0.1", "randputF_0.0.1", "randputF_0.0.1"),
+    ],
 )
 def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
-    monkeypatch, tmp_path, out_name, folder
+    monkeypatch, tmp_path, out_name, folder, prefix
 ):
     captured = {}
     state = {
@@ -198,7 +237,7 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
     monkeypatch.setattr(
         tester,
         "check_state",
-        lambda db, tested, progress=None: CheckReport(victory=True),
+        lambda db, tested, progress=None, **kwargs: CheckReport(victory=True),
     )
     def fake_dump_html(dump, path):
         Path(path).write_text("dump", encoding="utf-8")
@@ -245,16 +284,17 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
     assert ("update", "mesure", 96, "rapport complet écrit") in progress.events
     assert ("update", "rapport", 50, "navigateur écrit") in progress.events
     assert progress.events[-1] == ("finish", "rapport", "vues HTML écrites")
-    assert result.dump_html == tmp_path / folder / "vanilla.dump.html"
+    assert result.dump_html == tmp_path / folder / f"{prefix}.dump.html"
     assert result.graph_html is not None
-    assert result.graph_html == tmp_path / folder / "vanilla.graph.html"
-    assert result.report_html == tmp_path / folder / "vanilla.report.html"
+    assert result.graph_html == tmp_path / folder / f"{prefix}.graph.html"
+    assert result.report_html == tmp_path / folder / f"{prefix}.report.html"
     assert "vue textuelle" in result.graph_html.read_text(encoding="utf-8")
     assert result.difficulty_total == 42.0
     assert result.check.ok
     assert captured["checks"]["ok"] is True
     assert captured["mod_label"] == "état testé"
-    assert captured["vanilla_label"] == "dump"
+    assert captured["vanilla_label"] == "vanilla"
+    assert captured["vanilla_seed"] is state
 
 
 def test_run_dump_test_fragmentle_calcul_de_difficulté(monkeypatch, tmp_path):
@@ -263,7 +303,7 @@ def test_run_dump_test_fragmentle_calcul_de_difficulté(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tester,
         "check_state",
-        lambda db, tested, progress=None: CheckReport(victory=True),
+        lambda db, tested, progress=None, **kwargs: CheckReport(victory=True),
     )
     monkeypatch.setattr(
         tester,
@@ -297,6 +337,91 @@ def test_run_dump_test_fragmentle_calcul_de_difficulté(monkeypatch, tmp_path):
     assert result.difficulty_total == 8.0
 
 
+def test_run_dump_test_reutilise_le_total_du_rapport(monkeypatch, tmp_path):
+    state = {"meta": {"origin": "dump"}, "recipes": [], "technologies": []}
+    monkeypatch.setattr(tester, "build_vanilla_seed", lambda dump: state)
+    monkeypatch.setattr(
+        tester,
+        "check_state",
+        lambda db, tested, progress=None, **kwargs: CheckReport(victory=True),
+    )
+    def fake_report(seed, path, db, **kwargs):
+        Path(path).write_text("rapport", encoding="utf-8")
+        return {"path": Path(path), "difficulty_total": 8.0}
+
+    monkeypatch.setattr(tester, "write_full_report", fake_report)
+    monkeypatch.setattr(
+        tester,
+        "write_dump_html",
+        lambda dump, path: Path(path).write_text("dump", encoding="utf-8") or Path(path),
+    )
+    monkeypatch.setattr(
+        tester,
+        "write_seed_graph_html",
+        lambda tested, path: Path(path).write_text("graphe", encoding="utf-8"),
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("difficulté recalculée")
+
+    monkeypatch.setattr(tester, "compute_difficulty", forbidden)
+
+    result = run_dump_test(
+        SimpleNamespace(), {"meta": {}}, tmp_path, source="vanilla"
+    )
+
+    assert result.difficulty_total == 8.0
+
+
+def test_run_dump_test_estime_la_complexite_depuis_les_etapes(monkeypatch, tmp_path):
+    state = {"meta": {"origin": "dump"}, "recipes": [], "technologies": []}
+    now = [1000.0]
+    monkeypatch.setattr(tester.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(tester, "build_vanilla_seed", lambda dump: state)
+    monkeypatch.setattr(
+        tester,
+        "check_state",
+        lambda db, tested, progress=None, **kwargs: CheckReport(victory=True),
+    )
+    monkeypatch.setattr(
+        tester,
+        "write_dump_html",
+        lambda dump, path: Path(path).write_text("dump", encoding="utf-8") or Path(path),
+    )
+    monkeypatch.setattr(
+        tester,
+        "write_seed_graph_html",
+        lambda tested, path: Path(path).write_text("graphe", encoding="utf-8"),
+    )
+
+    def fake_report(seed, path, db, **kwargs):
+        emit = kwargs["on_progress"]
+        emit(10, "complexité — dépliage des recettes · 1/3 techs · 100 étapes")
+        now[0] = 1001.0
+        emit(10, "complexité — dépliage des recettes · 2/3 techs · 10 étapes")
+        now[0] = 1002.0
+        emit(10, "complexité — dépliage des recettes · 2/3 techs · 100 étapes")
+        Path(path).write_text("rapport", encoding="utf-8")
+        return {"path": Path(path)}
+
+    monkeypatch.setattr(tester, "write_full_report", fake_report)
+    monkeypatch.setattr(
+        tester,
+        "compute_difficulty",
+        lambda seed, on_progress=None: SimpleNamespace(total=8.0),
+    )
+
+    progress = ProgressRecorder("acquisition")
+    run_dump_test(
+        SimpleNamespace(), {"meta": {}}, tmp_path, source="vanilla", progress=progress
+    )
+
+    percent, detail, eta = progress.source()
+    assert percent == 10
+    assert "2/3" in detail
+    assert eta == pytest.approx(100 / 90)
+
+
 def test_classification_des_champs_presents():
     dump = {
         "items": {"ae-item": {"fuel_value": 8, "order": "a"}},
@@ -328,6 +453,28 @@ def test_rapport_leger_inclut_la_couverture_du_dump(tmp_path):
     assert "id='difficulte'" in document
     assert "fuel_value" in document
     assert result["coverage"]["counts"][CONSUMED] == 1
+
+
+def test_rapport_ignore_les_sections_demandees(tmp_path):
+    seed = {"meta": {}, "pools": {}, "technologies": [], "recipes": []}
+    path = tmp_path / "rapport.html"
+
+    result = write_full_report(
+        seed,
+        path,
+        dump={"items": {}},
+        skip=frozenset({"complexity", "difficulty", "playthrough"}),
+    )
+    document = path.read_text(encoding="utf-8")
+
+    assert "<html" in document
+    assert "id='difficulte'" not in document
+    assert "id='partie-simulee'" not in document
+    assert 'href="#complexite-courbes"' not in document
+    assert 'href="#difficulte"' not in document
+    assert 'href="#partie-simulee"' not in document
+    assert result["analysis"] == {}
+    assert result["rows"] == []
 
 
 def test_progressivite_dump_independante_de_l_ordre():
@@ -477,3 +624,162 @@ def test_dump_vanilla_passe_controle_et_rejeu():
     assert check.issues == []
     assert check.victory is True
     assert check.researched == check.total_techs
+
+
+def test_run_dump_test_ignore_les_html_demandes(monkeypatch, tmp_path):
+    state = {"meta": {"origin": "dump"}, "recipes": [], "technologies": []}
+    monkeypatch.setattr(tester, "build_vanilla_seed", lambda dump: state)
+    monkeypatch.setattr(
+        tester,
+        "check_state",
+        lambda db, tested, progress=None, **kwargs: CheckReport(victory=True),
+    )
+    monkeypatch.setattr(
+        tester,
+        "compute_difficulty",
+        lambda seed, on_progress=None: SimpleNamespace(total=8.0),
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("écriture HTML non ignorée")
+
+    monkeypatch.setattr(tester, "write_full_report", forbidden)
+    monkeypatch.setattr(tester, "write_dump_html", forbidden)
+    monkeypatch.setattr(tester, "write_seed_graph_html", forbidden)
+
+    result = run_dump_test(
+        SimpleNamespace(),
+        {"meta": {}},
+        tmp_path,
+        source="vanilla",
+        skip=frozenset(
+            {"report-html", "dump-html", "graph-html", "complexity", "playthrough"}
+        ),
+    )
+
+    assert result.dump_html is None
+    assert result.graph_html is None
+    assert result.report_html is None
+    assert result.difficulty_total == 8.0
+
+
+def test_cmd_test_transmet_les_options_no(monkeypatch, tmp_path, capsys):
+    from tool import __main__ as cli
+
+    dump_path = tmp_path / "dump.json"
+    dump_path.write_text("{}", encoding="utf-8")
+    captured: dict = {}
+
+    def fake_run(db, dump, out_dir, **kwargs):
+        captured.update(kwargs)
+        return ReportData(
+            check=CheckReport(skipped=True),
+            dump_html=None,
+            graph_html=None,
+            report_html=None,
+            difficulty_total=None,
+            coverage={},
+            skipped=kwargs["skip"],
+        )
+
+    monkeypatch.setattr(cli, "_load_db", lambda *args: object())
+    monkeypatch.setattr(cli, "run_dump_test", fake_run)
+    cli.cmd_test(
+        SimpleNamespace(
+            dump=str(dump_path),
+            mod_dir=None,
+            out=None,
+            no_checks=True,
+            no_complexity=True,
+            no_difficulty=True,
+            no_playthrough=True,
+            no_cache=True,
+            no_html=True,
+        )
+    )
+    output = capsys.readouterr().out
+
+    assert {
+        "checks",
+        "complexity",
+        "difficulty",
+        "playthrough",
+        "cache",
+        "report-html",
+        "dump-html",
+        "graph-html",
+    } <= captured["skip"]
+    assert "Contrôle : ignoré" in output
+    assert "Rapport : ignoré" in output
+
+
+def test_cmd_report_simulation_sur_option_seulement(monkeypatch, tmp_path, capsys):
+    from tool import __main__ as cli
+
+    dump_path = tmp_path / "dump.json"
+    dump_path.write_text(json.dumps({"meta": {"game_version": "1.0"}}), encoding="utf-8")
+    captured: list[frozenset[str]] = []
+    monkeypatch.setattr(cli, "build_vanilla_seed", lambda dump: {"technologies": [{}]})
+
+    def fake_report(seed, path, db, **kwargs):
+        captured.append(kwargs["skip"])
+        return {"analysis": {}, "rows": [], "progression": {}, "path": path}
+
+    monkeypatch.setattr(cli, "write_full_report", fake_report)
+    arguments = SimpleNamespace(
+        dump=str(dump_path), out=None, playthrough=False, no_cache=False
+    )
+    cli.cmd_report(arguments)
+    assert "playthrough" in captured[-1]
+    assert "Simulation : ignorée" in capsys.readouterr().out
+
+    arguments.playthrough = True
+    cli.cmd_report(arguments)
+    assert "playthrough" not in captured[-1]
+
+
+def test_cmd_test_simulation_desactivee_par_defaut(monkeypatch, tmp_path):
+    from tool import __main__ as cli
+
+    dump_path = tmp_path / "dump.json"
+    dump_path.write_text("{}", encoding="utf-8")
+    captured: list[frozenset[str]] = []
+    out_dirs: list[object] = []
+    monkeypatch.setattr(cli, "DUMP_PATH_DEFAULT", dump_path)
+    monkeypatch.setattr(cli, "_load_db", lambda *args: object())
+
+    def fake_run(db, dump, out_dir, **kwargs):
+        captured.append(kwargs["skip"])
+        out_dirs.append(out_dir)
+        return ReportData(
+            check=CheckReport(victory=True),
+            dump_html=None,
+            graph_html=None,
+            report_html=None,
+            difficulty_total=None,
+            coverage={},
+            skipped=kwargs["skip"],
+        )
+
+    monkeypatch.setattr(cli, "run_dump_test", fake_run)
+    arguments = SimpleNamespace(dump=str(dump_path), mod_dir=None, out=None)
+    cli.cmd_test(arguments)
+    assert "playthrough" in captured[-1]
+    assert out_dirs[-1] == cli.REPORT_DIR
+
+    arguments.playthrough = True
+    cli.cmd_test(arguments)
+    assert "playthrough" not in captured[-1]
+    assert out_dirs[-1] == cli.REPORT_DIR
+
+
+def test_source_label_canonise_randputf():
+    from tool.__main__ import _source_label
+
+    assert _source_label("randputF-0.0.1_dump.json", {}) == "randputF_0.0.1"
+    assert (
+        _source_label("dump.json", {"meta": {"mod_label": "randputF-0.0.1"}})
+        == "randputF_0.0.1"
+    )
+    label = "Milestones-1.5.2__cybersyn-2.1.3"
+    assert _source_label("dump.json", {"meta": {"mod_label": label}}) == label

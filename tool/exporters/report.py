@@ -9,13 +9,16 @@ from typing import Any
 
 from tool.audit.difficulty import difficulty_series
 from tool.audit.fields import classify_dump_fields
+from tool.audit.graph import analyze_graph
+from tool.audit.profile import difficulty_profile
 from tool.exporters.complexity_graph import _CSS as _COMPLEXITY_CSS
-from tool.exporters.complexity_graph import render_complexity_html
+from tool.exporters.complexity_graph import analyze_complexity, render_complexity_html
 from tool.exporters.difficulty_graph import (
     DIFFICULTY_CSS,
     difficulty_table_html,
     render_difficulty_graph_html,
 )
+from tool.exporters.profile import PROFILE_CSS, render_profile_html
 from tool.exporters.vanilla_complexity import playthrough_report
 
 _STYLE_RE = re.compile("<style>(.*?)</style>", re.DOTALL)
@@ -23,19 +26,45 @@ _BODY_RE = re.compile("<body>(.*?)</body>", re.DOTALL)
 _FIRST_H1_RE = re.compile("<h1>.*?</h1>", re.DOTALL)
 _REPORT_CSS = '\nbody{padding-right:250px}\n.report-section{margin-top:40px;padding-top:12px;border-top:1px solid #3a3a45}\n.report-section>h2{margin-top:0}\nsection{scroll-margin-top:18px}\ndetails.table-fold{scroll-margin-top:18px}\n.scroll{overflow:auto;max-height:70vh;scrollbar-gutter:stable}\n.flow{color:#8f8fa0;font-size:11px;max-width:260px}\ntd.num{white-space:nowrap}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}\n.toc{position:fixed;top:16px;right:16px;width:214px;\n  max-height:calc(100vh - 32px);overflow:auto;background:#1d1d24;\n  border:1px solid #3a3a45;border-radius:10px;padding:12px;z-index:40;\n  font-size:12px}\n.toc-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;\n  color:#8f8fa0;margin:0 0 8px;padding:0 8px}\n.toc a{display:block;padding:5px 8px;border-radius:6px;color:#c9c9d6;\n  text-decoration:none;overflow-wrap:anywhere}\n.toc a:hover{background:rgba(111,111,230,.15);color:#fff}\n.toc .toc-sub{padding-left:20px;font-size:11px;color:#9a9aac}\n@media(max-width:1700px){\n  body{padding-right:0}\n  .toc{position:static;width:auto;max-height:none;margin:0 24px 18px}\n}\n@media(max-width:1000px){.two{grid-template-columns:1fr}}\n'
 
-_TOC = '\n<nav class="toc" aria-label="Sommaire">\n  <div class="toc-title">Sommaire</div>\n  <a href="#controles">Contrôles</a>\n  <a href="#couverture-dump">Couverture du dump</a>\n  <a href="#complexite-courbes">Complexité — courbes</a>\n  <a href="#complexite-ateliers">Complexité — ateliers</a>\n  <a href="#complexite-detail-table">Détail par technologie</a>\n  <a href="#difficulte">Difficulté</a>\n  <a class="toc-sub" href="#difficulte-table">Tableau de difficulté</a>\n  <a href="#partie-simulee">Partie simulée</a>\n  <a class="toc-sub" href="#partie-simulee-table">Tableau par item</a>\n</nav>\n'
+def _toc(skip: frozenset[str], summary: bool = False) -> str:
+    links = []
+    if summary:
+        links.append('<a href="#resume">Résumé</a>')
+    links.extend(
+        (
+            '<a href="#controles">Contrôles</a>',
+            '<a href="#couverture-dump">Couverture du dump</a>',
+        )
+    )
+    if "complexity" not in skip:
+        links.extend(
+            (
+                '<a href="#complexite-courbes">Complexité — courbes</a>',
+                '<a href="#complexite-ateliers">Complexité — ateliers</a>',
+                '<a href="#complexite-detail-table">Détail par technologie</a>',
+            )
+        )
+    if "difficulty" not in skip:
+        links.extend(
+            (
+                '<a href="#profil-difficulte">Profil de difficulté</a>',
+                '<a class="toc-sub" href="#profil-difficulte-table">Tableau des indicateurs</a>',
+                '<a href="#difficulte">Difficulté</a>',
+                '<a class="toc-sub" href="#difficulte-table">Tableau de difficulté</a>',
+            )
+        )
+    if "playthrough" not in skip:
+        links.extend(
+            (
+                '<a href="#partie-simulee">Partie simulée</a>',
+                '<a class="toc-sub" href="#partie-simulee-table">Tableau par item</a>',
+            )
+        )
+    body = "\n  ".join(links)
+    return f'\n<nav class="toc" aria-label="Sommaire">\n  <div class="toc-title">Sommaire</div>\n  {body}\n</nav>\n'
+
 
 _FULL_REPORT_MAX_RECIPES = 10000
-
-_TOC_LIGHT = (
-    '<nav class="toc" aria-label="Sommaire">'
-    '<div class="toc-title">Sommaire</div>'
-    '<a href="#resume">Résumé</a>'
-    '<a href="#controles">Contrôles</a>'
-    '<a href="#couverture-dump">Couverture du dump</a>'
-    '<a href="#difficulte">Difficulté</a>'
-    "</nav>\n"
-)
 
 _TOC_SCRIPT = "\n<script>\n(function () {\n  function openTarget() {\n    var el = location.hash ? document.querySelector(location.hash) : null;\n    if (el && el.tagName === 'DETAILS') el.open = true;\n  }\n  window.addEventListener('hashchange', openTarget);\n  openTarget();\n})();\n</script>\n"
 
@@ -78,7 +107,7 @@ def _checks_section(checks: dict | None) -> str:
     il est absent (rapport vanilla), la section indique que les contrôles n'ont
     pas été exécutés, pour garder un sommaire stable.
     """
-    if checks is None:
+    if checks is None or checks.get("skipped"):
         return (
             "<section class='report-section' id='controles'>"
             "<h2>Contrôles du testeur</h2><p>Non exécutés pour ce rapport.</p></section>"
@@ -171,20 +200,30 @@ def write_full_report(
     lightweight: bool | None = None,
     dump_coverage: dict | None = None,
     on_progress: Callable[[int, str], None] | None = None,
+    skip: frozenset[str] = frozenset(),
 ) -> dict:
     """Assemble et écrit le rapport HTML complet de la seed.
 
     Le document réunit quatre vues dans un seul fichier autonome : contrôles
     du testeur, complexité, difficulté comparée (si ``vanilla_seed`` est
     fourni) et partie simulée. Les documents HTML existants sont réutilisés
-    pour ne maintenir qu'un seul jeu de styles et de scripts. ``on_progress``,
-    s'il est fourni, reçoit un pourcentage et une action. Retourne les données
-    de simulation, le total de difficulté et le chemin du fichier écrit.
+    pour ne maintenir qu'un seul jeu de styles et de scripts. ``skip`` permet
+    d'omettre ``complexity``, ``difficulty`` ou ``playthrough``. Sans
+    ``playthrough``, la complexité vient du graphe mémoïsé partagé avec le
+    profil ; avec lui, elle réutilise les compteurs de la simulation.
+    ``on_progress``, s'il est fourni, reçoit un pourcentage et une action.
+    Retourne les données de simulation, le total de difficulté et le chemin du
+    fichier écrit.
     """
-    def emit(percent: int, detail: str) -> None:
-        if on_progress is not None:
-            on_progress(max(0, min(100, int(percent))), detail)
+    last = -1
 
+    def emit(percent: int, detail: str) -> None:
+        nonlocal last
+        if on_progress is not None:
+            last = max(last, max(0, min(100, int(percent))))
+            on_progress(last, detail)
+
+    skip = frozenset(skip)
     difficulty_total = None
     meta = seed.get("meta") or {}
     if title is None:
@@ -197,45 +236,79 @@ def write_full_report(
         dump_coverage = classify_dump_fields(dump)
     emit(5, "couverture du dump terminée")
     coverage_section = _coverage_section(dump_coverage)
-    if lightweight:
-        emit(5, "série de difficulté")
-        series: list[dict] = []
-        try:
-            series = difficulty_series(
-                seed,
-                on_progress=lambda percent: emit(
-                    5 + percent * 60 // 100, "série de difficulté"
-                ),
-            )
-            difficulty_total = series[-1]["cumulative_total"] if series else None
-            difficulty_html = difficulty_table_html(
-                seed,
-                label=mod_label,
-                series=series,
-                on_progress=lambda percent: emit(
-                    65 + percent * 20 // 100, "tableau de difficulté"
-                ),
-            )
-        except (ArithmeticError, KeyError, TypeError, ValueError):
-            difficulty_total = None
-            difficulty_html = '<p class="muted">Aucune donnée de difficulté.</p>'
-        difficulty_section = (
-            "<section class='report-section' id='difficulte'>"
-            "<h2>Difficulté (ressources brutes)</h2>"
-            "<details class='table-fold' id='difficulte-table'><summary>Tableau de difficulté</summary>"
-            f"<div class='cols'>{difficulty_html}</div>"
-            "</details></section>"
+    graph = None
+    if "complexity" not in skip or "difficulty" not in skip:
+        emit(5, "calcul du graphe")
+        graph = analyze_graph(
+            seed,
+            db,
+            on_progress=lambda percent, detail: emit(
+                5 + percent * 25 // 100, f"complexité — {detail}"
+            ),
         )
+    baseline_graph = None
+    if vanilla_seed is not None and (
+        "difficulty" not in skip or "complexity" not in skip
+    ):
+        baseline_graph = analyze_graph(vanilla_seed, db, None)
+    baseline_complexity = None
+    if vanilla_seed is not None and "complexity" not in skip and not lightweight:
+        baseline_complexity = analyze_complexity(vanilla_seed, db, graph=baseline_graph)
+    if lightweight:
+        if "difficulty" in skip:
+            difficulty_section = ""
+            profile_section = ""
+            difficulty_profile_result = None
+        else:
+            emit(30, "profil de difficulté")
+            difficulty_profile_result = difficulty_profile(
+                seed,
+                graph=graph,
+                baseline_graph=baseline_graph,
+                on_progress=lambda percent: emit(
+                    30 + percent * 5 // 100, "profil de difficulté"
+                ),
+            )
+            profile_section = render_profile_html(difficulty_profile_result)
+            emit(35, "série de difficulté")
+            series: list[dict] = []
+            try:
+                series = difficulty_series(
+                    seed,
+                    on_progress=lambda percent: emit(
+                        35 + percent * 35 // 100, "série de difficulté"
+                    ),
+                )
+                difficulty_total = series[-1]["cumulative_total"] if series else None
+                difficulty_html = difficulty_table_html(
+                    seed,
+                    label=mod_label,
+                    series=series,
+                    on_progress=lambda percent: emit(
+                        70 + percent * 18 // 100, "tableau de difficulté"
+                    ),
+                )
+            except (ArithmeticError, KeyError, TypeError, ValueError):
+                difficulty_total = None
+                difficulty_html = '<p class="muted">Aucune donnée de difficulté.</p>'
+            difficulty_section = (
+                "<section class='report-section' id='difficulte'>"
+                "<h2>Difficulté (ressources brutes)</h2>"
+                "<details class='table-fold' id='difficulte-table'><summary>Tableau de difficulté</summary>"
+                f"<div class='cols'>{difficulty_html}</div>"
+                "</details></section>"
+            )
         emit(88, "assemblage du rapport")
         body = (
-            _TOC_LIGHT
+            _toc(skip, summary=True)
             + _summary_section(seed, dump)
             + coverage_section
             + _checks_section(checks)
+            + profile_section
             + difficulty_section
             + _TOC_SCRIPT
         )
-        style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{_REPORT_CSS}"
+        style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{PROFILE_CSS}\n{_REPORT_CSS}"
         document = (
             "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -251,27 +324,56 @@ def write_full_report(
             "progression": {},
             "coverage": dump_coverage,
             "difficulty_total": difficulty_total,
+            "difficulty_profile": difficulty_profile_result,
             "path": path,
         }
-    emit(10, "complexité")
-    complexity_doc = render_complexity_html(
-        seed,
-        db,
-        title=title,
-        on_progress=lambda percent, detail: emit(
-            10 + percent * 25 // 100, f"complexité — {detail}"
-        ),
-    )
-    _, complexity_body = _document_parts(complexity_doc)
-    body = complexity_body
-    if vanilla_seed is not None:
+    body = "<main></main>"
+    if "difficulty" in skip:
+        difficulty_section = ""
+        profile_section = ""
+        difficulty_profile_result = None
+    else:
+        emit(32, "profil de difficulté")
+        difficulty_profile_result = difficulty_profile(
+            seed,
+            db,
+            baseline_seed=vanilla_seed,
+            baseline_db=db,
+            baseline_label=vanilla_label,
+            graph=graph,
+            baseline_graph=baseline_graph,
+            on_progress=lambda percent: emit(
+                32 + percent * 3 // 100, "profil de difficulté"
+            ),
+        )
+        profile_section = render_profile_html(difficulty_profile_result)
+    if "difficulty" in skip:
+        difficulty_section = ""
+    elif vanilla_seed is not None:
+        emit(35, "série de difficulté vanilla")
+        vanilla_series = difficulty_series(
+            vanilla_seed,
+            on_progress=lambda percent: emit(
+                35 + percent * 10 // 100, "série de difficulté vanilla"
+            ),
+        )
+        emit(45, "série de difficulté")
+        mod_series = difficulty_series(
+            seed,
+            on_progress=lambda percent: emit(
+                45 + percent * 10 // 100, "série de difficulté"
+            ),
+        )
+        difficulty_total = mod_series[-1]["cumulative_total"] if mod_series else None
         difficulty_doc = render_difficulty_graph_html(
             seed,
             vanilla_seed,
             mod_label=mod_label,
             vanilla_label=vanilla_label,
+            vanilla_series=vanilla_series,
+            mod_series=mod_series,
             on_progress=lambda percent: emit(
-                35 + percent * 30 // 100, "difficulté comparée"
+                55 + percent * 10 // 100, "difficulté comparée"
             ),
         )
         _, difficulty_body = _document_parts(difficulty_doc)
@@ -284,36 +386,91 @@ def write_full_report(
             f"<section class='report-section' id='difficulte'>{difficulty_body}</section>"
         )
     else:
+        series = difficulty_series(
+            seed,
+            on_progress=lambda percent: emit(
+                35 + percent * 20 // 100, "série de difficulté"
+            ),
+        )
+        difficulty_total = series[-1]["cumulative_total"] if series else None
+        difficulty_html = difficulty_table_html(
+            seed,
+            label="seed",
+            series=series,
+            on_progress=lambda percent: emit(
+                55 + percent * 10 // 100, "tableau de difficulté"
+            ),
+        )
         difficulty_section = (
             "<section class='report-section' id='difficulte'><h2>Difficulté (ressources brutes)</h2>"
             "<details class='table-fold' id='difficulte-table'><summary>Détail par technologie</summary><div class='cols'>"
-            f"{difficulty_table_html(seed, label='seed', on_progress=lambda percent: emit(35 + percent * 30 // 100, 'tableau de difficulté'))}"
+            f"{difficulty_html}"
             "</div></details></section>"
         )
     emit(65, "partie simulée")
-    playthrough = playthrough_report(
-        dump,
-        db,
-        seed=seed,
-        title=playthrough_title or f"{title} — partie simulée",
-        on_progress=lambda percent, detail: emit(
-            65 + percent * 23 // 100, detail
-        ),
-    )
-    playthrough_section = _playthrough_section(playthrough)
+    if "playthrough" in skip:
+        playthrough: dict = {"analysis": {}, "rows": [], "progression": {}}
+        playthrough_section = ""
+    else:
+        playthrough = playthrough_report(
+            dump,
+            db,
+            seed=seed,
+            title=playthrough_title or f"{title} — partie simulée",
+            cache="cache" not in skip,
+            on_progress=lambda percent, detail: emit(
+                65 + percent * 23 // 100, detail
+            ),
+        )
+        playthrough_section = _playthrough_section(playthrough)
+    if "complexity" in skip:
+        complexity_data = None
+    else:
+        simulation_stats = playthrough.get("complexity_stats")
+        emit(
+            88,
+            "complexité depuis la simulation"
+            if simulation_stats
+            else "complexité depuis le graphe mémoïsé",
+        )
+        complexity_data = analyze_complexity(
+            seed,
+            db,
+            graph=graph,
+            playthrough=simulation_stats,
+        )
+        complexity_doc = render_complexity_html(
+            seed,
+            db,
+            title=title,
+            data=complexity_data,
+            baseline=baseline_complexity,
+            baseline_label=vanilla_label,
+            on_progress=lambda percent, detail: emit(
+                88 + percent * 2 // 100, f"complexité — {detail}"
+            ),
+        )
+        _, body = _document_parts(complexity_doc)
     controls_section = _checks_section(checks)
-    emit(90, "assemblage du rapport")
-    inserted = controls_section + coverage_section + difficulty_section + playthrough_section
+    emit(91, "assemblage du rapport")
+    inserted = (
+        controls_section
+        + coverage_section
+        + profile_section
+        + difficulty_section
+        + playthrough_section
+    )
     if "</main>" in body:
         body = body.replace("</main>", f"{inserted}</main>", 1)
     else:
         body += inserted
     if "</header>" in body:
-        body = body.replace("</header>", f"</header>{_TOC}", 1)
+        toc = _toc(skip)
+        body = body.replace("</header>", f"</header>{toc}", 1)
     else:
-        body = _TOC + body
+        body = _toc(skip) + body
     body += _TOC_SCRIPT
-    style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{_REPORT_CSS}"
+    style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{PROFILE_CSS}\n{_REPORT_CSS}"
     document = (
         "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -327,7 +484,10 @@ def write_full_report(
         "analysis": playthrough["analysis"],
         "rows": playthrough["rows"],
         "progression": playthrough["progression"],
+        "cache_hit": playthrough.get("cache_hit", False),
+        "cache_written": playthrough.get("cache_written", False),
         "coverage": dump_coverage,
         "difficulty_total": difficulty_total,
+        "difficulty_profile": difficulty_profile_result,
         "path": path,
     }

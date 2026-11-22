@@ -5,7 +5,8 @@ champ vide sauf surcharge dans ``config/user.yaml``. Bug corrigé :
 la chaîne vide (falsy) faisait retomber sur ``Path()`` = ``.``, un dossier
 TOUJOURS valide — le mod était alors déposé à la racine du dépôt (plus un
 ``mod-list.json``) au lieu du fallback ``output/``. Ce test verrouille qu'aucun
-``randputF_*`` / ``mod-list.json`` n'apparaît jamais à la racine.
+``randputF_*`` / ``mod-list.json`` n'apparaît jamais à la racine. Le mod va
+toujours dans ``output/mods/`` et ses HTML dans ``output/reports/``.
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ def test_install_factorio_mods_vide_retombe_sur_output(empty_user_config):
     )
     assert out.returncode == 0, out.stderr
 
-    assert "mod assemble dans" in out.stdout
+    assert "mod assemblé dans" in out.stdout
     assert "Aucun dossier mods configure" in out.stdout
 
     # Le bug déposait le mod à la racine : ces deux artefacts ne doivent JAMAIS
@@ -57,12 +58,16 @@ def test_install_factorio_mods_vide_retombe_sur_output(empty_user_config):
     assert not (ROOT / MOD_NAME_VERSIONED).exists()
     assert not (ROOT / "mod-list.json").exists()
 
-    # Le fallback atteint bien output/ : le mod y est assemblé tel quel.
-    asm = ROOT / "output" / MOD_NAME_VERSIONED
+    # Le fallback atteint bien output/mods/ : le mod y est assemblé tel quel.
+    asm = ROOT / "output" / "mods" / MOD_NAME_VERSIONED
     assert asm.is_dir()
     assert (asm / "info.json").is_file()
     assert (asm / "data.lua").is_file()
-    assert not (asm / "seed.graph.html").exists()  # pas de graphe avec --install
+    assert not list(asm.glob("*.html"))
+
+    reports = ROOT / "output" / "reports" / MOD_NAME_VERSIONED
+    assert (reports / "seed.graph.html").is_file()
+    assert (reports / "seed.complexity.html").is_file()
 
 
 @pytest.fixture
@@ -106,6 +111,7 @@ def test_install_ne_desactive_pas_l_exporter(user_config_mods: Path):
     )
     assert out.returncode == 0, out.stderr
 
+    assert (ROOT / "output" / "mods" / MOD_NAME_VERSIONED / "info.json").is_file()
     data = json.loads((user_config_mods / "mod-list.json").read_text(encoding="utf-8"))
     exporter = next(m for m in data["mods"] if m["name"] == "randputf-exporter")
     assert exporter["enabled"] is True

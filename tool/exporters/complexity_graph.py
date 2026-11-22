@@ -19,8 +19,9 @@ Mesures produites :
 - courbes par tech : temps de recherche, ressources brutes consommées,
   nombre d'ateliers de fabrication distincts, ratio ressources / atelier ;
 - résumé : score de complexité, temps de craft total (comme si un joueur
-  faisait tous les crafts), temps de recherche total, fabricateur le plus
-  utilisé et ressource la plus consommée pendant la partie.
+  faisait tous les crafts), temps de recherche total, profondeur maximale,
+  temps critique de la chaîne de recettes, fabricateur le plus utilisé et
+  ressource la plus consommée pendant la partie.
 
 Le fichier est indépendant du témoin de déterminisme (il n'entre pas dans
 le hash md5) et est régénéré à chaque export.
@@ -38,7 +39,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tool.audit.graph import Expansion, GraphAnalysis, analyze_graph, clean_number
 from tool.exporters.html_ui import TIP_HTML, UI_CSS, UI_SCRIPT, th as _th
+
+_Expansion = Expansion
 
 # ---------------------------------------------------------------------------
 # Vitesses de craft
@@ -54,6 +58,10 @@ def _progress_slice(
         return None
     span = high - low
     return lambda percent, detail: on_progress(low + percent * span // 100, detail)
+
+
+def _format_steps(value: int) -> str:
+    return f"{value:,}".replace(",", " ")
 
 
 class _StepProgress:
@@ -73,25 +81,48 @@ class _StepProgress:
         self.detail = detail
         self.value = low
         self.steps = 0
+        self.checked = 0
         self.interval = interval
         self.last = time.monotonic()
+        self.position = ""
 
-    def tick(self) -> None:
+    def tick(
+        self,
+        item: str = "",
+        amount: int = 0,
+        stack: tuple[str, ...] = (),
+        max_depth: int = 0,
+    ) -> None:
         if self.on_progress is None:
             return
         self.steps += 1
+        self.checked += 1
+        if item:
+            path = " → ".join((*stack[-3:], item))
+            depth = min(len(stack) + 1, max_depth)
+            self.position = (
+                f"profondeur {depth}/{max_depth} · {path} · {_format_steps(amount)} unités"
+            )
+        if self.checked < 64:
+            return
+        self.checked = 0
         now = time.monotonic()
         if now - self.last < self.interval:
             return
         self.last = now
         if self.value < self.high:
             self.value += 1
-        label = f"{self.detail} · {self.steps} étapes"
+        label = f"{self.detail} · {_format_steps(self.steps)} étapes"
+        if self.position:
+            label += f" · {self.position}"
         self.on_progress(self.value, label)
 
     def done(self) -> None:
         if self.on_progress is not None:
-            self.on_progress(self.high, self.detail)
+            label = f"{self.detail} · {_format_steps(self.steps)} étapes"
+            if self.position:
+                label += f" · {self.position}"
+            self.on_progress(self.high, label)
 
 
 def _crafting_speeds(db: Any = None) -> dict[str, float]:
@@ -214,14 +245,14 @@ def _expand(
     exp: _Expansion,
     stack: tuple[str, ...],
     max_depth: int = 64,
-    tick: Callable[[], None] | None = None,
+    tick: Callable[[str, int, tuple[str, ...], int], None] | None = None,
 ) -> None:
     """Ajoute à ``exp`` ce qu'il faut pour produire ``amount`` unités de ``item``.
 
-    ``index`` fournit les recettes, ``speeds`` les vitesses machines, ``terminal`` les produits considérés bruts, ``stack`` la pile de récursion et ``max_depth`` la profondeur maximale. ``tick`` reçoit un signal à chaque étape de dépliage. Les cycles et les produits sans recette sont repliés en ressources brutes. Retourne ``None`` et mute ``exp``.
+    ``index`` fournit les recettes, ``speeds`` les vitesses machines, ``terminal`` les produits considérés bruts, ``stack`` la pile de récursion et ``max_depth`` la profondeur maximale. ``tick`` reçoit un signal à chaque étape de dépliage avec la position courante. Les cycles et les produits sans recette sont repliés en ressources brutes. Retourne ``None`` et mute ``exp``.
     """
     if tick is not None:
-        tick()
+        tick(item, amount, stack, max_depth)
     if amount <= 0:
         return
     if item in terminal:
@@ -312,8 +343,19 @@ def _science_requirements(tech: dict) -> list[tuple[str, int]]:
     return out
 
 
+def _counter_delta(
+    previous: dict[str, Any], current: dict[str, Any]
+) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for name in set(previous) | set(current):
+        delta = float(current.get(name, 0) or 0) - float(previous.get(name, 0) or 0)
+        if delta > 0:
+            out[name] = delta
+    return out
+
+
 def _format_seconds(value: float) -> str:
-    """Formate une durée en ``mm:ss`` ou ``h:mm:ss``.
+    """Formate une durée en ``mm:ss``, ``h:mm:ss`` ou unités plus lisibles.
 
     ``value`` est un nombre de secondes (négatif ramené à zéro). Retourne la chaîne destinée à l'affichage HTML, sans dépendance externe.
     """
@@ -321,7 +363,19 @@ def _format_seconds(value: float) -> str:
     hours, rest = divmod(seconds, 3600)
     minutes, sec = divmod(rest, 60)
     if hours:
-        return f"{hours}:{minutes:02d}:{sec:02d}"
+        if hours < 24:
+            return f"{hours}:{minutes:02d}:{sec:02d}"
+        days = seconds / 86400
+        years = days / 365.2425
+        if years >= 1_000_000:
+            formatted = f"{years / 1_000_000:,.1f} M d'années"
+        elif years >= 1_000:
+            formatted = f"{years / 1_000:,.1f} k ans"
+        elif years >= 1:
+            formatted = f"{years:,.1f} ans"
+        else:
+            formatted = f"{days:,.1f} j"
+        return formatted.replace(",", " ").replace(".", ",")
     return f"{minutes}:{sec:02d}"
 
 
@@ -338,82 +392,152 @@ def _format_number(value: float) -> str:
     return f"{value:,.2f}".replace(",", " ").rstrip("0").rstrip(".")
 
 
+def _format_ratio(value: Any, reference: Any) -> str | None:
+    try:
+        current = float(value)
+        base = float(reference)
+    except (TypeError, ValueError):
+        return None
+    if base <= 0:
+        return None
+    ratio = current / base
+    if ratio >= 1000:
+        text = f"{ratio:,.0f}"
+    elif ratio >= 100:
+        text = f"{ratio:.0f}"
+    elif ratio >= 10:
+        text = f"{ratio:.1f}"
+    elif ratio >= 0.01:
+        text = f"{ratio:.2f}"
+    else:
+        text = f"{ratio:.4f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "×" + text.replace(",", " ").replace(".", ",")
+
+
+def _length_fields(analysis: GraphAnalysis | None) -> dict:
+    axes = {}
+    if analysis is not None:
+        profile = analysis.profile or {}
+        axes = profile.get("raw_axes") or profile.get("axes") or {}
+    depth = (axes.get("structure") or {}).get("depth")
+    critical = (axes.get("critical") or {}).get("critical_seconds")
+    return {
+        "chain_depth": clean_number(depth) if depth is not None else None,
+        "critical_seconds": clean_number(critical) if critical is not None else None,
+        "critical_label": (
+            _format_seconds(float(critical)) if critical is not None else None
+        ),
+    }
+
+
+def _complexity_from_playthrough(
+    seed: dict,
+    playthrough: dict,
+    on_progress: Callable[[int, str], None] | None = None,
+    *,
+    graph: GraphAnalysis | None = None,
+) -> dict:
+    if on_progress is not None:
+        on_progress(0, "complexité depuis la simulation")
+    rows = playthrough["rows"]
+    resource_counter = Counter(
+        {name: float(value) for name, value in (playthrough.get("resources") or {}).items()}
+    )
+    building_counter = Counter(
+        {name: int(value) for name, value in (playthrough.get("buildings") or {}).items()}
+    )
+    total_research = sum(float(row.get("research_time", 0) or 0) for row in rows)
+    total_craft_seconds = sum(float(row.get("craft_seconds", 0) or 0) for row in rows)
+    total_packs = sum(int(row.get("packs", 0) or 0) for row in rows)
+    total_crafts = sum(float(row.get("crafts", 0) or 0) for row in rows)
+    hand_crafts = sum(float(row.get("hand_crafts", 0) or 0) for row in rows)
+    total_raw = sum(resource_counter.values())
+    distinct_buildings = len(building_counter)
+    complexity_score = (
+        total_research + total_craft_seconds + 0.5 * total_packs + 10 * distinct_buildings
+    )
+    building_usage = [
+        (name, clean_number(value)) for name, value in building_counter.most_common()
+    ]
+    resource_usage = [
+        (name, clean_number(value)) for name, value in resource_counter.most_common()
+    ]
+    if on_progress is not None:
+        on_progress(100, "complexité depuis la simulation terminée")
+    return {
+        "seed_value": (seed.get("meta") or {}).get("seed", "?"),
+        "generator_version": (seed.get("meta") or {}).get("generator_version", "?"),
+        "tech_count": len(rows),
+        "free_count": len(seed.get("free_researches") or []),
+        "total_research_seconds": round(total_research, 2),
+        "total_research_label": _format_seconds(total_research),
+        "total_craft_seconds": round(total_craft_seconds, 2),
+        "total_craft_label": _format_seconds(total_craft_seconds),
+        "total_packs": total_packs,
+        "total_raw": clean_number(total_raw),
+        "total_crafts": clean_number(total_crafts),
+        "hand_crafts": clean_number(hand_crafts),
+        "complexity_score": round(complexity_score, 1),
+        "distinct_buildings": distinct_buildings,
+        "most_used_fabricator": building_usage[0][0] if building_usage else None,
+        "most_used_fabricator_crafts": building_usage[0][1] if building_usage else 0,
+        "most_used_resource": resource_usage[0][0] if resource_usage else None,
+        "most_used_resource_amount": resource_usage[0][1] if resource_usage else 0,
+        "building_usage": building_usage,
+        "resource_usage": resource_usage,
+        "unknown_terminals": playthrough.get("unknown_terminals", []),
+        "tech_rows": rows,
+        **_length_fields(graph),
+    }
+
+
 def analyze_complexity(
     seed: dict,
     db: Any = None,
     on_progress: Callable[[int, str], None] | None = None,
+    *,
+    graph: GraphAnalysis | None = None,
+    playthrough: dict | None = None,
 ) -> dict:
-    """Calcule le rapport de complexité complet d'une seed.
-
-    ``seed`` fournit recettes, technologies, ordre de progression et pools ; ``db`` est optionnel et sert de repli pour les entités. ``on_progress`` reçoit un pourcentage et une action pendant le dépliage des technologies. Retourne un dict sérialisable contenant les totaux, le score, les usages de bâtiments/ressources et une ligne détaillée par technologie (``tech_rows``).
-    """
-    recipes = seed.get("recipes") or []
-    technologies = seed.get("technologies") or []
-    progression = list(seed.get("progression_order") or [])
+    """Calcule le rapport de complexité complet d'une seed."""
+    if playthrough is not None and playthrough.get("rows"):
+        return _complexity_from_playthrough(
+            seed, playthrough, on_progress, graph=graph
+        )
+    analysis = graph if graph is not None else analyze_graph(seed, db, on_progress)
     free = set(seed.get("free_researches") or [])
-    starter = {
-        item.get("name")
-        for item in (seed.get("starter_kit") or [])
-        if item.get("name")
-    }
-    pools = seed.get("pools") or {}
-    raw_resources = set(pools.get("raw_resources") or ())
+    tech_by_id = {t.get("id"): t for t in seed.get("technologies") or [] if t.get("id")}
 
-    index = _RecipeIndex(recipes)
-    # Le kit de départ sert d'amorce : ses objets coupent les cycles de
-    # recettes (fonte → foreuse → pompe → …). Ils sont donc terminaux.
-    terminal = raw_resources | starter
-    speeds = _crafting_speeds(db)
-    tech_by_id = {t.get("id"): t for t in technologies if t.get("id")}
+    def clean_counter(counter: Counter) -> list[tuple[str, Any]]:
+        return [(name, clean_number(value)) for name, value in counter.most_common()]
 
-    global_exp = _Expansion()
+    global_exp = Expansion()
     tech_rows: list[dict] = []
     seen_buildings: set[str] = set()
     cumulative = {
         "time": 0.0,
         "packs": 0,
-        "raw": 0,
+        "raw": 0.0,
         "craft_seconds": 0.0,
-        "crafts": 0,
+        "crafts": 0.0,
     }
 
-    if on_progress is not None:
-        on_progress(0, "dépliage des recettes")
-    total_techs = max(1, len(progression))
-    for position, tech_id in enumerate(progression, start=1):
-        step = _StepProgress(
-            on_progress,
-            (position - 1) * 100 // total_techs,
-            position * 100 // total_techs,
-            "dépliage des recettes",
-        )
+    for position, tech_id in enumerate(analysis.progression, start=1):
         tech = tech_by_id.get(tech_id)
         if not tech:
-            step.done()
             continue
-
-        tech_exp = _Expansion()
-        packs: list[dict] = []
-        pack_total = 0
-        for name, amount in _science_requirements(tech):
-            packs.append({"name": name, "amount": amount})
-            pack_total += amount
-            if amount > 0:
-                _expand(
-                    index,
-                    speeds,
-                    name,
-                    amount,
-                    terminal=terminal,
-                    exp=tech_exp,
-                    stack=(),
-                    tick=step.tick,
-                )
+        tech_exp = analysis.tech_expansions.get(tech_id, Expansion())
         global_exp.add(tech_exp)
-
+        packs = [
+            {"name": name, "amount": amount}
+            for name, amount in _science_requirements(tech)
+        ]
+        pack_total = sum(pack["amount"] for pack in packs)
         research_time = _tech_seconds(tech)
         raw_total = sum(tech_exp.raw.values())
-        buildings = {b for b in tech_exp.buildings}
+        buildings = set(tech_exp.buildings)
         crafts_total = sum(tech_exp.crafts.values()) + tech_exp.hand_crafts
         ratio = raw_total / max(len(buildings), 1)
 
@@ -439,26 +563,22 @@ def analyze_complexity(
                 "research_time": round(research_time, 2),
                 "packs": pack_total,
                 "pack_list": packs,
-                "raw_total": raw_total,
+                "raw_total": clean_number(raw_total),
                 "buildings": sorted(buildings),
                 "building_count": len(buildings),
                 "ratio": round(ratio, 2),
-                "crafts": crafts_total,
+                "crafts": clean_number(crafts_total),
                 "craft_seconds": round(tech_exp.machine_seconds, 2),
-                "hand_crafts": tech_exp.hand_crafts,
+                "hand_crafts": clean_number(tech_exp.hand_crafts),
                 "cumulative_time": round(cumulative["time"], 2),
                 "cumulative_packs": cumulative["packs"],
-                "cumulative_raw": cumulative["raw"],
+                "cumulative_raw": clean_number(cumulative["raw"]),
                 "cumulative_buildings": len(seen_buildings),
                 "cumulative_craft_seconds": round(cumulative["craft_seconds"], 2),
-                "cumulative_crafts": cumulative["crafts"],
+                "cumulative_crafts": clean_number(cumulative["crafts"]),
                 "cumulative_score": round(cumulative_score, 2),
             }
         )
-        step.done()
-
-    if on_progress is not None:
-        on_progress(100, "complexité calculée")
 
     total_research = cumulative["time"]
     total_craft_seconds = global_exp.machine_seconds
@@ -466,14 +586,11 @@ def analyze_complexity(
     total_raw = sum(global_exp.raw.values())
     distinct_buildings = len(global_exp.buildings)
     total_crafts = sum(global_exp.crafts.values()) + global_exp.hand_crafts
-
-    # Score : temps de recherche + temps de craft + packs + variété d'ateliers.
     complexity_score = (
         total_research + total_craft_seconds + 0.5 * total_packs + 10 * distinct_buildings
     )
-
-    building_usage = global_exp.buildings.most_common()
-    resource_usage = global_exp.raw.most_common()
+    building_usage = clean_counter(global_exp.buildings)
+    resource_usage = clean_counter(global_exp.raw)
 
     return {
         "seed_value": (seed.get("meta") or {}).get("seed", "?"),
@@ -485,9 +602,9 @@ def analyze_complexity(
         "total_craft_seconds": round(total_craft_seconds, 2),
         "total_craft_label": _format_seconds(total_craft_seconds),
         "total_packs": total_packs,
-        "total_raw": total_raw,
-        "total_crafts": total_crafts,
-        "hand_crafts": global_exp.hand_crafts,
+        "total_raw": clean_number(total_raw),
+        "total_crafts": clean_number(total_crafts),
+        "hand_crafts": clean_number(global_exp.hand_crafts),
         "complexity_score": round(complexity_score, 1),
         "distinct_buildings": distinct_buildings,
         "most_used_fabricator": building_usage[0][0] if building_usage else None,
@@ -496,8 +613,9 @@ def analyze_complexity(
         "most_used_resource_amount": resource_usage[0][1] if resource_usage else 0,
         "building_usage": building_usage,
         "resource_usage": resource_usage,
-        "unknown_terminals": sorted(global_exp.unknown),
+        "unknown_terminals": analysis.unknown,
         "tech_rows": tech_rows,
+        **_length_fields(analysis),
     }
 
 
@@ -627,7 +745,13 @@ def _chart_svg(
     return "".join(parts)
 
 
-def _bar_list(title: str, rows: list[tuple[str, float]], color: str) -> str:
+def _bar_list(
+    title: str,
+    rows: list[tuple[str, float]],
+    color: str,
+    baseline: dict[str, float] | None = None,
+    baseline_label: str = "vanilla",
+) -> str:
     """Génère un classement en barres horizontales pour la complexité.
 
     Les barres sont normalisées sur la plus grande valeur et affichent la
@@ -636,15 +760,22 @@ def _bar_list(title: str, rows: list[tuple[str, float]], color: str) -> str:
     if not rows:
         return f'<p class="muted">{_html.escape(title)} : aucune donnée.</p>'
     top = max(value for _, value in rows) or 1
+    references = baseline or {}
     items = []
     for name, value in rows:
         width = max(2.0, (value / top) * 100)
+        ratio = _format_ratio(value, references.get(name)) if references else None
+        ratio_html = (
+            f'<span class="ratio"> {ratio} {_html.escape(baseline_label)}</span>'
+            if ratio
+            else ""
+        )
         items.append(
             '<div class="bar-row">'
             f'<div class="bar-name">{_html.escape(name)}</div>'
             f'<div class="bar-bg"><div class="bar-fill" '
             f'style="width:{width:.1f}%;background:{color}"></div></div>'
-            f'<div class="bar-val">{_html.escape(_format_number(value))}</div>'
+            f'<div class="bar-val">{_html.escape(_format_number(value))}{ratio_html}</div>'
             "</div>"
         )
     return (
@@ -673,6 +804,7 @@ h1{margin:0;font-size:22px}
   letter-spacing:.06em;margin-bottom:6px}
 .stat .val{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .stat .hint{color:var(--muted);font-size:10px;margin-top:3px}
+.ratio{color:var(--accent);font-variant-numeric:tabular-nums}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
 .acc{color:var(--accent)}
 main{padding:24px;max-width:1400px;margin:0 auto}
@@ -729,13 +861,27 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 _CSS = _CSS + UI_CSS
 
 
-def _stat(lab: str, val: str, cls: str = "", hint: str = "") -> str:
+def _stat(
+    lab: str,
+    val: str,
+    cls: str = "",
+    hint: str = "",
+    ratio: str | None = None,
+    baseline_label: str = "vanilla",
+) -> str:
     """Génère une tuile du bandeau de statistiques de complexité.
 
     ``cls`` choisit la couleur de la valeur et ``hint`` ajoute une infobulle
     discrète sous celle-ci.
     """
-    hint_html = f'<div class="hint">{_html.escape(hint)}</div>' if hint else ""
+    parts = []
+    if hint:
+        parts.append(_html.escape(hint))
+    if ratio:
+        parts.append(
+            f'<span class="ratio">{ratio} {_html.escape(baseline_label)}</span>'
+        )
+    hint_html = f'<div class="hint">{" · ".join(parts)}</div>' if parts else ""
     return (
         f'<div class="stat"><div class="lab">{_html.escape(lab)}</div>'
         f'<div class="val {cls}">{_html.escape(val)}</div>{hint_html}</div>'
@@ -747,43 +893,92 @@ def render_complexity_html(
     db: Any = None,
     *,
     title: str | None = None,
+    data: dict | None = None,
+    graph: GraphAnalysis | None = None,
+    baseline: dict | None = None,
+    baseline_label: str = "vanilla",
     on_progress: Callable[[int, str], None] | None = None,
 ) -> str:
-    """Rend le rapport de complexité autonome d'une seed.
-
-    ``seed`` est la seed, ``db`` une base optionnelle et ``title`` un titre personnalisé. ``on_progress`` reçoit un pourcentage et une action pendant le calcul, les graphiques et le tableau. Retourne une chaîne HTML complète, sans ressource externe, prête à être écrite ou affichée.
-    """
-    data = analyze_complexity(seed, db, on_progress=_progress_slice(on_progress, 0, 70))
+    """Rend le rapport de complexité autonome d'une seed."""
+    if data is None:
+        data = analyze_complexity(
+            seed,
+            db,
+            graph=graph,
+            on_progress=_progress_slice(on_progress, 0, 70),
+        )
     rows = data["tech_rows"]
     labels = [str(row["num"]) for row in rows]
+    chain_depth = data.get("chain_depth")
+    critical_label = data.get("critical_label")
+    reference = baseline or {}
+
+    def ratio(field: str) -> str | None:
+        return _format_ratio(data.get(field), reference.get(field)) if reference else None
 
     header_stats = "".join(
         [
-            _stat("Score de complexité", _format_number(data["complexity_score"]), "bad"),
+            _stat(
+                "Score de complexité",
+                _format_number(data["complexity_score"]),
+                "bad",
+                ratio=ratio("complexity_score"),
+                baseline_label=baseline_label,
+            ),
             _stat(
                 "Temps de craft total",
                 data["total_craft_label"],
                 "acc",
                 "somme des crafts, 1 machine",
+                ratio("total_craft_seconds"),
+                baseline_label,
             ),
             _stat(
                 "Temps de recherche",
                 data["total_research_label"],
                 "acc",
                 "toutes les techs",
+                ratio("total_research_seconds"),
+                baseline_label,
             ),
-            _stat("Packs de science", _format_number(data["total_packs"]), "acc"),
+            _stat(
+                "Packs de science",
+                _format_number(data["total_packs"]),
+                "acc",
+                ratio=ratio("total_packs"),
+                baseline_label=baseline_label,
+            ),
+            _stat(
+                "Profondeur max",
+                _format_number(chain_depth) if chain_depth is not None else "—",
+                "acc",
+                "chaîne de recettes la plus longue",
+                ratio("chain_depth"),
+                baseline_label,
+            ),
+            _stat(
+                "Temps critique",
+                critical_label or "—",
+                "warn",
+                "machine la plus lente de la chaîne",
+                ratio("critical_seconds"),
+                baseline_label,
+            ),
             _stat(
                 "Fabricateur le plus utilisé",
                 data["most_used_fabricator"] or "—",
                 "ok",
                 f"{_format_number(data['most_used_fabricator_crafts'])} crafts",
+                ratio("most_used_fabricator_crafts"),
+                baseline_label,
             ),
             _stat(
                 "Ressource la plus consommée",
                 data["most_used_resource"] or "—",
                 "warn",
                 f"{_format_number(data['most_used_resource_amount'])} unités",
+                ratio("most_used_resource_amount"),
+                baseline_label,
             ),
         ]
     )
@@ -807,15 +1002,21 @@ def render_complexity_html(
             )
     charts = "".join(chart_parts)
 
+    baseline_buildings = dict(reference.get("building_usage") or [])
+    baseline_resources = dict(reference.get("resource_usage") or [])
     building_rows = _bar_list(
         "Ateliers les plus utilisés (crafts)",
         data["building_usage"][:12],
         "var(--accent)",
+        baseline_buildings if reference else None,
+        baseline_label,
     )
     resource_rows = _bar_list(
         "Ressources brutes les plus consommées",
         data["resource_usage"][:12],
         "var(--hl5)",
+        baseline_resources if reference else None,
+        baseline_label,
     )
 
     table_rows = []
@@ -859,6 +1060,14 @@ def render_complexity_html(
             '<div class="note">Ingrédients sans recette ni ressource brute '
             f"(traités comme bruts) : {names}</div>"
         )
+    comparison_note = ""
+    if reference:
+        comparison_note = (
+            "<div class='note'>Les « ×N » comparent chaque valeur à "
+            f"{_html.escape(baseline_label)}. Pour le profil de difficulté, "
+            "les volumes et temps sont comparés en échelle logarithmique : "
+            "le ratio affiché mesure l'écart de difficulté, pas le rapport brut.</div>"
+        )
 
     if title is None:
         title = f"randputF seed {data['seed_value']}"
@@ -870,13 +1079,17 @@ def render_complexity_html(
         "<div class='sub'>Modèle joueur : packs de science dépliés jusqu'aux "
         "ressources brutes, crafts comptés par atelier.</div>"
         f"<div class='stats'>{header_stats}</div></header><main>"
-        "<section><h2>Courbes par technologie</h2>"
+        "<section id='complexite-courbes'><h2>Courbes par technologie</h2>"
         f"<div class='charts'>{charts}</div>"
+        f"{comparison_note}"
         "<div class='note'>Le temps de craft total est la somme des temps de "
         "tous les crafts nécessaires pour tous les packs de science, comme si "
-        "une seule machine les enchaînait. Le score ajoute le temps de "
-        "recherche, 0,5 × packs et 10 × ateliers distincts.</div></section>"
-        "<section><div class='two'>"
+        "une seule machine les enchaînait. La profondeur max est la chaîne de "
+        "recettes la plus longue ; le temps critique est le temps machine de "
+        "cette chaîne la plus lente, sans parallélisme ni attente réelle. Le "
+        "score ajoute le temps de recherche, 0,5 × packs et 10 × ateliers "
+        "distincts.</div></section>"
+        "<section id='complexite-ateliers'><div class='two'>"
         f"<div>{building_rows}</div><div>{resource_rows}</div>"
         f"</div>{unknown_note}</section>"
         "<section><details class='table-fold' id='complexite-detail-table'>"
@@ -930,6 +1143,8 @@ def write_complexity_html(
 
 # ``energy_usage`` du dump est en joules par tick (60 ticks/s) : J/tick × 60 / 1000.
 _ENERGY_KW_FACTOR = 0.06
+_ITEM_AMOUNTS_CACHE: dict[int, tuple[Any, tuple[tuple[str, int | float], ...]]] = {}
+_ITEM_AMOUNTS_CACHE_LIMIT = 200_000
 
 
 def _amount(value: Any) -> int | float:
@@ -946,12 +1161,16 @@ def _amount(value: Any) -> int | float:
     return number
 
 
-def _item_amounts(entries: Any) -> list[tuple[str, int | float]]:
+def _item_amounts(entries: Any) -> tuple[tuple[str, int | float], ...]:
     """Convertit des entrées ``{name, amount}`` du dump en couples exploitables.
 
     Les entrées sans nom sont ignorées et les quantités passent par
     :func:`_amount`, qui normalise les valeurs numériques du dump.
     """
+    key = id(entries)
+    cached = _ITEM_AMOUNTS_CACHE.get(key)
+    if cached is not None and cached[0] is entries:
+        return cached[1]
     out: list[tuple[str, int | float]] = []
     for entry in entries or []:
         if not isinstance(entry, dict):
@@ -960,7 +1179,11 @@ def _item_amounts(entries: Any) -> list[tuple[str, int | float]]:
         if not name:
             continue
         out.append((str(name), _amount(entry.get("amount", 0))))
-    return out
+    result = tuple(out)
+    if len(_ITEM_AMOUNTS_CACHE) >= _ITEM_AMOUNTS_CACHE_LIMIT:
+        _ITEM_AMOUNTS_CACHE.clear()
+    _ITEM_AMOUNTS_CACHE[key] = (entries, result)
+    return result
 
 
 def _number(value: Any) -> int | float:
@@ -1100,6 +1323,18 @@ class _Playthrough:
             )
 
         self.speeds = _crafting_speeds(db)
+        self.recipe_ingredients = {
+            recipe["name"]: set(self._ingredient_names(recipe)) for recipe in self.recipes
+        }
+        self._recipe_choices: dict[tuple[str, int], list[dict]] = {}
+        self._recipe_choice_version = 0
+        self._output_amounts: dict[tuple[str, str], int | float] = {}
+        self._recipe_seconds_per_craft: dict[str, float] = {}
+        self._power_by_building: dict[str, float] = {}
+        self._power_by_recipe: dict[str, float] = {}
+        self._drills_by_category: dict[Any, dict | None] = {}
+        self._mine_sources: dict[str, tuple[dict, dict | None] | None] = {}
+        self._rocket_parts_cache: tuple[int | None] | None = None
 
         self.inv: dict[str, float] = defaultdict(float)
         self.produced: dict[str, float] = defaultdict(float)
@@ -1115,6 +1350,19 @@ class _Playthrough:
         self.used_buildings: set[str] = set()
         self.buildings: list[str] = []
         self.total_craft_seconds = 0.0
+        self.building_crafts: dict[str, int] = defaultdict(int)
+        self.hand_crafts = 0
+        self.complexity_rows: list[dict] = []
+        self.complexity_resources: dict[str, float] = defaultdict(float)
+        self.complexity_buildings: dict[str, int] = defaultdict(int)
+        self.complexity_cumulative = {
+            "time": 0.0,
+            "packs": 0,
+            "raw": 0.0,
+            "craft_seconds": 0.0,
+            "crafts": 0.0,
+        }
+        self.complexity_seen_buildings: set[str] = set()
 
     # -- disponibilité des recettes -----------------------------------------
 
@@ -1142,26 +1390,26 @@ class _Playthrough:
         alternative existe. À défaut, on privilégie l'homonyme, puis les
         recettes hors variantes ``ease``, puis l'ordre alphabétique.
         """
-        candidates = [
-            r for r in self.producers.get(item, []) if self._is_available(r["name"])
-        ]
+        key = (item, self._recipe_choice_version)
+        candidates = self._recipe_choices.get(key)
+        if candidates is None:
+            candidates = sorted(
+                (
+                    r
+                    for r in self.producers.get(item, [])
+                    if self._is_available(r["name"])
+                ),
+                key=lambda r: (r["name"] != item, "ease" in r["name"], r["name"]),
+            )
+            self._recipe_choices[key] = candidates
         if not candidates:
             return None
-
-        def cyclic(recipe: dict) -> bool:
-            """Détecte une recette cyclique à ce stade.
-
-            ``recipe`` est la recette candidate ; retourne ``True`` si elle consomme l'item courant ou un item déjà présent dans ``stack``. Sert à écarter les cycles quand une alternative existe.
-            """
-            names = self._ingredient_names(recipe)
-            return item in names or any(name in stack for name in names)
-
-        usable = [r for r in candidates if not cyclic(r)] or candidates
-        # Recette homonyme d'abord, puis hors variantes ``ease``, puis ordre.
-        return sorted(
-            usable,
-            key=lambda r: (r["name"] != item, "ease" in r["name"], r["name"]),
-        )[0]
+        stack_set = set(stack)
+        for recipe in candidates:
+            names = self.recipe_ingredients.get(recipe["name"], set())
+            if item not in names and not stack_set.intersection(names):
+                return recipe
+        return candidates[0]
 
     @staticmethod
     def _output_amount(recipe: dict, item: str) -> int | float:
@@ -1184,22 +1432,29 @@ class _Playthrough:
         """
         if not name:
             return 0.0
-        entry = self.entities.get(name) or {}
-        usage = entry.get("energy_usage")
-        if usage is None and self.db is not None:
-            buildings = getattr(self.db, "buildings", None) or {}
-            usage = getattr(buildings.get(name), "energy_usage", None)
-        try:
-            return float(usage) * _ENERGY_KW_FACTOR
-        except (TypeError, ValueError):
-            return 0.0
+        if name not in self._power_by_building:
+            entry = self.entities.get(name) or {}
+            usage = entry.get("energy_usage")
+            if usage is None and self.db is not None:
+                buildings = getattr(self.db, "buildings", None) or {}
+                usage = getattr(buildings.get(name), "energy_usage", None)
+            try:
+                self._power_by_building[name] = float(usage) * _ENERGY_KW_FACTOR
+            except (TypeError, ValueError):
+                self._power_by_building[name] = 0.0
+        return self._power_by_building[name]
 
     def _recipe_power_kw(self, recipe: dict) -> float:
         """Retourne la puissance électrique du bâtiment qui exécute ``recipe``.
 
         ``recipe`` porte ``crafted_in`` ; la conversion J/tick → kW est déléguée à ``_building_power_kw``. Retourne ``0.0`` si le bâtiment est inconnu.
         """
-        return self._building_power_kw(recipe.get("crafted_in"))
+        name = recipe["name"]
+        if name not in self._power_by_recipe:
+            self._power_by_recipe[name] = self._building_power_kw(
+                recipe.get("crafted_in")
+            )
+        return self._power_by_recipe[name]
 
     def _best_drill(self, category: Any) -> dict | None:
         """Sélectionne la foreuse la plus rapide pour une catégorie de ressource.
@@ -1207,17 +1462,22 @@ class _Playthrough:
         Les foreuses incompatibles sont ignorées ; à vitesse égale, le nom
         alphabétique départage pour garder un résultat déterministe.
         """
-        best = None
-        for drill in self.drills:
-            if category and category not in drill["categories"]:
-                continue
-            if (
-                best is None
-                or drill["speed"] > best["speed"]
-                or (drill["speed"] == best["speed"] and drill["name"] < best["name"])
-            ):
-                best = drill
-        return best
+        if category not in self._drills_by_category:
+            best = None
+            for drill in self.drills:
+                if category and category not in drill["categories"]:
+                    continue
+                if (
+                    best is None
+                    or drill["speed"] > best["speed"]
+                    or (
+                        drill["speed"] == best["speed"]
+                        and drill["name"] < best["name"]
+                    )
+                ):
+                    best = drill
+            self._drills_by_category[category] = best
+        return self._drills_by_category[category]
 
     def _mine(self, item: str, amount: float) -> bool:
         """Extrait ``amount`` d'une ressource minable.
@@ -1227,13 +1487,22 @@ class _Playthrough:
         minage et l'énergie sont mis à jour. Retourne ``False`` si aucun
         gisement ne produit cet item.
         """
-        sources = self.mineables.get(item) or []
-        if not sources:
+        if item not in self._mine_sources:
+            sources = self.mineables.get(item) or []
+            if not sources:
+                self._mine_sources[item] = None
+                return False
+            source = sorted(sources, key=lambda s: (-s["yield"], s["name"]))[0]
+            # Sans catégorie de forage (arbre récolté à la main) : aucune foreuse,
+            # vitesse de base 1.
+            drill = (
+                self._best_drill(source["category"]) if source["category"] else None
+            )
+            self._mine_sources[item] = (source, drill)
+        choice = self._mine_sources[item]
+        if choice is None:
             return False
-        source = sorted(sources, key=lambda s: (-s["yield"], s["name"]))[0]
-        # Sans catégorie de forage (arbre récolté à la main) : aucune foreuse,
-        # vitesse de base 1.
-        drill = self._best_drill(source["category"]) if source["category"] else None
+        source, drill = choice
         speed = drill["speed"] if drill else 1.0
         if drill:
             self.used_buildings.add(drill["name"])
@@ -1316,12 +1585,17 @@ class _Playthrough:
         La vitesse du bâtiment est lue dans les prototypes ; un craft à la main
         utilise une vitesse de 1.
         """
-        crafted_in = recipe.get("crafted_in")
-        speed = 1.0
-        if crafted_in:
-            speed = self.speeds.get(crafted_in, 1.0) or 1.0
-        energy = float(recipe.get("energy", 0) or 0)
-        return crafts * energy / speed
+        name = recipe["name"]
+        per_craft = self._recipe_seconds_per_craft.get(name)
+        if per_craft is None:
+            crafted_in = recipe.get("crafted_in")
+            speed = 1.0
+            if crafted_in:
+                speed = self.speeds.get(crafted_in, 1.0) or 1.0
+            energy = float(recipe.get("energy", 0) or 0)
+            per_craft = energy / speed
+            self._recipe_seconds_per_craft[name] = per_craft
+        return crafts * per_craft
 
     def _craft(self, recipe: dict, crafts: int, stack: tuple[str, ...]) -> None:
         """Exécute ``crafts`` fois une recette.
@@ -1336,6 +1610,9 @@ class _Playthrough:
         crafted_in = recipe.get("crafted_in")
         if crafted_in:
             self.used_buildings.add(crafted_in)
+            self.building_crafts[crafted_in] += crafts
+        else:
+            self.hand_crafts += crafts
         seconds = self._recipe_seconds(recipe, crafts)
         self.total_craft_seconds += seconds
         for name, qty in _item_amounts(recipe.get("ingredients")):
@@ -1371,7 +1648,11 @@ class _Playthrough:
             return
         recipe = self._choose(item, stack)
         if recipe is not None:
-            per_craft = self._output_amount(recipe, item)
+            amount_key = (recipe["name"], item)
+            per_craft = self._output_amounts.get(amount_key)
+            if per_craft is None:
+                per_craft = self._output_amount(recipe, item)
+                self._output_amounts[amount_key] = per_craft
             crafts = math.ceil(amount / per_craft)
             self.crafts[item] += crafts
             seconds = self._recipe_seconds(recipe, crafts)
@@ -1444,12 +1725,14 @@ class _Playthrough:
         ``None`` si aucun bâtiment ne le dit : sans cette donnée on ne lance
         pas (pas de valeur vanilla inventée).
         """
-        parts = [
-            int(entry["rocket_parts_required"])
-            for entry in self.entities.values()
-            if entry.get("rocket_parts_required")
-        ]
-        return max(parts) if parts else None
+        if self._rocket_parts_cache is None:
+            parts = [
+                int(entry["rocket_parts_required"])
+                for entry in self.entities.values()
+                if entry.get("rocket_parts_required")
+            ]
+            self._rocket_parts_cache = (max(parts) if parts else None,)
+        return self._rocket_parts_cache[0]
 
     def _find_rocket_part(self) -> str | None:
         """Retourne l'item fabriqué par un bâtiment de lancement.
@@ -1477,7 +1760,7 @@ class _Playthrough:
                     return results[0]
         return None
 
-    def _launch_products(self, payload: str | None = None) -> list[tuple[str, int | float]]:
+    def _launch_products(self, payload: str | None = None) -> tuple[tuple[str, int | float], ...]:
         """Produits d'un lancement déclarés par le dump (vide si absent).
 
         Source de vérité : l'ITEM lancé (``rocket_launch_products`` sur le
@@ -1593,6 +1876,85 @@ class _Playthrough:
                 self._produce(name, 1)
         self.buildings = sorted(crafted)
 
+    def _complexity_snapshot(self) -> dict:
+        return {
+            "mined": dict(self.mined),
+            "external": dict(self.external),
+            "buildings": dict(self.building_crafts),
+            "crafts": sum(self.recipe_crafts.values()),
+            "machine_seconds": self.total_craft_seconds,
+            "hand_crafts": self.hand_crafts,
+        }
+
+    def _record_complexity(
+        self, tech: dict, tech_id: str, position: int, before: dict
+    ) -> None:
+        packs = [
+            {"name": name, "amount": amount}
+            for name, amount in _science_requirements(tech)
+        ]
+        pack_total = sum(pack["amount"] for pack in packs)
+        research_time = _tech_seconds(tech)
+        mined_delta = _counter_delta(before["mined"], self.mined)
+        external_delta = _counter_delta(before["external"], self.external)
+        buildings_delta = _counter_delta(before["buildings"], self.building_crafts)
+        raw_total = sum(mined_delta.values()) + sum(external_delta.values())
+        buildings = sorted(buildings_delta)
+        crafts_total = (
+            sum(self.recipe_crafts.values())
+            - before["crafts"]
+            + self.hand_crafts
+            - before["hand_crafts"]
+        )
+        machine_seconds = self.total_craft_seconds - before["machine_seconds"]
+        ratio = raw_total / max(len(buildings), 1)
+        cumulative = self.complexity_cumulative
+        cumulative["time"] += research_time
+        cumulative["packs"] += pack_total
+        cumulative["raw"] += raw_total
+        cumulative["craft_seconds"] += machine_seconds
+        cumulative["crafts"] += crafts_total
+        self.complexity_seen_buildings.update(buildings)
+        cumulative_score = (
+            cumulative["time"]
+            + cumulative["craft_seconds"]
+            + 0.5 * cumulative["packs"]
+            + 10 * len(self.complexity_seen_buildings)
+        )
+        self.complexity_rows.append(
+            {
+                "num": position,
+                "id": tech_id,
+                "name": tech.get("localised_name") or tech_id,
+                "free": tech_id in set(self.seed.get("free_researches") or []),
+                "research_time": round(research_time, 2),
+                "packs": pack_total,
+                "pack_list": packs,
+                "raw_total": clean_number(raw_total),
+                "buildings": buildings,
+                "building_count": len(buildings),
+                "ratio": round(ratio, 2),
+                "crafts": clean_number(crafts_total),
+                "craft_seconds": round(machine_seconds, 2),
+                "hand_crafts": clean_number(
+                    self.hand_crafts - before["hand_crafts"]
+                ),
+                "cumulative_time": round(cumulative["time"], 2),
+                "cumulative_packs": cumulative["packs"],
+                "cumulative_raw": clean_number(cumulative["raw"]),
+                "cumulative_buildings": len(self.complexity_seen_buildings),
+                "cumulative_craft_seconds": round(cumulative["craft_seconds"], 2),
+                "cumulative_crafts": clean_number(cumulative["crafts"]),
+                "cumulative_score": round(cumulative_score, 2),
+            }
+        )
+        for name, amount in mined_delta.items():
+            self.complexity_resources[name] += amount
+        for name, amount in external_delta.items():
+            self.complexity_resources[name] += amount
+        for name, count in buildings_delta.items():
+            self.complexity_buildings[name] += int(count)
+
     # -- résultat -----------------------------------------------------------
 
     def _result(self) -> dict:
@@ -1655,6 +2017,18 @@ class _Playthrough:
             "total_produced": _number(sum(self.produced.values())),
             "total_consumed": _number(sum(self.consumed.values())),
             "total_craft_seconds": _number(self.total_craft_seconds),
+            "complexity_stats": {
+                "rows": self.complexity_rows,
+                "resources": {
+                    name: clean_number(value)
+                    for name, value in sorted(self.complexity_resources.items())
+                },
+                "buildings": {
+                    name: int(value)
+                    for name, value in sorted(self.complexity_buildings.items())
+                },
+                "unknown_terminals": sorted(self.external),
+            },
         }
 
     def run(self) -> dict:
@@ -1679,8 +2053,11 @@ class _Playthrough:
             if tech is None:
                 step.done()
                 continue
+            before = self._complexity_snapshot()
             self._process_tech(tech)
             self.processed.add(tech_id)
+            self._recipe_choice_version += 1
+            self._record_complexity(tech, tech_id, position, before)
             step.done()
         self.progress_step = None
         if self.on_progress is not None:

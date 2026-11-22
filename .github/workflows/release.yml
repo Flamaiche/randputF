@@ -67,12 +67,11 @@ jobs:
         run: |
           mkdir -p /tmp/modrel
           randputf generate --seed 5 --out /tmp/modrel
-          # seed.graph.html est exclu : c'est une vue de debug de plusieurs Mo,
-          # deja ecartee du temoin de determinisme (WITNESS_EXCLUDED). Livre, il
-          # ferait gonfler le zip de plusieurs Mo pour rien -- Factorio n'en a
-          # pas besoin. Il se regenere en local avec `randputf generate`.
+          # Les vues HTML de debug sont exclues : elles sont deja ecartees du
+          # temoin de determinisme (WITNESS_EXCLUDED) et se regenerent en local
+          # avec `randputf generate`. Factorio n'en a pas besoin.
           cd /tmp/modrel && zip -qr "/tmp/randputF_${VERSION}.zip" "randputF_${VERSION}" \
-            -x "*/seed.graph.html"
+            -x "*/seed.graph.html" -x "*/seed.difficulty.html" -x "*/seed.complexity.html"
       - name: Creer le tag
         run: |
           # Tag pose explicitement sur le commit promu. Sans cela, une release

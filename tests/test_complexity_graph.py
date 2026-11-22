@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from tool.audit.graph import analyze_graph
+from tool.exporters import report as report_module
+from tool.exporters import vanilla_complexity
 from tool.exporters.complexity_graph import (
+    _format_seconds,
     analyze_complexity,
     analyze_playthrough,
     render_complexity_html,
@@ -74,6 +78,47 @@ def test_expansion_counts_crafts_and_raw() -> None:
     assert row["raw_total"] == 8
 
 
+def test_complexite_expose_profondeur_et_temps_critique() -> None:
+    data = analyze_complexity(_tiny_seed())
+
+    assert data["chain_depth"] >= 1
+    assert data["critical_seconds"] > 0
+    assert data["critical_label"] != "0:00"
+
+
+def test_format_seconds_grandes_durees() -> None:
+    assert _format_seconds(90) == "1:30"
+    assert _format_seconds(3661) == "1:01:01"
+    assert _format_seconds(172800) == "2,0 j"
+    assert _format_seconds(365.2425 * 86400 * 2.5) == "2,5 ans"
+    assert _format_seconds(365.2425 * 86400 * 2_300_000) == "2,3 M d'années"
+
+
+def test_html_affiche_profondeur_et_temps_critique(tmp_path: Path) -> None:
+    path = tmp_path / "seed.complexity.html"
+    write_complexity_html(_tiny_seed(), path)
+    text = path.read_text(encoding="utf-8")
+
+    assert "Profondeur max" in text
+    assert "Temps critique" in text
+    assert "chaîne de recettes la plus longue" in text
+    assert "id='complexite-courbes'" in text
+    assert "id='complexite-ateliers'" in text
+
+
+def test_html_marque_les_ratios_vs_vanilla() -> None:
+    reference = analyze_complexity(_tiny_seed())
+    seed = _tiny_seed()
+    seed["technologies"][0]["unit"]["count"] = 4
+    data = analyze_complexity(seed)
+
+    document = render_complexity_html(seed, data=data, baseline=reference)
+
+    assert "×2 vanilla" in document
+    assert "Les « ×N » comparent chaque valeur à vanilla" in document
+    assert "bar-val" in document
+
+
 def test_starter_items_break_recipe_cycles() -> None:
     seed = _tiny_seed()
     seed["pools"]["raw_resources"] = ["wood"]
@@ -126,6 +171,15 @@ def test_complexite_et_tableau_fragmentent_la_progression() -> None:
     assert analyze_values[-1] == 100
     assert analyze_values == sorted(analyze_values)
     assert any("dépliage des recettes" in detail for _, detail in analyze_events)
+    assert any(
+        "1/1 techs" in detail and "étapes" in detail
+        for _, detail in analyze_events
+    )
+    assert any(" étapes" in detail for _, detail in analyze_events)
+    assert any(
+        "profondeur" in detail and "automation-science-pack" in detail
+        for _, detail in analyze_events
+    )
 
     render_events: list[tuple[int, str]] = []
     document = render_complexity_html(
@@ -141,6 +195,34 @@ def test_complexite_et_tableau_fragmentent_la_progression() -> None:
     assert any("tableau" in detail for _, detail in render_events)
 
 
+def test_tech_sans_science_affiche_zero_etape() -> None:
+    seed = _tiny_seed()
+    seed["technologies"][0]["unit"]["count"] = 0
+    events: list[tuple[int, str]] = []
+    analyze_complexity(
+        seed,
+        on_progress=lambda percent, detail: events.append((percent, detail)),
+    )
+    assert any(
+        "1/1 techs" in detail and detail.endswith("0 étapes")
+        for _, detail in events
+    )
+
+
+def test_rapport_sans_simulation_utilise_le_graphe_memoise(tmp_path: Path) -> None:
+    events: list[tuple[int, str]] = []
+    report_module.write_full_report(
+        _tiny_seed(),
+        tmp_path / "rapport.html",
+        dump={},
+        skip=frozenset({"playthrough", "difficulty"}),
+        on_progress=lambda percent, detail: events.append((percent, detail)),
+    )
+
+    assert any("complexité depuis le graphe mémoïsé" in detail for _, detail in events)
+    assert not any("simulation de la partie" in detail for _, detail in events)
+
+
 def test_playthrough_remonte_sa_progression() -> None:
     events: list[tuple[int, str]] = []
     analyze_playthrough(
@@ -152,3 +234,65 @@ def test_playthrough_remonte_sa_progression() -> None:
     assert values[-1] == 100
     assert values == sorted(values)
     assert any("simulation technologique" in detail for _, detail in events)
+
+
+def test_playthrough_alimente_complexite_sans_depliage_separe() -> None:
+    seed = _tiny_seed()
+    playthrough = analyze_playthrough(seed)
+    stats = playthrough["complexity_stats"]
+    assert stats["rows"][0]["packs"] == 2
+    assert stats["resources"] == {"iron-plate": 2, "stone": 2, "wood": 4}
+    events: list[tuple[int, str]] = []
+    data = analyze_complexity(
+        seed,
+        playthrough=stats,
+        on_progress=lambda percent, detail: events.append((percent, detail)),
+    )
+    assert data["total_packs"] == 2
+    assert data["total_raw"] == 8
+    assert data["total_crafts"] == 4
+    assert any("complexité depuis la simulation" in detail for _, detail in events)
+    assert not any("dépliage des recettes" in detail for _, detail in events)
+
+
+def test_complexite_depuis_simulation_garde_longueur_du_graphe() -> None:
+    seed = _tiny_seed()
+    graph = analyze_graph(seed)
+    stats = analyze_playthrough(seed)["complexity_stats"]
+
+    data = analyze_complexity(seed, playthrough=stats, graph=graph)
+
+    assert data["chain_depth"] >= 1
+    assert data["critical_seconds"] > 0
+
+
+def test_simulation_persistee_dans_le_dump_et_rejouee(monkeypatch) -> None:
+    seed = _tiny_seed()
+    dump: dict = {"meta": {"game_version": "1.0"}}
+    original = vanilla_complexity.analyze_playthrough
+    calls: list[int] = []
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(vanilla_complexity, "analyze_playthrough", counted)
+
+    first = vanilla_complexity.playthrough_report(dump, None, seed=seed)
+    assert first["cache_written"]
+    assert not first["cache_hit"]
+    assert "randputf_cache" in dump
+
+    second = vanilla_complexity.playthrough_report(dump, None, seed=seed)
+    assert second["cache_hit"]
+    assert not second["cache_written"]
+    assert len(calls) == 1
+    assert second["analysis"] == first["analysis"]
+
+    dump["meta"]["game_version"] = "2.0"
+    third = vanilla_complexity.playthrough_report(dump, None, seed=seed)
+    assert not third["cache_hit"]
+    assert len(calls) == 2
+
+    vanilla_complexity.playthrough_report(dump, None, seed=seed, cache=False)
+    assert len(calls) == 3

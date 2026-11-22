@@ -510,6 +510,7 @@ def build_seed_graph_dot(
     seed: dict,
     *,
     image_dir: Path | None = None,
+    icon_bytes: dict[str, bytes] | None = None,
 ) -> str:
     """Construit le contenu DOT du graphe de production de la seed.
 
@@ -557,7 +558,10 @@ def build_seed_graph_dot(
             if image_dir is not None:
                 fn = _slug(name) + ".png"
                 try:
-                    (image_dir / fn).write_bytes(crop_mip(icon.read_bytes()))
+                    cropped = crop_mip(icon.read_bytes())
+                    (image_dir / fn).write_bytes(cropped)
+                    if icon_bytes is not None:
+                        icon_bytes[f"{image_dir}/{fn}"] = cropped
                     img_ref = f"{image_dir}/{fn}"
                 except OSError:
                     img_ref = None
@@ -611,7 +615,8 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
 
     with tempfile.TemporaryDirectory(prefix="randputf-graph-") as td:
         image_dir = Path(td)
-        dot_path = _dot_for(seed, image_dir)
+        icon_bytes: dict[str, bytes] = {}
+        dot_path = _dot_for(seed, image_dir, icon_bytes)
         try:
             svg = subprocess.run(
                 [engine, "-Tsvg", str(dot_path)],
@@ -621,7 +626,7 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
             ).stdout
         finally:
             dot_path.unlink(missing_ok=True)
-        svg = _embed_icons(svg)
+        svg = _embed_icons(svg, icon_bytes)
     info, recips = _node_info(seed)
     techs = _technology_info(seed)
     title = f"randputF seed {seed.get('meta', {}).get('seed', '?')}"
@@ -643,7 +648,11 @@ def _seed_raw_sources(seed: dict) -> set[str]:
     return seed_environmental_items(seed) | set((seed.get("pools") or {}).get("raw_resources") or ())
 
 
-def _dot_for(seed: dict, image_dir: Path | None = None) -> Path:
+def _dot_for(
+    seed: dict,
+    image_dir: Path | None = None,
+    icon_bytes: dict[str, bytes] | None = None,
+) -> Path:
     """Écrit le DOT d'une seed dans un fichier temporaire.
 
     ``seed`` est la seed et ``image_dir`` un dossier d'icônes optionnel. Retourne le ``Path`` du fichier temporaire ; l'appelant est responsable de sa suppression.
@@ -652,7 +661,7 @@ def _dot_for(seed: dict, image_dir: Path | None = None) -> Path:
 
     tmp = tempfile.NamedTemporaryFile("w", suffix=".dot", delete=False, encoding="utf-8")
     try:
-        tmp.write(build_seed_graph_dot(seed, image_dir=image_dir))
+        tmp.write(build_seed_graph_dot(seed, image_dir=image_dir, icon_bytes=icon_bytes))
         tmp.flush()
     finally:
         tmp.close()
@@ -662,22 +671,25 @@ def _dot_for(seed: dict, image_dir: Path | None = None) -> Path:
 _ICON_HREF_RE = re.compile(r'(xlink:href|href)="([^"]+\.png)"')
 
 
-def _embed_icons(svg: str) -> str:
+def _embed_icons(svg: str, icon_bytes: dict[str, bytes] | None = None) -> str:
     """Remplace les icônes locales d'un SVG par des data-URI.
 
-    ``svg`` est le document Graphviz ; chaque ``href`` vers un PNG est recadré puis encodé en base64. Retourne le SVG autonome ; un fichier illisible conserve son lien d'origine.
+    ``svg`` est le document Graphviz ; chaque ``href`` vers un PNG est encodé en base64. ``icon_bytes`` contient les PNG déjà recadrés lors de la construction du DOT et évite de les relire. Retourne le SVG autonome ; un fichier illisible conserve son lien d'origine.
     """
     def _uri(m: re.Match) -> str:
         """Remplace une occurrence d'icône par son data-URI base64.
 
         ``m`` doit exposer l'attribut (``href``/``xlink:href``) et le chemin du
-        PNG. Recadre l'icône via ``crop_mip`` puis retourne
-        ``attr="data:image/png;base64,..."`` ; en cas d'``OSError`` retourne
-        la correspondance inchangée (lien local conservé).
+        PNG. Utilise les octets déjà recadrés quand ils sont fournis, sinon
+        recadre l'icône via ``crop_mip`` ; en cas d'``OSError`` retourne la
+        correspondance inchangée (lien local conservé).
         """
         attr, path = m.group(1), m.group(2)
+        cropped = (icon_bytes or {}).get(path)
         try:
-            b64 = base64.b64encode(crop_mip(Path(path).read_bytes())).decode()
+            if cropped is None:
+                cropped = crop_mip(Path(path).read_bytes())
+            b64 = base64.b64encode(cropped).decode()
         except OSError:
             return m.group(0)
         return f'{attr}="data:image/png;base64,{b64}"'

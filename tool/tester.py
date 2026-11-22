@@ -8,7 +8,7 @@ et à la documentation :
   déblocages ;
 - ``rejeu`` : ``play`` — partie simulée depuis les faits du dump ;
 - ``mesure`` : complexité, difficulté et partie simulée ;
-- ``rapport`` : trois fichiers HTML préfixés par la source.
+- ``rapport`` : trois fichiers HTML préfixés par le nom canonique de la source.
 
 Aucune graine n'est tirée ici : l'état testé vient du dump, ou d'un mod déjà
 assemblé quand la CLI fournit explicitement son état.
@@ -17,6 +17,7 @@ assemblé quand la CLI fournit explicitement son état.
 from __future__ import annotations
 
 import html as _html
+import re
 import subprocess
 import sys
 import threading
@@ -43,8 +44,64 @@ STAGE_LABELS = {
     "mesure": "Mesure de la difficulté",
     "rapport": "Rapport HTML",
 }
-SECTIONS = ("controles", "couverture-dump", "complexite-courbes", "difficulte", "partie-simulee")
+SECTIONS = (
+    "controles",
+    "couverture-dump",
+    "profil-difficulte",
+    "complexite-courbes",
+    "difficulte",
+    "partie-simulee",
+)
 _AUTO_ETA = object()
+_COMPLEXITY_STEP_RE = re.compile(
+    r"·\s*(\d+)/(\d+)(?:\s*techs)?\s*·\s*([\d ]+)\s*étapes"
+)
+
+
+def _parse_complexity_detail(detail: str) -> tuple[int, int, int] | None:
+    match = _COMPLEXITY_STEP_RE.search(detail)
+    if match is None:
+        return None
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3).replace(" ", "")),
+    )
+
+
+def _format_eta(seconds: float) -> str:
+    value = max(0, int(round(seconds)))
+    if value < 600:
+        return f"{value}s"
+    minutes, sec = divmod(value, 60)
+    if minutes < 60:
+        return f"{minutes}m{sec:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m"
+
+
+def _step_eta(
+    current: int,
+    total: int,
+    steps: int,
+    samples: list[int],
+    rate: float,
+    last_update: float,
+    now: float,
+) -> float | None:
+    if (
+        not samples
+        or steps <= 0
+        or current <= 0
+        or current >= total
+        or rate <= 0
+        or now - last_update > 5.0
+    ):
+        return None
+    recent = [sample for sample in samples[-8:] if sample > 0]
+    if not recent:
+        return None
+    return sum(recent) * (total - current) / len(recent) / rate
 
 
 class Progress:
@@ -212,7 +269,7 @@ class Progress:
             if self._eta_override is None:
                 remaining = "fin étape —"
             else:
-                remaining = f"fin étape ~{float(self._eta_override):.0f}s"
+                remaining = f"fin étape ~{_format_eta(float(self._eta_override))}"
         elif not percent:
             remaining = "fin étape —"
         else:
@@ -222,7 +279,7 @@ class Progress:
             if self._eta_value is None:
                 remaining = "fin étape —"
             else:
-                remaining = f"fin étape ~{self._eta_value:.0f}s"
+                remaining = f"fin étape ~{_format_eta(self._eta_value)}"
         text = (
             f"{STAGE_LABELS[stage]} [{bar}] {percent:3d}% {step} — "
             f"{self._detail} · {elapsed_stage:5.1f}s · {remaining}"
@@ -245,11 +302,12 @@ class CheckReport:
     blocker: str | None = None
     researched: int = 0
     total_techs: int = 0
+    skipped: bool = False
 
     @property
     def ok(self) -> bool:
         """Indique si l'état passe le contrôle et le rejeu."""
-        return not self.issues and self.victory
+        return not self.skipped and not self.issues and self.victory
 
     def as_dict(self) -> dict[str, Any]:
         """Retourne le résultat sous forme de dict pour le rapport HTML."""
@@ -260,6 +318,7 @@ class CheckReport:
             "blocker": self.blocker,
             "researched": self.researched,
             "total_techs": self.total_techs,
+            "skipped": self.skipped,
         }
 
 
@@ -268,17 +327,32 @@ class TesterReport:
     """Résultat complet d'un passage du testeur."""
 
     check: CheckReport
-    dump_html: Path
+    dump_html: Path | None
     graph_html: Path | None
-    report_html: Path
+    report_html: Path | None
     difficulty_total: float | None
     coverage: dict
+    cache_hit: bool = False
+    cache_written: bool = False
+    skipped: frozenset[str] = field(default_factory=frozenset)
 
 
 def check_state(
-    db: Any, state: dict, progress: Progress | None = None
+    db: Any,
+    state: dict,
+    progress: Progress | None = None,
+    *,
+    skip: frozenset[str] = frozenset(),
 ) -> CheckReport:
     """Exécute le contrôle statique puis le rejeu sur un état issu du dump."""
+    if "checks" in skip:
+        if progress is not None:
+            progress.enter("controle", "contrôles ignorés")
+            progress.update(100, "contrôles ignorés")
+            progress.enter("rejeu", "rejeu ignoré")
+            progress.update(100, "rejeu ignoré")
+        return CheckReport(skipped=True)
+
     if progress is not None:
         progress.enter("controle", "validation des invariants")
 
@@ -364,49 +438,122 @@ def run_dump_test(
     *,
     source: str = "dump",
     state: dict | None = None,
+    baseline_seed: dict | None = None,
     title: str | None = None,
     out_name: str | None = None,
     progress: Progress | None = None,
+    skip: frozenset[str] = frozenset(),
 ) -> TesterReport:
-    """Teste un état déterministe et écrit les trois vues HTML dans `<out_dir>/<out_name>/`."""
-    out_dir = Path(out_dir) / str(out_name or source)
+    """Teste un état déterministe et écrit les trois HTML dans `<out_dir>/<name>/`."""
+    name = str(out_name or source)
+    out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
     coverage = classify_dump_fields(dump)
-    tested = state if state is not None else build_vanilla_seed(dump)
+    baseline = baseline_seed if baseline_seed is not None else build_vanilla_seed(dump)
+    tested = state if state is not None else baseline
     if progress is not None:
         progress.update(100, "normalisation terminée")
-    check = check_state(db, tested, progress)
+    check = check_state(db, tested, progress, skip=skip)
 
     if progress is not None:
         progress.enter("mesure", "difficulté et rapport complet")
     game_version = (dump.get("meta") or {}).get("game_version", "inconnue")
     if title is None:
         title = f"randputF — test de {source} (Factorio {game_version})"
-    def on_report(percent: int, detail: str) -> None:
-        if progress is not None:
-            progress.update(
-                percent, detail, None if "étapes" in detail else _AUTO_ETA
-            )
+    report_state: dict[str, Any] = {
+        "percent": 0,
+        "detail": "",
+        "current": 0,
+        "total": 0,
+        "steps": 0,
+        "samples": [],
+        "rate": 0.0,
+        "last_update": time.monotonic(),
+        "active": False,
+    }
 
-    result = write_full_report(
-        tested,
-        out_dir / f"{source}.report.html",
-        db,
-        vanilla_seed=tested,
-        dump=dump,
-        title=title,
-        playthrough_title=f"Partie simulée — {source}",
-        mod_label="état testé",
-        vanilla_label="dump",
-        checks=check.as_dict(),
-        dump_coverage=coverage,
-        on_progress=on_report,
-    )
+    def on_report(percent: int, detail: str) -> None:
+        if progress is None:
+            return
+        now = time.monotonic()
+        parsed = _parse_complexity_detail(detail)
+        if parsed is None:
+            report_state["active"] = False
+        else:
+            current, total, steps = parsed
+            previous = report_state["current"]
+            if previous and current > previous:
+                report_state["samples"].append(report_state["steps"])
+            if report_state["steps"] and steps > report_state["steps"]:
+                delta = now - report_state["last_update"]
+                if delta > 0:
+                    rate = (steps - report_state["steps"]) / delta
+                    old = report_state["rate"]
+                    report_state["rate"] = rate if not old else 0.7 * rate + 0.3 * old
+            report_state["current"] = current
+            report_state["total"] = total
+            report_state["steps"] = steps
+            report_state["last_update"] = now
+            report_state["active"] = True
+        report_state["percent"] = percent
+        report_state["detail"] = detail
+        progress.update(percent, detail)
+
+    def report_info() -> tuple[int, str, float | None]:
+        now = time.monotonic()
+        eta = None
+        if report_state["active"]:
+            eta = _step_eta(
+                report_state["current"],
+                report_state["total"],
+                report_state["steps"],
+                report_state["samples"],
+                report_state["rate"],
+                report_state["last_update"],
+                now,
+            )
+        return report_state["percent"], report_state["detail"], eta
+
     if progress is not None:
-        progress.update(96, "rapport complet écrit")
+        progress.watch(report_info)
+
+    result: dict = {}
+    cache_hit = False
+    cache_written = False
+    report_path: Path | None = None
+    if "report-html" in skip:
+        if progress is not None:
+            progress.update(96, "rapport ignoré")
+    else:
+        report_path = out_dir / f"{name}.report.html"
+        result = write_full_report(
+            tested,
+            report_path,
+            db,
+            vanilla_seed=baseline,
+            dump=dump,
+            title=title,
+            playthrough_title=f"Partie simulée — {source}",
+            mod_label="état testé",
+            vanilla_label="vanilla",
+            checks=check.as_dict(),
+            dump_coverage=coverage,
+            on_progress=on_report,
+            skip=skip,
+        )
+        cache_hit = bool(result.get("cache_hit"))
+        cache_written = bool(result.get("cache_written"))
+        if progress is not None:
+            progress.update(96, "rapport complet écrit")
+    if (
+        progress is not None
+        and "report-html" in skip
+        and "difficulty" in skip
+    ):
+        progress.update(0, "calculs ignorés")
 
     difficulty_total = result.get("difficulty_total")
-    if difficulty_total is None:
+    if difficulty_total is None and "difficulty" not in skip:
         def on_difficulty(percent: int) -> None:
             if progress is not None:
                 progress.update(95 + percent * 5 // 100, "difficulté calculée")
@@ -418,33 +565,50 @@ def run_dump_test(
         except (ArithmeticError, KeyError, TypeError, ValueError):
             difficulty_total = None
     if progress is not None:
-        progress.update(100, "difficulté calculée")
+        progress.update(
+            100,
+            "difficulté ignorée" if "difficulty" in skip else "difficulté calculée",
+        )
 
     if progress is not None:
         progress.enter("rapport", "graphe et navigateur HTML")
-    dump_html = write_dump_html(dump, out_dir / f"{source}.dump.html")
-    if progress is not None:
-        progress.update(50, "navigateur écrit")
-    graph_html = out_dir / f"{source}.graph.html"
-    try:
-        write_seed_graph_html(tested, graph_html)
-    except (OSError, subprocess.CalledProcessError):
-        _write_graph_fallback(tested, graph_html, source)
-        graph_path = graph_html
+    if "dump-html" in skip:
+        dump_path = None
+        if progress is not None:
+            progress.update(50, "navigateur ignoré")
     else:
-        graph_path = graph_html if graph_html.exists() else None
-    if progress is not None:
-        progress.update(100, "graphe écrit")
+        dump_path = write_dump_html(dump, out_dir / f"{name}.dump.html")
+        if progress is not None:
+            progress.update(50, "navigateur écrit")
+    if "graph-html" in skip:
+        graph_path = None
+        if progress is not None:
+            progress.update(100, "graphe ignoré")
+    else:
+        graph_html = out_dir / f"{name}.graph.html"
+        try:
+            write_seed_graph_html(tested, graph_html)
+        except (OSError, subprocess.CalledProcessError):
+            _write_graph_fallback(tested, graph_html, source)
+            graph_path = graph_html
+        else:
+            graph_path = graph_html if graph_html.exists() else None
+        if progress is not None:
+            progress.update(100, "graphe écrit")
 
     if progress is not None:
-        progress.finish("vues HTML écrites")
+        html_skipped = {"report-html", "dump-html", "graph-html"} <= set(skip)
+        progress.finish("vues HTML ignorées" if html_skipped else "vues HTML écrites")
     return TesterReport(
         check=check,
-        dump_html=dump_html,
+        dump_html=dump_path,
         graph_html=graph_path,
-        report_html=Path(result["path"]),
+        report_html=report_path,
         difficulty_total=difficulty_total,
         coverage=coverage,
+        cache_hit=cache_hit,
+        cache_written=cache_written,
+        skipped=frozenset(skip),
     )
 
 

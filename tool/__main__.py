@@ -17,6 +17,7 @@ from pathlib import Path
 from tool.audit.difficulty import compute_difficulty, summarize_difficulty
 from tool.audit.tags import audit_building_tags, audit_item_tags, summarize_tags
 from tool.common.db import VanillaDB
+from tool.common.version import MOD_NAME_VERSIONED
 from tool.common.witness import witness_md5
 from tool.exporters.complexity_graph import write_complexity_html
 from tool.exporters.difficulty_graph import (
@@ -31,7 +32,9 @@ from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import rocket_chain_from_dump, summarize_db
 from tool.service import (
     DUMP_PATH_DEFAULT,
+    MOD_DIR,
     OUTPUT_DIR,
+    REPORT_DIR,
     DumpInvalidError,
     DumpMissingError,
     SeedUnplayableError,
@@ -61,6 +64,15 @@ def _load_db(demo: bool, dump_path: Path) -> VanillaDB:
         sys.exit(1)
 
 
+def _save_dump(dump_path: Path, dump: dict) -> None:
+    """Réécrit le dump avec son cache de simulation, sans le corrompre en cas d'erreur."""
+    temporary = dump_path.with_name(dump_path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(dump, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    temporary.replace(dump_path)
+
+
 def cmd_parse(args: argparse.Namespace) -> None:
     """Charge la base vanilla puis imprime son résumé.
 
@@ -87,18 +99,25 @@ def cmd_audit(args: argparse.Namespace) -> None:
     sys.exit(0 if report.ok else 1)
 
 
+def _canonical_name(label: str) -> str:
+    """Uniformise `randputF-<version>` en `randputF_<version>`."""
+    if label.startswith("randputF-"):
+        return f"randputF_{label[len('randputF-'):]}"
+    return label
+
+
 def _source_label(dump_path: str, dump: dict) -> str:
-    """Retourne le préfixe des trois HTML à partir de l'identité du dump."""
+    """Retourne le nom canonique du dossier de rapports et des trois HTML."""
     meta = (dump.get("meta") or {})
     label = meta.get("mod_label") or meta.get("dump_label")
     if isinstance(label, str) and label:
         cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-")
         if cleaned:
-            return cleaned
+            return _canonical_name(cleaned)
     stem = Path(dump_path).stem
     if stem.endswith("_dump"):
         stem = stem[:-5]
-    return stem or "dump"
+    return _canonical_name(stem or "dump")
 
 
 def _vanilla_seed_from_path(dump_path: str) -> dict | None:
@@ -123,9 +142,9 @@ def _report_retry(attempt: int, seed_value: int, issues: list[str]) -> None:
 
 
 def cmd_generate(args: argparse.Namespace) -> None:
-    """Génère une seed puis l'assemble en mod et écrit ses rapports.
+    """Génère une seed, l'assemble dans `out/mods/` et écrit ses HTML dans `out/reports/`.
 
-    `args` porte les options CLI (`demo`, `dump`, `seed`, `out`, `install`). La fonction charge la base et la config, génère avec reprise sur graine dérivée, écrit `seed.json`/`seed.lua` et le graphe HTML, puis installe le mod si demandé. Retourne `None` et termine avec le code 2 après 10 échecs.
+    `args` porte les options CLI (`demo`, `dump`, `seed`, `out`, `install`). Le mod reste toujours séparé des rapports ; `--install` copie seulement le mod dans Factorio. Retourne `None` et termine avec le code 2 après 10 échecs.
     """
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
@@ -144,48 +163,47 @@ def cmd_generate(args: argparse.Namespace) -> None:
             print(f"[INVALIDE] {issue}")
         sys.exit(2)
 
+    root = Path(args.out) if args.out else OUTPUT_DIR
+    mod_path = _build_mod(seed, root / "mods")
+    report_dir = root / "reports" / MOD_NAME_VERSIONED
+    report_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
+
+    html_path = report_dir / "seed.graph.html"
+    write_seed_graph_html(seed, html_path)
+    if html_path.exists():
+        print(f"Graphe interactif (cliquable) exporté dans {html_path}")
+    else:
+        print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
+    cx_path = report_dir / "seed.complexity.html"
+    write_complexity_html(seed, cx_path, db)
+    print(f"Rapport de complexité exporté dans {cx_path}")
+
+    vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
+    if vanilla_seed is not None:
+        diff_path = report_dir / "seed.difficulty.html"
+        write_difficulty_graph_html(seed, vanilla_seed, diff_path)
+        print(f"Comparaison de difficulté vanilla vs mod exportée dans {diff_path}")
+    else:
+        print("Comparaison vanilla ignorée : dump sans technologies (relancer l'exporter).")
+
     if args.install:
         paths = cfg.get("paths", {})
         raw_path = (paths.get("factorio_mods") or "").strip()
         mods_dir = Path(raw_path).expanduser() if raw_path else None
         if mods_dir is not None and mods_dir.is_dir():
             _install_mod(seed, mods_dir)
-            print(f"Seed {db.seed_value} valide, mod installe dans {mods_dir}/")
+            print(f"Mod installé dans {mods_dir}/")
+        elif not raw_path:
+            print("Aucun dossier mods configure (paths.factorio_mods vide dans config/user.yaml).")
         else:
-            mod_path = _build_mod(seed, OUTPUT_DIR)
-            if not raw_path:
-                print("Aucun dossier mods configure (paths.factorio_mods vide dans config/user.yaml).")
-            else:
-                print(f"Dossier Factorio mods introuvable ({raw_path})")
-            print(f"Seed {db.seed_value} valide, mod assemble dans {mod_path}")
-            print("Copie-le manuellement dans ton dossier mods Factorio.")
-    else:
-        out_dir = Path(args.out) if args.out else OUTPUT_DIR
-        mod_path = _build_mod(seed, out_dir)
-        html_path = mod_path / "seed.graph.html"
-        write_seed_graph_html(seed, html_path)
-        print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
-        if html_path.exists():
-            print(f"Graphe interactif (cliquable) exporté dans {html_path}")
-        else:
-            print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
-        cx_path = mod_path / "seed.complexity.html"
-        write_complexity_html(seed, cx_path, db)
-        print(f"Rapport de complexité exporté dans {cx_path}")
-
-        vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
-        if vanilla_seed is not None:
-            diff_path = mod_path / "seed.difficulty.html"
-            write_difficulty_graph_html(seed, vanilla_seed, diff_path)
-            print(f"Comparaison de difficulté vanilla vs mod exportée dans {diff_path}")
-        else:
-            print("Comparaison vanilla ignorée : dump sans technologies (relancer l'exporter).")
+            print(f"Dossier Factorio mods introuvable ({raw_path})")
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
     """Génère une seed et écrit la comparaison de difficulté avec le vanilla.
 
-    `args` fournit `demo`, `dump`, `seed` et `out`. La baseline vanilla est dérivée du dump ; le HTML comparatif est écrit dans `out`. Retourne `None`.
+    `args` fournit `demo`, `dump`, `seed` et `out`. La baseline vanilla est dérivée du dump ; le HTML comparatif est écrit dans `out/reports/compare/`. Retourne `None`.
     """
     if args.demo:
         sys.exit("La comparaison nécessite le dump vanilla (pas --demo).")
@@ -201,7 +219,7 @@ def cmd_compare(args: argparse.Namespace) -> None:
             "remplace data/vanilla_dump.json (voir README, système de dev)."
         )
 
-    out_dir = Path(args.out) if args.out else OUTPUT_DIR
+    out_dir = (Path(args.out) if args.out else OUTPUT_DIR) / "reports" / "compare"
     path = out_dir / f"seed.difficulty.{db.seed_value}.html"
     write_difficulty_graph_html(seed, vanilla_seed, path)
 
@@ -217,7 +235,7 @@ def cmd_compare(args: argparse.Namespace) -> None:
 def cmd_report(args: argparse.Namespace) -> None:
     """Génère le rapport complet du dump vanilla et contrôle les données lues.
 
-    `args` porte `demo`, `dump`, `seed` et `out`. Produit complexité, difficulté et partie simulée, imprime un résumé et des avertissements sur les données manquantes. Retourne `None`.
+    `args` porte `dump`, `out`, `playthrough` et `no_cache`. Le HTML par défaut va dans `output/reports/vanilla/` ; produit complexité, difficulté et, sur option, la partie simulée. Retourne `None`.
     """
     dump_path = Path(args.dump)
     try:
@@ -233,7 +251,11 @@ def cmd_report(args: argparse.Namespace) -> None:
         )
 
     game_version = (dump.get("meta") or {}).get("game_version", "inconnue")
-    out = Path(args.out) if args.out else OUTPUT_DIR / "vanilla.report.html"
+    out = Path(args.out) if args.out else REPORT_DIR / "vanilla" / "vanilla.report.html"
+    skip = {"playthrough"} if not getattr(args, "playthrough", False) else set()
+    if getattr(args, "no_cache", False):
+        skip.add("cache")
+    skip = frozenset(skip)
     result = write_full_report(
         seed,
         out,
@@ -242,82 +264,114 @@ def cmd_report(args: argparse.Namespace) -> None:
         dump=dump,
         title=f"Factorio vanilla {game_version} — rapport complet",
         playthrough_title=f"Factorio vanilla {game_version} — partie simulée",
+        skip=skip,
     )
+    if result.get("cache_written"):
+        _save_dump(dump_path, dump)
 
     analysis = result["analysis"]
     stats = analysis.get("item_stats") or {}
     print(f"Dump    : {dump_path} (Factorio {game_version})")
-    print(f"Entrées : {len(stats)} items/fluides simulés")
-    print(f"Crafts  : {analysis.get('total_crafts', 0)}")
-    print(f"Minage  : {analysis.get('mining_seconds', 0)} s")
-    buildings = analysis.get("buildings") or []
-    print(f"Bâtiments : {', '.join(buildings) or '—'}")
-
-    external = analysis.get("external_items") or []
-    if external:
-        print(f"[ATTENTION] fournis en externe : {', '.join(external)}")
+    if "playthrough" in skip:
+        print("Simulation : ignorée (--playthrough pour l’activer)")
+        print("Complexité : graphe mémoïsé du dump")
     else:
-        print("[OK] aucun item fourni en externe")
+        print(f"Entrées : {len(stats)} items/fluides simulés")
+        if result.get("cache_hit"):
+            print("Cache   : simulation reprise du dump")
+        elif result.get("cache_written"):
+            print("Cache   : simulation enregistrée dans le dump")
+        print(f"Crafts  : {analysis.get('total_crafts', 0)}")
+        print(f"Minage  : {analysis.get('mining_seconds', 0)} s")
+        buildings = analysis.get("buildings") or []
+        print(f"Bâtiments : {', '.join(buildings) or '—'}")
 
-    mined = [name for name, stat in stats.items() if stat.get("mined", 0) > 0]
-    if mined and not analysis.get("mining_seconds"):
-        print("[ATTENTION] temps de minage absent du dump (mineable_properties) : relance l'exporter")
+        external = analysis.get("external_items") or []
+        if external:
+            print(f"[ATTENTION] fournis en externe : {', '.join(external)}")
+        else:
+            print("[OK] aucun item fourni en externe")
 
-    entities = dump.get("entities") or {}
-    pumps = [
-        name
-        for name, entity in entities.items()
-        if isinstance(entity, dict)
-        and entity.get("pumping_speed") is not None
-        and not entity.get("pumped_fluid")
-        and not entity.get("pumped_fluids")
-    ]
-    if pumps:
+        mined = [name for name, stat in stats.items() if stat.get("mined", 0) > 0]
+        if mined and not analysis.get("mining_seconds"):
+            print("[ATTENTION] temps de minage absent du dump (mineable_properties) : relance l'exporter")
+
+        entities = dump.get("entities") or {}
+        pumps = [
+            name
+            for name, entity in entities.items()
+            if isinstance(entity, dict)
+            and entity.get("pumping_speed") is not None
+            and not entity.get("pumped_fluid")
+            and not entity.get("pumped_fluids")
+        ]
+        if pumps:
+            print(
+                f"[ATTENTION] pumped_fluid absent ({', '.join(pumps[:5])}) : "
+                "relance l'exporter récent"
+            )
+        # Produits de lancement : source de vérité = ``rocket_launch_products``
+        # déclaré par les items ou les entités du dump, sans nom supposé.
+        launch_products_sources = [
+            entry.get("rocket_launch_products")
+            for section in ((dump.get("items") or {}), entities)
+            for entry in section.values()
+            if isinstance(entry, dict) and entry.get("rocket_launch_products")
+        ]
+        if not launch_products_sources:
+            print("[ATTENTION] produits de lancement absents : relance l'exporter récent")
+
+        untagged = [row["name"] for row in result["rows"] if row["tags"] == "—"]
+        if untagged:
+            print(f"[ATTENTION] sans tag : {', '.join(untagged[:10])}")
+        else:
+            print("[OK] tous les items/fluides ont un tag")
+
+        prog = result.get("progression") or {}
         print(
-            f"[ATTENTION] pumped_fluid absent ({', '.join(pumps[:5])}) : "
-            "relance l'exporter récent"
+            f"[OK] chaîne de progression : {prog.get('count', 0)} items/fluides "
+            f"({prog.get('packs', 0)} packs de science)"
         )
-    # Produits de lancement : source de vérité = ``rocket_launch_products``
-    # déclaré par les items ou les entités du dump, sans nom supposé.
-    launch_products_sources = [
-        entry.get("rocket_launch_products")
-        for section in ((dump.get("items") or {}), entities)
-        for entry in section.values()
-        if isinstance(entry, dict) and entry.get("rocket_launch_products")
-    ]
-    if not launch_products_sources:
-        print("[ATTENTION] produits de lancement absents : relance l'exporter récent")
 
-    untagged = [row["name"] for row in result["rows"] if row["tags"] == "—"]
-    if untagged:
-        print(f"[ATTENTION] sans tag : {', '.join(untagged[:10])}")
-    else:
-        print("[OK] tous les items/fluides ont un tag")
-
-    prog = result.get("progression") or {}
-    print(
-        f"[OK] chaîne de progression : {prog.get('count', 0)} items/fluides "
-        f"({prog.get('packs', 0)} packs de science)"
-    )
-
-    for product in rocket_chain_from_dump(dump).get("launch_products") or ():
-        row = stats.get(product)
-        if row is None:
-            continue
-        print(
-            f"[OK] lancement ({product}) : {row.get('crafts', 0)} lancement(s), "
-            f"{row.get('produced', 0)} produits"
-        )
+        for product in rocket_chain_from_dump(dump).get("launch_products") or ():
+            row = stats.get(product)
+            if row is None:
+                continue
+            print(
+                f"[OK] lancement ({product}) : {row.get('crafts', 0)} lancement(s), "
+                f"{row.get('produced', 0)} produits"
+            )
     print(f"Rapport : {out}")
 
 
 def cmd_test(args: argparse.Namespace) -> None:
     """Teste un dump fixe ou un mod existant et écrit trois pages HTML.
 
-    `args` porte `dump`, `mod_dir` et `out`. Sans `mod_dir`, l'état testé vient
-    directement du dump. Avec `mod_dir`, l'état déjà assemblé du mod est lu
-    depuis `seed/seed.json`. Aucune graine n'est tirée et aucun mod n'est généré.
+    `args` porte `dump`, `mod_dir`, `out`, `--playthrough` et les options
+    `--no-...`. Sans `mod_dir`, l'état testé vient directement du dump. Avec
+    `mod_dir`, l'état déjà assemblé du mod est lu depuis `seed/seed.json`. Les
+    trois HTML vont dans `out/reports/<source>/` (défaut `output/reports/`).
+    Aucune graine n'est tirée et aucun mod n'est généré.
     """
+    skip = {"playthrough"}
+    flags = (
+        ("no_checks", "checks"),
+        ("no_complexity", "complexity"),
+        ("no_difficulty", "difficulty"),
+        ("no_playthrough", "playthrough"),
+        ("no_cache", "cache"),
+        ("no_report_html", "report-html"),
+        ("no_dump_html", "dump-html"),
+        ("no_graph_html", "graph-html"),
+    )
+    for attribute, name in flags:
+        if getattr(args, attribute, False):
+            skip.add(name)
+    if getattr(args, "playthrough", False):
+        skip.discard("playthrough")
+    if getattr(args, "no_html", False):
+        skip.update(("report-html", "dump-html", "graph-html"))
+
     progress = Progress()
     progress.start()
     try:
@@ -341,25 +395,46 @@ def cmd_test(args: argparse.Namespace) -> None:
 
         progress.update(80, "chargement de la base vanilla")
         db = _load_db(False, dump_path)
+        if Path(args.dump).resolve() == DUMP_PATH_DEFAULT.resolve():
+            baseline_seed = build_vanilla_seed(dump)
+        else:
+            try:
+                baseline_seed = build_vanilla_seed(
+                    json.loads(DUMP_PATH_DEFAULT.read_text(encoding="utf-8"))
+                )
+            except (OSError, ValueError) as err:
+                sys.exit(f"Baseline vanilla illisible ({DUMP_PATH_DEFAULT}) : {err}")
         progress.update(90, "base vanilla chargée")
         source = _source_label(str(dump_path), dump)
-        out_name = Path(args.mod_dir).name if args.mod_dir else None
-        out_dir = Path(args.out) if args.out else OUTPUT_DIR
+        out_name = _canonical_name(Path(args.mod_dir).name) if args.mod_dir else None
+        out_dir = Path(args.out) if args.out else REPORT_DIR
         result = run_dump_test(
             db,
             dump,
             out_dir,
             source=source,
             state=state,
+            baseline_seed=baseline_seed,
             out_name=out_name,
             progress=progress,
+            skip=frozenset(skip),
         )
+        if result.cache_written:
+            _save_dump(dump_path, dump)
     finally:
         progress.finish("arrêt du testeur")
 
     check = result.check
+    skipped = result.skipped
     print(f"Source : {dump_path} → {source}")
-    print(f"Contrôle : {'OK' if not check.issues else f'{len(check.issues)} problème(s)'}")
+    if result.cache_hit:
+        print("Cache   : simulation reprise du dump")
+    elif result.cache_written:
+        print("Cache   : simulation enregistrée dans le dump")
+    if check.skipped:
+        print("Contrôle : ignoré (--no-checks)")
+    else:
+        print(f"Contrôle : {'OK' if not check.issues else f'{len(check.issues)} problème(s)'}")
     counts = result.coverage.get("counts") or {}
     print(
         "Couverture : "
@@ -370,22 +445,36 @@ def cmd_test(args: argparse.Namespace) -> None:
     )
     for issue in check.issues[:10]:
         print(f"[INVALIDE] {issue}")
-    print(
-        f"Rejeu : {check.researched}/{check.total_techs} techs, "
-        f"{'victoire' if check.victory else 'défaite'}"
-    )
+    if check.skipped:
+        print("Rejeu : ignoré (--no-checks)")
+    else:
+        print(
+            f"Rejeu : {check.researched}/{check.total_techs} techs, "
+            f"{'victoire' if check.victory else 'défaite'}"
+        )
     if check.blocker:
         print("[BLOQUÉ]")
         for line in str(check.blocker).splitlines():
             print(f"  {line}")
-    if result.difficulty_total is None:
+    if "difficulty" in skipped:
+        print("Difficulté : ignorée (--no-difficulty)")
+    elif result.difficulty_total is None:
         print("Difficulté : non calculable sur ce dump")
     else:
         print(f"Difficulté : {result.difficulty_total:,.0f} ressources brutes")
-    print(f"Dump    : {result.dump_html}")
-    print(f"Graphe  : {result.graph_html or 'ignoré (Graphviz absent)'}")
-    print(f"Rapport : {result.report_html}")
-    if not check.ok:
+    if "dump-html" in skipped:
+        print("Dump    : ignoré (--no-dump-html)")
+    else:
+        print(f"Dump    : {result.dump_html}")
+    if "graph-html" in skipped:
+        print("Graphe  : ignoré (--no-graph-html)")
+    else:
+        print(f"Graphe  : {result.graph_html or 'ignoré (Graphviz absent)'}")
+    if "report-html" in skipped:
+        print("Rapport : ignoré (--no-report-html)")
+    else:
+        print(f"Rapport : {result.report_html}")
+    if not check.ok and "checks" not in skipped:
         sys.exit(2)
 
 
@@ -399,7 +488,7 @@ def cmd_dump(args: argparse.Namespace) -> None:
         dump = json.loads(dump_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as err:
         sys.exit(f"Dump illisible ({dump_path}) : {err}")
-    out = Path(args.out) if args.out else OUTPUT_DIR / "vanilla.dump.html"
+    out = Path(args.out) if args.out else REPORT_DIR / "vanilla" / "vanilla.dump.html"
     path = write_dump_html(dump, out)
     print(f"Navigateur du dump : {path}")
 
@@ -427,7 +516,7 @@ def cmd_witness(args: argparse.Namespace) -> None:
     db.seed_value = args.seed
     cfg = _load_config()
     seed = generate_seed(db, config=cfg)
-    out_dir = Path(args.out) if args.out else OUTPUT_DIR
+    out_dir = Path(args.out) if args.out else MOD_DIR
     mod_path = build_mod(seed, out_dir)
     digest = witness_md5(mod_path)
     print(f"seed_value: {db.seed_value}")
@@ -469,7 +558,7 @@ def main(argv: list[str] | None = None) -> None:
     p_cmp.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_cmp.add_argument("--seed", type=int, default=None,
                        help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
-    p_cmp.add_argument("--out", default=None, help="Dossier de sortie du HTML (defaut: output/)")
+    p_cmp.add_argument("--out", default=None, help="Racine de sortie : HTML dans <out>/reports/compare/ (defaut: output/)")
     p_cmp.set_defaults(func=cmd_compare)
 
     p_report = sub.add_parser(
@@ -478,7 +567,15 @@ def main(argv: list[str] | None = None) -> None:
     p_report.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_report.add_argument(
         "--out", default=None,
-        help="Chemin du HTML (defaut: output/vanilla.report.html)",
+        help="Chemin du HTML (defaut: output/reports/vanilla/vanilla.report.html)",
+    )
+    p_report.add_argument(
+        "--playthrough", action="store_true",
+        help="Activer la simulation complete (desactivee par defaut)",
+    )
+    p_report.add_argument(
+        "--no-cache", action="store_true",
+        help="Ignorer la simulation persistee dans le dump",
     )
     p_report.set_defaults(func=cmd_report)
 
@@ -492,7 +589,47 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_test.add_argument(
         "--out", default=None,
-        help="Dossier de sortie (defaut: output/)",
+        help="Racine des rapports HTML (defaut: output/reports/)",
+    )
+    p_test.add_argument(
+        "--no-checks", action="store_true",
+        help="Ignorer validation statique et rejeu",
+    )
+    p_test.add_argument(
+        "--no-complexity", action="store_true",
+        help="Ignorer le calcul de complexite dans le rapport",
+    )
+    p_test.add_argument(
+        "--no-difficulty", action="store_true",
+        help="Ignorer le calcul de difficulte",
+    )
+    p_test.add_argument(
+        "--playthrough", action="store_true",
+        help="Activer la simulation complete (desactivee par defaut)",
+    )
+    p_test.add_argument(
+        "--no-playthrough", action="store_true",
+        help="Forcer l'absence de partie simulee (comportement par defaut)",
+    )
+    p_test.add_argument(
+        "--no-cache", action="store_true",
+        help="Ignorer la simulation persistee dans le dump",
+    )
+    p_test.add_argument(
+        "--no-report-html", action="store_true",
+        help="Ne pas ecrire le rapport HTML",
+    )
+    p_test.add_argument(
+        "--no-dump-html", action="store_true",
+        help="Ne pas ecrire le navigateur du dump",
+    )
+    p_test.add_argument(
+        "--no-graph-html", action="store_true",
+        help="Ne pas ecrire le graphe HTML",
+    )
+    p_test.add_argument(
+        "--no-html", action="store_true",
+        help="Ne pas ecrire les trois HTML",
     )
     p_test.set_defaults(func=cmd_test)
 
@@ -502,14 +639,14 @@ def main(argv: list[str] | None = None) -> None:
     p_dump.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_dump.add_argument(
         "--out", default=None,
-        help="Chemin du HTML (defaut: output/vanilla.dump.html)",
+        help="Chemin du HTML (defaut: output/reports/vanilla/vanilla.dump.html)",
     )
     p_dump.set_defaults(func=cmd_dump)
 
     p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
     p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
     p_gen.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
-    p_gen.add_argument("--out", default=None, help="Dossier de sortie (defaut: output/randputF_<version>)")
+    p_gen.add_argument("--out", default=None, help="Racine : mod dans <out>/mods/, HTML dans <out>/reports/ (defaut: output/)")
     p_gen.add_argument("--seed", type=int, default=None, help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
     p_gen.add_argument("--install", action="store_true", help="Installe le mod directement dans Factorio")
     p_gen.set_defaults(func=cmd_generate)
@@ -518,7 +655,7 @@ def main(argv: list[str] | None = None) -> None:
     p_witness.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
     p_witness.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_witness.add_argument("--seed", type=int, default=5, help="Seed a assembler puis hacher (defaut: 5, le temoin)")
-    p_witness.add_argument("--out", default=None, help="Dossier de sortie (defaut: output/)")
+    p_witness.add_argument("--out", default=None, help="Dossier des mods (defaut: output/mods/)")
     p_witness.add_argument("--expect", default=None, help="Md5 attendu ; exit 1 si divergence (utile en CI)")
     p_witness.set_defaults(func=cmd_witness)
 

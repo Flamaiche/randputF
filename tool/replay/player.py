@@ -293,6 +293,7 @@ class FakePlayer:
             )
         self._prep_db()
         self._prep_kit()
+        self._swept_unlocked: set[str] = set()
         self._invalidate_caches()
 
     # ── Préparation ───────────────────────────────────────────────────────
@@ -1020,51 +1021,68 @@ class FakePlayer:
         return out > 0 and self.had.get(item, 0) >= out
 
     def _mastery_sweep(self) -> None:
-        """Tente de porter chaque item (recette débloquée, non sûr, non infini)
-        à 10× la sortie de sa recette, par worklist des consommateurs. ``had`` ne
-        fait que croître et les échecs restaurent l'état — termine, et converge
-        vers le même point fixe qu'un rescan exhaustif."""
-        self._invalidate_caches()   # réflète le nouvel unlock dans `_mastery_goal`
+        """Tente de porter les items nouvellement concernés à 10× la sortie de
+        leur recette, par worklist des consommateurs. ``had`` ne fait que
+        croître et les échecs restaurent l'état — termine, et converge vers le
+        même point fixe qu'un rescan exhaustif."""
+        previous_goal = self._mastery_goal
+        previous_mastered = self.mastered
+        previous_tier = self._current_tier()
+        self._invalidate_caches()
+        new_recipes = self.unlocked - self._swept_unlocked
+        raised_goals = {
+            name
+            for name, amount in self._mastery_goal.items()
+            if amount > previous_goal.get(name, 0)
+        }
+        new_mastered = self.mastered - previous_mastered
+        current_tier = self._current_tier()
         pending: deque[str] = deque()
-        for r in self.recipes:
-            if r["name"] not in self.unlocked:
-                continue
-            for res in r.get("results") or []:
-                if res.get("type") != SLOT_ITEM:
-                    continue
-                name = res["name"]
-                if name in self.item_patch_resources:
-                    continue  # pas une recette de craft (raw ramassée)
-                if self._is_mastered(name) or self._raw_infinite_now(name):
-                    continue
-                pending.append(name)
+        queued: set[str] = set()
+
+        def queue_item(name: str) -> None:
+            if name in self.item_patch_resources or name in queued:
+                return
+            if self._is_mastered(name) or self._raw_infinite_now(name):
+                return
+            queued.add(name)
+            pending.append(name)
+
+        for recipe_name in new_recipes:
+            for res in self.recipes_by_name.get(recipe_name, {}).get("results") or []:
+                if res.get("type") == SLOT_ITEM:
+                    queue_item(res["name"])
+        for name in raised_goals:
+            queue_item(name)
+        for name in new_mastered:
+            for consumer in self._consumers.get(name, ()):
+                queue_item(consumer)
+        if current_tier != previous_tier:
+            for (_kind, name), tier in self.late_tier.items():
+                if previous_tier < tier <= current_tier:
+                    queue_item(name)
+                    for consumer in self._consumers.get(name, ()):
+                        queue_item(consumer)
+
         forwarded: set[str] = set()
         while pending:
             name = pending.popleft()
+            queued.discard(name)
             if self._is_mastered(name) or self._raw_infinite_now(name):
                 continue
             if name not in self.mastered:
                 if self._craft(name, 10 * self._mastery_goal.get(name, 0)):
-                    # Un item devient sûr → ses CONSOMMATEURS (ingrédient/atelier)
-                    # deviennent peut-être testables : on les re-tente.
                     self.mastered.add(name)
                     self.mastered_tier.setdefault(name, self._current_tier())
                     for consumer in self._consumers.get(name, ()):
-                        if (not self._is_mastered(consumer)
-                                and not self._raw_infinite_now(consumer)):
-                            pending.append(consumer)
+                        queue_item(consumer)
                 continue
-            # Déjà traité sans être « sûr » (sortie non requise : `_is_mastered`
-            # reste faux) : on relance seulement la propagation vers ses
-            # consommateurs (le matériel a pu s'améliorer), UNE fois — sinon les
-            # cycles de produits à sortie non requise re-filent à l'infini.
             if name in forwarded:
                 continue
             forwarded.add(name)
             for consumer in self._consumers.get(name, ()):
-                if (not self._is_mastered(consumer)
-                        and not self._raw_infinite_now(consumer)):
-                    pending.append(consumer)
+                queue_item(consumer)
+        self._swept_unlocked = set(self.unlocked)
 
     # ── Simulation FORWARD (le « comme un joueur ») ──────────────────────
     #
@@ -1226,7 +1244,6 @@ class FakePlayer:
             items, fluids, power, generator = self.closure()
             self._world_items, self._world_fluids, self._world_power = items, fluids, power
             self.fluids_obtainable = fluids
-            self._invalidate_caches()
             report.power_available, report.power_generator = power, generator
             technical_failure: tuple[dict, str, str, str | None] | None = None
             prereq_failure: tuple[dict, str, str, str | None] | None = None

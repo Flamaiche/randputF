@@ -1,11 +1,14 @@
 """Rapport « partie simulée » : minage, crafts, sous-produits, déclencheurs."""
 from __future__ import annotations
 
+import hashlib
 import html as _html
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from tool.common.version import VERSION
 from tool.exporters.complexity_graph import analyze_playthrough, render_complexity_html
 from tool.exporters.html_ui import TIP_HTML, UI_SCRIPT, th as _th
 from tool.exporters.mod_seed import build_vanilla_seed, tag_progression
@@ -417,20 +420,83 @@ def _fragments(seed: dict, analysis: dict, rows: list[dict]) -> dict:
     }
 
 
+_CACHE_SECTION = "randputf_cache"
+_CACHE_ID = "playthrough_v1"
+_CACHE_REQUIRED = ("item_stats", "buildings", "complexity_stats")
+
+
+def _playthrough_cache_digest(seed: dict, dump: dict | None) -> str:
+    payload = {
+        "id": _CACHE_ID,
+        "version": VERSION,
+        "seed": seed,
+        "dump": {key: value for key, value in (dump or {}).items() if key != _CACHE_SECTION},
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _valid_cached_analysis(analysis: Any) -> bool:
+    if not isinstance(analysis, dict):
+        return False
+    if any(key not in analysis for key in _CACHE_REQUIRED):
+        return False
+    return isinstance(analysis["item_stats"], dict) and isinstance(
+        analysis["complexity_stats"], dict
+    )
+
+
+def read_playthrough_cache(dump: dict | None, seed: dict) -> dict | None:
+    """Retourne l'analyse simulée persistée si elle correspond encore à la seed."""
+    if not isinstance(dump, dict):
+        return None
+    entry = (dump.get(_CACHE_SECTION) or {}).get(_CACHE_ID)
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("version") != VERSION:
+        return None
+    if entry.get("digest") != _playthrough_cache_digest(seed, dump):
+        return None
+    analysis = entry.get("analysis")
+    return analysis if _valid_cached_analysis(analysis) else None
+
+
+def write_playthrough_cache(dump: dict | None, seed: dict, analysis: dict) -> bool:
+    """Persiste l'analyse simulée dans le dump et indique si le dump a changé."""
+    if not isinstance(dump, dict) or not _valid_cached_analysis(analysis):
+        return False
+    entry = {
+        "version": VERSION,
+        "digest": _playthrough_cache_digest(seed, dump),
+        "analysis": analysis,
+    }
+    cache = dump.get(_CACHE_SECTION)
+    if not isinstance(cache, dict):
+        cache = {}
+        dump[_CACHE_SECTION] = cache
+    if cache.get(_CACHE_ID) == entry:
+        return False
+    cache[_CACHE_ID] = entry
+    return True
+
+
 def playthrough_report(
     dump: dict | None,
     db: Any = None,
     *,
     seed: dict | None = None,
     title: str | None = None,
+    cache: bool = True,
     on_progress: Callable[[int, str], None] | None = None,
 ) -> dict:
     """Produit le rapport de partie simulée sous forme de fragments et de données.
 
     Si ``seed`` n'est pas fournie, elle est construite depuis le dump. La
-    fonction exécute l'analyse de partie, marque la progression puis prépare
-    les lignes et fragments HTML destinés au rapport complet. ``on_progress``
-    reçoit un pourcentage et une action.
+    fonction réutilise l'analyse persistée dans le dump quand elle correspond
+    encore à la seed, sinon elle simule la partie et persiste le résultat.
+    ``on_progress`` reçoit un pourcentage et une action.
     """
     def emit(percent: int, detail: str) -> None:
         if on_progress is not None:
@@ -441,14 +507,23 @@ def playthrough_report(
     if seed is None:
         emit(2, "construction de la seed")
         seed = build_vanilla_seed(dump)
-    emit(5, "simulation de la partie")
-    analysis = analyze_playthrough(
-        seed,
-        db,
-        on_progress=lambda percent, detail: emit(
-            5 + percent * 65 // 100, f"simulation de la partie — {detail}"
-        ),
-    )
+    cached = read_playthrough_cache(dump, seed) if cache else None
+    cache_hit = cached is not None
+    cache_written = False
+    if cache_hit:
+        emit(5, "simulation reprise du cache du dump")
+        analysis = cached
+    else:
+        emit(5, "simulation de la partie")
+        analysis = analyze_playthrough(
+            seed,
+            db,
+            on_progress=lambda percent, detail: emit(
+                5 + percent * 65 // 100, f"simulation de la partie — {detail}"
+            ),
+        )
+        if cache:
+            cache_written = write_playthrough_cache(dump, seed, analysis)
     emit(72, "progression des tags")
     progression = tag_progression(seed, analysis)
     emit(78, "lignes du tableau")
@@ -459,6 +534,9 @@ def playthrough_report(
     fragments["seed"] = seed
     fragments["title"] = title
     fragments["progression"] = progression
+    fragments["complexity_stats"] = analysis.get("complexity_stats")
+    fragments["cache_hit"] = cache_hit
+    fragments["cache_written"] = cache_written
     return fragments
 
 

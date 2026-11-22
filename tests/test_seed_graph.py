@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 from pathlib import Path
@@ -15,6 +16,7 @@ from types import SimpleNamespace
 
 from tool.common.db import ENVIRONMENTAL_ITEMS
 from tool.exporters.seed_graph import (
+    _embed_icons,
     _graph_engine,
     _node_info,
     _technology_info,
@@ -245,6 +247,17 @@ def test_ressource_brute_jamais_consommee_toujours_visible() -> None:
     water_lines = [l for l in dot.splitlines() if l.startswith('  "water"')]
     assert water_lines, "water doit avoir un nœud"
     assert "-->" not in water_lines[0]
+
+
+def test_embed_icons_reutilise_les_octets_deja_recadres(monkeypatch):
+    def interdit(_png: bytes) -> bytes:
+        raise AssertionError("crop_mip ne doit pas être rappelé sur une icône déjà recadrée")
+
+    monkeypatch.setattr("tool.exporters.seed_graph.crop_mip", interdit)
+    svg = '<svg><image xlink:href="/tmp/icon.png"/></svg>'
+    result = _embed_icons(svg, {"/tmp/icon.png": b"cropped"})
+    encoded = base64.b64encode(b"cropped").decode()
+    assert f'data:image/png;base64,{encoded}' in result
 
 
 def test_graph_engine_sfdp_pour_grand_graphe(monkeypatch):

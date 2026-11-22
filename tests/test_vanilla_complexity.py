@@ -86,4 +86,5 @@ def test_cli_report_generates_html(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     assert out.exists()
     assert "Rapport :" in proc.stdout
-    assert "[OK] aucun item fourni en externe" in proc.stdout
+    assert "Simulation : ignorée" in proc.stdout
+    assert "Complexité : graphe mémoïsé du dump" in proc.stdout

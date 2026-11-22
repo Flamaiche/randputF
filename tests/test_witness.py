@@ -21,6 +21,8 @@ def _make_mod_dir(tmp_path: Path, order: list[str]) -> Path:
         "locale/fr/randputf.cfg": b"[fr]",
         "seed/seed.json": b"{}",
         "seed.graph.html": b"<svg version Graphviz>",
+        "seed.difficulty.html": b"<svg difficulty>",
+        "seed.complexity.html": b"<svg complexity>",
     }
     for key in order:
         path = d / key
@@ -49,6 +51,17 @@ def test_seed_graph_html_exclu_du_temoin(tmp_path):
     d = _make_mod_dir(tmp_path, ["seed.graph.html"])
     rels = [rel for rel, _ in canonical_entries(d)]
     assert "seed.graph.html" not in rels
+
+
+def test_vues_html_exclues_du_temoin(tmp_path):
+    d = _make_mod_dir(
+        tmp_path / "vues",
+        ["seed.graph.html", "seed.difficulty.html", "seed.complexity.html"],
+    )
+    rels = [rel for rel, _ in canonical_entries(d)]
+    assert "seed.graph.html" not in rels
+    assert "seed.difficulty.html" not in rels
+    assert "seed.complexity.html" not in rels
 
 
 def test_witness_reproductible_sur_deux_assemblages(tmp_path):

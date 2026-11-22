@@ -46,6 +46,8 @@ DUMP_PATH_DEFAULT = asset_path("data") / "vanilla_dump.json"
 # seule (install système / PEP 668). Depuis un checkout on garde ``<repo>/output``.
 _OUTPUT_REPO = (repo_root() / "pyproject.toml").exists()
 OUTPUT_DIR = repo_root() / "output" if _OUTPUT_REPO else Path.cwd() / "output"
+REPORT_DIR = OUTPUT_DIR / "reports"
+MOD_DIR = OUTPUT_DIR / "mods"
 
 MAX_ATTEMPTS = 10
 

@@ -544,18 +544,22 @@ def render_difficulty_graph_html(
     *,
     mod_label: str = "seed (mod)",
     vanilla_label: str = "vanilla",
+    mod_series: list[dict] | None = None,
+    vanilla_series: list[dict] | None = None,
     on_progress: Callable[[int], None] | None = None,
 ) -> str:
     """Rend le HTML comparatif de deux séries de difficulté.
 
-    ``mod_seed``/``vanilla_seed`` fournissent les séries, ``mod_label``/``vanilla_label`` les libellés. Retourne une chaîne HTML autonome et lève ``ValueError`` si l'une des séries est vide. ``on_progress`` reçoit un pourcentage global du rendu.
+    ``mod_seed``/``vanilla_seed`` fournissent les graines, ``mod_series``/``vanilla_series`` permettent de réutiliser des séries déjà calculées, et ``mod_label``/``vanilla_label`` les libellés. Retourne une chaîne HTML autonome et lève ``ValueError`` si l'une des séries est vide. ``on_progress`` reçoit un pourcentage global du rendu.
     """
-    vanilla_series = difficulty_series(
-        vanilla_seed, on_progress=_progress_slice(on_progress, 0, 25)
-    )
-    mod_series = difficulty_series(
-        mod_seed, on_progress=_progress_slice(on_progress, 25, 50)
-    )
+    if vanilla_series is None:
+        vanilla_series = difficulty_series(
+            vanilla_seed, on_progress=_progress_slice(on_progress, 0, 25)
+        )
+    if mod_series is None:
+        mod_series = difficulty_series(
+            mod_seed, on_progress=_progress_slice(on_progress, 25, 50)
+        )
     if not vanilla_series or not mod_series:
         raise ValueError("série de difficulté vide")
 

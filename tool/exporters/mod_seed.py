@@ -230,12 +230,14 @@ def _fluidbox_recipes(dump: dict) -> list[dict]:
     return out
 
 
-def _extract_recipes(dump: dict) -> list[dict]:
+def _extract_recipes(dump: dict, buildings: dict[str, str] | None = None) -> list[dict]:
     """Extrait les recettes du dump pour le seed vanilla.
 
     ``dump`` est le JSON de l'exporteur. Exclut les barils sans consommateur hors barillage (un baril réellement utilisé comme intermédiaire moddé est conservé), Kovarex, le retraitement du combustible nucléaire, les recettes paramétrées et les prototypes neutralisés (``hidden`` et désactivés). Les recettes cachées encore actives, ou débloquées par une tech, sont conservées : les mods les utilisent comme vraies voies de production (ex. fusée). Pour un dump moddé, ``randputf-X`` remplace la recette vanilla ``X`` ; pour un ancien dump sans champs d'état, le même choix est déduit du préfixe. Retourne une liste de recettes normalisées (nom, catégorie, ingrédients, produits).
     """
     recipes: list[dict] = []
+    if buildings is None:
+        buildings = _building_by_category(dump)
     all_recipes = dump.get("recipes") or {}
     tech_unlocked_recipes = {
         str(effect.get("recipe"))
@@ -360,7 +362,6 @@ def _extract_recipes(dump: dict) -> list[dict]:
             for ing in (entry.get("ingredients") or [])
             if isinstance(ing, dict) and ing.get("name")
         ]
-        buildings = _building_by_category(dump)
         recipes.append(
             {
                 "name": name,
@@ -463,7 +464,8 @@ def build_vanilla_seed(dump: dict) -> dict:
     inject_pumped_fluids(dump)
     science = science_pack_names(dump)
     entities = _extract_entities(dump)
-    recipes = _extract_recipes(dump)
+    buildings = _building_by_category(dump)
+    recipes = _extract_recipes(dump, buildings)
     all_recipes = dump.get("recipes") or {}
     for recipe in recipes:
         raw = all_recipes.get(recipe["name"]) or {}
