@@ -54,7 +54,7 @@ Sans l'argument `--seed`, la seed est générée à partir de l'heure système (
 .venv/bin/python -m tool generate --seed 5 --install
 ```
 
-L'option `--install` package le mod dans `factorio_mods/randputF_<version>/` (la version est lue dans `mod/info.json`) et met à jour `mod-list.json`. Si le dossier `factorio_mods` est introuvable, le mod est généré dans `output/` pour vous laisser le copier manuellement. En jeu, les patchs remplacent toutes les ressources vanilla de la zone de départ, le kit initial est fourni et les technologies gratuites sont débloquées.
+Le mod est d'abord assemblé dans `output/mods/randputF_<version>/` (la version est lue dans `mod/info.json`), puis `--install` le copie dans `factorio_mods/randputF_<version>/` et met à jour `mod-list.json`. Si le dossier `factorio_mods` est introuvable, le mod reste dans `output/mods/` pour vous laisser le copier manuellement. Les vues HTML associées vont dans `output/reports/randputF_<version>/`, jamais dans le dossier du mod. En jeu, les patchs remplacent toutes les ressources vanilla de la zone de départ, le kit initial est fourni et les technologies gratuites sont débloquées.
 
 ### 20.4 État actuel du code
 

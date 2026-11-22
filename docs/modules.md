@@ -218,18 +218,19 @@ la suite de tests et par les sweeps.
 
 ## 11. `tool/__main__.py` — la CLI
 
-406 lignes, 8 commandes.
+9 commandes.
 
 | Commande | Rôle | Sortie |
 |----------|------|--------|
 | `parse` | Charge et résume la base vanilla | Résumé texte |
 | `audit` | Audite les tags (invariants C8) | exit 1 si violation |
 | `difficulty` | Génère puis affiche l'ardoise | Tableau texte |
-| `compare` | Compare la difficulté d'une seed à la baseline vanilla (HTML) | `output/` HTML |
-| `report` | Rapport complet du dump vanilla : chaîne de progression, tags, contrôles | `output/vanilla.report.html` + résumé |
-| `dump` | Navigateur HTML du dump : inventaire A→Z, tuiles, entités, items, recettes, techs, recherche globale | `output/vanilla.dump.html` |
-| `generate` | Génère, valide, assemble le mod | Dossier `output/randputF_<version>/` |
-| `witness` | Assemble et hache | md5 ; exit 1 si `--expect` diverge |
+| `compare` | Compare la difficulté d'une seed à la baseline vanilla (HTML) | `output/reports/compare/` HTML |
+| `report` | Rapport complet du dump vanilla : chaîne de progression, tags, contrôles | `output/reports/vanilla/vanilla.report.html` + résumé |
+| `test` | Teste un dump ou un mod, puis écrit les trois vues | `output/reports/<source>/` (3 HTML) |
+| `dump` | Navigateur HTML du dump : inventaire A→Z, tuiles, entités, items, recettes, techs, recherche globale | `output/reports/vanilla/vanilla.dump.html` |
+| `generate` | Génère, valide, assemble le mod | Mod dans `output/mods/randputF_<version>/`, HTML dans `output/reports/randputF_<version>/` |
+| `witness` | Assemble et hache | Mod dans `output/mods/randputF_<version>/` ; md5, exit 1 si `--expect` diverge |
 
 Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
 vanilla alternatif).

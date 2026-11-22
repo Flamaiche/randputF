@@ -85,7 +85,7 @@ Il s'agit du script réel du job, et non d'un résumé — s'en écarter brise l
 2. Installer le paquet avec ses extras de dev (`pip install ".[dev]"`, comme `ci.yml`) — le job lance `pytest` immédiatement après.
 3. `pytest -q` — les tests sont bloquants : une release ne peut sortir sur une suite rouge. Cela garantit qu'un bump de version ne brise rien en silence.
 4. `randputf witness --seed 5` — vérifie que la génération aboutit (sans `--expect` : la CI porte la valeur figée, cf. `docs/witness.md`).
-5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `randputF_<version>/` uniquement. `seed.graph.html` est exclu du zip (vue de debug de 7,2 Mo, déjà écartée du témoin) : ~880 Ko de fichiers -> 103 Ko zippés.
+5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `/tmp/modrel/mods/randputF_<version>/` uniquement : les HTML vont dans `/tmp/modrel/reports/randputF_<version>/` et ne sont plus mélangés au mod. `seed.graph.html`, `seed.difficulty.html` et `seed.complexity.html` sont exclus du zip (vues de debug régénérables, déjà écartées du témoin) : ~880 Ko de fichiers -> 103 Ko zippés.
 6. Créer le tag explicitement : `git tag "$TAG" "$GITHUB_SHA"` puis `git push origin "$TAG"`. Le tag est ainsi créé après les tests et le build, et pointe exactement sur le commit promu.
 7. Publier : si la release existe déjà (brouillon), `gh release upload --clobber` puis `gh release edit --draft=false` — `gh release edit` ne publie pas de lui-même. Sinon `gh release create` avec le zip en asset.
 

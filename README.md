@@ -49,9 +49,9 @@ utilisée pour les tests de déterminisme).
 
 Pour **une autre seed**, il faut l'outil Python → [voie complète](#voie-complète-avec-python).
 
-> Le zip ne contient pas `seed.graph.html`, la vue interactive de 7,2 Mo : elle se
-> régénère chez toi avec la voie complète (`randputf generate`). Le mod lui-même
-> n'en a pas besoin.
+> Le zip ne contient pas les vues de debug `seed.graph.html`, `seed.difficulty.html`
+> ni `seed.complexity.html` : elles se régénèrent chez toi avec la voie complète
+> (`randputf generate`). Le mod lui-même n'en a pas besoin.
 
 ### Dossier `mods` selon ton système
 
@@ -137,12 +137,12 @@ dépôt).
 .venv/bin/python -m tool generate --seed 5 --install
 ```
 
-`--install` assemble le mod complet et le copie dans
-`<factorio_mods>/randputF_<version>/` (la version est lue dans `mod/info.json`),
-puis active le mod dans `mod-list.json`. Si
-le dossier mods est introuvable, le mod est assemblé dans `output/` et le
-chemin est affiché : il reste à le copier manuellement dans le dossier mods.
-Désactivez le mod à tout moment via le menu Mods de Factorio.
+Le mod complet est d'abord assemblé dans
+`output/mods/randputF_<version>/` (la version est lue dans `mod/info.json`).
+`--install` le copie ensuite dans `<factorio_mods>/randputF_<version>/` et
+active le mod dans `mod-list.json`. Si le dossier mods est introuvable, le mod
+reste dans `output/mods/` et le chemin est affiché : il reste à le copier
+manuellement. Désactivez le mod à tout moment via le menu Mods de Factorio.
 
 Au lancement d'une partie : les gisements tirés remplacent les ressources
 vanilles autour du spawn, le kit de départ est injecté, les recherches
@@ -176,11 +176,10 @@ au fil des sections de conception.
 
 ## Ce que produit une génération
 
-Dans `output/randputF_<version>/` (ou directement dans `<factorio_mods>/` avec
-`--install`) :
+Le mod et ses vues HTML sont séparés :
 
 ```
-randputF_<version>/
+output/mods/randputF_<version>/    # le mod seul, jamais de HTML ici
 ├── control.lua            # runtime : placement des gisements, kit départ, déblocages
 ├── data.lua               # data-stage : lecture de la seed, construction recettes/techs
 ├── data-updates.lua       # tuiles de lacs, réarmement des véhicules, fuel unifié
@@ -188,9 +187,11 @@ randputF_<version>/
 ├── info.json              # métadonnées du mod
 ├── locale/                # traductions françaises et anglaises
 ├── graphics/              # icônes / textures
-├── seed/
-│   ├── seed.json          # la seed générée : gisements, recettes, techs, pools
-│   └── seed.lua           # la même seed au format Lua, chargée par le mod
+└── seed/
+    ├── seed.json          # la seed générée : gisements, recettes, techs, pools
+    └── seed.lua           # la même seed au format Lua, chargée par le mod
+
+output/reports/randputF_<version>/ # les vues HTML, à part du mod
 ├── seed.graph.html        # graphe de production interactif (voir plus bas)
 ├── seed.complexity.html   # rapport de complexité de la partie (voir plus bas)
 └── seed.difficulty.html   # difficulté de la seed vs vanilla (voir plus bas)
@@ -281,10 +282,10 @@ Deux commandes lisent le dump vanilla sans générer de mod :
 
 ```bash
 randputf report   # rapport complet : chaîne de progression, packs de science,
-                  # tags des bâtiments, contrôles → output/vanilla.report.html
+                  # tags, contrôles → output/reports/vanilla/vanilla.report.html
 randputf dump     # navigateur du dump : inventaire A→Z, tuiles, entités,
                   # items/fluides, recettes, techs + recherche globale
-                  # → output/vanilla.dump.html
+                  # → output/reports/vanilla/vanilla.dump.html
 ```
 
 Les packs de science et la **chaîne de lancement** (victoire) y sont reconnus
@@ -389,7 +390,7 @@ randputF/
 ├── mod/                 # source du mod Factorio 2.0
 ├── exporter/            # mod compagnon (dump JSON des prototypes)
 ├── tests/               # tests unitaires (pytest)
-└── output/              # mods assemblés (généré)
+└── output/              # généré : mods/ (mods assemblés) et reports/ (HTML)
 ```
 
 Le détail par fichier est décrit dans

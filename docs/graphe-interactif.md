@@ -1,13 +1,14 @@
 # Les vues HTML de la génération (`seed.graph.html`, `seed.complexity.html`, `seed.difficulty.html`)
 
-À la racine du mod (`<out>/randputF_<version>/`), soit un niveau au-dessus de
-`seed/seed.json`, la commande `generate` écrit **trois vues HTML autonomes** :
-le graphe de production cliquable, le rapport de complexité et la courbe de
-difficulté comparée au vanilla. `--out` choisit seulement le dossier de sortie.
-La commande `randputf compare` régénère seule la vue de difficulté (même rendu,
-nommé `seed.difficulty.<seed>.html` dans `output/`). Ce document explique leur
-construction ; le mode d'emploi est côté utilisateur (README racine, sections
-« Le graphe interactif » et « La difficulté »).
+Dans `output/reports/randputF_<version>/`, à côté du mod assemblé dans
+`output/mods/randputF_<version>/`, la commande `generate` écrit **trois vues
+HTML autonomes** : le graphe de production cliquable, le rapport de complexité
+et la courbe de difficulté comparée au vanilla. `--out` choisit la racine :
+`<out>/mods/` pour le mod, `<out>/reports/` pour les HTML. La commande
+`randputf compare` régénère seule la vue de difficulté (même rendu, nommé
+`seed.difficulty.<seed>.html` dans `<out>/reports/compare/`). Ce document
+explique leur construction ; le mode d'emploi est côté utilisateur (README
+racine, sections « Le graphe interactif » et « La difficulté »).
 
 Retour : [docs/README.md](README.md).
 
@@ -77,10 +78,14 @@ Le modèle suit **ce que ferait réellement un joueur pour terminer l'arbre** :
 
 - pour chaque technologie, on prend les packs de science exigés par son
   `unit` (`count × amount`) ;
-- on déplie récursivement la recette de chaque pack jusqu'aux
-  `pools.raw_resources` / au kit de départ, en comptant les crafts ;
+- le coût unitaire de chaque objet est mémoïsé une seule fois dans
+  `tool/audit/graph.py`, jusqu'aux `pools.raw_resources` / au kit de départ ;
 - chaque craft utilise l'atelier `crafted_in` de la recette (ou la main) ;
-- le temps d'un craft vaut `energy / crafting_speed` du bâtiment.
+- le temps d'un craft vaut `energy / crafting_speed` du bâtiment ;
+- le même calcul alimente le profil de difficulté du rapport complet ;
+- dans le rapport complet, la complexité vient de ce graphe mémoïsé par défaut ;
+  avec `--playthrough`, elle réutilise les compteurs collectés pendant
+  `analyze_playthrough` au lieu de refaire un dépliage.
 
 Mesures produites :
 
@@ -89,6 +94,21 @@ Mesures produites :
 - **résumé** : score de complexité, temps de craft total (comme si un joueur
   faisait tous les crafts), temps de recherche total, fabricateur le plus
   utilisé, ressource la plus consommée pendant la partie.
+
+Le dépliage par chemin est remplacé par cette programmation dynamique mémoïsée :
+les cycles sont cassés une fois pour toutes et les scores de complexité peuvent
+différer de l'ancien modèle exact, sans explosion du nombre d'étapes sur les
+gros graphes moddés. C'est la source par défaut de `analyze_complexity()` dans
+les rapports et les exports autonomes : elle lit les recettes et les stats du
+dump, sans simuler la partie. `analyze_complexity(..., playthrough=...)` reste
+disponible quand `--playthrough` est demandé, pour consommer les compteurs déjà
+calculés par la simulation. Dans ce mode, la simulation mémoïse son choix de
+recette pour chaque item entre deux lots de déblocages : elle continue à suivre
+les vraies recettes disponibles, sans refaire le même scan de producteurs à
+chaque besoin. Le résultat complet est enregistré dans le dump sous
+`randputf_cache.playthrough_v1`, avec une empreinte de la seed, du dump et de la
+version de l'outil : les commandes suivantes relisent les compteurs sans
+rejouer la partie. `--no-cache` force un nouveau calcul.
 
 Le fichier est **autonome** : CSS et SVG sont générés en Python, aucun CDN,
 **aucun JavaScript** — il s'ouvre hors ligne. `analyze_playthrough` (la partie
@@ -99,7 +119,7 @@ simulée sous-jacente) est partagé avec le rapport vanilla de la commande
 
 Écrite par `generate --out` **quand le dump porte les technologies**
 (`randputf compare` produit le même HTML, nommé `seed.difficulty.<seed>.html`
-dans `output/`). C'est une **courbe de difficulté cumulée** : en abscisse la
+dans `<out>/reports/compare/`). C'est une **courbe de difficulté cumulée** : en abscisse la
 progression (une tech par point, suivie d'un point « Lancement (fusée) »), en
 ordonnée le **total de ressources brutes** déjà investies pour arriver là.
 

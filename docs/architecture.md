@@ -159,9 +159,9 @@ randputF/
 │   └── seed/            # seed.json et données générées
 ├── exporter/            # mod compagnon (dump JSON des prototypes)
 ├── tests/               # tests unitaires (pytest)
-└── output/              # mod assemblé (généré)
+└── output/              # généré : mods/ (mod assemblé) et reports/ (HTML)
 ```
 
-Le graphe interactif (`seed.graph.html`, généré par `tool/exporters/seed_graph.py`) est présenté aux joueurs dans le README principal (section « Le graphe interactif ») et détaillé techniquement dans [graphe-interactif.md](graphe-interactif.md). Cet outil sert d'interface visuelle et de brique système, unissant données générées, icônes du jeu et format autonome.
+Le graphe interactif (`seed.graph.html`, généré par `tool/exporters/seed_graph.py`) est présenté aux joueurs dans le README principal (section « Le graphe interactif ») et détaillé techniquement dans [graphe-interactif.md](graphe-interactif.md). Il est écrit dans `output/reports/`, jamais dans `output/mods/`. Cet outil sert d'interface visuelle et de brique système, unissant données générées, icônes du jeu et format autonome.
 
 Bien que la structure interne puisse évoluer au fil du développement, les rôles fondamentaux restent fidèles à l'architecture du §4.

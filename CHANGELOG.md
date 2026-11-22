@@ -49,19 +49,94 @@ foi).
   leur progression réelle à chaque affichage, sans saut direct de 0 à 100 %.
 - Le testeur unifié joueur + contrôle est la source commune : la commande
   `test` enchaîne validation, rejeu et trois vues HTML dans
-  `output/<source>/`, pour vanilla, le mod seul et le modpack.
+  `output/reports/<source>/`, pour vanilla, le mod seul et le modpack.
 - La mesure de la difficulté est découpée : ardoise, série par technologie et
   tableau remontent leur progression. Le total calculé pour le rapport est
   réutilisé au lieu d'être recalculé une seconde fois.
+- Le rapport ajoute un profil multi-axes (`tool/audit/profile.py`) : structure,
+  volume, temps critique, nouveauté et infrastructure, normalisés contre la
+  baseline vanilla. Chaque axe agrège ses indicateurs en moyenne géométrique ;
+  l'indice global pondère les axes 25/20/20/20/15. Volumes et temps sont
+  comparés en `log10(1 + valeur)` avec la valeur brute conservée dans le
+  tableau. Avec `--mod-dir`, la baseline reste le dump vanilla par défaut au
+  lieu du dump d'entrée, pour que la comparaison ne soit pas identique à la
+  seed testée. Le détail est dans `#profil-difficulte-table` et disparaît avec
+   `--no-difficulty`.
+- Les rapports affichent les ratios `×N` directement à côté des valeurs de
+  complexité, des classements ateliers/ressources et du profil. Les volumes et
+  temps du profil restent comparés en échelle logarithmique, avec la valeur
+  brute conservée dans le tableau.
 - La complexité et la partie simulée remontent aussi leur progression : dépliage
   des recettes, tableau de complexité, simulation technologique et assemblage
-  du rapport avancent la barre sans bloc muet sur les gros dumps. Les phases de
-  dépliage affichent aussi un compteur d'étapes quand leur total n'est pas connu
-  à l'avance.
+  du rapport avancent la barre sans bloc muet sur les gros dumps. Le dépliage
+  affiche `i/N techs · E étapes` ; son ETA est estimée après la première
+   technologie terminée depuis le coût moyen des techs récentes et le débit
+   d'étapes, sans pré-comptage coûteux. Le dépliage affiche en plus la profondeur,
+   la fin du chemin de recettes et la quantité en cours pour montrer où il en est.
+- Complexité et profil partagent un seul calcul mémoïsé
+  (`tool/audit/graph.py`), au lieu d'un dépliage récursif par chemin : les
+  cycles sont cassés une fois, le rapport modpack ne reste plus bloqué dans
+  l'ancienne explosion d'étapes, et les scores de complexité changent par
+  rapport au modèle exact précédent. C'est la source par défaut de
+  `randputf test` et `randputf report` : la complexité lit les recettes et les
+  stats du dump sans rejouer la partie. `--playthrough` active la simulation
+  détaillée ; dans ce mode, la complexité réutilise ses compteurs au lieu de
+  refaire un dépliage. Le choix de recette de la simulation est mémoïsé par lot
+  de déblocages : les vraies recettes restent suivies, sans rescanner les
+  producteurs à chaque appel. Le résultat complet est persisté dans le dump
+  sous `randputf_cache.playthrough_v1`, avec une empreinte de la seed, du dump
+  et de la version de l'outil : une commande suivante relit cette analyse au
+  lieu de rejouer la partie. `--no-cache` force un recalcul.
+
 - Le rejeu affiche `techs recherchées/total` dans son détail et en tire son ETA.
   L'ETA par pourcentage reste figée au dernier changement au lieu de grandir
   avec le seul temps écoulé ; les phases sans total connu affichent
   `fin étape —`.
+- `randputf test` accepte `--playthrough` pour activer la simulation détaillée
+  (désactivée par défaut), plus `--no-checks`, `--no-complexity`,
+  `--no-difficulty`, `--no-cache`, `--no-report-html`, `--no-dump-html`,
+  `--no-graph-html` et `--no-html` pour ignorer sélectivement calculs, cache
+  et pages HTML. `randputf report` accepte aussi `--playthrough`. Les sections
+   omises ne sont pas écrites dans le rapport.
+
+### Performance du pipeline et des rapports
+
+- Le navigateur HTML réutilise les icônes déjà recadrées au lieu de relire et
+  recadrer chaque PNG une seconde fois (`tool/exporters/seed_graph.py`) : le
+  graphe modpack reste byte-identique (`ff523822…f1905`) et son export passe
+  de `6,34s` à `3,38s` sur le profil isolé. `tool/exporters/mod_seed.py` calcule
+  une seule fois le classement des bâtiments par catégorie au lieu de le
+  reconstruire pour chaque recette (`6,34s` → `5,61s` sur le même profil).
+- Le rejeu joueur incrémentalise sa détection de maîtrise
+  (`tool/replay/player.py`) : seuls les nouveaux déblocages, objectifs relevés,
+  objets maîtrisés et changements de palier relancent un balayage, la file
+  déduplique les objets déjà prêts et l'invalidation de cache n'est plus
+  appelée deux fois par technologie. Sur le modpack, `Rejeu joueur` passe de
+  `352,4s` à `165,3s` et le total de `371,9s` à `183,3s`, avec le même résultat
+  (`934/934 techs, victoire`).
+- Les vues HTML de débogage (`seed.graph.html`, `seed.difficulty.html`,
+  `seed.complexity.html`) sont exclues du témoin de reproductibilité et de
+  l'archive de release : le contrôle ne dépend plus de fichiers non
+  déterministes, tandis que les rapports restent publiés.
+- Le rapport allégé reconstruit sa table des matières depuis les sections
+  réellement émises : les liens morts de `#difficulte` disparaissent avec
+  `--no-difficulty`, et la progression de `#progression` reste strictement
+   croissante même quand des sections entières sont omises.
+
+### Sorties — rapports et mods séparés
+
+- Les trois HTML du testeur vont désormais dans
+  `output/reports/<source>/` (`vanilla`, `randputF_0.0.1` ou le label du
+  modpack). Le dossier et les fichiers portent le même nom canonique :
+  `<source>.report.html`, `<source>.dump.html`, `<source>.graph.html`.
+- `randputf generate` assemble toujours le mod dans
+  `output/mods/randputF_<version>/` et ses vues `seed.*.html` dans
+  `output/reports/randputF_<version>/`. Aucun HTML n'est plus déposé dans le
+  dossier du mod, y compris avec `--install`.
+- Les noms `randputF-<version>` sont normalisés en `randputF_<version>` pour
+  que le dossier du mod et celui du rapport utilisent la même étiquette.
+- `compare`, `dump` et `report` écrivent aussi sous `output/reports/` ;
+  `witness` continue de n'assembler qu'un mod, sous `output/mods/`.
 
 ### Rochers — le charbon devient de la pierre
 

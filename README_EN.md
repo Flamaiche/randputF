@@ -132,10 +132,11 @@ lives in `config/defaults.yaml`).
 .venv/bin/python -m tool generate --seed 5 --install
 ```
 
-`--install` assembles the mod and copies it into
-`factorio_mods/randputF_<version>/` (version read from `mod/info.json`), then
-enables it in `mod-list.json`. If the mods folder can't be found, the mod is
-assembled into `output/` and the path is printed for manual copying.
+The mod is first assembled into `output/mods/randputF_<version>/` (version read
+from `mod/info.json`). `--install` then copies it into
+`factorio_mods/randputF_<version>/` and enables it in `mod-list.json`. If the
+mods folder can't be found, the mod stays in `output/mods/` and the path is
+printed for manual copying.
 
 On launch: the drawn patches replace vanilla resources around your spawn, the
 starting kit is injected, and the free researches are granted. The classic goal
@@ -160,11 +161,10 @@ the validation rules are documented in [`docs/config.md`](docs/config.md).
 
 ## What a generation produces
 
-In `output/randputF_<version>/` (or directly in `<factorio_mods>/` with
-`--install`):
+The mod and its HTML views are kept separate:
 
 ```
-randputF_<version>/
+output/mods/randputF_<version>/    # the mod only, never any HTML here
 ├── control.lua            # runtime: patch placement, starting kit, unlocks
 ├── data.lua               # data-stage: reads the seed, builds recipes/techs
 ├── data-updates.lua       # lake tiles, vehicle rearm, unified fuel
@@ -172,9 +172,11 @@ randputF_<version>/
 ├── info.json              # mod metadata
 ├── locale/                # French and English translations
 ├── graphics/              # icons / textures
-├── seed/
-│   ├── seed.json          # the generated seed: patches, recipes, techs, pools
-│   └── seed.lua           # the same seed in Lua format, loaded by the mod
+└── seed/
+    ├── seed.json          # the generated seed: patches, recipes, techs, pools
+    └── seed.lua           # the same seed in Lua format, loaded by the mod
+
+output/reports/randputF_<version>/ # the HTML views, outside the mod
 ├── seed.graph.html        # interactive production graph (see below)
 ├── seed.complexity.html   # playthrough complexity report (see below)
 └── seed.difficulty.html   # seed difficulty vs vanilla (see below)
@@ -242,10 +244,10 @@ Two commands read the vanilla dump without generating a mod:
 
 ```bash
 randputf report   # full report: progression chain, science packs, building
-                  # tags, checks → output/vanilla.report.html
+                  # tags, checks → output/reports/vanilla/vanilla.report.html
 randputf dump     # dump navigator: A→Z inventory, tiles, entities,
                   # items/fluids, recipes, technologies + global search
-                  # → output/vanilla.dump.html
+                  # → output/reports/vanilla/vanilla.dump.html
 ```
 
 Science packs and the **launch chain** (victory) are recognized from dump
