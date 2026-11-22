@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import html
 import json
+import math
 from collections.abc import Callable
 from pathlib import Path
 
 from tool.audit.difficulty import difficulty_series
-from tool.exporters.html_ui import th as _th
+from tool.exporters.html_ui import FOLD_TABLES_CSS, FOLD_TABLES_SCRIPT, th as _th
 from tool.parsers.vanilla import (
     load_db_from_dump,
     rocket_chain_from_dump,
@@ -127,6 +128,8 @@ def _chart_svg(
     mod_label: str,
     vanilla_color: str,
     mod_color: str,
+    *,
+    log_scale: bool = False,
 ) -> tuple[str, str]:
     """Construit le SVG interactif + les données JSON injectées dans le HTML.
 
@@ -156,14 +159,17 @@ def _chart_svg(
             return (x0 + x1) / 2
         return x0 + index / (max_n - 1) * span_x
 
+    log_max = math.log1p(max_y) if log_scale else 0.0
+
     def y_at(cum: float) -> float:
         """Ordonnée SVG d'un coût cumulé ``cum``.
 
         Projette ``0..max_y`` entre le bas et le haut de la zone de tracé
-        (l'axe Y croît vers le haut). Retourne la coordonnée en unités du
-        viewBox.
+        (l'axe Y croît vers le haut), en échelle logarithmique si demandé.
+        Retourne la coordonnée en unités du viewBox.
         """
-        return y1 - (cum / max_y) * (y1 - y0)
+        value = math.log1p(max(0.0, cum)) / log_max if log_scale else cum / max_y
+        return y1 - value * (y1 - y0)
 
     parts: list[str] = [f'<svg id="diffsvg" viewBox="0 0 {_SVG_W} {_SVG_H}" '
                         f'xmlns="http://www.w3.org/2000/svg" role="img">']
@@ -178,7 +184,7 @@ def _chart_svg(
         )
         parts.append(
             f'<text x="{x0 - 10}" y="{y + 4:.1f}" fill="#8a8a99" '
-            f'font-size="12" text-anchor="end">{html.escape(_fmt(max_y * frac))}</text>'
+            f'font-size="12" text-anchor="end">{html.escape(_fmt(math.expm1(frac * log_max) if log_scale else max_y * frac))}</text>'
         )
     # Axes.
     parts.append(
@@ -204,7 +210,7 @@ def _chart_svg(
     parts.append(
         f'<text x="20" y="{(y0 + y1) / 2:.0f}" fill="#8a8a99" font-size="13" '
         f'text-anchor="middle" transform="rotate(-90 20 {(y0 + y1) / 2:.0f})">'
-        f'ressources brutes cumulées</text>'
+        f'ressources brutes cumulées{" (log)" if log_scale else ""}</text>'
     )
 
     # Repère vertical (caché par défaut).
@@ -372,6 +378,8 @@ _TEMPLATE = """<!doctype html>
   #tip .delta {{ margin-top:5px; color:var(--dim); }}
   .cols {{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }}
   .col {{ flex:1 1 480px; min-width:420px; }}
+  .context {{ color:var(--dim); font-size:12px; margin:6px 0 0; }}
+  .note {{ color:var(--dim); font-size:12px; line-height:1.5; margin:12px 0 0; }}
   h2 {{ font-size:16px; margin:6px 0; }}
   table {{ width:100%; border-collapse:collapse; font-size:12px; }}
   th,td {{ border-bottom:1px solid var(--line); padding:4px 6px; text-align:left;
@@ -391,9 +399,10 @@ _TEMPLATE = """<!doctype html>
 fusée ferme chaque profil). Survole une tech pour le détail, clique pour épingler.</p>
 <div class="totals">
   <div class="tot">vanilla<br><b style="color:{vanilla_color}">{vanilla_total}</b></div>
-  <div class="tot">seed (mod)<br><b style="color:{mod_color}">{mod_total}</b></div>
-  <div class="tot">rapport mod/vanilla<br><b>×{ratio:.2f}</b></div>
+   <div class="tot">{mod_label}<br><b style="color:{mod_color}">{mod_total}</b></div>
+   <div class="tot">rapport mod/vanilla<br><b>×{ratio:.2f}</b></div>
 </div>
+<p class="context">{context}</p>
 <div class="legend">
   <span data-series="v"><i style="background:{vanilla_color}"></i>{vanilla_label}</span>
   <span data-series="m"><i style="background:{mod_color}"></i>{mod_label}</span>
@@ -402,7 +411,8 @@ fusée ferme chaque profil). Survole une tech pour le détail, clique pour épin
   {svg}
   <div id="tip"></div>
 </div>
-<div class="cols">{tables}</div>
+<details class="table-fold" id="difficulte-table"><summary>Tableaux détaillés</summary><div class="cols">{tables}</div></details>
+<p class="note">{note}</p>
 <script>
 const DATA = {data_json};
 (function () {{
@@ -542,8 +552,9 @@ def render_difficulty_graph_html(
     mod_seed: dict,
     vanilla_seed: dict,
     *,
-    mod_label: str = "seed (mod)",
+    mod_label: str = "seed",
     vanilla_label: str = "vanilla",
+    context: str | None = None,
     mod_series: list[dict] | None = None,
     vanilla_series: list[dict] | None = None,
     on_progress: Callable[[int], None] | None = None,
@@ -566,17 +577,32 @@ def render_difficulty_graph_html(
     vanilla_total = vanilla_series[-1]["cumulative_total"]
     mod_total = mod_series[-1]["cumulative_total"]
     ratio = (mod_total / vanilla_total) if vanilla_total else 0.0
+    log_scale = ratio >= 10
+    notes: list[str] = []
+    if len(vanilla_series) != len(mod_series):
+        notes.append(
+            f"Séries de longueurs différentes ({len(vanilla_series)} points vanilla, "
+            f"{len(mod_series)} points mod) : les points absents ne sont pas des zéros."
+        )
+    if log_scale:
+        notes.append(
+            "Échelle logarithmique utilisée sur l'axe Y : le rapport mod/vanilla "
+            "dépasse 10, une échelle linéaire écraserait la série la plus faible."
+        )
 
     svg, data_json = _chart_svg(
         vanilla_series, mod_series, vanilla_label, mod_label,
         _VANILLA_COLOR, _MOD_COLOR,
+        log_scale=log_scale,
     )
-    return _TEMPLATE.format(
+    document = _TEMPLATE.format(
         vanilla_color=_VANILLA_COLOR,
         mod_color=_MOD_COLOR,
         vanilla_total=html.escape(_fmt(vanilla_total)),
         mod_total=html.escape(_fmt(mod_total)),
         ratio=ratio,
+        context=html.escape(context or ""),
+        note=html.escape(" ".join(notes)),
         vanilla_label=html.escape(vanilla_label),
         mod_label=html.escape(mod_label),
         svg=svg,
@@ -596,6 +622,9 @@ def render_difficulty_graph_html(
             on_progress=_progress_slice(on_progress, 75, 100),
         ),
     )
+    document = document.replace("</style>", FOLD_TABLES_CSS + "</style>", 1)
+    document = document.replace("</body>", FOLD_TABLES_SCRIPT + "</body>", 1)
+    return document
 
 
 def difficulty_table_html(
@@ -632,8 +661,9 @@ def write_difficulty_graph_html(
     vanilla_seed: dict,
     path: Path,
     *,
-    mod_label: str = "seed (mod)",
+    mod_label: str = "seed",
     vanilla_label: str = "vanilla",
+    context: str | None = None,
     on_progress: Callable[[int], None] | None = None,
 ) -> Path:
     """Écrit le HTML comparatif de difficulté dans ``path``.
@@ -645,6 +675,7 @@ def write_difficulty_graph_html(
         vanilla_seed,
         mod_label=mod_label,
         vanilla_label=vanilla_label,
+        context=context,
         on_progress=on_progress,
     )
     path.parent.mkdir(parents=True, exist_ok=True)

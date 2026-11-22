@@ -27,7 +27,7 @@ La publication part de la branche `dev` et se déclenche sur `master`. Le workfl
 | v0.0.1 | publiée, Factorio 2.0 | `c9566134864507d900f65806ade277d9` |
 | v0.0.2 | en préparation, Factorio 2.1 | `74dcb6f89c28ef1277a0e854d9a21a4a` |
 
-La suite courante compte 861 tests. Les valeurs des versions publiées restent des faits historiques. Elles ne décrivent pas l'état courant.
+La suite courante compte 862 tests. Les valeurs des versions publiées restent des faits historiques. Elles ne décrivent pas l'état courant.
 
 ### Ce que fait le workflow
 

@@ -40,7 +40,14 @@ from pathlib import Path
 from typing import Any
 
 from tool.audit.graph import Expansion, GraphAnalysis, analyze_graph, clean_number
-from tool.exporters.html_ui import TIP_HTML, UI_CSS, UI_SCRIPT, th as _th
+from tool.exporters.html_ui import (
+    FOLD_TABLES_CSS,
+    FOLD_TABLES_SCRIPT,
+    TIP_HTML,
+    UI_CSS,
+    UI_SCRIPT,
+    th as _th,
+)
 
 _Expansion = Expansion
 
@@ -1074,7 +1081,7 @@ def render_complexity_html(
     document = (
         "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
         f"<title>{_html.escape(title)} - complexité</title>"
-        f"<style>{_CSS}</style></head><body>{TIP_HTML}"
+        f"<style>{_CSS}{FOLD_TABLES_CSS}</style></head><body>{TIP_HTML}"
         f"<header><h1>{_html.escape(title)} — complexité</h1>"
         "<div class='sub'>Modèle joueur : packs de science dépliés jusqu'aux "
         "ressources brutes, crafts comptés par atelier.</div>"
@@ -1118,6 +1125,7 @@ def render_complexity_html(
         + "".join(table_rows)
         + "</tbody></table></div></details></section></main>"
         + UI_SCRIPT
+        + FOLD_TABLES_SCRIPT
         + "</body></html>"
     )
     return document

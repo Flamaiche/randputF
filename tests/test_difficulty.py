@@ -21,7 +21,10 @@ from tool.audit.difficulty import (
     difficulty_series,
     unit_costs,
 )
-from tool.exporters.difficulty_graph import difficulty_table_html
+from tool.exporters.difficulty_graph import (
+    difficulty_table_html,
+    render_difficulty_graph_html,
+)
 from tool.generator.pipeline import generate_seed
 from tool.parsers.vanilla import load_db_from_dump
 
@@ -259,3 +262,32 @@ def test_difficulty_series_et_tableau_fragmentent_la_progression():
     assert table_events[0] == 70
     assert table_events[-1] == 100
     assert len(set(table_events)) >= 2
+
+
+def test_graphe_difficulte_affiche_contexte_et_replis():
+    def point(num: int, cum: float) -> dict:
+        return {
+            "num": num,
+            "name": f"tech-{num}",
+            "products": [],
+            "raw_total": cum,
+            "cumulative_total": cum,
+        }
+
+    document = render_difficulty_graph_html(
+        {"meta": {}},
+        {"meta": {}},
+        mod_label="randputF_0.0.2",
+        context="Seed 5 — dump vanilla vanilla_dump.json",
+        vanilla_series=[point(1, 5.0), point(2, 10.0)],
+        mod_series=[point(1, 100.0), point(2, 150.0), point(3, 200.0)],
+    )
+
+    assert "Seed 5 — dump vanilla vanilla_dump.json" in document
+    assert "randputF_0.0.2" in document
+    assert 'id="difficulte-table"' in document
+    assert "Séries de longueurs différentes" in document
+    assert "Échelle logarithmique" in document
+    assert "ressources brutes cumulées (log)" in document
+    assert "details.table-fold" in document
+    assert "__randputfFoldTables" in document

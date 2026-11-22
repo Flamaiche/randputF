@@ -50,7 +50,7 @@ attendues sont séparés.
 - Le test de la graine 1757 est dans `test_late_raws.py`.
 - Aucun test d'ordre dédié à la graine 1269 n'est conservé dans la suite
   courante.
-- La suite compte 861 tests.
+- La suite compte 862 tests.
 
 ## Garanti / non garanti
 

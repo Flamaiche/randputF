@@ -23,6 +23,7 @@ import json as _json
 from pathlib import Path
 from typing import Any
 
+from tool.exporters.html_ui import FOLD_TABLES_CSS, FOLD_TABLES_SCRIPT
 from tool.parsers.vanilla import inject_pumped_fluids, science_pack_names
 
 _CSS = """
@@ -511,7 +512,7 @@ def _technologies_fragment(technologies: dict) -> str:
     return head + "".join(rows) + "</tbody></table>"
 
 
-def write_dump_html(dump: dict, out: Path) -> Path:
+def write_dump_html(dump: dict, out: Path, *, label: str | None = None) -> Path:
     """Écrit le navigateur du dump (métadonnées, mod_data et sections profondes).
 
     ``out`` reçoit la page HTML autonome ; retourne le chemin écrit. La
@@ -531,6 +532,7 @@ def write_dump_html(dump: dict, out: Path) -> Path:
     mod_data = dump.get("mod_data") or {}
     meta = dump.get("meta") or {}
     active_mods = meta.get("active_mods") or []
+    display_label = str(label or meta.get("mod_label") or "—")
 
     stats = "".join(
         [
@@ -551,9 +553,9 @@ def write_dump_html(dump: dict, out: Path) -> Path:
     document = (
         "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        f"<title>Dump Factorio {_esc(meta.get('game_version', '?'))} — navigateur A→Z</title>"
-        f"<style>{_CSS}</style></head><body>"
-        "<header><h1>Dump Factorio — navigateur A→Z</h1>"
+        f"<title>Dump Factorio {_esc(meta.get('game_version', '?'))} — {_esc(display_label)} — navigateur A→Z</title>"
+        f"<style>{_CSS}{FOLD_TABLES_CSS}</style></head><body>"
+        f"<header><h1>Dump Factorio — {_esc(display_label)} — navigateur A→Z</h1>"
         f"<div class='sub'>L'inventaire complet des prototypes, tel qu'exporté par le mod compagnon. "
         f"Structuration du pipeline uniquement (fluide pompé par tuiles, packs de science par les faits) — aucune valeur inventée.</div>"
         f"<div class='stats'>{stats}</div></header>"
@@ -571,7 +573,7 @@ def write_dump_html(dump: dict, out: Path) -> Path:
         + _section("Recettes", "recettes", _recipes_fragment(recipes))
         + _section("Technologies", "technologies", _technologies_fragment(technologies))
         + "</main>"
-        f"<script>{_JS}</script></body></html>"
+        f"<script>{_JS}</script>{FOLD_TABLES_SCRIPT}</body></html>"
     )
 
     out.parent.mkdir(parents=True, exist_ok=True)

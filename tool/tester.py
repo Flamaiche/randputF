@@ -431,6 +431,30 @@ def _write_graph_fallback(state: dict, path: Path, source: str) -> None:
     path.write_text(document, encoding="utf-8")
 
 
+def _state_as_dump(dump: dict, state: dict) -> dict:
+    view = dict(dump)
+    meta = dict(dump.get("meta") or {})
+    state_meta = state.get("meta") or {}
+    for key in ("mod_label", "mod_label_full", "active_mods", "dump_file"):
+        value = state_meta.get(key)
+        if value is not None:
+            meta[key] = value
+    view["meta"] = meta
+    view["mod_data"] = state
+    for key in ("recipes", "technologies"):
+        value = state.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list):
+            view[key] = {
+                str(entry.get("name") or entry.get("id") or index): entry
+                for index, entry in enumerate(value)
+            }
+        else:
+            view[key] = value
+    return view
+
+
 def run_dump_test(
     db: Any,
     dump: dict,
@@ -446,11 +470,13 @@ def run_dump_test(
 ) -> TesterReport:
     """Teste un état déterministe et écrit les trois HTML dans `<out_dir>/<name>/`."""
     name = str(out_name or source)
+    display_name = name
     out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
     coverage = classify_dump_fields(dump)
     baseline = baseline_seed if baseline_seed is not None else build_vanilla_seed(dump)
     tested = state if state is not None else baseline
+    dump_view = _state_as_dump(dump, state) if state is not None else dump
     if progress is not None:
         progress.update(100, "normalisation terminée")
     check = check_state(db, tested, progress, skip=skip)
@@ -459,7 +485,7 @@ def run_dump_test(
         progress.enter("mesure", "difficulté et rapport complet")
     game_version = (dump.get("meta") or {}).get("game_version", "inconnue")
     if title is None:
-        title = f"randputF — test de {source} (Factorio {game_version})"
+        title = f"randputF — test de {display_name} (Factorio {game_version})"
     report_state: dict[str, Any] = {
         "percent": 0,
         "detail": "",
@@ -533,8 +559,8 @@ def run_dump_test(
             vanilla_seed=baseline,
             dump=dump,
             title=title,
-            playthrough_title=f"Partie simulée — {source}",
-            mod_label="état testé",
+            playthrough_title=f"Partie simulée — {display_name}",
+            mod_label=display_name,
             vanilla_label="vanilla",
             checks=check.as_dict(),
             dump_coverage=coverage,
@@ -577,7 +603,9 @@ def run_dump_test(
         if progress is not None:
             progress.update(50, "navigateur ignoré")
     else:
-        dump_path = write_dump_html(dump, out_dir / f"{name}.dump.html")
+        dump_path = write_dump_html(
+            dump_view, out_dir / f"{name}.dump.html", label=display_name
+        )
         if progress is not None:
             progress.update(50, "navigateur écrit")
     if "graph-html" in skip:
@@ -589,7 +617,7 @@ def run_dump_test(
         try:
             write_seed_graph_html(tested, graph_html)
         except (OSError, subprocess.CalledProcessError):
-            _write_graph_fallback(tested, graph_html, source)
+            _write_graph_fallback(tested, graph_html, display_name)
             graph_path = graph_html
         else:
             graph_path = graph_html if graph_html.exists() else None

@@ -122,7 +122,7 @@ def test_technology_info_costs_and_unlocks() -> None:
         {"recipe": "recipe-b", "product": "copper-cable"}
     ]
 
-    _, recipes = _node_info(seed)
+    _, recipes, _ = _node_info(seed)
     assert recipes["recipe-a"]["techs"][0]["id"] == "tech-free"
     assert recipes["recipe-b"]["techs"][0]["id"] == "tech-paid"
 

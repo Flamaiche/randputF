@@ -184,7 +184,12 @@ def cmd_generate(args: argparse.Namespace) -> None:
         vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
         if vanilla_seed is not None:
             diff_path = report_dir / "seed.difficulty.html"
-            write_difficulty_graph_html(seed, vanilla_seed, diff_path)
+            write_difficulty_graph_html(
+                seed,
+                vanilla_seed,
+                diff_path,
+                context=f"Graine {db.seed_value} — dump vanilla {Path(args.dump).name}",
+            )
             print(f"Comparaison de difficulté vanilla vs mod exportée dans {diff_path}")
         else:
             print("Comparaison vanilla ignorée : dump sans technologies (relancer l'exporter).")
@@ -224,7 +229,12 @@ def cmd_compare(args: argparse.Namespace) -> None:
 
     out_dir = (Path(args.out) if args.out else OUTPUT_DIR) / "reports" / "compare"
     path = out_dir / f"seed.difficulty.{db.seed_value}.html"
-    write_difficulty_graph_html(seed, vanilla_seed, path)
+    write_difficulty_graph_html(
+        seed,
+        vanilla_seed,
+        path,
+        context=f"Seed {db.seed_value} — dump vanilla {Path(args.dump).name}",
+    )
 
     vanilla_total = compute_difficulty(vanilla_seed).total
     mod_total = compute_difficulty(seed).total

@@ -39,7 +39,11 @@ foi).
 - `randputf compare` écrit `output/reports/compare/seed.difficulty.<seed>.html`
   et `randputf dump` écrit `output/reports/vanilla/vanilla.dump.html` (racine
   réglable par `--out`).
-- Repères confirmés : 861 tests et témoin seed 5
+- Vues HTML plus lisibles : gros tableaux repliables, graphes de difficulté
+  contextualisés et en échelle log quand nécessaire, navigateur adapté au
+  mobile avec zoom tactile et navigation clavier, titres de dumps moddés et
+  libellés de comparaison explicites, icônes de graphe dédupliquées.
+- Repères confirmés : 862 tests et témoin seed 5
   `74dcb6f89c28ef1277a0e854d9a21a4a`, recalculé depuis le dépôt et depuis
   `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release vise un
   zip `randputF_<version>.zip` sans les trois HTML, avec une source à aligner.
@@ -202,7 +206,7 @@ foi).
 - Dump clean régénéré : SHA-256
   `3a272ee9440e020ebc36f9a92c222720af1c53c4c6b65ce2b136d7ebee2c84ea`.
   Témoin seed 5 : `74dcb6f89c28ef1277a0e854d9a21a4a` (vérifié depuis un wheel
-  installé hors checkout). **861 tests** verts.
+  installé hors checkout). **862 tests** verts.
 
 ### Exporter 0.1.7 — `mod-data` pour les lacs
 
@@ -340,7 +344,7 @@ foi).
 
 ### Garanties mesurées
 
-- **861 tests** verts sur le dump réel 0.1.8 (schéma 2).
+- **862 tests** verts sur le dump réel 0.1.8 (schéma 2).
 - Parité du rapport vanilla inchangée (64 entrées, 10 090 834 crafts,
   13 850 040 s de minage, 3 lancements, offshore-pump en bâtiments).
 

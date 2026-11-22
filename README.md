@@ -131,7 +131,7 @@ Le dépôt ne contient pas de mod pré-généré : le mod est produit par `gener
   octet, indépendamment du processus et de l'ordre des générations.
 - Le témoin courant de la seed 5 est
   `74dcb6f89c28ef1277a0e854d9a21a4a`.
-- La suite de tests compte 861 tests.
+- La suite de tests compte 862 tests.
 - Le détail du témoin figure dans [witness.md](docs/witness.md).
 
 ## Par où continuer

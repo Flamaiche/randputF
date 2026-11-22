@@ -10,7 +10,13 @@ from typing import Any
 
 from tool.common.version import VERSION
 from tool.exporters.complexity_graph import analyze_playthrough, render_complexity_html
-from tool.exporters.html_ui import TIP_HTML, UI_SCRIPT, th as _th
+from tool.exporters.html_ui import (
+    FOLD_TABLES_CSS,
+    FOLD_TABLES_SCRIPT,
+    TIP_HTML,
+    UI_SCRIPT,
+    th as _th,
+)
 from tool.exporters.mod_seed import build_vanilla_seed, tag_progression
 
 _PLAYTHROUGH_CSS = '\n.scroll{overflow:auto;max-height:70vh;scrollbar-gutter:stable}\n.table-fold summary{cursor:pointer;color:var(--accent);font-weight:600;\n  margin-bottom:8px}\n.bar-wrap{margin-top:8px}\n.bar-row{display:flex;align-items:center;gap:10px;margin:5px 0}\n.bar-name{width:190px;flex:none;font-size:11px;color:var(--muted);\n  overflow-wrap:anywhere}\n.bar-bg{flex:1;height:10px;background:rgba(255,255,255,.08);\n  border-radius:5px;overflow:hidden}\n.bar-fill{height:100%;border-radius:5px}\n.bar-val{width:90px;flex:none;font-size:11px;text-align:right;\n  font-variant-numeric:tabular-nums}\n'
@@ -559,7 +565,7 @@ def write_playthrough_html(dump: dict, out: Any) -> dict:
     document = (
         "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        f"<title>{_esc(title)}</title><style>{_BASE_CSS}{_PLAYTHROUGH_CSS}</style></head><body>{TIP_HTML}"
+        f"<title>{_esc(title)}</title><style>{_BASE_CSS}{_PLAYTHROUGH_CSS}{FOLD_TABLES_CSS}</style></head><body>{TIP_HTML}"
         f"<header><h1>{_esc(title)}</h1>"
         "<div class='sub'>Minage, crafts, sous-produits et déclencheurs simulés sans carte.</div>"
         f"<div class='stats'>{fragments['header_stats']}</div></header><main>"
@@ -567,7 +573,7 @@ def write_playthrough_html(dump: dict, out: Any) -> dict:
         "<details class='table-fold' id='partie-simulee-table'><summary>Tableau détaillé par item et fluide</summary>"
         f"{fragments['table']}"
         "</details><div class='note'>Trié par volume simulé (produit + consommé). « Externe » = fourni hors chaîne de craft. Puissance = energy_usage × 0,06 ; énergie = puissance × temps.</div>"
-        f"{fragments['unknown_note']}</main>{UI_SCRIPT}</body></html>"
+        f"{fragments['unknown_note']}</main>{UI_SCRIPT}{FOLD_TABLES_SCRIPT}</body></html>"
     )
     _write(out, document)
     return {"analysis": analysis, "rows": rows, "seed": seed, "progression": progression}

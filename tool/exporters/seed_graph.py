@@ -627,7 +627,7 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
         finally:
             dot_path.unlink(missing_ok=True)
         svg = _embed_icons(svg, icon_bytes)
-    info, recips = _node_info(seed)
+    info, recips, icon_data = _node_info(seed)
     techs = _technology_info(seed)
     title = f"randputF seed {seed.get('meta', {}).get('seed', '?')}"
     path.write_text(
@@ -635,6 +635,7 @@ def write_seed_graph_html(seed: dict, path: Path) -> None:
         .replace("__SVG__", svg)
         .replace("__INFO__", json.dumps(info))
         .replace("__RECIPS__", json.dumps(recips))
+        .replace("__ICONS__", json.dumps(icon_data))
         .replace("__TECHS__", json.dumps(techs)),
         encoding="utf-8",
     )
@@ -668,39 +669,74 @@ def _dot_for(
     return Path(tmp.name)
 
 
+_ICON_IMAGE_RE = re.compile(r"<image\b[^>]*>", re.IGNORECASE)
 _ICON_HREF_RE = re.compile(r'(xlink:href|href)="([^"]+\.png)"')
+_ICON_ATTR_RE = re.compile(r'\b(x|y|width|height)="([^"]*)"')
 
 
 def _embed_icons(svg: str, icon_bytes: dict[str, bytes] | None = None) -> str:
-    """Remplace les icônes locales d'un SVG par des data-URI.
+    """Remplace les icônes locales d'un SVG par des symboles data-URI dédupliqués.
 
-    ``svg`` est le document Graphviz ; chaque ``href`` vers un PNG est encodé en base64. ``icon_bytes`` contient les PNG déjà recadrés lors de la construction du DOT et évite de les relire. Retourne le SVG autonome ; un fichier illisible conserve son lien d'origine.
+    ``svg`` est le document Graphviz ; chaque image PNG est encodée une seule
+    fois puis référencée par ``<use>``. ``icon_bytes`` contient les PNG déjà
+    recadrés lors de la construction du DOT et évite de les relire. Retourne le
+    SVG autonome ; un fichier illisible conserve sa balise d'origine.
     """
-    def _uri(m: re.Match) -> str:
-        """Remplace une occurrence d'icône par son data-URI base64.
+    defs: list[str] = []
+    ids: dict[str, str] = {}
 
-        ``m`` doit exposer l'attribut (``href``/``xlink:href``) et le chemin du
-        PNG. Utilise les octets déjà recadrés quand ils sont fournis, sinon
-        recadre l'icône via ``crop_mip`` ; en cas d'``OSError`` retourne la
-        correspondance inchangée (lien local conservé).
-        """
-        attr, path = m.group(1), m.group(2)
+    def _data_uri(path: str) -> str:
         cropped = (icon_bytes or {}).get(path)
+        if cropped is None:
+            cropped = crop_mip(Path(path).read_bytes())
+        return "data:image/png;base64," + base64.b64encode(cropped).decode()
+
+    def _replace(m: re.Match) -> str:
+        tag = m.group(0)
+        href = _ICON_HREF_RE.search(tag)
+        if href is None:
+            return tag
+        path = href.group(2)
         try:
-            if cropped is None:
-                cropped = crop_mip(Path(path).read_bytes())
-            b64 = base64.b64encode(cropped).decode()
+            uri = _data_uri(path)
         except OSError:
-            return m.group(0)
-        return f'{attr}="data:image/png;base64,{b64}"'
-    return _ICON_HREF_RE.sub(_uri, svg)
+            return tag
+        if path not in ids:
+            icon_id = f"randputf-icon-{len(ids)}"
+            ids[path] = icon_id
+            defs.append(
+                f'<symbol id="{icon_id}" viewBox="0 0 64 64">'
+                f'<image href="{uri}" xlink:href="{uri}" width="64" height="64" '
+                f'preserveAspectRatio="xMinYMin meet"/></symbol>'
+            )
+        attrs = dict(_ICON_ATTR_RE.findall(tag))
+        return (
+            f'<use href="#{ids[path]}" xlink:href="#{ids[path]}" '
+            f'x="{attrs.get("x", "0")}" y="{attrs.get("y", "0")}" '
+            f'width="{attrs.get("width", "64px")}" '
+            f'height="{attrs.get("height", "64px")}"/>'
+        )
+
+    result = _ICON_IMAGE_RE.sub(_replace, svg)
+    if defs:
+        opening = re.search(r"<svg\b[^>]*>", result)
+        if opening is not None:
+            result = (
+                result[:opening.end()]
+                + "<defs>"
+                + "".join(defs)
+                + "</defs>"
+                + result[opening.end():]
+            )
+    return result
 
 
-def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
+def _node_info(
+    seed: dict,
+) -> tuple[dict[str, dict], dict[str, dict], dict[str, str]]:
     """Fiche de chaque nœud pour l'interface : voisins (ingrédients / produits
-    qui l'utilisent), tech(s) de déblocage et icône embarquée en data-URI.
-    Renvoie aussi RECIPS : une entrée par RECETTE (produit, ingrédients, tech,
-    rang, brut, icône) pour le panneau « une ligne par recette »."""
+    qui l'utilisent), tech(s) de déblocage et icône référencée par clé.
+    Renvoie aussi RECIPS et le tableaux des data-URI, une seule fois par icône."""
     info: dict[str, dict] = {}
     for recipe in seed.get("recipes") or []:
         products = [res["name"] for res in (recipe.get("results") or [])]
@@ -713,19 +749,22 @@ def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     retech = _recipe_tech_info(seed)
     resources = _seed_raw_sources(seed)
     icons: dict[str, str | None] = {}
+    icon_data: dict[str, str] = {}
 
     def icon_uri(name: str) -> str | None:
-        """Retourne l'icône d'un item/tech en data-URI.
-
-        ``name`` est le nom recherché ; l'icône PNG est recadrée puis encodée en base64, avec un cache local. Retourne la data-URI ou ``None`` si l'icône est introuvable/illisible.
-        """
+        """Retourne la clé d'icône d'un item/tech, ou ``None`` si absente."""
         if name not in icons:
             icon = _icon_path(name)
             if icon is None:
                 icons[name] = None
             else:
                 try:
-                    icons[name] = "data:image/png;base64," + base64.b64encode(crop_mip(icon.read_bytes())).decode()
+                    key = f"i{len(icon_data)}"
+                    icon_data[key] = (
+                        "data:image/png;base64,"
+                        + base64.b64encode(crop_mip(icon.read_bytes())).decode()
+                    )
+                    icons[name] = key
                 except OSError:
                     icons[name] = None
         return icons[name]
@@ -779,13 +818,14 @@ def _node_info(seed: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             "raw": p in resources,
             "icon": icon_uri(p),
         }
-    return info, recips
+    return info, recips, icon_data
 
 
 _HTML_TEMPLATE = """<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__ - graphe interactif</title>
 <style>
   :root {
@@ -863,8 +903,17 @@ _HTML_TEMPLATE = """<!doctype html>
   .grp.techgroup:hover, .grp.techgroup.selected { color:#aeb0ff; }
   .grp.techgroup.selected { background:rgba(111,111,230,.12); }
   /* ---- viewer ---- */
-  #viewer { position:absolute; top:0; right:0; bottom:0; left:var(--sidebarw,450px); }
+  #viewer { position:absolute; top:0; right:0; bottom:0; left:var(--sidebarw,450px);
+    touch-action:none; }
   #biggraph, #minigraph { position:absolute; inset:0; }
+  .row:focus-visible, .grp.techgroup:focus-visible, .techlink:focus-visible,
+  #close:focus-visible, #theme:focus-visible { outline:2px solid #9d9dff; outline-offset:2px; }
+  @media (max-width:760px) {
+    :root { --sidebarw:min(52vw,260px); }
+    #sidebar header { padding:8px; }
+    #tools { padding:6px; }
+    #list { padding:4px 6px 10px; }
+  }
   #biggraph svg { background: var(--bg); transform-origin:0 0; }
   /* ---- mode jour/nuit sur le SVG graphviz (style en dur) ---- */
   #biggraph svg polygon[fill="#141419"] { fill: var(--bg) !important; }
@@ -949,7 +998,8 @@ _HTML_TEMPLATE = """<!doctype html>
   #panel .rcp:hover { background:rgba(255,255,255,.12); }
   #panel .rcp .arr { color:var(--accent,#fe7b21); font-weight:800; }
   #panel .rcp .cnt { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
-  #close { float:right; cursor:pointer; color:var(--muted); font-size:15px; line-height:1; }
+  #close { float:right; cursor:pointer; color:var(--muted); font-size:15px; line-height:1;
+    border:0; background:transparent; padding:0; font-family:inherit; }
   #close:hover { color:var(--txt); }
   #depthkey { bottom:12px; right:10px; padding:10px 12px; font-size:11px; color:var(--muted); display:none; }
   #depthkey b { float:left; width:12px; height:12px; margin:2px 8px 2px 0; border-radius:3px; }
@@ -980,13 +1030,15 @@ _HTML_TEMPLATE = """<!doctype html>
 </label>
 <button id="theme" class="ui" title="Basculer le mode jour / nuit"></button>
 <div id="depthkey" class="ui"></div>
-<div id="panel" class="ui"><span id="close">✕</span><div id="fiche"></div></div>
+<div id="panel" class="ui"><button id="close" type="button" aria-label="Fermer la fiche">✕</button><div id="fiche"></div></div>
 <div id="limit"><b>Graphe trop grand — impossible à afficher</b><span id="limitmsg"></span></div>
 <script>
 const MAX_NODES = 1500;
 const INFO = __INFO__;
 const RECIPS = __RECIPS__;
+const ICONS = __ICONS__;
 const TECHS = __TECHS__;
+const iconSrc = value => ICONS[value] || value;
 const PALETTE = ['#ffd54f','#ff7043','#f06292','#ab47bc','#5c6bc0','#29b6f6','#26a69a','#9ccc65'];
 const viewer = document.getElementById('viewer');
 const svg = viewer.querySelector('svg');
@@ -1019,8 +1071,10 @@ function boot() {
   const box = svg.viewBox.baseVal;
   svg.setAttribute('width', box.width); svg.setAttribute('height', box.height);
   function fit() {
-    k = Math.max(0.05, Math.min(3, innerWidth / box.width));
-    tx = (innerWidth - box.width*k)/2; ty = 24; apply();
+    const vw = viewer.clientWidth || innerWidth;
+    const vh = viewer.clientHeight || innerHeight;
+    k = Math.max(0.02, Math.min(3, Math.min(vw / box.width, vh / box.height)));
+    tx = (vw - box.width*k)/2; ty = (vh - box.height*k)/2; apply();
   }
   /* quand la fenêtre change de taille, seul le mini-graphe se ré-ajuste.
      Le grand graphe est VERROUILLÉ sur son zoom + sa position courants : un
@@ -1030,6 +1084,14 @@ function boot() {
     if (minigraph.style.display === 'block') miniFit();
   }
   addEventListener('resize', refitActive);
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target;
+    if (!el || !el.matches) return;
+    if (!el.matches('.row, .grp.techgroup, .techlink, #close, #theme')) return;
+    e.preventDefault();
+    el.click();
+  });
   /* ---- redimensionnement du panneau latéral (poignée) ---- */
   const sidegrip = document.getElementById('sidegrip');
   const rootStyle = () => (document.documentElement || document.body).style;
@@ -1078,6 +1140,24 @@ function boot() {
     if (!dragging) return;
     tx += e.clientX - mx; ty += e.clientY - my; mx = e.clientX; my = e.clientY; apply();
   });
+  let touchLast = null;
+  viewer.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || subOnly) return;
+    touchLast = {x: e.clientX, y: e.clientY};
+    if (viewer.setPointerCapture) viewer.setPointerCapture(e.pointerId);
+  });
+  viewer.addEventListener('pointermove', e => {
+    if (!touchLast || e.pointerType === 'mouse') return;
+    tx += e.clientX - touchLast.x; ty += e.clientY - touchLast.y;
+    touchLast = {x: e.clientX, y: e.clientY}; apply();
+  });
+  const endTouch = e => {
+    if (e.pointerType === 'mouse') return;
+    touchLast = null;
+    if (viewer.releasePointerCapture) { try { viewer.releasePointerCapture(e.pointerId); } catch (err) {} }
+  };
+  viewer.addEventListener('pointerup', endTouch);
+  viewer.addEventListener('pointercancel', endTouch);
   /* ---- mini-graphe : déplacement / zoom ---- */
   let miniK = 1, miniTX = 0, miniTY = 0, miniDrag = null, miniMoved = false;
   function miniSvgApply() {
@@ -1433,7 +1513,7 @@ function boot() {
       const li = document.createElement('li');
       if (icon) {
         const img = document.createElement('img');
-        img.src = icon;
+        img.src = iconSrc(icon);
         li.appendChild(img);
       }
       const name = document.createElement(buttonLabel ? 'button' : 'span');
@@ -1632,7 +1712,7 @@ function boot() {
       svg += '<g class="mininode" data-name="' + escXml(n) + '" transform="translate(' + x + ' ' + y + ')">';
       svg += '<title>' + escXml(n) + '</title>';
       svg += '<rect width="' + W + '" height="' + H + '" rx="8" fill="#2a2a32" stroke="' + col + '" stroke-width="' + (n === name ? 3 : 2) + '"/>';
-      if (info.icon) svg += '<image href="' + info.icon + '" x="4" y="4" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>';
+      if (info.icon) svg += '<image href="' + iconSrc(info.icon) + '" x="4" y="4" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>';
       if (n === name) svg += '<text x="' + (W / 2) + '" y="' + (H + 11) + '" text-anchor="middle" font-size="10" fill="#d7d7e0">' + escXml(n) + '</text>';
       svg += '</g>';
     }
@@ -1759,9 +1839,9 @@ function boot() {
           }
         }
       }
-      const row = document.createElement('div'); row.className = 'row';
+      const row = document.createElement('div'); row.className = 'row'; row.tabIndex = 0;
       if (r.icon) {
-        const im = document.createElement('img'); im.src = r.icon; row.appendChild(im);
+        const im = document.createElement('img'); im.src = iconSrc(r.icon); row.appendChild(im);
       }
       const col = document.createElement('div'); col.className = 'col';
       const sp = document.createElement('span'); sp.className = 'nn'; sp.textContent = r.p; col.appendChild(sp);

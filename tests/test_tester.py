@@ -239,7 +239,7 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
         "check_state",
         lambda db, tested, progress=None, **kwargs: CheckReport(victory=True),
     )
-    def fake_dump_html(dump, path):
+    def fake_dump_html(dump, path, **kwargs):
         Path(path).write_text("dump", encoding="utf-8")
         return Path(path)
 
@@ -292,7 +292,7 @@ def test_run_dump_test_ecrit_les_trois_vues_sans_generer(
     assert result.difficulty_total == 42.0
     assert result.check.ok
     assert captured["checks"]["ok"] is True
-    assert captured["mod_label"] == "état testé"
+    assert captured["mod_label"] == prefix
     assert captured["vanilla_label"] == "vanilla"
     assert captured["vanilla_seed"] is state
 
@@ -308,7 +308,7 @@ def test_run_dump_test_fragmentle_calcul_de_difficulté(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tester,
         "write_dump_html",
-        lambda dump, path: Path(path).write_text("dump", encoding="utf-8") or Path(path),
+        lambda dump, path, **kwargs: Path(path).write_text("dump", encoding="utf-8") or Path(path),
     )
     monkeypatch.setattr(
         tester,
@@ -353,7 +353,7 @@ def test_run_dump_test_reutilise_le_total_du_rapport(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tester,
         "write_dump_html",
-        lambda dump, path: Path(path).write_text("dump", encoding="utf-8") or Path(path),
+        lambda dump, path, **kwargs: Path(path).write_text("dump", encoding="utf-8") or Path(path),
     )
     monkeypatch.setattr(
         tester,
@@ -386,7 +386,7 @@ def test_run_dump_test_estime_la_complexite_depuis_les_etapes(monkeypatch, tmp_p
     monkeypatch.setattr(
         tester,
         "write_dump_html",
-        lambda dump, path: Path(path).write_text("dump", encoding="utf-8") or Path(path),
+        lambda dump, path, **kwargs: Path(path).write_text("dump", encoding="utf-8") or Path(path),
     )
     monkeypatch.setattr(
         tester,

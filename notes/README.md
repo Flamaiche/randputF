@@ -1,10 +1,12 @@
 # Notes de release
 
 Une note est rédigée par version dans un fichier `vX.Y.Z.md`, avec le `v`
-initial comme pour le tag. Ce dossier contient les notes de release publiées :
-`v0.0.1.md` est la note historique de la v0.0.1 (Factorio 2.0, 722 tests,
-témoin `c9566134864507d900f65806ade277d9`). L'état courant et la procédure de
-publication sont décrits dans [`docs/release.md`](../docs/release.md).
+initial comme pour le tag. Ce dossier contient les notes de release préparées
+ou publiées : `v0.0.1.md` est la note historique de la v0.0.1 (Factorio 2.0,
+722 tests, témoin `c9566134864507d900f65806ade277d9`) ; `v0.0.2.md` prépare la
+version courante, dont le témoin doit être recalculé au bump de version.
+L'état courant et la procédure de publication sont décrits dans
+[`docs/release.md`](../docs/release.md).
 
 Chaque `vX.Y.Z.md` est la source de la note publiée sur GitHub. Au moment du tag,
 `release.yml` lit `notes/v<version>.md` et publie exactement ce contenu, en
@@ -40,3 +42,4 @@ ni dans le mod assemblé. Aucun artefact généré n'est suivi dans git.
 - Gabarit et procédure : [`docs/release.md`](../docs/release.md).
 - Historique des versions : [`CHANGELOG.md`](../CHANGELOG.md).
 - Note publiée : [`v0.0.1.md`](v0.0.1.md).
+- Note en préparation : [`v0.0.2.md`](v0.0.2.md).

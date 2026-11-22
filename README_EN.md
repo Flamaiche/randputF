@@ -127,7 +127,7 @@ prebuilt mod: the mod is produced by `generate`.
   independently of the process and of generation order.
 - The current witness for seed 5 is
   `74dcb6f89c28ef1277a0e854d9a21a4a`.
-- The test suite contains 861 tests.
+- The test suite contains 862 tests.
 - Witness details are in [witness.md](docs/witness.md).
 
 ## Where to go next

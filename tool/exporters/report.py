@@ -18,6 +18,7 @@ from tool.exporters.difficulty_graph import (
     difficulty_table_html,
     render_difficulty_graph_html,
 )
+from tool.exporters.html_ui import FOLD_TABLES_CSS, FOLD_TABLES_SCRIPT
 from tool.exporters.profile import PROFILE_CSS, render_profile_html
 from tool.exporters.vanilla_complexity import playthrough_report
 
@@ -50,7 +51,7 @@ def _toc(skip: frozenset[str], summary: bool = False) -> str:
                 '<a href="#profil-difficulte">Profil de difficulté</a>',
                 '<a class="toc-sub" href="#profil-difficulte-table">Tableau des indicateurs</a>',
                 '<a href="#difficulte">Difficulté</a>',
-                '<a class="toc-sub" href="#difficulte-table">Tableau de difficulté</a>',
+                '<a class="toc-sub" href="#difficulte-table">Tableaux détaillés</a>',
             )
         )
     if "playthrough" not in skip:
@@ -194,7 +195,7 @@ def write_full_report(
     dump: dict | None = None,
     title: str | None = None,
     playthrough_title: str | None = None,
-    mod_label: str = "seed (mod)",
+    mod_label: str = "seed",
     vanilla_label: str = "vanilla",
     checks: dict | None = None,
     lightweight: bool | None = None,
@@ -294,7 +295,7 @@ def write_full_report(
             difficulty_section = (
                 "<section class='report-section' id='difficulte'>"
                 "<h2>Difficulté (ressources brutes)</h2>"
-                "<details class='table-fold' id='difficulte-table'><summary>Tableau de difficulté</summary>"
+                "<details class='table-fold' id='difficulte-table'><summary>Tableaux détaillés</summary>"
                 f"<div class='cols'>{difficulty_html}</div>"
                 "</details></section>"
             )
@@ -307,8 +308,9 @@ def write_full_report(
             + profile_section
             + difficulty_section
             + _TOC_SCRIPT
+            + FOLD_TABLES_SCRIPT
         )
-        style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{PROFILE_CSS}\n{_REPORT_CSS}"
+        style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{PROFILE_CSS}\n{_REPORT_CSS}\n{FOLD_TABLES_CSS}"
         document = (
             "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -370,6 +372,7 @@ def write_full_report(
             vanilla_seed,
             mod_label=mod_label,
             vanilla_label=vanilla_label,
+            context=title,
             vanilla_series=vanilla_series,
             mod_series=mod_series,
             on_progress=lambda percent: emit(
@@ -470,7 +473,8 @@ def write_full_report(
     else:
         body = _toc(skip) + body
     body += _TOC_SCRIPT
-    style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{PROFILE_CSS}\n{_REPORT_CSS}"
+    body += FOLD_TABLES_SCRIPT
+    style = f"{_COMPLEXITY_CSS}\n{DIFFICULTY_CSS}\n{PROFILE_CSS}\n{_REPORT_CSS}\n{FOLD_TABLES_CSS}"
     document = (
         "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
