@@ -6,7 +6,7 @@
 > [`docs/README.md`](../docs/README.md) ; les notes de release publiées sont
 > dans [`notes/README.md`](../notes/README.md).
 
-Ce fichier reflète l'état réel des branches locales conservées, pas une ancienne feuille de route.
+Ce fichier reflète l'état réel des branches conservées, en local et sur `origin`, pas une ancienne feuille de route.
 
 ## Branches conservées
 
@@ -16,8 +16,8 @@ Ce fichier reflète l'état réel des branches locales conservées, pas une anci
 | `dev` | Ligne de développement courante, base des travaux intégrés. |
 | `docs-refonte-archive` | Branche active : refonte documentaire, sorties HTML et note `v0.0.2`. |
 
-Les anciennes branches intermédiaires ont été supprimées localement. Leur travail est intégré dans `docs-refonte-archive` ou conservé dans les références distantes `origin/...`.
+Les anciennes branches intermédiaires ont été supprimées localement et sur `origin`. Leur travail est intégré dans `docs-refonte-archive`.
 
 ## Convention
 
-Une branche intermédiaire est supprimée quand son travail est intégré dans la branche active ou archivé dans une référence distante. Le présent fichier décrit l'état réel des branches locales conservées.
+Une branche intermédiaire est supprimée quand son travail est intégré dans la branche active. Seules `dev`, `master` et `docs-refonte-archive` restent, localement et sur `origin`.
