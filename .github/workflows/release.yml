@@ -1,11 +1,11 @@
 name: Release
 
-# La release EST la promotion dev -> master : le workflow se declenche quand
-# master recoit le travail de dev. Il lit la version dans mod/info.json
-# (source de verite unique), construit le mod et publie la release, en
-# creant le tag v<version> sur le commit master.
+# La release EST la promotion dev -> master : le workflow se déclenche quand
+# master reçoit le travail de dev. Il lit la version dans mod/info.json
+# (source de vérité unique), construit le mod et publie la release, en
+# créant le tag v<version> sur le commit master.
 #
-# workflow_dispatch permet de relancer apres un echec sans repousser master.
+# workflow_dispatch permet de relancer après un échec sans repousser master.
 on:
   push:
     branches:
@@ -15,7 +15,7 @@ on:
 permissions:
   contents: write
 
-# Deux promotions simultanees ne doivent pas publier deux fois la meme chose.
+# Deux promotions simultanées ne doivent pas publier deux fois la même chose.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Verifier la version et la note
+      - name: Vérifier la version et la note
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -42,24 +42,25 @@ jobs:
             exit 1
           fi
           if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-            echo "ERREUR: le tag v${VERSION} existe deja - version deja publiee"
+            echo "ERREUR: le tag v${VERSION} existe déjà - version déjà publiée"
             exit 1
           fi
-          echo "A publier : v${VERSION} (commit $(git rev-parse --short HEAD))"
+          echo "À publier : v${VERSION} (commit $(git rev-parse --short HEAD))"
       - name: Installer
         run: |
           python -m pip install --upgrade pip
           # Extras de DEV, comme .github/workflows/ci.yml : le job lance
-          # pytest juste apres. Avec un simple `pip install .`, pytest ne serait
-          # pas installe et le job echouerait sur « pytest: command not found »
-          # -- pas sur un test casse, ce qui est pire : la panne ressemblerait
-          # a de la documentation, pas a un outillage manquant.
+          # pytest juste après. Avec un simple `pip install .`, pytest ne serait
+          # pas installé et le job échouerait sur « pytest: command not found »
+          # -- pas sur un test cassé, ce qui est pire : la panne ressemblerait
+          # à de la documentation, pas à un outillage manquant.
           pip install ".[dev]"
-      # ci.yml tourne en parallele sur le meme push : sans ce test ici, un commit
-      # qui casse la suite publierait quand meme une release.
+        # ci.yml tourne en parallèle sur le même push : sans ce test ici, un commit
+
+      # qui casse la suite publierait quand même une release.
       - name: Tester
         run: pytest -q
-      - name: Determinisme seed 5
+      - name: Déterminisme seed 5
         run: |
           cd /tmp
           randputf witness --seed 5
@@ -67,22 +68,22 @@ jobs:
         run: |
           mkdir -p /tmp/modrel
           randputf generate --seed 5 --out /tmp/modrel
-          # Les vues HTML de debug sont exclues : elles sont deja ecartees du
-          # temoin de determinisme (WITNESS_EXCLUDED) et se regenerent en local
+          # Les vues HTML de debug sont exclues : elles sont déjà écartées du
+          # témoin de déterminisme (WITNESS_EXCLUDED) ; elles se régénèrent en local
           # avec `randputf generate`. Factorio n'en a pas besoin.
           cd /tmp/modrel && zip -qr "/tmp/randputF_${VERSION}.zip" "randputF_${VERSION}" \
             -x "*/seed.graph.html" -x "*/seed.difficulty.html" -x "*/seed.complexity.html"
-      - name: Creer le tag
+      - name: Créer le tag
         run: |
           # Tag pose explicitement sur le commit promu. Sans cela, une release
-          # publiee depuis un brouillon fait creer le tag par GitHub au
+          # publiée depuis un brouillon fait creer le tag par GitHub au
           # targetCommitish du brouillon -- donc sur le bon commit par
-          # coincidence, pas par construction. Le push du tag ne redemarre rien :
-          # le workflow n'ecoute pas les tags.
+          # coincidence, pas par construction. Le push du tag ne redémarre rien :
+          # le workflow n'écoute pas les tags.
           git tag "$TAG" "$GITHUB_SHA"
           git push origin "$TAG"
           echo "tag $TAG -> $(git rev-parse --short "$TAG")"
-      - name: Publier la release Github
+      - name: Publier la release GitHub
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -91,8 +92,8 @@ jobs:
           TITLE=$(head -1 "$NOTE_FILE" | sed 's/^# //')
           if gh release view "$TAG" --json tagName -q .tagName >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
-            # --draft=false : sans lui, une release creee en brouillon reste
-            # brouillon (gh release edit ne publie pas de lui-meme).
+            # --draft=false : sans lui, une release créée en brouillon reste
+            # brouillon (gh release edit ne publie pas de lui-même).
             gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTE_FILE" --draft=false
           else
             gh release create "$TAG" "$ZIP" \

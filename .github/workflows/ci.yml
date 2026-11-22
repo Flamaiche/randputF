@@ -18,7 +18,7 @@ jobs:
           pip install -e .[dev]
       - name: Tester
         run: pytest -q
-      - name: Verifier les ancres Markdown
+      - name: Vérifier les ancres Markdown
         run: python tools/check_anchors.py
 
   wheel:
@@ -32,7 +32,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
-      - name: Temoin de determinisme (seed 5, depuis /tmp hors checkout)
+      - name: Témoin de déterminisme (seed 5, depuis /tmp hors checkout)
         run: |
           cd /tmp
-          randputf witness --seed 5 --expect 12872b9249f37a5f56c0440b3361a0c6
+          randputf witness --seed 5 --expect 74dcb6f89c28ef1277a0e854d9a21a4a

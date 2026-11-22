@@ -1,45 +1,50 @@
 # La chaleur
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## La chaleur
+Cette page réunit les règles de la chaleur. Elle sert de point unique pour la triade source, transport et consommateur. L'électricité est décrite dans [energie.md](energie.md#lélectricité).
 
-La chaleur est un milieu transportable **à la manière d'un fluide**, mais qui
-ne circule qu'entre les bâtiments capables de l'échanger. Rien n'est codé en
-dur : la détection se fait **par capacités** (tags `is_heat_source`,
-`is_heat_sink`, `is_heat_transport`), comme les autres familles de bâtiments
-([tags.md](tags.md#5bis-modèle--chaleur--producteur--transport--consommateur)). En vanilla :
+## Ce que ça change pour le joueur
 
-- **SOURCE** (`is_heat_source`) : *nuclear-reactor* — energy burner +
-  `has_heat_output`. C'est lui qui **produit** la chaleur.
-- **TRANSPORT** (`is_heat_transport`) : *heat-pipe* — la fait circuler entre
-  la source et les consommateurs.
-- **CONSOMMATEUR / SINK** (`is_heat_sink`) : *heat-exchanger* — energy_source
-  `'heat'`. Il **demande** la chaleur pour convertir son fluide d'entrée en
-  son fluide de sortie (sa recette fluide→fluide, [ressources.md](ressources.md)
-  / [energie.md](energie.md#10-lélectricité)). En jeu, il ne fonctionne **QUE raccordé**
-  à une source via des conduites (réseau de chaleur réel, `energy_source 'heat'`
-  vanilla).
+- Un consommateur de chaleur tente d'ajouter les éléments qui l'alimentent ; la réussite n'est pas garantie.
+- Le réacteur n'exige pas de chaîne d'uranium dédiée.
+- Sans consommateur, la chaleur n'ajoute aucune contrainte.
 
-**Garantie de la triade — « à la volée » ([recettes.md](recettes.md#9-la-phase-récursive))** :
-comme la garantie « extracteur avant besoin » du starter ([starter.md](starter.md)
-), un consommateur de chaleur ne doit **jamais** être débloqué avant sa source
-+ son transport — sinon l'échangeur réclamerait du heat réseau sans aucun moyen
-d'en produire ni de le transporter (suite infaisable).
-`recursive_phase._ensure_heat_prereq` pose la garantie au premier instant où un
-sink reçoit sa recette de craft : il débloque, dans des techs **isolées
-strictement antérieures**, la SOURCE et le TRANSPORT manquants (une source déjà
-débloquée plus tôt n'est pas rejouée). Le pool **sans consommateur** rend le
-modèle parfaitement **inerte** : aucune contrainte, aucun unlock ajouté.
+## Mots à connaître
 
-Le réacteur (source) est alimenté en **combustible générique** (fuel categories
-unifiées, [runtime.md](runtime.md#46-catégories-de-combustible-unifiées)) : aucune chaîne uranium dédiée, la
-suite reste faisable.
+- [prototype](glossaire.md) — définition d'un bâtiment dans le dump.
+- [slot](glossaire.md) — entrée ou sortie d'un bâtiment ou d'une recette.
+- [déblocage sur le tas](glossaire.md) — création d'un prérequis au moment du besoin.
+- [jalon](glossaire.md) — étape qui garantit une catégorie de contenu.
+
+## Règles de génération
+
+### La chaleur
+
+- Les rôles sont détectés dans le dump avec `is_heat_source`, `is_heat_transport` et `is_heat_sink`.
+- La source produit la chaleur, le transport l'achèmine et le consommateur l'utilise pour transformer un fluide.
+- `_ensure_heat_prereq` tente d'ajouter la source puis le transport quand un consommateur reçoit sa recette.
+- La phase pose une marque avant la tentative et n'émet qu'une seule fois par seed.
+- Une erreur `ValueError` est interceptée : la triade reste une tentative déterministe, et non une garantie absolue.
+- Le réacteur utilise des catégories de combustible unifiées. Aucune chaîne d'uranium dédiée n'est requise.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Une tentative de triade au premier consommateur. | La réussite de chaque élément de la triade. |
+| Une seule émission de la phase par seed. | L'ajout de la triade quand le pool est vide ou bloqué. |
+
+## Aller plus loin
+
+- [energie.md](energie.md#lélectricité) — à lire quand le sujet est le courant plutôt que la chaleur.
+- [tags.md](tags.md) — à lire quand il faut retrouver les tags de rôle.
+- [recettes.md](recettes.md#la-phase-récursive) — à lire pour situer la phase dans la chronologie.
+- [solvabilite.md](solvabilite.md) — à lire pour comparer avec les invariants vérifiés.
 
 ## Lectures associées
 
-- **Parent** : [energie.md](energie.md) — la chaleur est le second réseau de l'électricité.
-- **Concepts liés** : [tags.md](tags.md#5bis-modèle--chaleur--producteur--transport--consommateur) (tags de rôle chaleur) ;
-  [ressources.md](ressources.md#les-ressources-au-sol) / [runtime.md](runtime.md#48-fluides-génériques) (fluides
-  génériques) ; [recettes.md](recettes.md#9-la-phase-récursive) (`_ensure_heat_prereq`) ;
-  [vanilladb.md](vanilladb.md#52-tags-énergétiques--chaleur) (tags énergétiques & chaleur).
+- **Parent** : [energie.md](energie.md) — l'électricité, premier réseau spécial.
+- [tags.md](tags.md) — tags de rôle de la triade.
+- [vanilladb.md](vanilladb.md) — tags énergétiques du dump.
+- [amorcage.md](amorcage.md) — ordre des prérequis.

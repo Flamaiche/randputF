@@ -485,7 +485,7 @@ class VanillaDB:
     def fuel_residues(self, b: "BuildingDef") -> frozenset[str]:
         """SORTIES recevables (items) issues de la combustion : le ``burnt_result``
         de chaque combustible du bâtiment. Réacteur → depleted-uranium-fuel-cell
-        (c'est SA sortie item). Vide si le dump n'a pas été régénéré."""
+        (c'est sa sortie item). Vide si le dump n'a pas été régénéré."""
         return frozenset(
             i.burnt_result for i in self.fuels_for(b) if i.burnt_result
         )

@@ -62,7 +62,7 @@ for control_name, control in pairs(data.raw["autoplace-control"] or {}) do
   end
 end
 
--- Resources are placed per-planet in Factorio 2.0. Force vanilla resources to
+-- Resources are placed per-planet in Factorio 2.0+. Force vanilla resources to
 -- size=0 (they stay listed so default_enable_all doesn't re-enable them) and
 -- register the randputF controls/entities with default frequency/size.
 local seed_ok, seed_data = pcall(require, "seed.seed")

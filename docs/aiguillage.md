@@ -1,62 +1,71 @@
 # L'aiguillage : mise en technologies
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-> **Cas partagé** entre [recettes.md](recettes.md) (tirages et groupement de contenu),
-> [tech.md](tech.md) (construction de l'arbre) et [combat.md](combat.md) (armes et
-> munitions). L'aiguillage décrit **comment un élément atterrit dans une tech** :
-> combien de chances il a d'être tiré, avec quoi il est groupé, et quand il doit rester
-> isolé.
+Cette page explique comment un objet produit par une phase rejoint une technologie. Le générateur le rattache à une recherche existante ou lui en réserve une. Certains objets restent seuls pour rester utilisables au bon moment.
 
-## Comment les éléments rejoignent l'arbre
+## Ce que ça change pour le joueur
 
-### Pourcentages d'obtention (tirages pondérés)
+- Une recherche débloque parfois plusieurs objets.
+- Une arme de poing et sa munition arrivent dans la même recherche quand aucune munition n'est disponible.
+- Les objets dépendants d'un autre restent proches de leur déclencheur.
 
-Chaque catégorie (bâtiments, armes, science packs, transports avancés…) dispose d'un
-**pourcentage d'obtention** qui dépend du **type du bâtiment** et du **nombre total de
-bâtiments** déjà présents dans la partie. Plus la progression avance, plus le pool
-s'élargit. Les science packs suivent ces mêmes pourcentages
-([recettes.md](recettes.md#91-tirages-pondérés), [tech.md](tech.md#13-larbre-technologique)).
+## Mots à connaître
 
-### Groupement en une tech
+- [jalon](glossaire.md) — étape qui garantit une catégorie de contenu.
+- [compagnon](glossaire.md) — objet lié à un autre pour rester utilisable.
+- [déblocage sur le tas](glossaire.md) — création d'un prérequis au moment du besoin.
+- [pool](glossaire.md) — réserve d'objets parmi lesquels la seed tire.
 
-Une technologie « groupable » débloque **1 objet de base**, puis s'étend selon une
-chaîne probabiliste : **75 %** pour un 2e objet, **65 %** pour un 3e, **35 %** pour un
-4e, **15 %** pour un 5e — le premier tirage échoué arrête le groupe (plafond 5 via
-`tree.max_per_tech`, probabilités via `tree.group_chances`, [seed.md](seed.md#seed-et-configuration)). Les nœuds **dédiés** (sciences, munitions, techs de
-prologue, endgame) restent isolés, et un nœud monolithe existe pour la 2e recherche
-gratuite du starter ([tech.md](tech.md#13-larbre-technologique)).
+## Règles de génération
+
+### Tirages pondérés
+
+- Les catégories suivent les mêmes poids que dans la phase récursive. Le détail figure dans [recettes.md](recettes.md#tirages-pondérés).
+- Le facteur de progression est commun à toutes les catégories.
+
+### Groupement en une technologie
+
+- Une tech groupable débloque un premier objet.
+- Le groupe peut s'étendre jusqu'à cinq objets avec les chances configurées. Le premier tirage raté arrête l'extension.
+- Restent seuls le départ gratuit, les prologues à craft manuel, l'apparition d'un pack de science, les objets isolés, les pylônes et les armes de poing.
 
 ### Nœuds isolés et dispatch
 
-Certains contenus **ne fusionnent jamais** et sont distribués dans des **techs isolées
-juste après** leur déclencheur, par un patron commun (le « dispatch ») :
+- Les recettes créées sur le tas sont placées juste après l'étape qui les rend nécessaires, dans au plus trois techs isolées.
+- Les munitions de véhicule suivent ce patron avec des packs déjà débloqués.
+- Les compagnons suivent le même patron quand un membre du groupe est généré.
+- Le pylône forcé occupe l'itération en cours, qui est alors consommée.
 
-- **Munitions d'arme de poing** : chaque arme est liée à un type de munitions. Si une
-  arme débloquée n'a **aucune** munition compatible disponible, une munition est générée
-  et débloquée dans la **même tech** — une arme n'est jamais inutile. Si une munition
-  compatible existe déjà, rien n'est ajouté ([combat.md](combat.md#11-combat-et-armement)).
-- **Munitions de véhicule** : lors de la création de la tech d'un véhicule, le générateur
-  vérifie les munitions de ses armes (via `ammo_category`) ; celles qui n'ont pas encore
-  de recette sont créées et **dispatchées dans jusqu'à 3 techs isolées qui suivent** celle
-  du véhicule (`randputf-ammo-<véhicule>-<munition>`), payées par des packs déjà
-  débloqués. Les munitions déjà présentes ne sont pas recalculées
-  ([combat.md](combat.md#121-armes-montées-randomisées)).
-- **Compagnons** : les produits liés (roboport + robots, panneau solaire + accumulateur)
-  reçoivent des **techs isolées juste APRÈS la tech du produit** (au plus 3, comme les munitions de véhicule)
-  ([recettes.md](recettes.md#97-garantie-de-compagnons)).
-- **Prologue** : les recettes relais sont regroupées en techs de prologue isolées juste
-  après les free techs du starter ([starter.md](starter.md#7-la-phase-de-démarrage), [recettes.md](recettes.md#95-relais-des-ressources-non-infinies)).
-- **Cadence des pylônes** : 3 pôles verrouillés sont forcés dans la phase récursive et
-  **ne fusionnent jamais** deux de leurs steps ([recettes.md](recettes.md#94-cadence-garantie-des-pylônes)) — même
-  règle pour les armes ([combat.md](combat.md#11-combat-et-armement)).
+### Munitions d'armes de poing
 
-L'assignation des armes montées (copie d'arme par véhicule, portée scalée, pool cachée)
-est, elle, décrite dans [combat.md](combat.md#121-armes-montées-randomisées).
+- La catégorie de munitions est lue sur l'arme au moment de sa génération.
+- Si aucune munition compatible n'a de recette, une seule munition est créée dans la même tech.
+- Si une munition compatible existe déjà, rien n'est ajouté. Il n'y a aucun pourcentage de non-génération.
 
----
+### Écart connu
+
+- La spécification historique demande
+ une munition pour chaque arme, avec une chance de ne pas l'ajouter quand une munition compatible existe déjà. Le code ajoute une munition seulement quand aucune n'existe, sans appliquer de chance.
+- La spécification historique demande
+ de vérifier une source d'électricité avant de dispatcher le panneau solaire et l'accumulateur. `_dispatch_companions` ne le fait pas. L'accumulateur reste un stockage, et non un générateur.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Une munition quand l'arme n'en a aucune de compatible. | Une munition supplémentaire quand une munition compatible existe. |
+| Des techs isolées pour les objets dépendants. | Une source d'électricité vérifiée avant l'accumulateur. |
+
+## Aller plus loin
+
+- [recettes.md](recettes.md#la-phase-récursive) — à lire quand il faut savoir comment l'objet est fabriqué.
+- [tech.md](tech.md#larbre-technologique) — à lire quand il faut voir l'ordre des recherches.
+- [combat.md](combat.md#combat-et-armement) — à lire quand le sujet concerne les armes et les véhicules.
 
 ## Lectures associées
 
 - **Parent** : [recettes.md](recettes.md) — la phase récursive.
-- **Concepts liés** : [tech.md](tech.md) — arbre technologique et fin de partie ; [combat.md](combat.md) — combat et transports avancés ; [starter.md](starter.md) — la phase de démarrage.
+- [tech.md](tech.md) — arbre technologique et fin de partie.
+- [combat.md](combat.md) — combat et transports avancés.
+- [starter.md](starter.md) — la phase de démarrage.

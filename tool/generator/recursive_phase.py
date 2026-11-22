@@ -1,4 +1,4 @@
-"""Phase 3 : récursion pondérée (§9). Pool de ressources s'élargit à chaque itération.
+"""Phase 4 : récursion pondérée (§9). Pool de ressources s'élargit à chaque itération.
 
 - expand_recursive() remplit _tech_steps (macro-steps pour le tech tree).
 - state.recipes = toutes les recettes (starter + récursif).

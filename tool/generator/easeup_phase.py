@@ -11,8 +11,8 @@ récursif, endgame, relais) :
 1. Détection : profondeur (= 1 + profondeur max de ses ingrédients, le plus
    petit chemin parmi ses recettes) et boucles, sur le graphe FINAL. Un
    produit est « lourd » si profondeur ≥ ``depth_threshold`` ou boucle.
-2. Classement par impact : d'abord les plus consommés (bloquants), puis les
-   plus profonds, les boucles d'abord.
+2. Classement par impact : d'abord les plus profonds, puis les boucles, puis
+   les plus consommés.
 3. Pour chaque produit retenu, une recette ALTERNATIVE ``randputf-ease-<item>``
    tirée du POOL GELÉ DE DÉBUT DE RUN (même ``base`` que les relais §9.3) :
    un ease-up ne dépend jamais d'un item débloqué en profondeur de seed.

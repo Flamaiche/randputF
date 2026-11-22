@@ -160,7 +160,7 @@ end
 
 -- Tuiles : couches de collision + fluide declare. Doc du jeu sur
 -- LuaTilePrototype.fluid : "The fluid offshore pump produces on this tile,
--- if any" -- donnee brute, lue par le tool pour resoudre le fluide pompe.
+-- if any" -- donnée brute, lue par l'outil pour résoudre le fluide pompé.
 local function dump_tiles()
   local out = {}
   local ok_tiles, tiles = pcall(function()
@@ -260,7 +260,7 @@ local function dump_all_items()
     end)
     -- Produits de lancement (ItemWithInventoryPrototype, ex. satellite) :
     -- envoyer cet item en orbite produit ces items. C'est LA source de
-    -- vérité des packs de science spatiale (pas le silo).
+    -- vérité des produits de lancement.
     -- NB : acces direct aux champs (pas de ref_name/probe, hors de portee
     -- lexicale ici car definis plus bas dans le fichier).
     pcall(function()
@@ -403,7 +403,7 @@ end
 -- les objets à champ `.name` et les dictionnaires LuaCustomTable dont la clé
 -- est la valeur utile. Retourne un tableau de chaînes.
 local function string_list(list)
-  -- Gere arrays ET dictionnaires LuaCustomTable (cle = valeur utile).
+  -- Gère les tableaux ET les dictionnaires LuaCustomTable (clé = valeur utile).
   local out = {}
   if list then
     for key, entry in pairs(list) do
@@ -430,7 +430,7 @@ local ENERGY_SOURCE_PROPS = {
   {name = "void_energy_source_prototype", type = "void"},
 }
 
--- Version 2.0 active : sonde les propriétés d'énergie typées (burner,
+-- Version 2.0+ active : sonde les propriétés d'énergie typées (burner,
 -- electric, fluid, heat, void), déduit le type et extrait fuel_categories et
 -- production électrique. Retourne une table info (vide si aucune source).
 local function energy_source_info(proto)
@@ -503,13 +503,13 @@ local function ref_name(value)
   return nil
 end
 
--- Il n'existe aucune propriete booleenne « auto-select » : l'interface se deduit
+-- Il n'existe aucune propriété booléenne « auto-select » : l'interface se déduit
 -- de la capacite. Une machine de craft n'expose le SELECTEUR de recette (choix
 -- manuel du joueur) que si c'est une assembling-machine SANS recette figee.
 -- Toutes les autres -- fours, silo, assembleuses a fixed_recipe, ajouts moddes --
--- recoivent leur recette sans intervention du joueur : soit une recette unique,
--- soit l'auto-selection d'apres l'item insere (a ingredients egaux, c'est la
--- PREMIERE recette du prototype qui gagne). On ne code donc AUCUN nom d'entite
+-- reçoivent leur recette sans intervention du joueur : soit une recette unique,
+-- soit l'auto-sélection d'après l'item inséré (à ingrédients égaux, c'est la
+-- PREMIÈRE recette du prototype qui gagne). On ne code donc AUCUN nom d'entité
 -- en dur : on teste la presence du selecteur sur l'interface CraftingMachine.
 -- Les entites non posables (personnage : menu de craft) sont exclues.
 local function auto_selects_recipe(proto)
@@ -564,7 +564,7 @@ local function dump_entities()
       if auto_selects_recipe(proto) then
         entry.auto_select = true
       end
-      -- Vitesse de craft : necessaire au rapport de complexite
+      -- Vitesse de craft : nécessaire au rapport de complexité
       -- (temps reel = energy / crafting_speed). En 2.1 la valeur n'est pas
       -- exposee comme champ : c'est la methode get_crafting_speed().
       local ok_speed, speed = pcall(function()
@@ -616,7 +616,7 @@ local function dump_entities()
     end
 
     -- Capacite de pompage (offshore-pump, pump). En 2.1, ``pumping_speed``
-    -- peut etre absent : on expose quand meme le fluide pompe.
+    -- peut etre absent : on expose quand même le fluide pompé.
     local pspeed = probe(proto, "pumping_speed")
     if pspeed then
       entry.pumping_speed = pspeed
@@ -631,7 +631,7 @@ local function dump_entities()
     end
 
     -- Regles de placement sur tuiles (couches requises/collident), brutes :
-    -- la resolution du fluide pompe par tuiles se fait cote Python.
+    -- la résolution du fluide pompé par tuiles se fait côté Python.
     local rules = {}
     local ok_rules = pcall(function()
       local raw_rules = proto.tile_buildability_rules
@@ -708,7 +708,7 @@ local function dump_entities()
 
     -- Toute entité conservée (l'outil Python classe les "other").
 
-    -- Chaudiere : temperature cible sans categorie de craft.
+    -- Chaudière : température cible sans catégorie de craft.
     local target_temp = probe(proto, "target_temperature")
     if target_temp then
       entry.target_temperature = target_temp

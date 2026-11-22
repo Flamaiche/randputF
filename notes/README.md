@@ -1,22 +1,42 @@
 # Notes de release
 
-Rédige une note par version. Nomme le fichier `vX.Y.Z.md`, avec le `v` initial comme pour le tag.
+Une note est rédigée par version dans un fichier `vX.Y.Z.md`, avec le `v`
+initial comme pour le tag. Ce dossier contient les notes de release publiées :
+`v0.0.1.md` est la note historique de la v0.0.1 (Factorio 2.0, 722 tests,
+témoin `c9566134864507d900f65806ade277d9`). L'état courant et la procédure de
+publication sont décrits dans [`docs/release.md`](../docs/release.md).
 
-Ce fichier est la source unique de la note publiée sur GitHub. Au moment du tag, `release.yml` lit `notes/v<version>.md` et publie exactement ce contenu, en utilisant la première ligne comme titre. Si le fichier manque, le workflow échoue de manière bloquante plutôt que de publier une release sans note.
+Chaque `vX.Y.Z.md` est la source de la note publiée sur GitHub. Au moment du tag,
+`release.yml` lit `notes/v<version>.md` et publie exactement ce contenu, en
+utilisant la première ligne comme titre. Si le fichier manque, le workflow échoue
+de manière bloquante plutôt que de publier une release sans note.
 
-## Écriture
+## Règles de rédaction
 
-- **Première ligne** : le titre de la release, au format `# <version> — <ce que la release apporte>`. N'ajoute pas le nom du dépôt dans le titre : GitHub l'affiche déjà, écrire « randputF 0.0.2 » ferait doublon.
-- **Ensuite** : la note, au format « highlights » (3-5 puces). Reprends la structure de la v0.0.1 : présentation du projet, changement notable et migration, déterminisme vérifiable, installation, documentation, garanties mesurées.
-- **Contenu** : base-toi uniquement sur les faits documentés, sans rien inventer. Le témoin affiché correspond à la version publiée et change à chaque bump de version.
+- **Première ligne** : le titre de la release, au format
+  `# <version> — <ce que la release apporte>`. Le nom du dépôt est omis : GitHub
+  l'affiche déjà.
+- **Ensuite** : la note au format « faits saillants » (3 à 5 puces). La structure de
+  la v0.0.1 sert de référence : présentation du projet, changement notable et
+  migration, déterminisme vérifiable, installation, documentation, garanties
+  mesurées.
+- **Contenu** : seuls les faits documentés de la version publiée sont repris.
+  Le témoin affiché correspond à cette version et change à chaque bump.
 
-## Portée de ce dossier
+## Portée du dossier
 
-Ce dossier est présent dans les tags. Le workflow de release fait son checkout sur le tag et doit pouvoir y lire la note. Comme `atelier/`, ce dossier voyage dans les tags sans faire partie du produit distribué : il est nécessaire au déploiement, et ne fait pas partie de ce qu'un joueur installe.
+Ce dossier est présent dans les tags. Le workflow fait son checkout sur le
+commit `master` promu (le tag est créé ensuite) et lit la note depuis ce
+checkout. Comme `atelier/`, ce dossier voyage
+dans les tags sans faire partie du produit distribué : il est nécessaire au
+déploiement, et ne fait pas partie de ce qu'un joueur installe.
 
-À l'inverse, `atelier/` sert de journal de bord. Il n'est pas distribué : il n'entre ni dans le wheel (`pyproject.toml` liste ses packages explicitement) ni dans le zip du mod, qui contient uniquement le mod généré.
+`atelier/` contient les plans et les idées non livrés. Il n'est pas distribué :
+il n'entre ni dans le wheel (`pyproject.toml` liste ses paquets explicitement)
+ni dans le mod assemblé. Aucun artefact généré n'est suivi dans git.
 
 ## Liens
 
 - Gabarit et procédure : [`docs/release.md`](../docs/release.md).
 - Historique des versions : [`CHANGELOG.md`](../CHANGELOG.md).
+- Note publiée : [`v0.0.1.md`](v0.0.1.md).

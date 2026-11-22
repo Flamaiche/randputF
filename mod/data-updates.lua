@@ -42,7 +42,7 @@ do
   local function clone_gun_for(vehicle, gun, size)
     local src = data.raw["gun"][gun]
     if not src then
-      log("[randputF] arme de vehicule inconnue: " .. tostring(gun))
+      log("[randputF] arme de véhicule inconnue: " .. tostring(gun))
       return nil
     end
     local clone = table.deepcopy(src)
@@ -61,7 +61,7 @@ do
       or data.raw["spider-vehicle"][vehicle]
       or data.raw["artillery-wagon"][vehicle]
     if not proto then
-      log("[randputF] vehicule arme introuvable: " .. tostring(vehicle))
+      log("[randputF] véhicule armé introuvable: " .. tostring(vehicle))
     else
       local size = entity_size(proto)
       local valid = {}
@@ -75,7 +75,7 @@ do
         elseif data.raw["artillery-wagon"][vehicle] then
           proto.gun = valid[1]
         end
-        log("[randputF] vehicule re-arme: " .. vehicle .. " <- [" .. table.concat(valid, ",") .. "]")
+        log("[randputF] véhicule ré-armé: " .. vehicle .. " <- [" .. table.concat(valid, ",") .. "]")
       end
     end
   end
@@ -193,7 +193,7 @@ for i, patch in ipairs(unique_patches) do
     }
     new_entity.resource_category = "basic-fluid"
     -- Puits fluides : posés explicitement au runtime, autoplace=0 requis (le moteur
-    -- exige un spécification d'autoplace). Richesse fixée via entity.amount.
+    -- exige une spécification d'autoplace). Richesse fixée via entity.amount.
     new_entity.autoplace = resource_autoplace.resource_autoplace_settings{
       name = new_entity_name,
       patch_set_name = new_entity_name,
@@ -410,7 +410,8 @@ local function lake_color(fluid, base)
 end
 
 -- 1) Lacs via le moteur d'altitude natif de Factorio. L'eau vanilla est
--- neutralisée (property_expression_names → -inf) et remplacée par la tuile
+-- neutralisée (property_expression_names → -999, sentinel -inf) et remplacée
+-- par la tuile
 -- fantôme randputf-lac-neutre (même autoplace water_base). Au runtime
 -- (control.lua) : flood-fill → randputf-lac-<fluide>.
 local water_tiles = {}
@@ -466,10 +467,10 @@ if tile_water_proto then
     end
   end
   data:extend{phantom}
-  log("[randputF] lacs: tuile fantome " .. PHANTOM_TILE .. " creee (moteur altitude water_base)")
+  log("[randputF] lacs: tuile fantôme " .. PHANTOM_TILE .. " créée (moteur altitude water_base)")
 end
 
--- Neutralisation tuiles eau vanilla : probability → -inf via property_expression_names.
+-- Neutralisation tuiles eau vanilla : probability → -999 via property_expression_names.
 -- Le fantôme prend leur place (même water_base).
 data:extend{
   { type = "noise-expression", name = "randputf-no-water", expression = "-999" },
@@ -488,7 +489,7 @@ do
     end
     nauvis.map_gen_settings.property_expression_names = pen
   else
-    log("[randputF] lacs: WARN planete nauvis introuvable — eau vanilla non neutralisée au mapgen")
+    log("[randputF] lacs: WARN planète nauvis introuvable — eau vanilla non neutralisée au mapgen")
   end
 end
 log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles) -> " .. PHANTOM_TILE)
@@ -694,7 +695,7 @@ log("[randputF] lacs: eau vanilla neutralisée (" .. purged .. " tuiles) -> " ..
         if data.raw.tile[PHANTOM_TILE] then
           tile_settings[PHANTOM_TILE] = {frequency = 1, size = 1}
         end
-        -- Tuiles-par-fluide : jamais générées (probabilité -inf), mais posées
+        -- Tuiles-par-fluide : jamais générées (probabilité -999), mais posées
         -- au runtime. Inscription indispensable pour que set_tiles les accepte.
         for _, lk in ipairs(lake_array) do
           tile_settings[lk.name] = {frequency = 1, size = 1}
@@ -788,7 +789,7 @@ local function collect_fluid_boxes(proto)
   return boxes
 end
 
--- Parse une Energy (factorio) en kJ : "0.2kJ", "2J", "1MJ", "5.582MW". Retourne
+-- Parse une Energy (factorio) en kJ : "0.2kJ", "2J", "1MJ", "5.582MJ". Retourne
 -- un nombre (kJ) ou nil si le format est inattendu.
 local function parse_energy_kj(value)
   if type(value) == "number" then
@@ -903,7 +904,7 @@ do
   local fv = 0
   for _, proto in pairs(data.raw.fluid or {}) do
     proto.fuel_value = "200kJ"
-    -- 2.1 borne la temperature au max_temperature du fluide ; en 2.0 la
+    -- 2.1 borne la température au max_temperature du fluide ; en 2.0 la
     -- limite n'existait pas. On la relève pour que tout fluide puisse
     -- traverser un boiler/chauffe-eau sans erreur de setup.
     proto.max_temperature = math.max(proto.max_temperature or proto.default_temperature or 0, 1000)

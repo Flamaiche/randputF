@@ -1,190 +1,83 @@
-# Les vues HTML de la génération (`seed.graph.html`, `seed.complexity.html`, `seed.difficulty.html`)
-
-Dans `output/reports/randputF_<version>/`, à côté du mod assemblé dans
-`output/mods/randputF_<version>/`, la commande `generate` écrit **trois vues
-HTML autonomes** : le graphe de production cliquable, le rapport de complexité
-et la courbe de difficulté comparée au vanilla. `--out` choisit la racine :
-`<out>/mods/` pour le mod, `<out>/reports/` pour les HTML. La commande
-`randputf compare` régénère seule la vue de difficulté (même rendu, nommé
-`seed.difficulty.<seed>.html` dans `<out>/reports/compare/`). Ce document
-explique leur construction ; le mode d'emploi est côté utilisateur (README
-racine, sections « Le graphe interactif » et « La difficulté »).
+# Les vues HTML de la génération
 
 Retour : [docs/README.md](README.md).
 
----
+La génération peut produire jusqu'à trois vues HTML en plus du mod. Elles expliquent le graphe, sa complexité et sa difficulté. Elles ne sont jamais lues par Factorio.
 
-## 1. `seed.graph.html` — le graphe de production
+## Ce que ça change pour l'utilisateur
 
-### Ce que c'est
+- Les vues générées sont écrites dans `output/reports/randputF_<version>/`.
+- `generate --no-html` produit le mod sans ces fichiers.
+- Les vues ne font pas partie du témoin de déterminisme.
 
-Un nœud par item/fluide, une arête par **dépendance de craft** (produit →
-ingrédient) étiquetée par la **quantité** nécessaire au craft (`amount`). La
-disposition est en left-to-right sur fond sombre.
+## Mots à connaître
 
-Le code HTML est **autonome** : le SVG est intégré, les icônes sont embarquées
-en **data-URI** et le JS de navigation est dans le fichier. Il s'ouvre en
-local, sans serveur, et se déplace seul. Il est régénéré à chaque export par
-la commande `.venv/bin/python -m tool generate --out …` (jamais avec
-`--install`). Il n'est jamais inclus dans le dossier `mod/` et reste exclu du
-témoin de déterminisme décrit dans [witness.md](witness.md), car le `<svg>`
-dépend de la version de Graphviz.
+- [rapport HTML](glossaire.md) — vue interactive générée à côté du mod.
+- [graphe](glossaire.md) — réseau de recettes, items et technologies.
+- [témoin](glossaire.md) — empreinte de reproductibilité de la seed 5.
+- [Graphviz](glossaire.md) — outil externe utilisé pour le rendu du graphe.
 
-### Construction, étape par étape
+## Fonctionnement
 
-1. **Collecte des nœuds** : chaque item/fluide du graphe devient un nœud ; la
-   structure produit → ingrédient des recettes de la seed définit les arêtes.
-2. **Icônes** : l'icône de chaque nœud est **celle que le jeu affiche
-   réellement**. Résolution, dans l'ordre (`_icon_path`) :
-   - fichier exact `<name>.png` ;
-   - fluide : `fluid/<name>.png` ;
-   - sinon l'icône **déclarée dans les prototypes installés** (ex.
-     `raw-fish`→`fish.png`, `stone-wall`→`wall.png` ; lu depuis les `.lua`
-     prototypes) ;
-   - sinon aucune icône (le nœud reste affiché sans image).
+### Les trois fichiers et leur génération
 
-   Les variantes de stades (`-1/-2/-3`) et les icônes `technology/` sont
-   exclues.
-3. **Icônes en data-URI** (`_embed_icons`) : chaque PNG est lu puis encodé en
-   base64 dans le SVG → le fichier HTML n'a plus besoin du dossier d'icônes
-   vanilla.
-4. **Rendu SVG** : `build_seed_graph_dot` retourne une chaîne DOT, rendue par
-   `dot -Tsvg` (**Graphviz requis**). Sans Graphviz, l'export HTML est
-   simplement **ignoré** (message honnête, pas d'erreur).
-5. **Assemblage HTML** : le SVG, les infos de nœuds, les recettes et les
-   technos sont injectés dans le gabarit (`_HTML_TEMPLATE`).
+| Fichier | Contenu |
+|---|---|
+| `seed.graph.html` | graphe cliquable des items, recettes et technologies |
+| `seed.complexity.html` | rapport de complexité du graphe généré |
+| `seed.difficulty.html` | comparaison vanilla contre mod |
 
-### Le côté interactif (le JS embarqué)
+Les fichiers disponibles sont écrits par `generate`, sauf `--no-html`. Le graphe interactif dépend de Graphviz et la comparaison de difficulté exige des technologies dans le dump. Leur absence n'empêche pas la seed ni le mod d'être produits.
 
-Le fichier est **un seul document** ; le JS intégré gère :
+Chaque vue est inspectable sans installer le mod. Elle reprend la seed sérialisée, sans la modifier.
 
-- **zoom / pan** à la souris (molette + drag) sur le SVG ;
-- **fiche au clic** sur un nœud : nom, icône agrandie, ingrédients et
-  utilisateurs, technos associées ; un item multi-recettes y offre un
-  sélecteur **autre recette** (la cascade se recalcule) ;
-- **sous-graphe** : isolation de la cascade de l'item sélectionné ; les
-  ressources brutes y sont des terminaux — on n'explore pas leurs ingrédients,
-  même si elles ont un craft ;
-- panneau latéral redimensionnable, légende des sciences, numéro de tech
-  d'apparition.
+### Navigation du graphe
 
-Les données injectées (`info`, `recips`, `techs`) sont du JSON sérialisé dans
-le HTML, construit depuis la seed. Note : bien que les données de science
-soient présentes dans la seed, le script ne les affiche pas dans les fiches.
+Le graphe affiche les nœuds de production et les liens de dépendance. La sélection d'un nœud met en avant ses entrées et ses sorties. La lecture suit le sens de fabrication, du départ vers la fusée.
 
-## 2. `seed.complexity.html` — le rapport de complexité
+La vue de complexité résume le nombre de recettes, de technologies et de prérequis. La vue de difficulté compare l'ardoise du mod à celle du dump vanilla.
 
-Le modèle suit **ce que ferait réellement un joueur pour terminer l'arbre** :
+## Complexité et difficulté, une seule section
 
-- pour chaque technologie, on prend les packs de science exigés par son
-  `unit` (`count × amount`) ;
-- le coût unitaire de chaque objet est mémoïsé une seule fois dans
-  `tool/audit/graph.py`, jusqu'aux `pools.raw_resources` / au kit de départ ;
-- chaque craft utilise l'atelier `crafted_in` de la recette (ou la main) ;
-- le temps d'un craft vaut `energy / crafting_speed` du bâtiment ;
-- le même calcul alimente le profil de difficulté du rapport complet ;
-- dans le rapport complet, la complexité vient de ce graphe mémoïsé par défaut ;
-  avec `--playthrough`, elle réutilise les compteurs collectés pendant
-  `analyze_playthrough` au lieu de refaire un dépliage.
+Complexité et difficulté répondent à deux questions distinctes. La complexité mesure la forme du graphe. La difficulté mesure le coût en ressources brutes pour parcourir ce graphe.
 
-Mesures produites :
+Les deux chiffres viennent de la même seed. Aucun n'est utilisé pour construire la seed. Le total affiché dans le chat du mod est calculé à l'export, jamais pendant le pipeline.
 
-- **courbes par tech** : temps de recherche, ressources brutes consommées,
-  nombre d'ateliers de fabrication distincts, ratio ressources / atelier ;
-- **résumé** : score de complexité, temps de craft total (comme si un joueur
-  faisait tous les crafts), temps de recherche total, fabricateur le plus
-  utilisé, ressource la plus consommée pendant la partie.
+### Profil multi-axes
 
-Le dépliage par chemin est remplacé par cette programmation dynamique mémoïsée :
-les cycles sont cassés une fois pour toutes et les scores de complexité peuvent
-différer de l'ancien modèle exact, sans explosion du nombre d'étapes sur les
-gros graphes moddés. C'est la source par défaut de `analyze_complexity()` dans
-les rapports et les exports autonomes : elle lit les recettes et les stats du
-dump, sans simuler la partie. `analyze_complexity(..., playthrough=...)` reste
-disponible quand `--playthrough` est demandé, pour consommer les compteurs déjà
-calculés par la simulation. Dans ce mode, la simulation mémoïse son choix de
-recette pour chaque item entre deux lots de déblocages : elle continue à suivre
-les vraies recettes disponibles, sans refaire le même scan de producteurs à
-chaque besoin. Le résultat complet est enregistré dans le dump sous
-`randputf_cache.playthrough_v1`, avec une empreinte de la seed, du dump et de la
-version de l'outil : les commandes suivantes relisent les compteurs sans
-rejouer la partie. `--no-cache` force un nouveau calcul.
+Le profil regarde cinq axes : structure, volume, temps critique, nouveauté et infrastructure. Le temps critique n'est pas le temps écoulé. Il ne remplace pas le rejeu, qui reste le contrôle de jouabilité décrit dans [testeur.md](testeur.md).
 
-Le fichier est **autonome** : CSS et SVG sont générés en Python, aucun CDN,
-**aucun JavaScript** — il s'ouvre hors ligne. `analyze_playthrough` (la partie
-simulée sous-jacente) est partagé avec le rapport vanilla de la commande
-`randputf report`.
+## Périmètre du témoin et des releases
 
-## 3. `seed.difficulty.html` — la courbe de difficulté
+Les trois fichiers HTML sont exclus du témoin de déterminisme. Le témoin courant de la seed 5 est `74dcb6f89c28ef1277a0e854d9a21a4a`, vérifié avec `randputf witness --seed 5 --expect 74dcb6f89c28ef1277a0e854d9a21a4a`.
 
-Écrite par `generate --out` **quand le dump porte les technologies**
-(`randputf compare` produit le même HTML, nommé `seed.difficulty.<seed>.html`
-dans `<out>/reports/compare/`). C'est une **courbe de difficulté cumulée** : en abscisse la
-progression (une tech par point, suivie d'un point « Lancement (fusée) »), en
-ordonnée le **total de ressources brutes** déjà investies pour arriver là.
+Le workflow de release construit le mod dans `/tmp/modrel` et vise un zip nommé `/tmp/randputF_${VERSION}.zip` en excluant les trois vues. La source réelle du zip est signalée dans l'écart connu de [release.md](release.md).
 
-- La difficulté est calculée par `tool/audit/difficulty.py`
-  (`compute_difficulty`, puis `difficulty_series` pour la courbe point par
-  point) : chaque tech rapporte ses coûts de recherche **réduits à leurs
-  ressources brutes** (patch au sol, item environnemental, fluide
-  d'extraction) en remontant le graphe primaire des recettes, plus la chaîne
-  de la fusée pour le point final.
-- Deux courbes sont superposées : la seed **mod** et une baseline **vanilla**
-  dérivée du même dump (`build_vanilla_seed`) — les recherches vanilla
-  débloquent des recettes réelles, donc la baseline a une difficulté propre.
-  L'écart entre les deux courbes est l'effet du mod sur le coût cumulé.
-- Le calcul est **conditionné à l'export** : comme `difficulty` dans
-  `seed.json`, il ne biaise jamais la construction de la seed (`mod_seed.py`
-  l'injecte à l'écriture).
+### Écart connu
 
-### Lecture interactive
+`generate` écrit le mod dans `/tmp/modrel/mods/randputF_${VERSION}`. La commande zip lit `/tmp/modrel/randputF_${VERSION}`. Les deux chemins ne coïncident pas dans le script courant. Reste à faire : aligner la source du zip sur le dossier produit.
 
-Le SVG est écrit **en Python pur** (aucune dépendance externe, contrairement à
-`seed.graph.html` qui exige Graphviz) et embarque une petite couche JS :
+D'anciens textes affirmaient qu'aucun zip n'était attaché à la release. Le workflow courant téléverse bien `/tmp/randputF_${VERSION}.zip`. Reste à faire : mettre à jour ces textes.
 
-- **Survol d'une colonne** (une zone transparente par indice de tech) : un
-  repère vertical s'affiche et une **infobulle** donne, pour les deux séries à
-  la fois, le numéro et le nom de la tech, son coût propre, le coût cumulé et
-  les items débloqués ; l'écart mod − vanilla est ajouté quand les deux courbes
-  existent à cet indice.
-- **Clic** : épingle l'infobulle (re-clic pour détacher ; un clic dans le vide
-  ferme).
-- **Légende cliquable** : masque/affiche chaque série (courbe + points) ; la
-  valeur masquée disparaît aussi de l'infobulle.
-- **Tableaux par tech** (juste en dessous) : le survol d'une ligne met le
-  point en évidence, le clic y amène la vue.
+## Garanti / non garanti
 
-Les données injectées (`points`, `labels`, `colors`) sont du JSON sérialisé :
-aucune géométrie n'est recalculée côté JS.
+| Garanti | Non garanti |
+|---|---|
+| Les vues sont générées à côté du mod, jamais dans le mod. | Graphviz peut manquer sur une machine. |
+| Les fichiers HTML n'entrent pas dans le témoin. | Le zip de release dépend du chemin exact du script. |
+| `--no-html` supprime uniquement les trois vues. | Les vues ne prouvent pas la jouabilité. |
 
-## 4. Déterminisme et périmètre du témoin
+## Aller plus loin
 
-Le témoin **assemble sa propre copie du mod**, sans les vues HTML (elles ne
-sont écrites que par l'export `--out`). De plus, `seed.graph.html` et
-`seed.difficulty.html` sont **explicitement exclus** du hash
-(`WITNESS_EXCLUDED`, voir [witness.md](witness.md)) :
-
-- `seed.graph.html` : le `<svg>` embarque un commentaire de version de
-  Graphviz qui varie d'une machine à l'autre ;
-- `seed.difficulty.html` : sortie régénérable (comparaison à vanilla), sans
-  garantie au bit près.
-
-`seed.complexity.html` est en SVG Python pur : deux exports d'une même seed
-le reproduisent à l'identique. Dans le **zip de release**, `seed.graph.html`
-est écarté (vue de debug volumineuse) ; les deux autres vues sont embarquées.
-
-## 5. Pourquoi une doc de conception ici
-
-Le graphe est à la fois une **sortie joueur** (README) et une **pièce du
-système** (comment on lit la seed, structure produit → ingrédient, icônes
-fidèles au jeu). La revue documentaire pointait cet angle mort ; ce document
-le couvre. Il ne remplace pas la lecture utilisateur du README.
-
-Retour : [docs/README.md](README.md).
+- [architecture.md](architecture.md) — à lire quand la place des rapports est cherchée.
+- [modules.md](modules.md) — à lire quand l'exporteur HTML est recherché.
+- [model.md](model.md) — à lire quand le vocabulaire du graphe est nécessaire.
+- [testeur.md](testeur.md) — à lire quand la jouabilité doit être contrôlée.
+- [release.md](release.md) — à lire quand le contenu du zip est vérifié.
 
 ## Lectures associées
 
-- **Parent** : [architecture.md](architecture.md) — architecture et outillage
-- **Concepts liés** : [seed.md](seed.md#seed-et-configuration) ;
-  [witness.md](witness.md#4-ce-qui-est-exclu-du-témoin) ;
-  [runtime.md](runtime.md#1-les-cinq-fichiers-lua)
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [witness.md](witness.md) — déterminisme et exclusions.
+- [config.md](config.md) — chemins de sortie.
+- [DEVIANCES.md](DEVIANCES.md) — écarts encore ouverts.

@@ -301,7 +301,7 @@ def difficulty_series(
 ) -> list[dict]:
     """Série de difficulté par tech, dans l'ordre de progression.
 
-    Chaque point porte : le rang, l'id/le nom de la tech, le coût brut de SA
+    Chaque point porte : le rang, l'id/le nom de la tech, le coût brut de la recherche
     recherche (``raw``), le cumul depuis le début (``cumulative``) et la liste
     des produits qu'elle débloque (``products`` = « items à crafter »). Un point
     final « Lancement » ferme la chaîne décrite par ``meta.rocket``, de sorte

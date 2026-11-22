@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "randputf"
 version = "0.0.1"
-description = "randputF - generateur externe de seeds pour le randomizer total Factorio 2.1"
+description = "randputF - générateur externe de graines pour le randomiseur total Factorio 2.1"
 requires-python = ">=3.11"
 dependencies = [
     "PyYAML>=6.0",

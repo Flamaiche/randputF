@@ -25,7 +25,8 @@ local WRECK_SWEEP_INTERVAL = 10 -- pas du balayage pendant la fenêtre
 local function init_wreck()
   storage.randputf.wreck_processed = storage.randputf.wreck_processed or {}
   if storage.randputf.wreck_stop == nil and game then
-    -- `game` est NIL pendant on_load (API 2.0) : stop calculé au runtime.
+    -- `game` est NIL pendant on_load (API 2.0+)
+ : stop calculé au runtime.
     -- Saves sans ce champ : stop=nil → pas de balayage (idempotent via marque unit_number).
     storage.randputf.wreck_stop = game.tick + WRECK_SETTLE_TICKS
   end
@@ -146,7 +147,7 @@ local function describe_patches()
     if patch.kind == "item" then
       origin = "gisement " .. tostring(patch.count or 0) .. " blocs"
     else
-      origin = "puits oil " .. tostring(patch.count or 0) .. " puits"
+      origin = tostring(patch.count or 0) .. " puits de pétrole"
     end
     local extra = ", centre=" .. tostring((patch.center or {}).x) .. ","
       .. tostring((patch.center or {}).y)
@@ -200,7 +201,7 @@ local function clear_spawn_inventory(player)
       gun_inv.clear()
     end
     -- Le slot de balles de l'arme : character_ammo (PAS character_ammo_inventory
-    -- qui n'existe pas en 2.0.77). On le vide sinon les munitions vanilla du
+    -- absent de l'API 2.x). On le vide sinon les munitions vanilla du
     -- pistol restent collées et bloquent le slot.
     local ammo_inv = character.get_inventory(defines.inventory.character_ammo)
     if ammo_inv then
@@ -860,7 +861,7 @@ script.on_event(defines.events.on_tick, function()
     end
   end
 
-  -- Enforcement : normalise le kit aux points de contrôle. Dump au 1er passage.
+  -- Application : normalise le kit aux points de contrôle.
   for idx, stage in pairs(KIT_ENFORCE) do
     local target = KIT_ENFORCE_TICKS[stage]
     if target and game.tick >= target then

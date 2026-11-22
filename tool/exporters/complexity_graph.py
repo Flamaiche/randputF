@@ -1,6 +1,6 @@
 """Export du rapport de complexité d'une seed randputF.
 
-Génère ``seed.complexity.html`` à côté de ``seed/seed.json`` lors de
+Génère ``seed.complexity.html`` dans ``<root>/reports/<mod>/`` lors de
 l'export ``--out``. Le fichier est **autonome** : CSS et SVG sont générés en
 Python, aucun CDN, aucun JavaScript, donc il s'ouvre hors ligne comme
 ``seed.graph.html``.

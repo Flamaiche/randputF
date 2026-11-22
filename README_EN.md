@@ -1,323 +1,150 @@
 # randputF
 
-![Licence MIT](https://img.shields.io/badge/licence-MIT-blue)
+![MIT License](https://img.shields.io/badge/licence-MIT-blue)
 
-**Full deterministic randomizer for [Factorio](https://factorio.com) 2.0 (base game, no Space Age).**
+**Full deterministic randomizer for Factorio 2.1, base game, no Space Age.**
 
-randputF doesn't just shuffle recipes against each other: it regenerates the
-entire game — surface resources, recipes (inputs *and* outputs), unlocked
-buildings, tech tree, starting kit — while guaranteeing every seed (*seed
-value*) a valid, loop-free run from the first pick to rocket launch.
+randputF rebuilds a complete game from a seed: surface resources, recipes,
+unlocked buildings, tech tree and starting kit. The same seed always produces
+the same world. The run stays playable until the rocket is launched.
 
-> This is the English README. The full reference (in French) lives in
-> [`docs/`](docs/README.md), organised as a **reading tree** (one broad concept
-> per parent, its children nested below); the French README is
-> [`README.md`](README.md). See [`docs/README.md`](docs/README.md) “Arbre de
-> lecture”.
+This README covers installation and use. Start with
+[the documentation](docs/README.md) to understand how the system works.
 
-## Contents
+## Before you start
 
-1. [Installation](#installation)
-2. [Configuration](#configuration)
-3. [What a generation produces](#what-a-generation-produces)
-4. [The interactive graph](#the-interactive-graph)
-5. [Difficulty](#difficulty)
-6. [The complexity report](#the-complexity-report)
-7. [Troubleshooting / FAQ](#troubleshooting--faq)
-8. [Project structure](#project-structure)
+Four terms are enough to follow this README:
 
----
+- a **seed** fixes every draw in a run;
+- a **vanilla dump** is a snapshot of the game prototypes, used as raw material;
+- **randput** replaces the content of an input or output with another element of
+  the same type;
+- the **runtime** is the Lua part that applies the seed inside Factorio.
+
+The [glossary](docs/glossaire.md) defines the other terms. It is currently in
+French.
+
+## What changes for the player
+
+- Resources, recipes, buildings, technologies and the starting kit change with
+  the seed.
+- Machine inputs and outputs follow the randput rule: an item slot receives
+  another item, a fluid slot receives another fluid.
+- The goal stays vanilla: launch the rocket. Vanilla infinite technologies are
+  disabled; only `randputf-` technologies remain.
+- The target is Factorio 2.1 base game. Third-party mods are out of scope.
+
+## How it works
+
+1. The Factorio exporter produces the vanilla dump.
+2. The Python tool reads the dump and the seed, then builds recipes, the tech
+   tree and the mod content.
+3. The Lua mod applies the seed when the game starts; HTML reports describe the
+   production graph, complexity and difficulty.
 
 ## Installation
 
-### Quick way: play without installing Python
+### Requirements
 
-**The mod is downloadable ready to use.** Every release attaches a
-`randputF_<version>.zip` — the complete mod, already generated. No install, no
-command line.
+- Factorio 2.1, base game;
+- Python 3.11 or newer.
 
-1. Download `randputF_<version>.zip` from the
-   [Releases](https://github.com/Flamaiche/randputF/releases) page.
-2. Copy the zip **as is** into Factorio's `mods` folder — it does not need to
-   be unzipped.
-3. Launch Factorio, open the **Mods** menu, enable `randputF`.
+Factorio 2.0 corresponds to the historical tags `v0.0.0` and `v0.0.1`.
 
-That's it. The zip contains an already generated seed (seed 5, the one used for
-the determinism tests).
-
-To play **another seed**, you need the Python tool → [full path](#full-path-with-python).
-
-> The zip does not contain `seed.graph.html`, the 7.2 MB interactive view: it is
-> regenerated on your machine with the full path (`randputf generate`). The mod
-> itself does not need it.
-
-### `mods` folder per operating system
+### `mods` folder by operating system
 
 | System | Path |
 |---|---|
-| **Windows** | `%APPDATA%\Factorio\mods` |
-| **Linux** | `~/.factorio/mods` |
-| **Linux (Steam Flatpak)** | `~/.var/app/com.valvesoftware.Steam/.factorio/mods` |
-| **macOS** | `~/Library/Application Support/factorio/mods` |
+| Windows | `%APPDATA%\Factorio\mods` |
+| Linux | `~/.factorio/mods` |
+| Linux Flatpak | `~/.var/app/com.valvesoftware.Steam/.factorio/mods` |
 
-Linux: `xdg-open ~/.factorio/mods` to open it. Windows: type `%APPDATA%` in the
-Explorer address bar.
-
-### Full path: with Python
-
-To generate **other seeds**, or to explore the interactive graph.
-
-#### Requirements
-
-- **Factorio 2.0** (base game, no Space Age);
-- **Python 3.11+**.
-
-#### 1. Set up the Python environment
+### Python environment
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install .          # package + assets (mod/, data/, config/) embedded
+.venv/bin/pip install .
 ```
 
-On Windows the commands live in `.venv\Scripts\`:
+On Windows, use `.venv\Scripts\` instead of `.venv/bin/`.
 
-```bat
-python -m venv .venv
-.venv\Scripts\pip install .
-```
+The install embeds `mod/`, `data/` and `config/` in the package. The
+`randputf` command is then available from any directory.
 
-A regular (non-editable) install embeds the asset folders in the wheel, so
-`randputf` works from any directory. For development on this repository,
-`pip install -e .` works too (paths fall back to the checkout).
-
-> **Two ways to call the tool, same program.** After `pip install .`, the
-> `randputf` command is available and is what the examples below use:
->
-> ```bash
-> randputf generate --seed 5
-> ```
->
-> From a plain checkout, without installing anything, go through the module:
->
-> ```bash
-> .venv/bin/python -m tool generate --seed 5
-> ```
->
-> The examples use the longer `python -m tool` form because it works in both
-> cases.
-
-It consumes an embedded **vanilla prototype dump**
-(`data/vanilla_dump.json`) — nothing to do to play. How to
-regenerate that dump is documented in [docs/developpement.md](docs/developpement.md).
-
-### 2. Generate a seed
-
-By default the seed is drawn from the current instant (milliseconds): every
-generation produces a unique mod. You can force a value to replay exactly the
-same world.
+### Generate a seed
 
 ```bash
-.venv/bin/python -m tool generate              # time-based, unique seed
-.venv/bin/python -m tool generate --seed 5     # fixed, reproducible seed
-.venv/bin/python -m tool generate --demo       # synthetic vanilla base (tests)
+randputf generate
+randputf generate --seed <number>
 ```
 
-### 3. Install the mod into Factorio
+The `--demo` and `--no-html` options cover a synthetic test base and generation
+without HTML reports.
 
-Set your mods folder as an override in `config/user.yaml`, key
-`paths.factorio_mods` (per-system paths are in the table above; the default `""`
-lives in `config/defaults.yaml`).
+A seed drives all draws. `generate` assembles the mod in `output/mods/<mod>/`.
+HTML views go to `output/reports/randputF_<version>/`: complexity is always
+computed, while the graph and difficulty may be omitted. `--no-html` skips all
+HTML output. The console prints `Seed <valeur> valide, mod assemblé dans
+<chemin>` when generation succeeds.
+
+### Install the mod into Factorio
 
 ```bash
-.venv/bin/python -m tool generate --seed 5 --install
+randputf generate --seed <number> --install
 ```
 
-The mod is first assembled into `output/mods/randputF_<version>/` (version read
-from `mod/info.json`). `--install` then copies it into
-`factorio_mods/randputF_<version>/` and enables it in `mod-list.json`. If the
-mods folder can't be found, the mod stays in `output/mods/` and the path is
-printed for manual copying.
-
-On launch: the drawn patches replace vanilla resources around your spawn, the
-starting kit is injected, and the free researches are granted. The classic goal
-remains: **launch the rocket**.
+`--install` copies the assembled mod into the Factorio folder set by
+`paths.factorio_mods` in `config/user.yaml`, then enables it in `mod-list.json`.
+HTML reports remain in `output/reports/` unless `--no-html` is used. If the mods
+folder cannot be found, the mod stays in `output/mods/` and the path is printed.
+Factorio's **Mods** menu can disable the mod.
 
 ## Configuration
 
-Configuration is read from two YAML files, never from hardcoded values:
+`config/defaults.yaml` holds the default settings. `config/user.yaml` holds
+local overrides. Both files are merged and validated: an unknown key or an
+impossible value raises an explicit error.
 
-| File | Role |
+The main sections are `paths`, `map`, `starter` and `recursive`. The full
+reference is in [config.md](docs/config.md).
+
+## Generation outputs
+
+| Output | Content |
 |---|---|
-| `config/defaults.yaml` | **Single source of truth** for all default settings (do not edit) |
-| `config/user.yaml` | Your optional overrides |
+| `output/mods/<mod>/` | assembled Lua mod, without HTML reports |
+| `output/reports/randputF_<version>/seed.graph.html` | interactive production graph |
+| `output/reports/randputF_<version>/seed.difficulty.html` | cumulative difficulty against vanilla |
+| `output/reports/randputF_<version>/seed.complexity.html` | real tree cost, unfolded down to raw resources |
 
-The two are deep-merged then **validated** (types, ranges, `min <= max`,
-cross-field constraints): an unknown key or an impossible value is an explicit
-error, never a silent fallback. The merged config is always complete (all
-sections/keys present), so the engine never carries a hardcoded default.
+These outputs are described in
+[graphe-interactif.md](docs/graphe-interactif.md). The repository contains no
+prebuilt mod: the mod is produced by `generate`.
 
-The four main sections (`paths`, `map`, `starter`, `recursive`), every key, and
-the validation rules are documented in [`docs/config.md`](docs/config.md).
+## Current reference points
 
-## What a generation produces
+- Output is deterministic: the same seed produces a byte-identical mod,
+  independently of the process and of generation order.
+- The current witness for seed 5 is
+  `74dcb6f89c28ef1277a0e854d9a21a4a`.
+- The test suite contains 861 tests.
+- Witness details are in [witness.md](docs/witness.md).
 
-The mod and its HTML views are kept separate:
+## Where to go next
 
-```
-output/mods/randputF_<version>/    # the mod only, never any HTML here
-├── control.lua            # runtime: patch placement, starting kit, unlocks
-├── data.lua               # data-stage: reads the seed, builds recipes/techs
-├── data-updates.lua       # lake tiles, vehicle rearm, unified fuel
-├── data-final-fixes.lua
-├── info.json              # mod metadata
-├── locale/                # French and English translations
-├── graphics/              # icons / textures
-└── seed/
-    ├── seed.json          # the generated seed: patches, recipes, techs, pools
-    └── seed.lua           # the same seed in Lua format, loaded by the mod
+| Need | Reading |
+|---|---|
+| Understand the words and principle | [glossary](docs/glossaire.md), [model](docs/model.md) |
+| Follow run creation | [resources](docs/ressources.md), [starter](docs/starter.md), [recipes](docs/recettes.md), [technologies](docs/tech.md) |
+| Check a seed | [solvability](docs/solvabilite.md), [witness](docs/witness.md), [tester](docs/testeur.md) |
+| Work on the code | [architecture](docs/architecture.md), [pipeline](docs/pipeline.md), [runtime](docs/runtime.md) |
+| Read the history | [CHANGELOG.md](CHANGELOG.md), [release](docs/release.md) |
 
-output/reports/randputF_<version>/ # the HTML views, outside the mod
-├── seed.graph.html        # interactive production graph (see below)
-├── seed.complexity.html   # playthrough complexity report (see below)
-└── seed.difficulty.html   # seed difficulty vs vanilla (see below)
-```
+The full documentation index is in [docs/README.md](docs/README.md). The French
+README is [README.md](README.md).
 
-The output is **deterministic**: the same seed produces exactly the same mod
-(byte-for-byte), verified by tests **across processes** and **independently of
-order** (a seed generated after 1400 others in the same process stays
-byte-identical to a clean process). The seed is injected as a string into
-`random.Random` — values with dozens of digits are accepted.
+---
 
-## The interactive graph
+*randputF — every run is a game nobody has ever seen.*
 
-Each generation exports **`seed.graph.html`**: the production map of your seed,
-self-contained, to open in a browser. It shows, for every item, its crafting
-chain (ingredients → recipe → product), the tech that unlocks it, the required
-science packs, and the raw items extracted from the ground.
-
-Navigation:
-
-- click an item in the list **or** on a graph node to open its **card**:
-  ingredients, alternative recipes, "used by" items;
-- a multi-recipe item shows an **alternative recipe** selector in the card;
-- **zoom / pan** on the large graph: wheel to zoom, drag to navigate,
-  double-click to fit, resizable side panel;
-- the **sub-graph** box isolates the selected item's cascade; **raw resources**
-  are detection terminals (their ingredients are not explored);
-- the science legend and appearance tech number help locate where to unlock each
-  link.
-
-> The graph is only generated by `generate` **without** `--install`. Run
-> `generate --seed <n>` without `--install` to get `seed.graph.html`.
-
-## Difficulty
-
-Each generation also writes **`seed.difficulty.html`** (when the vanilla dump
-carries the technologies): a curve of your seed's **cumulative difficulty**,
-tech by tech, overlaid with a **vanilla** game's. Difficulty is measured in **raw
-resources** (ground patches, environmental items, extraction fluids) that must
-have been invested to reach each point — the scoreboard shown by
-`randputf difficulty`.
-
-The gap between the two curves is the mod's effect on cumulative cost. To
-produce the HTML on its own:
-
-```bash
-randputf compare
-```
-
-`compare` requires the vanilla dump **with technologies**.
-
-## The complexity report
-
-Each generation also writes **`seed.complexity.html`**: what the playthrough
-would **really** cost if you crafted everything yourself — the science packs
-each tech demands, recursively unfolded down to raw resources. Per technology:
-research time, resources consumed, distinct crafters; as a summary: complexity
-score, total craft time, total research time, most-used crafter and
-most-consumed resource. A no-JavaScript page, opened offline like the other
-views.
-
-## Exploring the data (dev)
-
-Two commands read the vanilla dump without generating a mod:
-
-```bash
-randputf report   # full report: progression chain, science packs, building
-                  # tags, checks → output/reports/vanilla/vanilla.report.html
-randputf dump     # dump navigator: A→Z inventory, tiles, entities,
-                  # items/fluids, recipes, technologies + global search
-                  # → output/reports/vanilla/vanilla.dump.html
-```
-
-Science packs and the **launch chain** (victory) are recognized from dump
-facts (tech costs, `lab_inputs`, `rocket_parts_required`,
-`rocket_launch_products`) — no vanilla item name is hardcoded in the tool, a
-mod that replaces the rocket stays analysed as-is.
-
-## Troubleshooting / FAQ
-
-**The mod does not show up in the Mods menu.**
-The zip must sit directly in the `mods` folder (table above), not in a
-sub-folder. Also check it is **enabled** in the Mods menu — a mod that is
-present but disabled will not appear in a game. With the Python path,
-`generate --install` copies and enables it for you, and prints the exact path
-it used.
-
-**The mod does not show up in a game already running.**
-Factorio does not load a mod mid-game: restart the game after enabling it.
-
-**"usage_pass warning: <four>: consommé mais aucun candidat à rattacher".**
-A **residual, non-blocking** warning, knowingly accepted. It concerns furnaces
-(`stone-furnace`, `steel-furnace`, `electric-furnace`): their item is indeed
-consumed by other recipes, but that particular furnace hosts no recipe of its
-own. Verified at **2000/2000 wins** with the warning present. Details in
-[`docs/DEVIANCES.md`](docs/DEVIANCES.md#31-usage_pass-warning-four-consommé-mais-aucun-candidat-à-rattacher) (French).
-
-**Is my seed really playable?**
-Yes — a measured guarantee, not a hope. **1501 games out of 1501** (seed 0 to
-1500) were replayed to victory by a "fake player" replayer, and solvability
-invariants are guaranteed for every accepted seed. See
-[`CHANGELOG.md`](CHANGELOG.md) and
-[`docs/invariants.md`](docs/invariants.md#règles-de-solvabilité) and
-[`docs/solvabilite.md`](docs/solvabilite.md#15ter-rejoueur--fake-player--vérification-par-simulation).
-
-**How do I find the seed of a mod?**
-It is printed at generation time (`Seed <value> valide`) and stored in the mod
-in `seed/seed.json`, field `meta.seed` (alongside `meta.generator_version` and
-`meta.factorio_version`). Replay it exactly with `generate --seed <value>`.
-
-**Will the same seed give me the same world twice?**
-Yes. The canonical md5 of the mod is verifiable by anyone:
-`randputf witness --seed 5 --expect <md5>`. See
-[`docs/witness.md`](docs/witness.md).
-
-**I got a configuration error.**
-An unknown key or an out-of-range value is rejected at generation time, with a
-message telling you what. Valid keys are listed in
-[`docs/config.md`](docs/config.md).
-
-## Project structure
-
-See [`docs/architecture.md`](docs/architecture.md) for the per-file breakdown.
-
-## Licence
-
-MIT — see [`LICENSE`](LICENSE).
-
-## Development
-
-- **Tags**: versions are Git tags on top of `master`. A tag is the published
-  state, nothing is rewritten afterwards. The published version is
-  [`v0.0.1`](https://github.com/Flamaiche/randputF/releases/tag/v0.0.1); v0.0.2
-  is being prepared on the work branch (procedure:
-  [`docs/release.md`](docs/release.md)).
-- **Work branch**: [`dev`](https://github.com/Flamaiche/randputF/tree/dev) takes
-  the changes in progress. `master` is never pushed directly: everything goes
-  through `dev`, and the `dev` → `master` promotion **is** the release (it
-  triggers the build and the publication).
-  Procedure: [`docs/release.md`](docs/release.md).
-- **Changelog**: [`CHANGELOG.md`](CHANGELOG.md).
-- **AI assistant**: parts of the documentation and code were written or
-  reviewed with the help of an AI assistant. All design, decisions and fixes
-  were driven and validated by the maintainer.
+License: MIT — see [`LICENSE`](LICENSE).

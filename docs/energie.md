@@ -1,35 +1,63 @@
 # L'électricité et la chaleur
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 10. L'électricité
+Cette page décrit le réseau électrique. La chaleur possède sa propre page, liée ici pour garder le chemin historique. Les deux réseaux ont des règles de déblocage proches, mais des objets distincts.
 
-L'électricité est un **type à part**. Dans Factorio, elle forme un réseau propre (ni item ni fluide) et n'est pas « randputisée » en tant que ressource. Tout ce qui l'entoure se randomise :
+## Ce que ça change pour le joueur
 
-- **Déclenchement à la demande** : si un bâtiment tiré nécessite de l'électricité dès le début, le réseau électrique est débloqué immédiatement. Sinon, tout arrive au fil des besoins.
-- **Générateurs** : la production d'électricité suit la même règle. Dès qu'un besoin électrique apparaît, un générateur est choisi aléatoirement, puis les besoins de ce bâtiment entraînent la suite, décidée *après* que tout le reste est posé. Un accumulateur (ou toute entité de stockage) **n'est pas un générateur** et ne produit pas d'énergie. Sa classification l'écarte du tirage des générateurs pour éviter de « résoudre » l'électricité par une simple batterie (classement §5).
-- **Unlock du générateur** : les recettes créées pour l'électricité (générateur et combustible) sont **réintégrées aux techs du starter** après la phase, évitant toute recette orpheline sans technologie pour la débloquer.
-- **Amorçage à la main (anti-boucle)** : le **premier** générateur électrique de la seed (qu'il provienne de la phase électricité ou d'un tirage récursif post-starter) possède une recette **craftable à la main** : ingrédients 100% solides, sans catégorie ni atelier. Un assembling-machine-2 ou une usine chimique exigerait l'électricité que ce générateur doit amorcer, rendant le bootstrap impossible. Les générateurs suivants utilisent des ateliers normaux. Ces recettes de bootstrap **doublent le coût de leurs ingrédients non infinis** (bois/pierre/poisson, §9.5), rendant le début de partie exigeant sur des ressources rares.
-- **Ingrédients du générateur sans électricité** : en plus du travail à la main, les **ingrédients** du premier générateur ne doivent pas provenir d'un **bâtiment électrique**, sous peine d'exiger l'électricité qu'il est censé amorcer. Le tirage des ingrédients **bannit** tout item dont la fabrication passe par un atelier électrique. Seuls restent ceux obtenus sans réseau : ressource brute (patch minerais), kit, environnement, ou recette dans un atelier non-électrique ou à la main.
-- **Générateur à vapeur = fluide combustible en entrée (pas l'eau)** : un steam-engine ou une steam-turbine prend **un fluide** en entrée (n'importe quel fluide transportable par tuyau, pas spécifiquement l'eau, §8). En version vanilla, un générateur produit de l'électricité à partir de la **température** du fluide : un fluide froid issu d'une nappe afficherait « ~0 W ». Le mod bascule les générateurs en mode **combustible** (`burns_fluid`) et attribue à **tous** les fluides un `fuel_value` générique (200 kJ/unité, §6 fires arbitrary) pour que chaque fluide brûle comme carburant. Il est **amorçable (fonctionnel)** si et seulement si la seed tire au moins **un LAC** (fluide extractible sans électricité via la pompe offshore) : une ressource d'huile en **patch** exigerait un pumpjack électrique, créant une boucle bloquante fuel-électricité (§10).
-- **Aucun bâtiment figé sur steam/water (§6)** : dans l'univers randputF, un fluide n'a pas d'identité fixe. La version vanilla lie pourtant certains bâtiments à un fluide précis via le `filter` de leurs fluid boxes (steam-turbine/steam-engine vers `steam` ; boiler/heat-exchanger vers `water` en entrée). Le mod supprime **génériquement** (sans liste codée en dur) le `filter` de **toute** fluid box : la turbine et le moteur acceptent **n'importe quel fluide** (l'interface n'affiche plus « steam »), et les chaudières traitent un **fluide d'entrée vers un fluide de sortie** arbitraires. Cette règle s'applique automatiquement aux bâtiments ajoutés par des mods.
-- **Résolution robuste** : le système ne présume pas qu'un générateur « doit » fonctionner. `resolve_electricity` **mélange (shuffle)** les générateurs et les **teste un par un** jusqu'à en trouver un fonctionnel (vapeur menant à un lac ; burner ou solaire étant toujours fonctionnels). Si **aucun** n'est fonctionnel, un **patch réparateur** est forcé (item ou lac fluide, ressource différente du type précédent) pour modifier le pool accessible, avant un nouveau **mélange** et une nouvelle vérification. Après **20 essais** sans patch réparateur disponible, une **erreur explicite** est levée, évitant toute seed silencieusement cassée. La carte est **toujours réparée par ajout** ; les lacs et patches forcés sont fusionnés dans la seed (§16).
-- **Pylônes (poteaux électriques)** : la distribution du courant entre le générateur et les bâtiments est indispensable, car sans poteau, l'énergie produite ne transporte rien d'utilisable. Dès qu'un besoin électrique émerge, un **bâtiment de distribution** (poteau) est également débloqué avec sa recette dans la même phase, réintégrée aux technologies du starter. Le pylône d'amorçage est **craftable à la main** comme le générateur, son atelier exigeant par défaut l'électricité que le poteau doit transporter, évitant la même boucle (§10).
-- **Combustible du générateur** :
-  - si le bâtiment requiert un combustible item, un item lui est **assigné** ;
-  - s'il requiert un fluide, un fluide **disponible** lui est attribué dans le pool ;
-  - si aucune ressource compatible n'existe, **une recette et tout le nécessaire sont créés** (selon la logique de déblocage progressif du §9.5).
+- Le premier générateur et le premier pylône sont fabriquables sans courant.
+- Les machines à fluide acceptent le fluide choisi par la seed.
+- Les générateurs restent les seuls bâtiments sans filtre de fluide imposé.
 
-Exemple d'enchaînement cohérent : une turbine est tirée, son fluide d'entrée est fixé dès sa création, et ce fluide provient soit d'un patch existant, soit d'un transformateur (type chaudière) alimenté par un combustible assigné ou créé.
+## Mots à connaître
 
-## 10bis. La chaleur
+- [prototype](glossaire.md) — définition d'un objet du jeu dans le dump.
+- [data-stage](glossaire.md) — chargement des données avant le début de la partie.
+- [runtime](glossaire.md) — partie du mod qui s'exécute pendant la partie.
+- [compagnon](glossaire.md) — objet lié à un autre pour rester utilisable.
 
-La chaleur constitue un milieu transportable **à la manière d'un fluide**, qui circule exclusivement entre les bâtiments capables de l'échanger. Rien n'est codé en dur : la détection s'effectue **par capacités** via les tags `is_heat_source`, `is_heat_sink` et `is_heat_transport`, tout comme les autres familles de bâtiments (docs/tags.md §5bis). En version vanilla :
+## Règles de génération
 
-- **SOURCE** (`is_heat_source`) : *nuclear-reactor* — energy burner avec `has_heat_output`. C'est l'élément qui **produit** la chaleur.
-- **TRANSPORT** (`is_heat_transport`) : *heat-pipe* — il assure la circulation entre la source et les consommateurs.
-- **CONSOMMATEUR / SINK** (`is_heat_sink`) : *heat-exchanger* — energy_source réglé sur `'heat'`. Il **demande** la chaleur afin de convertir son fluide d'entrée en fluide de sortie (sa recette fluide vers fluide, §6 et §10). En jeu, il ne fonctionne **QUE raccordé** à une source par l'intermédiaire de conduites (réseau de chaleur réel, `energy_source 'heat'` de base).
+### L'électricité
 
-**Garantie de la triade — « à la volée » (§9)** : à l'instar de la garantie « extracteur avant besoin » du starter (§7), un consommateur de chaleur ne doit **jamais** être débloqué avant sa source et son transport. Sans cela, l'échangeur réclamerait de la chaleur réseau sans possibilité d'en produire ni d'en acheminer, rendant la suite infaisable. La fonction `recursive_phase._ensure_heat_prereq` pose cette garantie dès l'instant où un sink reçoit sa recette de craft : il débloque, dans des technologies **strictement isolées et antérieures**, la SOURCE et le TRANSPORT manquants (une source déjà débloquée plus tôt n'est pas jouée à nouveau). Un pool **sans consommateur** rend le modèle parfaitement **inerte**, sans aucune contrainte ni ajout d'unlock.
+- La phase n'agit que si un bâtiment déjà débloqué demande du courant.
+- Un générateur fonctionnel est choisi, puis un pylône est débloqué.
+- Un accumulateur n'est jamais choisi comme générateur : c'est un stockage avec une entrée et une sortie.
+- Le premier générateur et le pylône d'amorçage utilisent des ingrédients fabriquables sans électricité.
+- Un générateur à fluide dépend d'un lac pompable sans courant. Quand aucun générateur n'est fonctionnel, la génération peut ajouter une ressource puis réessayer.
+- Le combustible est tiré selon le type du générateur.
 
-Le réacteur (source) est alimenté en **combustible générique** (fuel categories unifiées, §8), s'affranchissant de toute chaîne uranium dédiée pour préserver la faisabilité de la suite.
+### Fluides et data-stage
+
+- Au chargement des données, les filtres génériques des entrées et sorties de fluide sont retirés.
+- Les assignations de la seed sont ensuite réappliquées depuis `building_fluid_assignments`.
+- Seuls les générateurs restent sans filtre. Les autres bâtiments reçoivent leur fluide d'entrée et, quand le prototype le prévoit, leur fluide de sortie.
+- Tous les fluides partagent une valeur de combustible générique. La température ne distingue pas deux fluides dans le modèle randput.
+
+### La chaleur
+
+- La triade thermique est décrite dans [chaleur.md](chaleur.md#la-chaleur).
+- Cette section garde l'ancre utilisée par les liens de la documentation.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Un générateur et un pylône quand un besoin électrique apparaît. | Le type du générateur tiré. |
+| Un filtre remis sur les bâtiments non générateurs. | Un fluide imposé sur les générateurs. |
+
+## Aller plus loin
+
+- [chaleur.md](chaleur.md#la-chaleur) — à lire quand le sujet concerne la source, le transport ou le consommateur thermique.
+- [recettes.md](recettes.md#cadence-garantie-des-pylônes) — à lire pour la cadence des pylônes pendant la récursion.
+- [ressources.md](ressources.md) — à lire quand aucun générateur n'est fonctionnel et qu'une ressource doit être ajoutée.
+- [solvabilite.md](solvabilite.md) — à lire pour vérifier l'amorçage sans courant.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [ressources.md](ressources.md) — lacs, patchs et ajout de ressource.
+- [chaleur.md](chaleur.md) — source unique de la triade thermique.
+- [recettes.md](recettes.md) — pylônes et déblocage sur le tas.
+- [solvabilite.md](solvabilite.md) — amorçage pré-électrique et invariants.

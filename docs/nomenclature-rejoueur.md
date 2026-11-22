@@ -1,46 +1,72 @@
 # Nomenclature : le modèle de la seed et le rejoueur
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-Le rejoueur (`tool/replay/player.py`) réalise un audit externe : il simule l'exécution d'une seed finale sans aucun ajout. Il s'appuie exclusivement sur les données générées par `generate_seed` au sein de `seed`. La terminologie doit être strictement identique entre les deux briques : la moindre divergence passerait pour une anomalie algorithmique. Ce document fixe la correspondance exacte du vocabulaire.
+Le rejoueur lit une seed finale et simule la progression sans modifier le mod.
+Cette page fixe le vocabulaire commun. Les garanties, l'implémentation, les
+faits historiques et les corrections attendues sont séparés.
 
-## 1. Table de correspondance seed → rejoueur
+## État de la page
 
-| Concept | Générateur (seed) | Rejoueur (consomme tel quel) |
-|---|---|---|
-| recette | `seed["recipes"][]` {`name`, `ingredients[{type,name,amount}]`, `results[…]`, `crafted_in`, `category`, `energy`} | Même liste et objets ; `items_by_name` associe chaque item sorti à ses recettes |
-| sortie | `results[].amount` (jamais désigné ainsi côté générateur) | `int(res.get("amount", 1))` — désigné sous le terme « sortie » dans le rejoueur et les échanges |
-| atelier | `crafted_in` (absence de clé = fabrication à la main) | `recipe.get("crafted_in")` |
-| tech | `seed["technologies"][]` {`id`, `prerequisites`, `unit{ingredients[{name,amount}], count}`, [optionnel: `craft_trigger`], `effects[{type:"unlock-recipe", recipe}]`} | `technologies`, `unit`, `craft_trigger` (niveau tech) |
-| item / fluide | `type: "item"` / `"fluid"` | `SLOT_ITEM` / `SLOT_FLUID` (`tool/common/db.py`) |
-| raw / patch / lac | `seed["map"].patches[{resource, kind, count}]`, `.lakes[{resource}]` | Idem ; un patch d'item se ramasse à la main et constitue un stock fini dans `item_patch_counts` |
-| jalon tardif | `seed["late_raws"].startup` (liste `[kind, name]`) / `.gated` (dict `name` → {`kind`, `tier`}) | `late_tier[(kind, name)] = tier` ; tier = index de la chaîne des packs |
-| déclencheur prologue | `tech.craft_trigger` (item à fabriquer) | `_craft(trigger, 1)` exécuté avant la chaîne des packs |
+- Garantie actuelle : le rejoueur réutilise les identifiants de la seed.
+- Implémentation actuelle : il lit recettes, technologies, carte, kit, épave et
+  jalons tardifs sans écrire dans la seed.
+- Fait historique : des écarts de vocabulaire ont déjà été corrigés sans
+  changer les noms exportés.
+- Spécification historique : elle demande de relier ce vocabulaire aux
+  autres pages et de vérifier les liens.
 
-## 2. La règle de MAÎTRISE (propre au rejoueur)
+## Ce que ça change pour le joueur
 
-Une recette ne devient accessible de manière infinie qu'après avoir été dûment **prouvée** :
+- Le rejeu vérifie qu'une seed déjà créée reste jouable.
+- Le premier objet d'un patch d'item est ramassé à la main au spawn, avant tout
+  contrôle d'extracteur.
+- Une foreuse opérationnelle rend ensuite ce patch infini ; les lacs gardent
+  leur pompe offshore.
 
-- Toute recette doit être produite jusqu'à atteindre **10 × sa sortie** (`_mastery_goal[name] = max(results[].amount)`, puis seuil `10 × _mastery_goal[name]` ; par exemple une sortie de 2 exige une maîtrise à 20). L'**atelier** (`crafted_in`) est reconstruit à chaque tentative et n'est jamais conservé.
-- Ce seuil franchi, la sortie devient **infinie** et n'a plus besoin d'être fabriquée : elle rejoint `_craft`.
-- La passe `_mastery_sweep` intervient **à chaque technologie débloquée** afin de vérifier les nouvelles recettes. Seules sont réévaluées les recettes dont un ingrédient ou l'atelier vient d'être validé (**worklist inverse**, point fixe d'un réexamen complet : en cas d'échec, l'état antérieur est rétabli sans conserver la moindre trace).
+## Mots à connaître
 
-Résultats du rapport (`ReplayReport`) :
+- [Rejeu](glossaire.md) — simulation de la progression sans Factorio.
+- [Fake player](glossaire.md) — rejoueur Python qui tente les actions du joueur.
+- [Slot](glossaire.md) — emplacement d'entrée ou de sortie.
+- [Recette](glossaire.md) — règle de fabrication d'un objet.
+- [Invariant](glossaire.md) — propriété attendue à chaque génération.
 
-- `mastered` / `mastered_tier` : items dont la recette a atteint le seuil de 10×sortie, accompagnés du palier (`_current_tier`) correspondant.
-- `never_masterable` : sorties de recettes débloquées qui restent non prouvées en fin de partie (seuil de 10×sortie jamais atteint). Cet indicateur évalue la couverture de la jouabilité.
-- `blocker{tech, kind, item}` : toute première technologie restée non recherchée (`kind ∈ {"prereqs","trigger","cost","lab"}`).
-- `obtainable_items` / `obtainable_fluids` / `victory` / `launch_products_obtainable` (produits de lancement — science spatiale — récupérables).
+## Règles de vérification
 
-`victory` n'est pas une convention vanilla : elle se déduit des faits du dump via `db.rocket_chain` (voir `docs/vanilladb.md` §6.7) — bâtiments de lancement + ingrédients des recettes de fusée fabricables, produits de lancement récupérés.
+- Une recette se lit avec ses ingrédients, ses résultats, son atelier et sa
+  catégorie ; l'absence d'atelier indique un craft manuel.
+- Le résultat d'une recette est appelé sortie côté rejoueur.
+- Une tech apporte ses effets ; son déclencheur de prologue est fabriqué avant
+  la chaîne des packs.
+- La maîtrise est atteinte à dix fois la sortie de la recette ; elle reste
+  propre au rejeu.
+- `extractor_timing` fixe le déblocage des extracteurs pendant la génération ;
+  le rejoueur ne lit pas ce champ.
+- La victoire se déduit de la chaîne fusée du dump, sans nom d'item figé.
+- Un nom de recette `randputf-*` ne désigne pas directement l'item produit : la
+  correspondance passe par les résultats de la recette.
+- Le rapport indique les items maîtrisés, jamais maîtrisables et la première
+  technologie bloquée.
 
-## 3. Écarts de vocabulaire CONNUS (à ne pas re-chercher)
+## Garanti / non garanti
 
-1. **« extracteur »** — deux notions distinctes se côtoient. Le générateur enregistre `seed["extractor_timing"]` (passe C3 : timing de déblocage dans l'arbre). De son côté, le rejoueur fait abstraction de cette donnée pour modéliser la **capacité physique** (`_infer_extractors`, `data-updates.lua`) : n'importe quelle foreuse en service extrait un patch item, un patch fluide exige un pumpjack, tandis qu'un lac requiert une pompe offshore. Cette divergence est délibérée.
-2. **« maîtrise » / « infini »** — ces notions relèvent exclusivement du processus d'audit. Le générateur ne les transmet jamais (pas de champ `had`, `mastered`, etc.).
-3. **Nom de recette ≠ nom de l'item sorti** — à titre d'exemple, `randputf-stone-furnace` fabrique `stone-furnace`. Un résultat de technologie (`effects.recipe`, `randputf-*`) ne doit jamais être comparé directement à un item sans passer par la correspondance recette→sortie.
-4. **`_current_tier` du rejoueur est un miroir** et non l'objet du générateur. Il reproduit l'index de la chaîne des packs pour le rejoueur (technologies recherchées et packs produisibles). Le jalon d'une ressource brute se lit directement dans `late_raws.gated[name].tier`.
+| Garanti | Non garanti |
+|---|---|
+| Les identifiants de la seed sont réutilisés tels quels. | Le rejoueur ajoute un champ à la seed. |
+| Le rejeu est une validation séparée de `generate`. | La commande `generate` lance le rejeu. |
+| La victoire se déduit du dump. | Un nom d'item imposé côté rejoueur. |
 
-## 4. Garantie
+## Aller plus loin
 
-L'ensemble des données générées par le rejoueur réutilise les identifiants `id` et `name` définis dans la seed. Il consomme de manière exclusive : `seed["recipes"]`, `seed["technologies"]`, `seed["map"]`, `seed["late_raws"]`, `seed["starter_kit"]`, `seed["wreck"]`, `seed["free_researches"]` et `seed["building_fluid_assignments"]`. L'ensemble de ces champs découle directement de `generate_seed`. Une discordance entre le rejoueur et le comportement en jeu s'explique toujours par un choix d'algorithme du générateur, jamais par un décalage de vocabulaire.
+- [solvabilite.md](solvabilite.md) — à lire pour le rôle du rejeu face aux
+  validateurs.
+- [pipeline.md](pipeline.md) — à lire pour la construction de la seed.
+- [vanilladb.md](vanilladb.md) — à lire pour les faits dérivés du dump.
+- [seed.md](seed.md#seed-et-configuration-1) — à lire pour la graine active.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [glossaire.md](glossaire.md) — définitions courtes.
+- [DEVIANCES.md](DEVIANCES.md) — écarts corrigés lors des audits.

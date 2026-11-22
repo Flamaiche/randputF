@@ -1,32 +1,74 @@
 # L'arbre technologique et la fin de partie
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 13. L'arbre technologique
+Cette page explique comment les étapes de génération deviennent des recherches. L'arbre forme une chaîne linéaire, avec une tech finale pour la fusée. Le coût des recherches utilise les packs de science créés plus tôt.
 
-- **État actuel** : l'arbre est linéaire, valide et sans boucles. Tout est géré automatiquement pour intégrer les maillons des phases précédentes.
-- **Un unlock par recette** : chaque recette est débloquée par une seule technologie. Les recettes d'extracteur, issues du starter, sont repositionnées par `extractor_timing` au niveau de leur premier consommateur. Si le batch n'est jamais utilisé, une technologie payante est tirée aléatoirement (`extractor_timing.py:5-45`).
-- **Aucune recette orpheline** : les macro-techs du starter sont rejouées après la phase d'électricité. Toute recette générée (générateur, combustible, lab) est rattachée à une technologie via la clé `unlocked_recipes`. Le validateur signale tout écart (invariant 3 du code = **item 6** de §15) sans rejeter la seed.
-- **Branchement** : un arbre en branches est prévu pour plus tard. Ce point est pour l'instant mis de côté.
-- **Nombre d'objets par tech** : une technologie « groupable » débloque 1 objet de base, puis s'étend selon une chaîne probabiliste : 75 % de chance pour un 2e objet, 65 % pour un 3e, 35 % pour un 4e et 15 % pour un 5e. Le premier tirage échoué arrête le groupe (plafond de 5). Les probabilités sont configurables via `group_chances` (§16). Les nœuds dédiés (sciences, munitions, techs de prologue §7, endgame §14) restent isolés. Les pylônes ne fusionnent jamais deux de leurs steps dans la même tech (cadence), avec un maximum de 5. Exception : la 2e recherche gratuite du starter (§8) reste un monolithe débloquant tout le bootstrap (lab, packs, premiers bâtiments).
-- **Coûts de recherche** : le coût est toujours un science pack. Le moteur n'utilise que des packs, qui doivent être disponibles dans la progression et utiles pour la suite, sans créer de cul-de-sac.
-- **Cohérence des sciences** : chaque pack utilisé comme coût possède une recette générée et débloquée avant la technologie qui le consomme. La production précède la consommation. Le lab étant garanti dès le starter (§8), l'économie de packs est exploitable.
-- **JAMAIS de ressource brute dans un pack** : la recette d'un science pack ne consomme aucune matière extraite du sol (patchs, environnement, fluides d'extraction, §3). Elle utilise exclusivement des intermédiaires craftés. Cette règle est appliquée au tirage et vérifiée par l'invariant 7 du code = **item 5** de §15.
-- **Coût systématique** : toute technologie récursive nécessite un coût en science pack. Pour amorcer la filière, le premier pack est craftable et débloqué gratuitement par le starter. Les technologies de prologue (`randputf-prologue-*`, §7) se débloquent par hand-craft (coût vide, §9.3) d'un item disponible dès le bootstrap. Le pool des déclencheurs est limité aux produits des recettes gratuites du starter. Seuls les science packs sont admis comme coût par le moteur. Chaque pack suivant se débloque en consommant le précédent.
-- **Garantie d'amorçage** : si le starter ne peut pas générer le premier pack, la phase récursive amorce la filière avec un pack du jeu pour éviter qu'une technologie sans coût ne bloque la progression (`§seed`). Le pool de coût n'est jamais vide.
-- Les science packs suivent les mêmes pourcentages d'obtention que les autres éléments (§9.1).
-- **Affichage du coût** : le coût d'une technologie affiche la quantité de science packs (`amount = 1` par pack). Le `count` de la recherche représente le nombre de cycles, soit un total d'items égal à `count` × nombre de packs (1 à 4). La durée par unité est fixée à `time = 60 s`. Le nombre d'items reste l'affichage privilégié.
-- **Icônes des items débloqués** : chaque nœud affiche les images des items ou recettes débloqués (jusqu'à 4 icônes en grille 2×2) au lieu de l'icône par défaut.
+## Ce que ça change pour le joueur
 
-## 14. Fin de partie
+- Chaque recherche dépend de la précédente.
+- Une recherche peut débloquer plusieurs objets, sauf les cas isolés.
+- La victoire passe toujours par la chaîne de la fusée.
 
-Classique et inchangée :
+## Mots à connaître
 
-- victoire = lancement de la fusée ;
-- le joueur peut ensuite poursuivre vers les technologies infinies.
+- [science pack](glossaire.md) — objet consommé par un laboratoire.
+- [lab](glossaire.md) — bâtiment vanilla de recherche.
+- [jalon](glossaire.md) — étape qui garantit une catégorie de contenu.
+- [déblocage sur le tas](glossaire.md) — création d'un prérequis au moment du besoin.
 
-Le randomizer garantit l'atteignabilité de la fusée pour toute seed acceptée (§15).
+## Règles de génération
 
-**Phase endgame** : en base 2.0, `rocket-part` consomme `processing-unit`, `low-density-structure` et `rocket-fuel`. Leurs recettes vanilla étant désactivées, une phase située après le récursif et avant les relais garantit une recette générée pour ces 3 items. Les ingrédients sont tirés dans le pool profond et ne sont pas environnementaux. Ils sont débloqués par la dernière technologie `randputf-endgame-rocket`.
+### L'arbre technologique
 
-La phase endgame garantit également le `rocket-silo`. La `rocket-part` se fabrique dans le silo. L'item `rocket-silo` (qui n'est jamais un patch, §6) reçoit sa recette générée dans la technologie finale `randputf-endgame-rocket`, ou via sa technologie récursive si celle-ci l'a déjà déployé.
+- Les macro-techs du départ, de l'électricité, de la récursion, des relais et de la fin de partie sont parcourues dans leur ordre d'apparition.
+- Chaque tech a la précédente comme prérequis : la chaîne ne forme pas de branche.
+- Une recette est débloquée par la première tech qui la revendique. Les doublons sont écartés au montage.
+
+### Du step à la technologie
+
+- Une tech groupable peut débloquer jusqu'à cinq objets avec les chances configurées.
+- Le premier tirage raté arrête le groupe.
+- Restent isolés le départ gratuit, les prologues, l'apparition d'un pack, les objets dépendants, la tech finale, les pylônes et les armes de poing.
+
+### Coût des recherches
+
+- Le premier pack est craftable et débloqué gratuitement au départ.
+- Un pack n'est jamais fabriqué directement à partir d'une ressource brute.
+- Chaque pack suivant possède sa recette avant la tech qui le consomme.
+- Le coût affiche une unité par pack, jusqu'à quatre packs distincts. Le nombre de cycles augmente avec la profondeur.
+- Les prologues n'ont pas de coût en packs. Leur nombre de crafts est calculé dans `relay_phase.py` avec `round(2 ** (n + 1/4))`. L'exposant est calé sur la première science, à l'indice 1, puis réutilisé tel quel.
+
+### Fin de partie
+
+- `ensure_rocket_chain`, dans `endgame_phase.py`, garantit une recette aux objets de `db.rocket_chain_items()` réunis à ceux du silo repérés par tag.
+- Le silo reçoit aussi sa recette si la récursion ne l'a pas déjà fait.
+- Ces recettes sont rattachées à `randputf-endgame-rocket`, un nœud dédié qui paie son coût avec les packs les plus avancés.
+- Les objets de la chaîne fusée sont écartés du balayage de contenu et des patches.
+
+### Écart connu
+
+Les exclusions de patches sont définies dans `map_patches.py` : packs de science, objets de recherche et objets de la chaîne fusée avec le silo. La spécification historique demande de n'exclure que les packs de science.
+ Les autres exclusions restent actives et ne sont pas une correction appliquée.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Une chaîne linéaire de recherches jusqu'à la victoire. | Le nombre de recherches et de recettes par seed. |
+| Une recette pour les objets de la chaîne fusée et du silo. | L'absence d'exclusion des objets de recherche dans les patches. |
+
+## Aller plus loin
+
+- [aiguillage.md](aiguillage.md#groupement-en-une-technologie) — à lire quand il faut savoir pourquoi deux objets sont groupés.
+- [recettes.md](recettes.md#relais-des-ressources-non-infinies) — à lire pour le déclenchement des prologues.
+- [solvabilite.md](solvabilite.md) — à lire quand il faut vérifier l'atteignabilité de la victoire.
+- [witness.md](witness.md) — à lire quand il faut comparer deux générations de la même seed.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [aiguillage.md](aiguillage.md) — rattachement des nœuds aux technologies.
+- [recettes.md](recettes.md) — recettes de la chaîne fusée.
+- [solvabilite.md](solvabilite.md) — garantie d'atteignabilité de la victoire.
+- [witness.md](witness.md) — reproductibilité de l'arbre généré.

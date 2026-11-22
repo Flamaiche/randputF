@@ -1,261 +1,87 @@
-# Modules du tool — inventaire et rôle
+# Modules du tool
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-Ce document liste **tous** les modules Python du package `tool`, ce qu'ils font,
-qui les appelle, et — pour chacun — s'ils sont **branchés** au pipeline,
-**accessoires**, ou **non branchés**.
+Le package Python est organisé en petits modules aux rôles distincts. Certains construisent la seed. Les autres observent, écrivent des rapports ou restent hors du chemin de génération.
 
-Aucun numéro de ligne n'est nécessaire ici : les points d'entrée sont
-nommés. Les références `fichier:ligne` des algorithms sont dans
-[`pipeline.md`](pipeline.md) et [`nondeterminism.md`](nondeterminism.md).
+## Ce que ça change pour l'utilisateur
 
----
+- Seuls les modules branchés font évoluer le contenu généré.
+- Les modules d'audit et d'export ne modifient pas la construction de la seed.
+- Les modules non branchés sont conservés pour leurs tests, sans effet sur le jeu.
 
-## 1. Vue d'ensemble
+## Mots à connaître
 
-| Paquet | Rôle | Modules |
-|--------|------|---------|
-| `tool/__main__.py` | CLI : 6 commandes | 1 |
-| `tool/service.py` | Orchestration partagée CLI / interface graphique | 1 |
-| `tool/parsers/` | Lecture du dump vanilla | 1 |
-| `tool/common/` | Socle : config, base, RNG, tags, version, witness | 10 |
-| `tool/generator/` | Les phases de génération | 20 |
-| `tool/prototypes/` | Objets de configuration par phase | 12 |
-| `tool/validator/` | Validation structurelle et solvabilité | 2 |
-| `tool/audit/` | Tags et difficulté | 2 |
-| `tool/exporters/` | Écriture des artefacts | 3 |
-| `tool/replay/` | Rejoueur « fake player » | 1 |
+- [pipeline](glossaire.md) — suite ordonnée de phases de génération.
+- [validateur](glossaire.md) — contrôle appliqué à une seed.
+- [rejeu](glossaire.md) — simulation de la progression sans interface Factorio.
+- [rapport HTML](glossaire.md) — vue générée du graphe ou de la difficulté.
 
-Les `__init__.py` des sous-domaines ne portent qu'une docstring d'une ligne
-(7 fichiers, 0 saut de ligne final) et `tool/prototypes/` n'en a même pas
-(namespace package implicite) ; `tool/__init__.py` porte la docstring du
-paquet. Le tool est un **package à plat**, pas une hiérarchie de sous-domaines.
+## Fonctionnement
 
-## 2. État de branchement — les quatre statuts
+### Vue d'ensemble
+
+| Paquet | Modules hors `__init__.py` | Rôle |
+|---|---|---|
+| `tool/common/` | 11 | configuration, base, RNG, tags, version, témoin |
+| `tool/audit/` | 5 | tags, difficulté, profil, champs, graphe |
+| `tool/exporters/` | 9 | seed du mod et trois vues HTML |
+| `tool/generator/` | 20 | phases de génération |
+| `tool/prototypes/` | 12 | objets de configuration |
+| `tool/parsers/` | 1 | lecture du dump |
+| `tool/validator/` | 2 | structure et solvabilité |
+| `tool/replay/` | 1 | rejoueur Python |
+
+`tool/__main__.py` expose la CLI et `tool/service.py` fournit l'orchestration partagée.
+
+### Les quatre statuts
 
 | Statut | Signification |
-|--------|---------------|
-| **Pipeline** | Appelé par `generate_seed` ou par un de ses jalons |
-| **Accessoire** | Utilisé par le CLI, l'audit, l'export ou les tests — jamais par la génération |
-| **Conditionnel** | Appelé par le pipeline seulement si une config l'active |
-| **Non branché** | Aucun import depuis le pipeline ; existe et est testé, mais n'influence aucune seed |
+|---|---|
+| Pipeline | appelé pendant la construction de la seed |
+| Conditionnel | appelé seulement si une clé de configuration l'active |
+| Accessoire | utilisé par la CLI, l'audit, l'export ou les tests |
+| Non branché | testé, mais jamais importé par la construction |
 
-Ce tableau est le point important du document : **deux tiers du code n'est pas
-sur le chemin d'une seed**.
+Les modules `late_raws.py` et `craft_quantity.py` sont conditionnels. `bootstrap_guard.py` sert uniquement au diagnostic de cycles. `difficulty_knobs.py` n'est pas utilisé par le pipeline, mais il est importé par sa suite de tests.
 
-## 3. `tool/generator/` — les phases
+### tool/exporters
 
-| Module | Lignes | Statut | Rôle |
-|--------|--------|--------|------|
-| `pipeline.py` | 506 | Pipeline | Orchestration : `generate_seed`, `_build_prefix`, `_finalize_pipeline` |
-| `map_patches.py` | 357 | Pipeline | Phase 1 : ressources au sol, gisements, nonfinite |
-| `lakes.py` | 75 | Pipeline | Lacs de fluide |
-| `starter_chain.py` | 708 | Pipeline | Phase 2 : chaîne initiale, kit, techs gratuites |
-| `electricity.py` | 277 | Pipeline | Phase 3 : générateur fonctionnel, réparations |
-| `recursive_phase.py` | 1307 | Pipeline | Phase 4 : récursion pondérée, coverage, véhicules |
-| `endgame_phase.py` | 75 | Pipeline | Chaîne de la fusée intable |
-| `usage_pass.py` | 755 | Pipeline | Garantie d'usage dure (U1, U2) |
-| `relay_phase.py` | 283 | Pipeline | Recettes propres pour les environnementales |
-| `easeup_phase.py` | 352 | Pipeline | Recettes alternatives pour crafts lourds |
-| `tech_tree.py` | 318 | Pipeline | Arbre technologique linéaire |
-| `extractor_timing.py` | 585 | Pipeline | Déblocage juste-au-besoin des extracteurs |
-| `late_raws.py` | 354 | Conditionnel | Jalons de ressources ; inerte si `late_raws.enabled` est faux |
-| `craft_quantity.py` | 57 | Conditionnel | Phase 6bis ; inerte si `craft_quantity.enabled` est faux |
-| `wreck_loot.py` | 64 | Pipeline | Loi de loot du crash site |
-| `building_fluids.py` | 111 | Pipeline | Fluides des bâtiments à comportement fixe |
-| `recipes.py` | 920 | Pipeline | Primitives partagées : `ProgressionState`, `ensure_obtainable`, `make_recipe` |
-| `early_oracle.py` | 144 | Pipeline | Watershed obtenable sans électricité |
-| `bootstrap_guard.py` | 172 | Accessoire | Diagnostic SCC du graphe — appelé par `extractor_timing`, donc **sur le chemin** d'une seed, mais comme garde |
-| `heat.py` | 38 | Pipeline | Partition source / transport / consommateur ; importé par `recursive_phase` |
+`mod_seed.py` écrit `seed.json`, `seed.lua` et les localisations. `seed_graph.py`, `complexity_graph.py` et `difficulty_graph.py` écrivent les trois vues HTML. `report.py`, `dump_html.py`, `vanilla_complexity.py`, `profile.py` et `html_ui.py` servent aux rapports et à l'interface.
 
-> `bootstrap_guard.py` est le seul module « guard » du tool : il ne construit
-> rien, il **diagnostique** les cycles du graphe. Il est appelé depuis
-> `extractor_timing`, donc son résultat est visible dans
-> `seed["extractor_timing"]`.
+La génération du graphe dépend de Graphviz. Son absence n'empêche ni la seed ni le mod d'être produits.
 
-## 4. `tool/prototypes/` — les objets de configuration
+### La CLI
 
-Tous dérivent de `PrototypeConfig` (`base.py`, 13 lignes).
+Neuf commandes sont disponibles : `parse`, `audit`, `difficulty`, `compare`, `report`, `test`, `dump`, `generate` et `witness`.
 
-Les champs des dataclasses portent des **défauts** (par exemple
-`max_iterations: int = 120`, `tool/prototypes/recursive.py:42`) : ils servent à
-construire un prototype seul, typiquement dans un test. Le chemin du pipeline
-passe toujours par `from_config`, qui retombe sur `default_value` — donc sur
-`config/defaults.yaml` — et **jamais** sur le défaut du champ
-(`tool/prototypes/recursive.py:87-106`). C'est ce qui permet d'affirmer que
-`defaults.yaml` est la source unique des réglages.
+Les options `--demo` et `--dump` existent sur `parse`, `audit`, `difficulty`, `compare`, `generate` et `witness`. Elles ne sont pas communes à toutes les commandes. `report` et `test` utilisent un dump sans `--demo`.
 
-| Module | Lignes | Statut | Domaine |
-|--------|--------|--------|---------|
-| `base.py` | 13 | Socle | `PrototypeConfig` : accès typé au config fusionné |
-| `recipes.py` | 144 | Pipeline | `RecipeConfig` — poids, énergie, équilibrage |
-| `recursive.py` | 149 | Pipeline | `RecursiveConfig` — poids par catégorie, distances, véhicules |
-| `starter.py` | 41 | Pipeline | `StarterConfig` — dont `deferred`, la porte du rejeu late raws |
-| `relay.py` | 37 | Pipeline | `RelayConfig` — préfixe, pas de dispatch |
-| `easeup.py` | 47 | Pipeline | `EaseupConfig` — seuil de profondeur, unlocks par tech |
-| `usage.py` | 54 | Pipeline | `UsageConfig` — bâtiments terminaux, exemptions du kit |
-| `craft_quantity.py` | 148 | Pipeline | `CraftQuantityConfig` — mode symétrique/asymétrique |
-| `nonfinite_randomisation.py` | 118 | Pipeline | `NonfiniteConfig` — facteurs de richesse/rayon/count |
-| `difficulty_knobs.py` | 100 | **Non branché** | Knobs de difficulté par seed — testé, jamais importé |
-| `progressive_extractors.py` | 119 | **Non branché** | Ancien prototype d'extracteurs progressifs — remplacé par `extractor_timing` |
-| `rare_resources.py` | 141 | **Non branché** | Mode exploration « ressources rares » — aucun sélecteur de mode dans le CLI |
+`generate` est la seule commande à passer par `generate_with_retry`. `difficulty` et `witness` appellent `generate_seed` directement. `generate` accepte `--install` et `--no-html`.
 
-> `progressive_extractors.py` est le **prédécesseur** de
-> `tool/generator/extractor_timing.py` : même invariant (« l'extracteur arrive
-> quand on en a besoin »), mais résolu au niveau seed plutôt que par prototype.
-> Les deux coexistent ; seul le second est branché.
+### Écart connu
 
-## 5. `tool/common/` — le socle
+D'anciens documents présentaient `--demo` et `--dump` comme des options globales. Le code les déclare commande par commande. Reste à faire : aligner les anciennes listes d'options sur la CLI actuelle.
 
-| Module | Lignes | Statut | Rôle |
-|--------|--------|--------|------|
-| `config.py` | 548 | Pipeline | Fusion defaults + surcharges, **schéma strict**, `ConfigError` |
-| `db.py` | 504 | Pipeline | `VanillaDB` : base normalisée, pools, tags |
-| `rng.py` | 22 | Pipeline | `make_seeded_rng` — **fabrique unique** des flux RNG |
-| `tagsets.py` | 119 | Pipeline | Ensembles de noms figés (D3), source unique par ensemble |
-| `version.py` | 45 | Accessoire | `VERSION`, `FACTORIO_VERSION`, `MOD_NAME_VERSIONED` — lus depuis `mod/info.json` |
-| `witness.py` | 87 | Accessoire | md5 canonique du mod assemblé |
-| `assets.py` | 58 | Accessoire | Résolution de `mod/`, `data/`, `config/` en dépôt comme en wheel |
-| `demo.py` | 179 | Accessoire | Base vanilla synthétique : `randputf --demo` |
-| `png_icon.py` | 211 | Accessoire | Recadrage des icônes Factorio pour le graphe HTML |
-| `weighted_picker.py` | 154 | Pipeline | Tirage pondéré à pourcentages ; utilisé par `prototypes/recipes.py` |
+## Garanti / non garanti
 
-### 5.1 `config.py` en détail
+| Garanti | Non garanti |
+|---|---|
+| Les modules branchés sont distincts des modules d'observation. | Un module testé peut rester hors pipeline. |
+| L'inventaire des modules exclut les fichiers `__init__.py`. | Les noms de modules peuvent changer lors d'un refactoring. |
+| Les vues HTML disponibles sont générées par `generate` sauf `--no-html`. | Graphviz ou les technologies peuvent manquer. |
 
-Seul module où la **validation** est une erreur et non un log.
+## Aller plus loin
 
-| Fonction | Ligne | Rôle |
-|----------|-------|------|
-| `full_config` | 289 | Fusion + validation stricte ; `strict_sections=False` tolère les clés racine hors schéma |
-| `runtime_config` | 309 | Defaults + `config/user.yaml` — le chemin du CLI |
-| `default_value` | 278 | Valeur unitaire lue du defaults, jamais d'un littéral |
-| `validate` | 436 | Schéma par section, **clés obligatoires absentes signalées**, contraintes croisées |
-| `_wreck_constraints` | 513 | Contraintes non linéaires du loot de crash |
+- [pipeline.md](pipeline.md) — à lire quand l'ordre réel des appels importe.
+- [architecture.md](architecture.md) — à lire quand il faut situer les paquets.
+- [etat-code.md](etat-code.md) — à lire quand un composant doit être qualifié.
+- [config.md](config.md) — à lire quand une clé pilote un module conditionnel.
+- [testeur.md](testeur.md) — à lire quand le module `test` est utilisé.
 
-Les 15 types de spécification du schéma sont définis en tête de fichier
-(`tool/common/config.py:33-49`).
+## Lectures associées
 
-**Invariant** : un config fusionné est **toujours complet** — chaque clé lue par
-le moteur existe, donc aucun module n'a besoin de valeur de secours
-(`tool/common/config.py:10-12`). Une clé obligatoire absente est un défaut de
-maintenance, pas une tolérance (`tool/common/config.py:527-551`).
-
-## 6. `tool/parsers/vanilla.py` — l'entrée
-
-941 lignes. Normalise `vanilla_dump.json` (produit par `exporter/control.lua`)
-vers `VanillaDB`.
-
-| Responsabilité | Détail |
-|----------------|--------|
-| Canonise les recettes préfixées | `canonical_recipe_map` mappe `X -> randputf-X` quand la recette préfixée active produit `X` ; la recette vanilla `X` est ignorée pour la génération, le nom réel est conservé dans `recipes` |
-| Lit l'état réel | `enabled`/`hidden` sont conservés sur `RecipeRef` ; `hidden = true` marque un prototype neutralisé, sans supprimer ses liens |
-| Sépare le contenu déjà moddé | Items/fluides/entités préfixés vont dans `modded_items`/`modded_fluids`/`modded_buildings`, hors des pools de génération |
-| Ignore les doubles préfixes | Les noms `randputf-randputf-…` sont des artefacts de double randomisation et sont écartés |
-| Calcule les tags | Dérive `is_crafter`, `is_extractor`, `is_generator`… depuis les capacités |
-| Lit `mod-data` | `randputf.lake_tiles` fournit `pumped_fluids` quand plusieurs lacs partagent `water_tile` ; `randputf.water_tiles` fournit la liste des tuiles d'eau vanilla (hors lacs générés) ; le fluide fantôme reste hors des ressources |
-| Lit les liens d'armes | `entity.guns` alimente `VanillaDB.vehicle_guns` / `ItemDef.is_mounted_gun` ; les armes de véhicule sont exclues du pool « arme de poing » sans liste de noms |
-| Rejette un dump invalide | `DumpInvalidError` avec message → le CLI sort en 1 (`tool/__main__.py:57-59`) |
-
-## 7. `tool/validator/` — deux validations distinctes
-
-| Module | Lignes | Ce qu'il vérifie |
-|--------|--------|------------------|
-| `pipeline_validator.py` | 546 | **Structure** : le graphe est-il cohérent ? Stats, issues, warnings |
-| `solver.py` | 114 | **Solvabilité** : la seed est-elle finissable ? Liste de problèmes |
-
-Le pipeline appelle le validateur **structurel** et ne fait qu'**logger**
-(`tool/generator/pipeline.py:416-432`). Le CLI appelle le **solver** et
-**retente avec une graine dérivée** jusqu'à 10 fois
-(`MAX_ATTEMPTS = 10`, `tool/service.py:50`).
-
-C'est la distinction à retenir : une seed peut être structurellement valide et
-non solvable — et c'est le cas qui déclenche la reprise du CLI. Voir
-[`solvabilite.md`](solvabilite.md).
-
-## 8. `tool/audit/`
-
-| Module | Lignes | Statut | Rôle |
-|--------|--------|--------|------|
-| `tags.py` | 262 | Accessoire | Audit des tags de bâtiments et d'items (invariant C8) ; exit 1 si violation |
-| `difficulty.py` | 304 | Pipeline (à l'export) | Ardoise de ressources brutes ; **injectée dans la seed à l'export** |
-
-`compute_difficulty` est le seul audit sur le chemin d'une seed, et il ne
-s'exécute qu'à l'écriture (`tool/exporters/mod_seed.py:55`) : le calcul ne peut
-donc pas biaiser la construction.
-
-## 9. `tool/exporters/`
-
-| Module | Lignes | Statut | Rôle |
-|--------|--------|--------|------|
-| `mod_seed.py` | 499 | Pipeline | Écrit `seed.json` + `seed.lua` + `locale/*/seed.cfg` ; injecte `difficulty` ; fournit la baseline vanilla (`build_vanilla_seed`) et `tag_progression` aux rapports |
-| `seed_graph.py` | 1746 | Accessoire | Graphe de production HTML (`seed.graph.html`) ; **optionnel** (Graphviz absent → ignoré sans erreur) |
-| `complexity_graph.py` | 1531 | Accessoire | Rapport de complexité de la seed (`seed.complexity.html`, SVG Python pur) ; `analyze_playthrough` partagé avec les rapports vanilla |
-| `difficulty_graph.py` | 574 | Accessoire | Courbe de difficulté cumulée mod vs vanilla (`seed.difficulty.html`, commande `compare`) |
-| `vanilla_complexity.py` | 480 | Accessoire | Rapport « partie simulée » du dump vanilla (section de `randputf report`) |
-| `dump_html.py` | 446 | Accessoire | Navigateur HTML du dump (`randputf dump`) |
-| `report.py` | 137 | Accessoire | Rapport complet du dump vanilla : assemble complexité + difficulté + partie simulée (`randputf report`) |
-| `html_ui.py` | 34 | Accessoire | Helpers HTML partagés (CSS, infobulles, JS) |
-
-`seed_graph.py` est le plus gros fichier du tool et le seul à dépendre d'un
-binaire externe (`dot`). Son absence ne bloque jamais une génération
-(`cmd_generate`). Les autres vues HTML sont en SVG Python pur : aucune
-dépendance, ouverture hors ligne (détail dans
-[graphe-interactif.md](graphe-interactif.md)).
-
-## 10. `tool/replay/player.py` — le rejoueur
-
-1160 lignes. Simule une partie complète sur la seed finale pour **prouver** la
-solvabilité. Ce n'est pas le validateur : c'est une preuve par simulation
-(1501/1501 victoires mesurées, `docs/solvabilite.md` §15ter).
-
-Sa condition de victoire est **dérivée des faits** (`db.rocket_chain`,
-`rocket_chain_from_dump` — voir `docs/vanilladb.md` §6.7) : aucun nom d'item
-vanilla n'y est en dur ; le garde-fou « lab » passe par le tag `is_research`.
-
-Il est **accessoire** : la CLI ne l'expose pas comme commande. Il est appelé par
-la suite de tests et par les sweeps.
-
-## 11. `tool/__main__.py` — la CLI
-
-9 commandes.
-
-| Commande | Rôle | Sortie |
-|----------|------|--------|
-| `parse` | Charge et résume la base vanilla | Résumé texte |
-| `audit` | Audite les tags (invariants C8) | exit 1 si violation |
-| `difficulty` | Génère puis affiche l'ardoise | Tableau texte |
-| `compare` | Compare la difficulté d'une seed à la baseline vanilla (HTML) | `output/reports/compare/` HTML |
-| `report` | Rapport complet du dump vanilla : chaîne de progression, tags, contrôles | `output/reports/vanilla/vanilla.report.html` + résumé |
-| `test` | Teste un dump ou un mod, puis écrit les trois vues | `output/reports/<source>/` (3 HTML) |
-| `dump` | Navigateur HTML du dump : inventaire A→Z, tuiles, entités, items, recettes, techs, recherche globale | `output/reports/vanilla/vanilla.dump.html` |
-| `generate` | Génère, valide, assemble le mod | Mod dans `output/mods/randputF_<version>/`, HTML dans `output/reports/randputF_<version>/` |
-| `witness` | Assemble et hache | Mod dans `output/mods/randputF_<version>/` ; md5, exit 1 si `--expect` diverge |
-
-Options communes à toutes : `--demo` (base synthétique) et `--dump` (dump
-vanilla alternatif).
-
-`generate` a une option propre : `--install`, qui copie le mod dans
-`paths.factorio_mods` et met à jour `mod-list.json` (`tool/service.py:162-194`)
-sans modifier l'état de `randputf-exporter`.
-
-## 12. Récapitulatif des statuts
-
-| Statut | Nombre | Modules |
-|--------|--------|---------|
-| Pipeline | 35 | 17 phases `generator/*` ; 5 `common` (`config`, `db`, `rng`, `tagsets`, `weighted_picker`) ; 9 prototypes ; `pipeline_validator` ; `audit/difficulty` (à l'export) ; `exporters/mod_seed` |
-| Conditionnel | 2 | `late_raws.py`, `craft_quantity.py` |
-| Accessoire | 16 | `version`, `witness`, `assets`, `demo`, `png_icon`, `tags`, `seed_graph`, `solver`, `player`, `bootstrap_guard` ; vues HTML : `complexity_graph`, `difficulty_graph`, `vanilla_complexity`, `dump_html`, `report`, `html_ui` |
-| Non branché | 3 | `prototypes/difficulty_knobs`, `prototypes/progressive_extractors`, `prototypes/rare_resources` |
-
-Les trois modules non branchés sont **testés** : leurs tests passent et
-documentent l'invariant qu'ils implémentaient. Les supprimer casserait des
-tests, pas des seeds — c'est le marqueur d'une fonctionnalité retirée du
-câblage mais non nettoyée.
-
-## 13. Lectures associées
-
-- [`pipeline.md`](pipeline.md) — l'ordre réel d'appel de ces modules.
-- [`architecture.md`](architecture.md) — la structure du projet (§18).
-- [`developpement.md`](developpement.md) — environnement de dev, ajout d'une phase.
-- [`config.md`](config.md) — chaque clé de config et sa validation.
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [developpement.md](developpement.md) — environnement de développement.
+- [exporter.md](exporter.md) — origine du dump consommé par `tool/parsers/`.
+- [graphe-interactif.md](graphe-interactif.md) — sorties des exporteurs HTML.

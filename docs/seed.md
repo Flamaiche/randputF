@@ -1,31 +1,84 @@
 # Seed et configuration
 
-Ce document fait partie de la documentation de conception de randputF (dev). Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 16. Seed et configuration
+Une seed est la graine numérique qui fixe tous les tirages d'une partie. Cette
+page décrit la valeur retenue, la configuration lue et les fichiers écrits. Les
+faits anciens et les corrections demandées sont séparés des garanties actuelles.
 
-- **Génération par défaut (seed temporelle).** Si l'option `--seed` n'est pas fournie, l'outil génère une seed basée sur l'instant présent via `int(time.time() * 1000)` (millisecondes écoulées depuis l'époque, soit *aaaa-mm-jj hh:mm:ss.mmm*). Deux lancements successifs produisent donc presque toujours des seeds et des mods différents. La seed retenue s'affiche dans le terminal pour te permettre de la rejouer.
-- **Fixer une seed.** La commande `tool generate --seed <n>` fige la valeur. Relancer le script avec cette même seed recrée exactement le même mod, au bit près. Ce déterminisme est garanti **entre processus** : aucune boucle sur un `set` ou un `frozenset` n'alimente le `rng`, ce qui évite que l'ordre de hachage de Python (lié à `PYTHONHASHSEED`) n'altère le résultat. Cette absence de régression est verrouillée par `tests/test_determinism.py`. Ce test lance la génération en sous-processus avec deux hashseeds distinctes puis compare les fichiers obtenus (voir l'inventaire dans `docs/nondeterminism.md`). Il est configuré pour tester les seeds 1337 et 1299 (cette dernière ayant permis de détecter une itération non triée dans `recursive_phase.py:919`). Des vérifications manuelles ont aussi été faites avec trois hashseeds (0/1/2) sur les seeds problématiques 37/412/1299/1400. Le déterminisme s'accompagne d'une **indépendance à l'ordre** lors des exécutions groupées (multi-seeds dans un même processus, sweeps ou tests) : générer une seed après 1400 autres produit un résultat strictement identique à une génération dans un processus propre. Ce problème d'interférence (détaillé au §7 de `nondeterminism.md` et résolu pour la seed 1269) venait d'une mutation en place de la configuration partagée durant la passe B.
-- **Aucune limite supérieure (pas de « seed max »).** La seed est convertie en chaîne de caractères puis injectée dans `random.Random(f"randputF:{seed}")` et `randputF:lakes:{seed}`, que Python hache de manière déterministe. Ni le générateur ni le validateur ne brident la taille de cette valeur. Des entrées de plus de 19+ chiffres (comme `12345678901234567890`, `10^30` ou `sys.maxsize`) fonctionnent parfaitement et génèrent un mod valide. La seule limite réelle est celle des entiers de Python à précision arbitraire. Le validateur contrôle uniquement la **solvabilité** de la graine (absence de cycles, progression, complétude du parcours décrit au §15), sans jamais évaluer la valeur numérique elle-même. Si une seed génère un cas insoluble, l'outil la rejette et en tire une autre automatiquement (dans une boucle limitée à 10 essais maximum).
-- **Diversité et unicité.** Les tests menés sur 61 seeds consécutives et 8 seeds aléatoires n'ont révélé aucune collision. Chaque seed produit un fichier `seed.lua` unique avec sa propre empreinte sha256.
-- **Consommation réelle de la configuration.** La configuration est **pleinement exploitée** lors de la génération. Le fichier `config/defaults.yaml` sert de référence unique et non modifiable pour les réglages par défaut. Tes propres surcharges sont lues depuis `config/user.yaml` puis fusionnées avec les valeurs par défaut. L'ensemble subit une validation stricte selon un schéma précis avant de lancer la génération. Les sections actives lues à chaque exécution comprennent la racine `factorio_version` ainsi que 16 autres sections détaillées dans [`config.md`](config.md) :
-  - `paths` ;
-  - `map` : gère `patches_min/max` (le nombre **total** de gisements, voir §6), `richness_item/fluid` (la richesse des ressources, §6), `wells_per_patch` (le nombre de blocs ou puits par gisement, §6.5) et `item_patch_radius` (le rayon des gisements d'objets, §6.5) ;
-  - `starter` : configure `ammo_count` (les munitions fournies dans le kit de départ, par défaut 50, §11) et `inserter_chance` (la probabilité d'avoir un bras optionnel dans la chaîne de départ, par défaut 0.5, §8). Note que la clé `free_researches_count` est **inerte** (tout comme `nonfinite`, `craft_quantity`, `pools` et `weights`) : elle est déclarée et validée mais jamais lue par le code. Le nombre de recherches gratuites est directement défini par le build (`starter_chain.build_tech_steps`, §7) ;
-  - `recursive` : définit le poids des différentes catégories (`weight_transformer/extractor/generator/ distribution/combat/science`), le `progressive_factor`, le nombre d'itérations max (`max_iterations`), le `stall_threshold`, ainsi que `dist_marks` et `dist_guaranteed` (qui garantit la présence de compagnons, §9.7). Cette section gère aussi `recipes_per_building_min/max`, `tech_count_min/max`, `science_cost_min/max`, et les paramètres des **armes montées (§12.1)** (`armed_vehicles`, `vehicle_weapons`, `vehicle_slots_min/max`, `vehicle_slots_with_replacement`, `vehicle_range_base_size`, `vehicle_range_scale`) ;
-  - `recipes` : définit le poids du nombre d'ingrédients et de résultats (`weight_1_ingredient`…), les durées de fabrication via `energies` et `energy_per_ingredient` (§9.2), l'équilibre entre consommation et production via `balance_min/max` et `balance_max_factor` (§9.2), ainsi que le `recipe_prefix`. Ces clés sont systématiquement fournies par defaults.yaml, évitant toute valeur de secours codée en dur ;
-  - `relay` : contient le `prefix` et le paramètre `max_dispatch_steps` pour les recettes relais (§9.5) ;
-  - `easeup` : gère `max_recipes` (le nombre maximum de recettes de transition "ease-up"), `depth_threshold` (la profondeur qui déclenche ce mécanisme) et `unlocks_per_tech` (le plafond défini au §13) pour simplifier les fabrications trop lourdes (§9.3) ;
-  - `wreck` : définit la loi de probabilité pondérée du crash via `t`/`a`/`b` (§7) et le contenu des débris via `loot` (matériaux) ;
-  - `lakes` : configure le nombre de lacs via `min`/`max` (§6) et leur taille via `richness_fluid` ;
-  - `tree` : contient `group_chances` qui détermine le nombre d'objets par technologie (§13) ;
-  - `late_raws` **(optionnel — désactivé par défaut)** : le paramètre `enabled` active le jalonnement des ressources tardives (§6.3). Les clés `share` et `pick_chance` sont conservées pour des raisons de compatibilité mais restent **inutilisées** (l'injection est effectuée à 100 % de façon déterministe dès le premier échelon supérieur ou égal au plancher). L'architecture du « plan des jalons » s'exécute en 2 passes sur la même seed : la passe A mesure la dépendance, tandis que la passe B rejoue le starter depuis la même référence RNG avec un pool de démarrage dégradé (l'état initial vierge étant porté par `StarterConfig.deferred`).
-  Toute la configuration est transmise via `pipeline.set_config()` vers les prototypes dataclass (`tool/prototypes/*.py`). Ainsi, aucune valeur algorithmique n'est codée en dur dans le moteur de génération.
-- **Sections `pools` et `weights`.** Les sections `pools` (`exclude_items`, `exclude_fluids`, `exclude_building_types`) et `weights` (`building_types`, `science_packs`) figurent dans le fichier YAML par défaut mais ne sont **pas lues par le moteur**. Ce sont actuellement des clés mortes, car le processus de randomisation complète lui-même les pools. Les exclusions réellement appliquées sont traduites sous forme de pools exportées directement dans la seed, et non sous forme de filtres de configuration.
-- **Données supplémentaires exportées.** La seed exporte également plusieurs structures utiles pour la documentation et le gameplay :
-  - `pools.vehicle_weapons` : les armes de type "gun" de la pool montée (§12.1) ;
-  - `pools.vehicle_range_scaling` : les paramètres de portée (`base_size` + `scale`, §12.1) ;
-  - `vehicle_armament` : l'association entre les véhicules et leurs armes pour la graine en cours ;
-  - `pools.raw_resources` : les ressources brutes de la graine (§3), ce qui permet de les vérifier sans relancer de génération ;
-  - `extractor_timing` : le timing de déblocage C3, exploité par le plan des jalons ;
-  - `late_raws` (uniquement si le gating est actif) : contient `startup` et `gated` (avec `kind` et `tier` représentant l'échelon de science de retour), des données consommées par le rejoueur.
+## État de la page
+
+- Garantie actuelle : un même dump, la même configuration et la même graine
+  produisent la même seed.
+- Implémentation actuelle : seule la clé `paths.factorio_mods` est consommée
+  parmi les clés de `paths`.
+- Fait historique : d'anciens textes annonçaient un hash sha256 dans
+  `seed.lua` ; ce champ n'existe pas.
+- Spécification historique : elle ne demande pas de changement de fond
+  pour cette page ; elle reste concise et à jour.
+
+## Ce que ça change pour le joueur
+
+- Sans option, l'heure sert de graine et la valeur s'affiche dans la console.
+- Avec `--seed`, la même partie est reproductible.
+- Les rapports HTML n'empêchent pas la génération du mod.
+
+## Mots à connaître
+
+- [Seed](glossaire.md) — graine qui fixe les tirages.
+- [Dump vanilla](glossaire.md) — photographie des prototypes du jeu.
+- [Pool](glossaire.md) — ensemble fini de candidats au tirage.
+- [Témoin](glossaire.md) — empreinte du mod assemblé.
+- [Rapport HTML](glossaire.md) — vue générée du graphe ou du profil.
+
+## Seed et configuration
+
+- Sans `--seed`, l'outil lit l'horloge en millisecondes.
+- `--seed` fixe la valeur ; la graine alimente les générateurs aléatoires.
+- Aucune borne supérieure n'est imposée à la valeur numérique.
+- `validate_seed` juge la solvabilité, pas la taille de la graine.
+- `generate_with_retry` essaie la valeur demandée, puis les suivantes, jusqu'à
+  dix tentatives.
+
+<a id="seed-et-configuration-1"></a>
+
+## Configuration lue et données exportées
+
+- `config/defaults.yaml` porte les valeurs par défaut.
+- `config/user.yaml` porte les surcharges, fusionnées puis validées.
+- `paths.factorio_mods` est la seule clé de `paths` utilisée ; `mod_dir` et
+  `vanilla_dump` sont inertes.
+- Les autres sections sont décrites dans [config.md](config.md).
+- La seed exporte recettes, technologies, ressources, jalons tardifs et
+  métadonnées ; `seed.lua` n'a pas de champ sha256.
+
+## Règles de génération
+
+- Les tirages passent par des flux dérivés de la graine.
+- Les ensembles sont triés avant d'alimenter un tirage.
+- Les rapports vont dans `output/reports/randputF_<version>/`.
+- `--no-html` supprime l'écriture des trois vues.
+- Sans Graphviz, le graphe est omis ; sans technologies dans le dump, la
+  difficulté est omise.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Le même triplet produit le même mod, octet pour octet. | Un hash sha256 dans `seed.lua`. |
+| La reprise essaie au plus dix graines. | Toute valeur demandée est conservée. |
+| Les vues HTML sont régénérables. | Le graphe et la difficulté sont toujours écrits. |
+
+## Aller plus loin
+
+- [nondeterminism.md](nondeterminism.md) — à lire pour les contrôles de
+  reproductibilité.
+- [witness.md](witness.md) — à lire pour le md5 canonique du mod.
+- [config.md](config.md) — à lire pour les clés et les valeurs.
+- [graphe-interactif.md](graphe-interactif.md) — à lire pour les trois vues HTML.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [pipeline.md](pipeline.md) — à lire pour l'ordre des phases.
+- [testeur.md](testeur.md) — à lire pour contrôler une seed existante.

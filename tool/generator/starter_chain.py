@@ -105,8 +105,8 @@ def build_starter_chain(rng: random.Random, db: VanillaDB, patches: list[Patch],
     # patchs item est électrique (electric-mining-drill), le kit ne peut rien
     # miner avant le réseau — or les recettes des techs gratuites peuvent
     # consommer ces patchs item (p.ex. un module posé en gisement). On garantit
-    # alors un mineur non-électrique (burner-mining-drill) : AMORCÉ au kit
-    # (un exemplaire, façon vanilla) + recette refab dans une tech gratuite.
+    # alors un mineur non-électrique (burner-mining-drill) : sa recette est
+    # générée dans une tech gratuite, sans exemplaire ajouté au kit.
     # Flux RNG DÉDIÉ (artefact, comme le chest) pour ne pas perturber la carte
     # rechangée par l'électricité.
     _ensure_prepower_item_miner(

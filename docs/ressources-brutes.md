@@ -1,48 +1,48 @@
 # Les ressources brutes et leur extraction
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## Les formes d'une ressource brute
+Une ressource brute vient directement du monde, sans recette préalable. randputF distingue trois formes : le gisement d'item, le gisement de fluide et le lac. Chaque forme a son support, son extracteur et son milieu.
 
-Ce doc est le **cas partagé** entre [ressources.md](ressources.md) (qui pose les raw)
-et [starter.md](starter.md) (qui les extrait au démarrage) : il décrit ce qu'elles ont
-en commun — leur **forme**, leur **support** et leur **extracteur**.
+## Ce que ça change pour le joueur
 
-Une **ressource brute** (raw) est extraite directement du milieu. Elle se présente
-sous **trois formes**, chacune avec son support physique et son extracteur :
+- Un gisement d'item se mine avec une foreuse, un gisement de fluide se pompe avec une foreuse à fluide, un lac se pompe avec une pompe offshore.
+- La pompe offshore fonctionne sans courant, contrairement à la pompe à fluide classique.
+- Le kit fournit une unité de chaque extracteur retenu pour la chaîne initiale.
 
-| Forme | Support sur la carte | Extracteur | Énergie | Milieu |
-|---|---|---|---|---|
-| **Patch d'items** | entité-ressource `randputf-minerai-<item>` | **foreuse** (`mining-drill`) | électrique ou combustible | `ground` |
-| **Patch de fluide** | entité-ressource `randputf-oil-<fluide>` (`basic-fluid`) | **pumpjack** (`mining-drill` + `resource_categories ⊇ basic-fluid`) | électrique | `fluid` |
-| **Lac de fluide** | tuile `randputf-lac-<fluide>` | **pompe offshore** | énergie void (aucune électricité) | `water` |
+## Mots à connaître
 
-Trois conséquences structurent tout le reste :
+- **Ressource brute** : élément obtenu dans le monde, sans craft. Voir le [glossaire](glossaire.md#monde-généré).
+- **Patch** : gisement posé sur la carte. Voir le [glossaire](glossaire.md#monde-généré).
+- **Lac** : tuile de fluide créée pendant la partie. Voir le [glossaire](glossaire.md#monde-généré).
+- **Milieu** : sol, dépôt ou lac ; il détermine la famille d'extracteurs.
 
-- **Deux milieux fluides distincts** : un *patch* et un *lac* de fluide portent le
-  même contenu (un fluide pipable) mais pas le même support — **entité** posée sur la
-  terre pour l'un, **tuile** d'eau pour l'autre. Le moteur en déduit **deux
-  extracteurs** distincts : pumpjack (électrique) et pompe offshore (énergie void).
-  C'est ce qui rend un générateur à vapeur **amorçable sans électricité** dès que la
-  seed tire au moins un lac (voir [energie.md](energie.md#10-lélectricité)).
-- **Une amorce par type d'extracteur** : le kit de départ fournit l'item de chaque
-  extracteur utile (une foreuse par type de sol ; côté fluides, un pumpjack pour les
-  patchs et une pompe offshore pour les lacs). Le kit ne rend pas la suite faisable
-  par sa dotation : c'est l'**unlock** qui la rend faisable (voir
-  [starter.md](starter.md#7-la-phase-de-démarrage), déblocage « juste-au-besoin »).
-- **La richesse se lit par forme** : un patch d'item répartit sa richesse **totale par
-  tuile** posée ; un patch de fluide conserve un **rendement par puits** ; un lac a une
-  richesse de forme (taille/densité) mais un **volume illimité**.
+## Règles de génération
 
-La **pose** de chaque forme (tirage sans remise, disque bruité des champs d'items,
-puits éparpillés des fluides, fantôme puis remplissage des lacs) est détaillée dans
-[ressources.md](ressources.md#les-ressources-au-sol) ; la mécanique runtime du lac est dans
-[starter.md](starter.md#7-la-phase-de-démarrage) (point 5) ; la **chaîne initiale** qui consomme ces formes est en
-[starter.md](starter.md#8-la-chaîne-initiale-starter).
+### Les formes d'une ressource brute
 
----
+1. Le gisement d'item est une entité minière au sol, exploitée par un extracteur de milieu `ground` sans sortie fluide. Son énergie est à combustible ou électrique.
+2. Le gisement de fluide est une entité de dépôt exploitée par une foreuse `basic-fluid`, de préférence non électrique. La foreuse classique du jeu reste électrique.
+3. Le lac est une tuile exploitée par une pompe offshore, sans besoin d'électricité.
+4. Les extracteurs sont choisis d'après le milieu et les catégories du dump, jamais d'après le nom de la ressource.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Un extracteur adapté à chaque forme tirée. | La présence d'une ressource précise au sol. |
+| Une seule amorce par nom d'extracteur retenu. | Un extracteur non électrique pour les gisements de fluide. |
+
+## Aller plus loin
+
+- [ressources.md](ressources.md) — à lire quand il faut savoir comment les gisements sont posés et dimensionnés.
+- [lacs.md](lacs.md) — à lire quand la seed tire des nappes de fluide.
+- [starter.md](starter.md#la-phase-de-démarrage) — à lire quand on cherche ce que contient le kit initial.
+- [energie.md](energie.md) — à lire quand on veut comprendre l'énergie `void` des pompes offshore.
 
 ## Lectures associées
 
 - **Parent** : [ressources.md](ressources.md) — les ressources au sol.
-- **Concepts liés** : [starter.md](starter.md) — la phase de démarrage ; [energie.md](energie.md) — électricité ; [model.md](model.md) — le modèle randput : terminologie et classification des bâtiments.
+- [lacs.md](lacs.md) — la génération des lacs.
+- [starter.md](starter.md#la-phase-de-démarrage) — la phase de démarrage.
+- [model.md](model.md) — terminologie et classification des bâtiments.

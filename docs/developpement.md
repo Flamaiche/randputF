@@ -1,87 +1,86 @@
 # Développement : roadmap et mise en route
 
-Partie de la doc de conception randputF (dev). Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 19. Roadmap
+Cette page prépare un environnement de travail. Elle distingue les fonctions livrées, les chantiers en cours et les idées non retenues. Les idées non livrées restent dans `atelier/`.
 
-1. **v1 — vanilla seul** : implémentation complète (starter récursif, électricité, armes, arbre linéaire, fusée).
-2. **Évolutions v1** :
-   - Transition possible de l'arbre linéaire vers un arbre **branché**.
-   - Génération automatique de seed (date/heure) — fait (§16).
-3. **Exploiter le moteur du jeu (vision extracteur)** : déporter l'extraction des prototypes côté jeu via l'exporter Lua. Le jeu contenant déjà tous les prototypes (vanilla et mods), l'exporter évaluera les capacités côté moteur. L'outil Python se concentrera sur le tri et la validation. Objectif : supporter les **mods tiers** sans modifier le code de l'outil.
-   - Le classement fonctionnel des bâtiments (`research/transformer/generator/distribution/extractor/other`) sera transféré dans `exporter/control.lua` (déduit des propriétés natives de Factorio 2.0).
-   - Gestion de la stackabilité réelle, des types de munitions, de la compatibilité des combustibles et des dépendances (robot↔roboport, solaire↔accumulateur).
-   - Réduction au strict minimum des heuristiques codées en dur dans `tool/common/db.py` pour séparer la conception des données du moteur.
-   Le rôle de l'outil Python restera identique : trier, générer la seed et valider la solvabilité (§15).
+## Ce que ça change pour l'utilisateur
 
-> **Lacs : génération déterministe au runtime** (fait, remplace l'autoplace des ressources, voir §7.5). Les raisons de ce choix (génération via `control.lua`, abandon de l'autoplace) sont détaillées dans [DEVIANCES.md](DEVIANCES.md) §1.
+- L'environnement Python minimal suffit pour générer ; `.[dev]` ajoute pytest.
+- Un dump doit être régénéré quand la version de Factorio change.
+- Les idées de l'`atelier/` ne se retrouvent dans aucun livrable.
 
-## 20. Mise en route
+## Mots à connaître
 
-### 20.1 Environnement de développement
+- [dump vanilla](glossaire.md) — photographie des prototypes extraite du jeu.
+- [témoin](glossaire.md) — empreinte de reproductibilité.
+- [rejeu](glossaire.md) — simulation de la progression sans interface.
+- [artefact](glossaire.md) — fichier généré, jamais suivi dans git.
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e .
-```
+## Fonctionnement
 
-L'installation standard via `pip install .` inclut les assets (`mod/`, `data/`, `config/` avec `defaults.yaml`) dans le wheel. Le chemin `tool.common.assets.asset_path` résout ces fichiers avec un repli sur le dépôt. C'est la méthode requise pour une installation sans copie de travail (voir le témoin de release).
+### Mise en route
 
-### 20.2 Récupérer la base vanilla (une fois par version du jeu)
+1. Créer un environnement virtuel Python avec `python3 -m venv .venv`.
+2. Installer le paquet et ses outils de test avec `.venv/bin/pip install -e '.[dev]'`.
+3. Vérifier l'installation avec `.venv/bin/python -m pytest -q`.
+4. Lancer `.venv/bin/python -m tool generate --seed 5` pour une seed figée.
+5. Ajouter `--install` pour copier le mod dans le dossier mods indiqué par `config/user.yaml`.
+6. Ajouter `--no-html` pour omettre les vues HTML.
 
-L'outil ne devine rien : il utilise un **dump JSON des prototypes** extrait de votre jeu par le mod compagnon `exporter/` :
+Sans `--seed`, la graine vient de l'horloge système. Avec `--seed 5`, le résultat est reproductible pour un même triplet dump, configuration et seed. Les artefacts vont dans `output/`. Le mod assemblé reste séparé des rapports.
 
-1. Copiez ou liez `exporter/` dans `~/.factorio/mods/randputf-exporter_0.1.8/` (utilisez une copie directe si Flatpak bloque les liens symboliques).
-2. Lancez Factorio quelques secondes : le jeu génère `script-output/randputF/vanilla_dump.json` dans votre dossier utilisateur. L'export fonctionne aussi avec `randputF` actif, mais le dump est alors moddé.
-3. Déplacez ce fichier vers `data/vanilla_dump.json` dans le projet.
-4. Cet exporter est un outil de transition. Il sera intégré au mod principal ou supprimé.
+### Récupérer le dump
 
-> **Dump vanilla ou dump moddé** : exporter avec les deux mods actifs donne une photographie complète du mod en jeu. Les prototypes vanilla neutralisés restent dans le dump (`enabled = false`, `hidden = true`) et les mutations en place sont conservées (par exemple, `fuel_value` passe à 200 000 sur `crude-oil`). Le tool ne rejette plus ces dumps : il canonise les recettes à la lecture — pour un produit `X`, une recette `randputf-X` active remplace la vanilla `X` — et ignore les artefacts `randputf-randputf-…`. `test_dump_pollution.py` couvre la canonisation, les drapeaux d'état et le repli des anciens dumps.
+Le mod compagnon `exporter/` doit être copié dans le dossier mods Factorio. Sa version déclarée dans `info.json` est utilisée. La création d'une partie déclenche l'écriture du dump.
+ Le chemin dépend du système, comme décrit dans [exporter.md](exporter.md). Le fichier obtenu remplace `data/vanilla_dump.json`.
 
-### 20.3 Générer et jouer une seed
+Un dump produit avec randputF actif est accepté. Il est canonisé à la lecture, sans ancien garde-fou `EXPORT REFUSE`. La canonisation choisit les recettes préfixées actives et ignore les artefacts à double préfixe.
 
-```bash
-.venv/bin/python -m tool parse --demo      # vérifie la base (mode synthétique)
-.venv/bin/python -m tool generate          # génère + valide (seed temporelle par défaut)
-.venv/bin/python -m tool generate --seed 5 # seed figée, déterministe (reproductible)
-```
+### Vérifier une modification
 
-Sans l'argument `--seed`, la seed est générée à partir de l'heure système (en millisecondes, §16). Utiliser `--seed <n>` garantit une génération identique et reproductible.
+La suite compte 861 tests. Le témoin courant de la seed 5 est `74dcb6f89c28ef1277a0e854d9a21a4a`, avec la commande `randputf witness --seed 5 --expect 74dcb6f89c28ef1277a0e854d9a21a4a`. Le script `tools/check_anchors.py` contrôle les liens internes de la documentation. La CI lance les tests puis ce contrôle.
 
-**Installation dans Factorio** : configurez le chemin absolu de vos mods dans `config/user.yaml` via la clé `paths.factorio_mods` (par exemple `~/.var/app/com.valvesoftware.Steam/.factorio/mods` pour Steam sous Flatpak). La valeur par défaut `""` est définie dans `config/defaults.yaml`. Lancez ensuite :
+Un changement de défaut de configuration change le témoin. Il doit alors être reporté dans `.github/workflows/ci.yml` et dans [witness.md](witness.md).
 
-```bash
-.venv/bin/python -m tool generate --seed 5 --install
-```
+### Roadmap livrée
 
-Le mod est d'abord assemblé dans `output/mods/randputF_<version>/` (la version est lue dans `mod/info.json`), puis `--install` le copie dans `factorio_mods/randputF_<version>/` et met à jour `mod-list.json`. Si le dossier `factorio_mods` est introuvable, le mod reste dans `output/mods/` pour vous laisser le copier manuellement. Les vues HTML associées vont dans `output/reports/randputF_<version>/`, jamais dans le dossier du mod. En jeu, les patchs remplacent toutes les ressources vanilla de la zone de départ, le kit initial est fourni et les technologies gratuites sont débloquées.
+1. La génération complète du graphe vanilla est livrée.
+2. L'arbre technologique linéaire et la chaîne de fusée sont livrés.
+3. La génération de graine à partir de l'heure est livrée.
+4. Le dump est extrait par le moteur Factorio via l'exporteur Lua.
+5. Les lacs sont creusés au runtime, sans autoplace de ressource fluide.
+6. La purge de l'eau vanilla et le remplissage déterministe sont livrés.
 
-### 20.4 État actuel du code
+### Chantiers à venir
 
-| Composant | État |
+Le classement des bâtiments pourrait être déporté vers l'exporteur. Les types de munitions, la stackabilité réelle et les dépendances entre bâtiments relèvent du même chantier. L'objectif reste de réduire les heuristiques côté Python.
+
+Le passage à un arbre technologique branché reste une piste. Aucune modification de ce type n'est livrée. Les idées non retenues, comme la nappe de rayon fixe pour les lacs, restent dans `atelier/`.
+
+### Livrables
+
+Le wheel inclut `mod/`, `data/`, `config/` et les paquets énumérés dans `pyproject.toml`. Le dossier `atelier/` est exclu par `.gitattributes` et par la liste explicite des paquets. Aucun artefact généré n'est suivi dans git. Le détail de publication figure dans [release.md](release.md).
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
 |---|---|
-| `tool/common/rng.py` | `make_seeded_rng(seed_value, prefix)` : flux RNG par phase (préfixe `randputF:`/`randputf:` indexé par la seed). Chaque nouvelle phase doit utiliser son propre flux. Le préfixe reste strictement identique d'une exécution à l'autre pour garantir le déterminisme (voir nondeterminism.md). |
-| `tool/common/tagsets.py` | Centralisation des identifiants en une source unique (D3) : `ENVIRONMENTAL_ITEMS`, `ROCKET_CHAIN`, `VEHICLE_GUNS`, `NON_STACKABLE_ITEM_TYPES`, `VALID_RECIPE_CATEGORIES`, `RAIL_TYPES`, `VIRTUAL_ITEM_TYPES`, `FLUID_RECIPE_CATEGORIES`, `STARTER_TRANSFORMERS`, `EXCLUDED_BUILDINGS`, `ENDGAME_EXCLUDED` (indexé dans `docs/tags.md §14`). |
-| `tool/parsers/vanilla.py` | Normalisation du dump vers `VanillaDB` (objets, fluides, bâtiments catégorisés et recettes). |
-| `tool/generator/map_patches.py` | Phase 1 active (3 à 8 patchs de types et richesses aléatoires). Exclusion garantie des laboratoires (§8), de la fusée et du silo (§14), ainsi que des packs de science (§13). |
-| `tool/generator/starter_chain.py` | Kit de départ (arme et munitions adaptées), chaîne extraction-transformation-transport, pool environnemental et extracteurs limités aux objets. Intégration garantie du bâtiment de recherche dans la seconde recherche gratuite (§8), du premier pack de science fabricable (§13) et du remblai (landfill) si des lacs sont générés (§7). |
-| `tool/generator/recursive_phase.py` | Phase récursive pondérée pour un déblocage progressif sans recette orpheline (§9.3). Les productions sont limitées aux intermédiaires (bâtiments et chaîne de la fusée exclus, équilibre consommation/production assuré dans `_pick_product`). Coût systématique en packs de science, initié par le premier pack du starter avec solution de repli garantie (§13). Cadence des pylônes (§9.4) et présence d'éléments compagnons (§9.7) garanties. |
-| `tool/generator/electricity.py` | Générateur et combustible fournis à la demande (accumulateurs exclus). Gestion du mélange des générateurs avec test de fonctionnement et correction par patch forcé (20 tentatives max, §10). Fourniture des pylônes et infrastructures de distribution. Les technologies de départ sont rejouées plus tard (§10). |
-| `tool/generator/endgame_phase.py` | Chaîne de la fusée fixe : génération des 3 composants de `rocket-part` et du rocket-silo. Technologie finale : `randputf-endgame-rocket` (§14). |
-| `tool/generator/extractor_timing.py` | Planification du déblocage des extracteurs (C3 : kept/moved/random) via la fermeture `_startup_raw_resources` (boîte D4bis) pour jalonner la progression (§6.3). |
-| `tool/generator/late_raws.py` | Jalons « late raws » (§6.3) : planification évaluée lors de la passe A (ressources brutes sous conditions non initiales, seuils définis par `_usage_floors` combinant composants, ateliers `crafted_in` et fermeture des coûts/déclencheurs), suivie d'une dégradation du pool en passe B. Export de `seed["late_raws"]`. |
-| `tool/prototypes/starter.py` | `StarterConfig` (§7/§8) gère le paramètre `deferred` : les ressources brutes sous conditions restent exclues du pool de départ en passe B (état vierge). |
-| `tool/replay/player.py` | Simulateur de relecture de seed pour audit externe : validation décuplée du rendement, point fixe sur la liste de travail inversée et génération d'un rapport `ReplayReport` (contenant blocker, mastered, never_masterable, victory). |
-| `tools/classify_late_raws.py` | Analyseur de classification `(seed, extracteur, raw)` : catégorie C3, fermeture de la zone de départ et échelon du premier consommateur. Mesure les jalons et produit le CSV incrémental (`tools/classify_late_raws.py:14,208`). |
-| `tools/audit_playthrough.py` / `tools/audit_usage.py` | Explorateurs du relecteur par plage de seeds (audit par lots via de simples affichages `print`). |
-| `tool/common/demo.py` | Base vanilla synthétique pour le développement et les tests. Elle inclut le rocket-silo pour permettre à la phase finale de débloquer `randputf-rocket-silo` (validation d'exhaustivité, §15). |
-| `tool/generator/relay_phase.py` | Recettes relais choisies dans le pool figé de début de partie (après le starter et l'électricité), avec les technologies de prologue `randputf-prologue-*` (maximum 5 déblocages, fabrication manuelle) (§7, §9.5, §13). |
-| `tool/generator/tech_tree.py` | Arbre linéaire construit à partir des macro-étapes. Chaque recette a un déblocage unique (la première revendication l'emporte, §13/§15). |
-| `tool/validator/pipeline_validator.py` | Exécute 7 contrôles (§15) : prévention des cycles par point fixe de solvabilité (les recettes relais servent d'alternatives), progression constante, cohérence technologies/recettes, accessibilité des coûts, règle des tuyaux, complétude de la fusée et absence de ressources brutes dans les packs. |
-| `tool/validator/solver.py` | Vérifie uniquement la solvabilité de la seed (absence de cycles, progressivité, complétude, `solver.py:15-23`). |
-| `mod/data.lua` | Gère uniquement les recettes, les technologies et la désactivation de l'arbre vanilla (`disable_vanilla_techs`, 241 lignes). |
-| `mod/data-updates.lua` | Ajuste les véhicules (duplication des armes §12.1), applique les dalles de lacs aux teintes pastel, uniformise les combustibles et renomme la pompe (lignes 701-708). |
-| `mod/data-final-fixes.lua` | Masquage des entités de ressources (`mod/data-final-fixes.lua:56-63` via autoplace et `size = 0`), suppression des ressources vanilla au data-stage (lignes 78-83) et remplacement du charbon des rochers par de la pierre (lignes 102-126). |
-| `mod/control.lua` | Exécution (runtime) : gère uniquement la purge de l'eau (`WATER_PURGE`, lignes 223-230), le remplissage des lacs par propagation (flood-fill), le placement déterministe des patchs, l'attribution du kit de départ et l'octroi des recherches gratuites (`free_researches`, ligne 728). |
+| Les commandes de base fonctionnent depuis l'environnement virtuel. | Les mods tiers ne sont pas pris en charge. |
+| Les tests et les ancres sont vérifiés en CI. | Une machine sans Graphviz n'écrit pas le graphe SVG intégré. |
+| `atelier/` reste hors des livrables. | Les idées de `atelier/` peuvent devenir obsolètes. |
 
-La génération valide une seed complète à partir de la base vanilla réelle (`data/vanilla_dump.json`, incluse dans le dépôt). La graine est définie via `--seed N` (par défaut, elle est calculée sur l'heure courante). Le fichier de configuration yaml ne contient **aucune seed** par défaut. Le mode démonstration (`parse --demo`) permet de tester le moteur sur une base synthétique allégée.
+## Aller plus loin
+
+- [architecture.md](architecture.md) — à lire quand la structure du projet est recherchée.
+- [config.md](config.md) — à lire quand un réglage doit être changé.
+- [exporter.md](exporter.md) — à lire quand le dump doit être régénéré.
+- [modules.md](modules.md) — à lire quand le statut d'un module est incertain.
+- [release.md](release.md) — à lire quand une version doit être publiée.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [etat-code.md](etat-code.md) — état courant des composants.
+- [witness.md](witness.md) — vérification du déterminisme.
+- [DEVIANCES.md](DEVIANCES.md) — écarts assumés et bugs corrigés.

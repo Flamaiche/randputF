@@ -233,7 +233,7 @@ def _regenerate_extractor_recipe(
 
     - **ingrédients** re-tirés dans le pool obtenable à ``≤ target`` (items
       produits par une recette claimée ``≤ target``, environnementaux du spawn,
-      items du kit), acycliques (the chapeau : on exclut les ancêtres du
+      items du kit), acycliques (en chapeau : on exclut les ancêtres du
       produit — jamais un ingrédient qui referme un cycle produit→produit) ;
     - **fabricateur** re-tiré parmi les ateliers débloqués à ``≤ target``
       (miroir de la bascule U2) — repli **handcraft** (aucun atelier) quand
@@ -243,9 +243,8 @@ def _regenerate_extractor_recipe(
     Le claim d'unlock (le jalon choisi par C3) et le produit restent
     inchangés : seul le CORPS de la recette est re-baké
     (``ingredients``/``energy``/``results``/``crafted_in``). La recette reste
-    craftable dès son déblocage quel que soit l'index : le reintérieur au
-    moment le plus tard des ingrédients ET de l'atelier est borné par
-    ``target``.
+    craftable dès son déblocage quel que soit l'index : le moment le plus
+    tardif d'obtention des ingrédients ET de l'atelier est borné par ``target``.
     """
     res = (recipe.get("results") or [{}])[0]
     if res.get("type") != SLOT_ITEM:

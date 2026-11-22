@@ -707,7 +707,7 @@ def equivalent_functional_type(b: BuildingDef) -> str:
 
 
 def tag_parse_entity(name: str, e: dict) -> BuildingDef | None:
-    """Tagging PAR CAPACITES in trinseques, sans liste de types : chaque
+    """Tagging par capacités intrinsèques, sans liste de types : chaque
     bâtiment reçoit des TAGS ORTHOGONAUX CUMULABLES (atelier et générateur à
     la fois) :
     - consommation de science packs (lab_inputs) → ``is_research`` ;

@@ -1,29 +1,67 @@
 # Combat, armement et transports
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 11. Combat et armement
+Cette page décrit le contenu de combat tiré par la seed. Le comportement des ennemis et la pollution restent ceux du jeu de base. Les armes, les munitions et l'armement des véhicules changent d'une seed à l'autre.
 
-- **Les biters ne changent pas** : leur comportement, leur évolution et la gestion de la pollution restent identiques à la version vanilla.
-- **Les armes sont randomisées** : leur déblocage suit les pourcentages appliqués aux autres bâtiments.
-- **Munitions** : chaque arme est liée à un type de munitions spécifique. Les autres catégories de munitions sont traitées comme des crafts standards. **Garantie de jouabilité** : si une arme est débloquée par une technologie alors qu'**aucune** munition compatible n'est disponible, une munition manquante est générée et débloquée dans la **même tech**. Une arme n'est jamais inutile. Si une munition compatible existe déjà, rien n'est ajouté.
-- **Une arme par tech** : le groupement du §13 ne fusionne jamais deux étapes de combat consécutives (même règle que pour les pylônes au §9.4). Chaque arme arrive seule, avec sa munition dédiée.
+## Ce que ça change pour le joueur
 
-## 12. Transports avancés
+- Une arme de poing reçoit une munition compatible quand aucune n'est disponible.
+- Les véhicules armés reçoivent des armes tirées dans une réserve configurée.
+- La portée des armes montées dépend de la taille du véhicule.
 
-Trains, véhicules et logistique avancée utilisent le même modèle que les armes : ce sont des **catégories d'objets** déblocables par pourcentages. Les dépendances sont **minimes** et fixées lors du tirage : un véhicule peut exiger un **combustible**. Aucune contrainte n'est imposée entre les rails et les locomotives. Aucun autre traitement spécial n'est appliqué.
+## Mots à connaître
 
-### 12.1 Armes montées randomisées
+- [pool](glossaire.md) — réserve d'objets parmi lesquels la seed tire.
+- [prototype](glossaire.md) — définition d'un bâtiment ou d'une arme dans le dump.
+- [déblocage sur le tas](glossaire.md) — création d'un prérequis au moment du besoin.
+- [slot](glossaire.md) — entrée ou sortie d'un bâtiment ou d'une recette.
 
-Les armes **montées-uniquement** (`entity.guns` du dump, avec `VEHICLE_GUNS` en repli : canons, mitrailleuses, lance-flammes, artillerie, roquettes de spidertron) sont **exclues du pool de poing** (§11) et du balayage (§9.6). Sans véhicule, elles seraient inutilisables ; elles ne sont donc **jamais craftées**.
- La randomisation des véhicules utilise une **pool cachée** : `pools.vehicle_weapons` liste des **items gun** (armes montées et certaines armes de poing comme le fusil à pompe, le submachine-gun ou le lance-roquettes). Chaque **véhicule armé** (tank, spidertron, wagon d'artillerie) reçoit **1..4 armes** tirées dans cette pool, avec ou sans remise selon la configuration. Un tank peut ainsi hériter d'un fusil à pompe et un spidertron d'une pièce d'artillerie.
+## Règles de génération
 
-**« Arme dans arme »** : chaque arme tirée est **CLONÉE pour CE véhicule** par `data-updates.lua` (`randputf-<véhicule>-<arme>`, via `table.deepcopy`) et **remplace une arme vanilla** de l'entité. Le véhicule ne conserve que les armes tirées : le tank et le spidertron remplacent leur tableau `guns`, le wagon d'artillerie son `gun` unique. Il n'y a ni item, ni recette, ni unlock pour ces clones : la pool sert uniquement à l'assignation. Les items de poing de la pool conservent leur recette normale (§11). Les items *legacy* (mitrailleuse de tank vanilla, spidertron-rocket-launcher-2/3/4) deviennent du contenu mort sans recette ni unlock.
+### Combat et armement
 
-**Portée scalée selon la taille du véhicule** : la portée du clone augmente avec la taille du véhicule selon la formule `range × (1 + max(taille - base_size, 0) × scale)`. La `taille` correspond à l'extent de la `selection_box` (tank 2.6, spidertron 2, wagon d'artillerie 6). Avec les valeurs par défaut (`base_size: 2`, `scale: 0.4`), le tank augmente la portée de ses armes de ×1.24 et le wagon de ×2.6. Le spidertron, à la taille de base, conserve les portées d'origine. La **munition** consommée par le clone (ammo_category) est celle de l'arme source, car chaque munition est déjà randomisée et craftable (§9.6).
+- Une arme de poing est débloquée par les tirages de la catégorie combat.
+- Si aucune munition compatible n'a de recette, une munition est créée dans la même tech.
+- Si une munition compatible existe déjà, rien n'est ajouté. Il n'y a pas de pourcentage de non-génération.
+- Deux étapes qui débloquent chacune une arme de poing ne sont pas fusionnées.
 
-**Munitions garanties après le véhicule** : lors de la création de la technologie d'un véhicule, le générateur vérifie les munitions de ses armes (via `ammo_category`). Celles qui n'ont pas encore de recette sont créées immédiatement et **dispatchées dans jusqu'à 3 techs isolées qui suivent celle du véhicule** (`randputf-ammo-<véhicule>-<munition>`). Elles coûtent des packs de science déjà débloqués. Le joueur reçoit son véhicule, puis ses munitions rapidement après. Les munitions déjà présentes ne sont pas recalculées.
+### Transports avancés
 
-L'assignation est enregistrée dans `vehicle_armament` (items gun réels, sans champ `vehicle_armament_items`), la pool dans `pools.vehicle_weapons` et le scale dans `pools.vehicle_range_scaling`. **Aucune valeur n'est en dur** : `armed_vehicles`, `vehicle_weapons`, `vehicle_slots_min/max`, `vehicle_slots_with_replacement`, `vehicle_range_base_size` et `vehicle_range_scale` se configurent via `recursive:` (§16).
+- Véhicules, trains et logistique avancée suivent les tirages des autres catégories.
+- Aucune contrainte n'impose un appariement entre rails et locomotives.
 
-**La randomisation est APPLIQUÉE aux prototypes d'entités** : `data-updates.lua` clone et ré-arme chaque véhicule selon `vehicle_armament`. Sans cette étape, les véhicules conserveraient leur armement vanilla et la seed n'aurait aucun effet en jeu.
+### Armes montées randomisées
+
+- Les armes montées sont repérées par les liens d'entité du dump. Elles ne sont pas craftées pour elles-mêmes.
+- Chaque véhicule armé reçoit un nombre d'armes tiré dans la réserve configurée, avec ou sans remise selon la configuration.
+- Les doublons sont retirés après le tirage, y compris quand le tirage autorise le remplacement.
+- Chaque arme tirée est clonée pour le véhicule, avec une portée ajustée à sa taille. Les items d'origine gardent leur recette normale.
+- Les munitions manquantes sont créées puis placées dans au plus trois techs isolées après celle du véhicule.
+
+### Écart connu
+
+La spécification historique demande une munition pour chaque arme, avec une chance de ne pas l'ajouter quand une munition compatible existe déjà.
+ Le code crée une munition seulement quand aucune n'existe, et n'applique aucune chance.
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Une munition quand aucune munition compatible n'existe. | Une munition ajoutée quand une munition compatible existe. |
+| Des armes distinctes montées sur chaque véhicule armé. | Le nombre d'armes retenues après déduplication. |
+
+## Aller plus loin
+
+- [aiguillage.md](aiguillage.md#nœuds-isolés-et-dispatch) — à lire quand il faut situer la tech des munitions.
+- [recettes.md](recettes.md#couverture-complète--le-balayage-de-contenu) — à lire pour comprendre pourquoi les armes montées sont écartées du balayage.
+- [model.md](model.md) — à lire quand il faut distinguer les types de bâtiments.
+- [config.md](config.md) — à lire quand il faut régler la réserve d'armes et la portée.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [aiguillage.md](aiguillage.md) — dispatch des armes et munitions.
+- [recettes.md](recettes.md) — balayage de contenu et recettes de véhicules.
+- [model.md](model.md) — classification des bâtiments et directives.
+- [tech.md](tech.md) — déblocage des technologies de combat.

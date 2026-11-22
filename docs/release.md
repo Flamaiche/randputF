@@ -1,106 +1,89 @@
 # Release : procédure et état
 
-Ce document décrit la procédure de publication et l'état d'avancement des versions.
+Retour : [docs/README.md](README.md).
 
-La note publiée réside dans [`notes/v<version>.md`](../notes/) : c'est ce fichier que `release.yml` publie (titre = première ligne). Cette page ne contient pas la note, elle expose sa production et son emplacement.
+La publication part de la branche `dev` et se déclenche sur `master`. Le workflow lit la version, vérifie la note, teste le projet, construit le mod puis crée le tag. Le titre et le corps de la release viennent de `notes/v<version>.md`.
 
-Les brouillons de travail (plans, idées, notes de révision) se trouvent dans `atelier/`. Ce dossier est versionné — sauvegardé, historisé et partagé — mais exclu de tout livrable : `.gitattributes` le marque `export-ignore`, le rendant absent de `git archive`, des zip « Source code » de GitHub, du wheel (`pyproject.toml` énumère ses paquets explicitement) et du zip de release. Règle : `atelier/` vit dans le dépôt, jamais dans le produit. La documentation, elle, se place ici, dans `docs/`.
+## Ce que ça change pour l'utilisateur
 
-Retour : [README.md](../README.md).
+- Une release publiée porte un tag `v<version>` et une note dédiée.
+- Le workflow vise un zip contenant le mod, sans les trois vues HTML ; sa source doit encore être alignée.
+- Le mod peut aussi être produit localement avec `generate`.
 
----
+## Mots à connaître
 
-## 1. État des versions
+- [témoin](glossaire.md) — empreinte de reproductibilité de la seed 5.
+- [artefact](glossaire.md) — fichier généré, jamais suivi dans git.
+- [promotion](glossaire.md) — passage de `dev` vers `master`.
+- [note de release](glossaire.md) — fichier qui porte le titre et les points saillants.
 
-Publiée — accessible publiquement, tag sur `master` :
+## Fonctionnement
 
-| Version | Tag | Contenu | Témoin seed 5 |
-|---|---|---|---|
-| v0.0.0 | `v0.0.0` → `a1719b9e17659d141c95d617508c5a7a11a331fb` | Première release publique. Config `settings.yaml`. | `f41e065e606ce24c8855d458c661988f` |
-| v0.0.1 | `v0.0.1` → `4f28fa6272e2da58868a4cee6d4022957143cb82` (sur `master`) | Config à deux YAML + refonte documentaire ; mod inchangé. | `c9566134864507d900f65806ade277d9` |
+### État des versions
 
-En préparation — aucune : la 0.0.2 est reportée.
+| Version | État | Témoin de la seed 5 |
+|---|---|---|
+| v0.0.0 | publiée, Factorio 2.0 | `f41e065e606ce24c8855d458c661988f` |
+| v0.0.1 | publiée, Factorio 2.0 | `c9566134864507d900f65806ade277d9` |
+| v0.0.2 | en préparation, Factorio 2.1 | `74dcb6f89c28ef1277a0e854d9a21a4a` |
 
-Le mécanisme des notes apparaît avec la v0.0.1 : `release.yml` lit `notes/v<version>.md` (titre = première ligne, reste = note « highlights »). Il n'existe **pas** de note v0.0.0 — cette release a été publiée sans le mécanisme de notes, et le dossier `notes/` n'existait pas à son tag. Une note posée est ensuite gelée : elle décrit l'état de son tag, ne la modifie pas.
+La suite courante compte 861 tests. Les valeurs des versions publiées restent des faits historiques. Elles ne décrivent pas l'état courant.
 
-Réutilisation du numéro 0.0.1 : une première v0.0.1 a été préparée le 2026-10-01, sans être publiée — elle est restée en *draft* sur GitHub, et son tag a été supprimé lors du reset de `master`. Aucune donnée n'ayant été publique sous ce numéro, son réemploi ne trompe personne, ce qui a été fait. Le brouillon résiduel a été supprimé : la release v0.0.1 a été créée de zéro par le workflow (chemin `create`), et non reprise d'un brouillon obsolète en date et en corps. Un `draft` réapparu pour cette version signalerait un reliquat : le supprimer avant le tag (cf. checklist §3).
+### Ce que fait le workflow
 
-Écart assumé sur la numérotation : la configuration à deux YAML constitue un changement visible par l'utilisateur (un fichier supprimé, des surcharges à recopier), relevant de `0.1.0` au sens semver. La version sort en v0.0.1, sur décision du mainteneur. Convention retenue pour la suite : le semver reprend ses droits — un changement visible par l'utilisateur prend un chiffre mineur (0.1.0), un correctif de documentation ou de test un numéro de patch.
+1. Il lit la version dans `mod/info.json` et exige `notes/v<version>.md`.
+2. Il refuse la publication si le tag `v<version>` existe déjà sur l'origine.
+3. Il installe le paquet avec ses extras de développement.
+4. Il lance `pytest -q`. Une suite rouge bloque la release.
+5. Il lance `randputf witness --seed 5`.
+6. Il lance `randputf generate --seed 5 --out /tmp/modrel`.
+7. Il construit `/tmp/randputF_${VERSION}.zip` en excluant les trois fichiers HTML.
+8. Il crée le tag sur le commit promu et le pousse.
+9. Il téléverse le zip avec `gh release upload`, ou le crée avec `gh release create`.
 
-## 2. Release v0.0.1 : PUBLIÉE
+Le titre est la première ligne de la note, sans le préfixe de titre Markdown. Le reste du fichier sert de corps. Le workflow met aussi à jour un brouillon résiduel avec `--draft=false`.
 
-Elle intègre le système de configuration à deux YAML et la refonte
-documentaire. Elle est sortie le 2026-10-04 : le workflow a créé le tag
-`v0.0.1` sur le commit `4f28fa6272e2da58868a4cee6d4022957143cb82` promu sur
-`master` (cf. §3 — il ne s'agit pas d'un merge, voir l'encadré). Le mod
-lui-même ne change pas par rapport à la v0.0.0.
+### Checklist avant promotion
 
-### 2.1 Titre et note
+1. Bumper `mod/info.json` et `pyproject.toml` en même temps.
+2. Recalculer le témoin avec `randputf witness --seed 5`, puis le reporter dans `.github/workflows/ci.yml` et dans [witness.md](witness.md).
+3. Créer `notes/v<version>.md` avec un titre puis trois à cinq puces.
+4. Ajouter la section `## v<version>` dans `CHANGELOG.md` dans le même commit.
+5. Supprimer un brouillon GitHub résiduel pour cette version.
+6. Relancer les tests depuis un arbre propre, sans `output/`, `randputF_*` ni `mod-list.json` résiduels.
+7. Pousser `dev` vers `master` seulement sur décision du mainteneur.
 
-Le titre et la note figurent dans [`notes/v0.0.1.md`](../notes/v0.0.1.md) — première ligne = titre, reste = note « highlights ». `release.yml` les publie tels quels ; ne les recopie pas ici.
+`.gitattributes` exclut `atelier/` des archives. `pyproject.toml` énumère explicitement les paquets du wheel. Aucun artefact généré n'est suivi dans git.
 
-```
-0.0.1 — Documentation mise à jour et configuration en deux YAML
-```
+### Numérotation
 
-### 2.2 Faits vérifiés (état publié — pour ne rien inventer dans la note)
+Le semver reprend ses droits après la v0.0.1. Un changement visible prend un numéro mineur. Une correction de documentation ou de test prend un numéro de patch. Le réemploi du numéro v0.0.1 vient d'un brouillon jamais publié, puis supprimé.
 
-- Témoin seed 5 de la v0.0.1 : `c9566134864507d900f65806ade277d9`. Il change au bump de version (préfixe racine du zip `randputF_<version>`) alors que le contenu du mod pour la seed 5 reste inchangé depuis la v0.0.0. Ne reprends jamais l'ancien md5 tel quel.
-- Tests : 722.
-- Fichiers de config : `config/settings.yaml` (supprimé) -> `config/defaults.yaml` + `config/user.yaml`.
-- Sources pour le détail : `docs/DEVIANCES.md` (bugs/bilan seed par seed), `docs/solvabilite.md` (preuves 1501/1501, invariants §15), `docs/nondeterminism.md` (déterminisme), `config/user.yaml` (surcharges).
+### Écart connu
 
-## 3. Checklist de publication (procédure)
+Le workflow génère le mod dans `/tmp/modrel/mods/randputF_${VERSION}`. La commande zip lit `/tmp/modrel/randputF_${VERSION}`. Les deux chemins ne coïncident pas dans le script actuel. Reste à faire : aligner la source du zip sur le dossier réellement produit, puis vérifier le contenu de l'artefact téléversé.
 
-Le bump de version s'effectue dans `dev` (seule branche de travail) : `mod/info.json` (source de vérité) et `pyproject.toml` simultanément — `tool/common/version.py` lit `mod/info.json`, il ne se bump pas.
-La release correspond à la promotion `dev` → `master`, décidée par le mainteneur.
+D'anciens documents affirmaient qu'aucun zip n'était attaché à la release. Le workflow courant construit et téléverse `/tmp/randputF_${VERSION}.zip`. Reste à faire : remplacer ces mentions par la description du comportement actuel.
 
-> La release est la promotion `dev` → `master`. Le workflow se déclenche quand `master` reçoit le travail de `dev` ; il lit la version dans `mod/info.json`, construit le mod, crée le tag `v<version>` sur le commit promu et publie. Aucun tag manuel n'est requis. Depuis la publication de la v0.0.1 (`4f28fa6`), `master` et `dev` partagent cet ancêtre : la promotion s'exécute en *fast-forward*, sans `--force` (`git push origin dev:master`). Le tag v0.0.0 (`a1719b9e17659d141c95d617508c5a7a11a331fb`) reste un commit racine sans parent : il demeure accessible par son tag, mais ne figure pas dans l'ascendance de `master`.
+## Garanti / non garanti
 
-- [ ] Tout passer par `dev` : corrections, docs, bump de version sur `dev`.
-- [ ] Version : bump de `mod/info.json` `"version"` — source de vérité lue par `tool/common/version.py` — et de `pyproject.toml`, au même moment.
-- [ ] Témoin : le md5 du témoin dépend de la version (préfixe racine `randputF_<version>` dans le zip, cf. `tool/common/witness.py`) -> le bump de version change le témoin. Recalcule le nouveau md5 (`randputf witness --seed 5`) et mets-le à jour dans `.github/workflows/ci.yml` et `docs/witness.md`.
-- [ ] Note de release : crée `notes/v<version>.md` (format : première ligne `# <version> — <ce qu'elle apporte>`, puis 3-5 puces highlights). Sans ce fichier, `release.yml` échoue explicitement.
-- [ ] CHANGELOG : ajoute la section `## v<version>` dans [`CHANGELOG.md`](../CHANGELOG.md) dans le commit du bump de version, et non après. L'entrée est ainsi publiée en même temps que la promotion : rien à réécrire une fois le tag posé, et l'arbre promu est auto-cohérent. Le titre reprend celui de `notes/v<version>.md`.
-- [ ] Supprimer le brouillon résiduel : si un `gh release list` affiche un *draft* pour cette version, supprime-le avant le tag — sinon le workflow le reprend et le publie avec une date et un corps périmés.
-- [ ] Vérifier l'arbre propre avant de committer : un `output/`, un `randputF_*` ou un `mod-list.json` issu d'un run antérieur peut faire passer un test en local alors qu'il échoue en CI. Cela s'est produit réellement et a masqué le bug décrit en §4. Relance la suite depuis un arbre propre : `rm -rf output randputF_* mod-list.json && python -m pytest`.
-- [ ] Promouvoir `master` — réservé au mainteneur, seul moment où la branche bouge : `git push origin dev:master` (la promotion est un *fast-forward* depuis la v0.0.1, cf. l'encadré §3). Ce push déclenche la release : build du wheel, témoin, zip attaché, tag `v<version>` créé sur le commit promu, publication automatique du titre et de la note depuis `notes/v<version>.md`.
-- [ ] Vérifier la CI avant de conclure : la promotion est rejetée si la version est déjà taguée, si la note est absente, ou si un test casse (le bump casse les versions codées en dur).
-- [ ] Aucun push sans décision explicite du mainteneur.
+| Garanti | Non garanti |
+|---|---|
+| La note de release est obligatoire pour publier. | Un brouillon résiduel peut porter une date périmée. |
+| La suite de tests bloque une publication rouge. | Le zip publié dépend du chemin exact utilisé par le script. |
+| Les vues HTML sont exclues de l'archive de release. | Les documents historiques décrivent parfois l'ancien comportement. |
 
-## 4. Ce que la v0.0.1 a appris (tentative du 2026-10-01)
+## Aller plus loin
 
-La première tentative de v0.0.1 est restée en brouillon et n'a jamais été publiée ; les quatre problèmes rencontrés ont été corrigés dans le code avant la publication effective du 2026-10-04 — ils motivent l'état actuel.
+- [witness.md](witness.md) — à lire quand le témoin doit être recalculé.
+- [CHANGELOG.md](../CHANGELOG.md) — à lire quand l'historique des versions est consulté.
+- [notes/README.md](../notes/README.md) — à lire quand la note publiée est recherchée.
+- [graphe-interactif.md](graphe-interactif.md) — à lire quand le sort des vues HTML est vérifié.
+- [config.md](config.md) — à lire quand un changement de défaut est préparé.
 
-- `release.yml` n'existait que sur `master` (`blob ea84054`) et manquait sur `dev`. Il a été rapatrié sur `dev`, faute de quoi le tag n'aurait construit ni zip ni publication.
-- Le titre et la note produits par le workflow n'étaient pas utilisables : titre automatique (« randputF <version> ») et simple lien « Full Changelog ». Corrigé : `release.yml` lit `notes/v<version>.md`, prend le titre sur sa première ligne et publie la note telle quelle.
-- `master` et `dev` avaient été créées séparément, sans ancêtre commun, et `master` a dû être reconstruit depuis `dev`. `master` a ensuite été promu jusqu'à la v0.0.1 (`4f28fa6`), dont `dev` descend désormais ; les promotions suivantes sont de simples *fast-forward*.
-- Le bump a cassé deux tests qui présentaient `randputF_0.0.0` codé en dur dans une attente (`tests/test_witness.py`, `tests/test_cli_install.py`). Ils lisent désormais `MOD_NAME_VERSIONED`. Le second passait en local en raison d'un artefact résiduel (`output/randputF_0.0.0` d'un run antérieur) — d'où la règle « relancer depuis un arbre propre » au §3.
+## Lectures associées
 
-### Ce que `release.yml` fait, dans l'ordre
-
-Il s'agit du script réel du job, et non d'un résumé — s'en écarter brise la publication :
-
-1. Vérifier la version (`mod/info.json`) et l'existence de `notes/v<version>.md` ; refuser si le tag existe déjà sur l'origin. Échec explicite, sans état partiel.
-2. Installer le paquet avec ses extras de dev (`pip install ".[dev]"`, comme `ci.yml`) — le job lance `pytest` immédiatement après.
-3. `pytest -q` — les tests sont bloquants : une release ne peut sortir sur une suite rouge. Cela garantit qu'un bump de version ne brise rien en silence.
-4. `randputf witness --seed 5` — vérifie que la génération aboutit (sans `--expect` : la CI porte la valeur figée, cf. `docs/witness.md`).
-5. `randputf generate --seed 5 --out /tmp/modrel` puis zip du dossier `/tmp/modrel/mods/randputF_<version>/` uniquement : les HTML vont dans `/tmp/modrel/reports/randputF_<version>/` et ne sont plus mélangés au mod. `seed.graph.html`, `seed.difficulty.html` et `seed.complexity.html` sont exclus du zip (vues de debug régénérables, déjà écartées du témoin) : ~880 Ko de fichiers -> 103 Ko zippés.
-6. Créer le tag explicitement : `git tag "$TAG" "$GITHUB_SHA"` puis `git push origin "$TAG"`. Le tag est ainsi créé après les tests et le build, et pointe exactement sur le commit promu.
-7. Publier : si la release existe déjà (brouillon), `gh release upload --clobber` puis `gh release edit --draft=false` — `gh release edit` ne publie pas de lui-même. Sinon `gh release create` avec le zip en asset.
-
-Le titre et le corps proviennent de `notes/v<version>.md` et ne sont jamais recopiés.
-
-## 5. Suite des releases
-
-Modèle de branches : `dev` porte le travail en cours et la vérité ; `master` porte le dernier état publié. Le passage de l'un à l'autre constitue la release elle-même : pousser `dev` sur `master` déclenche le build et la publication (§3). Conséquence à garder en tête : le tag v0.0.0 reste accessible par son nom mais ne figure pas dans l'ascendance de `master` — le tag demeure la référence pour cette version.
-
-Numérotation : semver. Tout changement visible par l'utilisateur (fichier de config supprimé, valeur par défaut modifiée, migration requise) -> numéro mineur (0.1.0). Correctif de documentation, de test ou de typos -> numéro de patch (0.0.2).
-
-Titre de release : pas de doublon avec le nom du dépôt. Format `<version> — <ce que la release apporte>`, par exemple `0.0.1 — Documentation mise à jour et configuration en deux YAML`. La liste des releases de GitHub affiche ce titre ; y réinsérer « randputF » est inutile.
-
-Format de note « highlights », 3-5 puces par version, le détail technique écarté rejoignant les documentations dédiées :
-- témoin / canonisation binaire -> `docs/witness.md` ;
-- parcours / corrections seed par seed -> `CHANGELOG.md` ;
-- référence de configuration -> `docs/config.md` ;
-- construction du graphe interactif -> `docs/graphe-interactif.md`.
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [modules.md](modules.md) — commandes et outils disponibles.
+- [developpement.md](developpement.md) — préparation de l'environnement.
+- [etat-code.md](etat-code.md) — état courant des composants.

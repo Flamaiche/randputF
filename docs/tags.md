@@ -1,234 +1,143 @@
-# Tags de bâtiment (BuildingDef) et d'item (ItemDef)
+# Tags de bâtiment et d'item
 
-La base normalisée classe chaque entité du dump avec des **tags orthogonaux cumulables** (`is_*`), remplaçant l'ancien `functional_type` exclusif (research/transformer/generator/distribution/extractor/other). Un bâtiment peut porter plusieurs rôles à la fois : `heat-exchanger` est ainsi `is_crafter` + `is_generator`, `character` est `is_crafter` + `is_extractor`. La logique du générateur ne repose QUE sur les tags ; `equivalent_functional_type` (`tool/parsers/vanilla.py`) peut reconstruire l'ancienne classification exclusive pour vérification.
+Retour : [docs/README.md](README.md).
 
-Ce document est la **référence unique** des tags (l'ancienne roadmap `docs/tag_idee.md` a été fusionnée ici et supprimée). Les tags se lisent dans `tool/common/db.py` (déclaration) et se calculent par **capacités intrinsèques** dans `tool/parsers/vanilla.py` (`tag_parse_entity` — aucune liste de noms).
+La base normalisée classe chaque prototype avec des tags cumulables. Un bâtiment peut porter plusieurs rôles à la fois. Le générateur utilise ces tags, complétés par les ensembles figés centralisés dans `tool/common/tagsets.py`.
 
-**Vérification** : `tool/audit/tags.py` (CLI `randputf audit`) contrôle les invariants d'orthogonalité/cohérence sur l'ensemble du dump et la démo ; la consommation DE chaque tag est listée colonne « Consommé par ».
+## Ce que ça change pour l'utilisateur
 
-## 1. Tags de rôle fonctionnel (cumulables)
+- Un bâtiment peut être à la fois atelier et producteur d'énergie.
+- Le classement vient des capacités du dump, complétées par les ensembles figés de `tool/common/tagsets.py`.
+- Les rôles de transport sont choisis par le bâtiment posé par un item.
 
-Tous déterminés **par capacités intrinsèques** dans `tag_parse_entity`.
+## Mots à connaître
 
-| Tag | Signification | Déterminé par | Consommé par |
-|-----|---------------|---------------|--------------|
-| `is_research` | Consomme des science packs → produit de la **recherche** (lab) | `lab_inputs` non vide | `starter_chain`, `map_patches`, `recipes` |
-| `is_crafter` | **Atelier** : sortie item/fluide, transforme des entrées en produit de craft (fours, assembling-machines, usine chimique, le personnage…) | catégories de craft, `rocket_parts_required`, `target_temperature` | `recursive_phase` (catégorie `transformer`), `starter_chain`, `recipes`, `building_fluids` |
-| `is_generator` | Producteur d'**énergie** (électricité OU chaleur : turbine, steam-engine, solar-panel, réacteur, heat-exchanger) | `max_power_output` > 0, `production` > 0, sortie chaleur ; jamais un `accumulator` | `recursive_phase` (catégorie `generator`), `building_fluids` |
-| `is_distribution` | Infrastructure de **distribution** (`supply_area_distance` : pylônes, beacon) | `supply_area_distance` non nul | `recursive_phase`, `electricity` (pylônes via `is_power_pole`) |
-| `is_extractor` | **Extrait** une ressource de l'environnement → item/fluide (minerais, offshore-pump, pumpjack) | `resource_categories`, `pumped_fluid`/`pumped_fluids`, pompage sans entrée | `recipes` (`_is_building_item_recipe`), `starter_chain` (`_extractors_for_resource`), `extractors_for_medium`, `recursive_phase` (catégorie `extractor`), audit |
-| `is_other` | Aucune capacité reconnue (backup, jamais perdu) | = !(tous les rôles ci-dessus) | `summarize_db`, audit (invariant de partition) — non consommé par le générateur |
+- [tag](glossaire.md) — propriété calculée à partir d'une capacité.
+- [prototype](glossaire.md) — définition d'un objet du jeu.
+- [rôle](glossaire.md) — usage d'un bâtiment dans le graphe.
+- [vanilla](glossaire.md) — contenu du jeu de base, sans mod.
 
-`PRODUCING_TAGS = ("is_research", "is_crafter", "is_generator", "is_extractor")` (liste partagée dans `db.py`) regroupe les rôles ayant une production propre. Les « distribution » et « other » ne produisent rien.
+## Fonctionnement
 
-Exemples de comptage sur `data/vanilla_dump.json` (schéma 2) : `is_research` 1, `is_crafter` 13, `is_generator` 6 (5 anciens + heat-exchanger), `is_distribution` 5, `is_extractor` 5 (4 anciens + character), `is_other` 513 (total 541 bâtiments, somme 543 = 541 + 2 double-tags).
+### Rôles fonctionnels
 
-### 1.1. Raffinements de rôle (électricité, extraction, distribution)
+| Tag | Rôle |
+|---|---|
+| `is_research` | consomme des packs de science |
+| `is_crafter` | transforme des entrées en sortie de craft |
+| `is_generator` | produit courant ou chaleur |
+| `is_distribution` | distribue courant ou effets |
+| `is_extractor` | prélève une ressource du monde |
+| `is_other` | aucune capacité reconnue |
 
-| Tag | Signification | Déterminé par | Consommé par |
-|-----|---------------|---------------|--------------|
-| `is_power_pole` | poteau électrique | `type == 'electric-pole'` | `electricity`, `tech_tree` (jalons réseau), `recursive_phase` |
-| `is_beacon` | module de transmission d'effet | `type == 'beacon'` | raffinage **usage en vue** (affine `is_distribution`) |
-| `is_accumulator` | stockeur d'énergie | `type == 'accumulator'` | audit (distingué du producteur) |
-| `is_energy_storage` | stockage d'énergie (pas de production) | `buffer_capacity` ; repli = `is_accumulator` (le dump n'exporte pas `buffer_capacity`) | documenté (alias de l'accumulateur), tests — aucun consommateur générateur |
-| `is_offgrid` | producteur hors réseau (solaire, burner-generator) | `produces_electricity` + énergie non `electric` OU `type == 'solar-panel'` | audit |
-| `consumes_electricity` | consomme du courant | `energy_type == 'electric'` sans production ni stockage | audit, tier tardif du balayage (via `_is_network_dependent_item`) |
-| `is_lake_extractor` / `is_deposit_extractor` / `is_ground_extractor` | extracteur par MEDIUM | `is_extractor` + `medium` (lake/deposit/ground) | `extractors_for_medium`, `starter_chain` |
+`PRODUCING_TAGS` regroupe les quatre premiers rôles. Les rôles distribution et other ne produisent rien. `equivalent_functional_type` reconstruit l'ancienne classification exclusive pour vérification.
 
-## 2. Logistique & transport (raffinement des `is_other`)
+### Raffinements courants
 
-Bâtiments `is_other` raffinés **par type de prototype** (aucune liste de noms).
+| Tag | Signal utilisé |
+|---|---|
+| `is_power_pole` | type poteau électrique |
+| `is_accumulator` | type accumulateur |
+| `is_energy_storage` | `buffer_capacity` positif, avec repli sur l'accumulateur |
+| `is_offgrid` | production sans réseau |
+| `consumes_electricity` | courant consommé sans production ni stockage |
+| `is_lake_extractor` | extracteur de médium lac |
+| `is_deposit_extractor` | extracteur de gisement fluide |
+| `is_ground_extractor` | extracteur de minerai solide |
 
-Les transports du kit de départ sont sélectionnés **par tag** : `starter_chain._ensure_transport_item` résout chaque rôle (belt, splitter, underground, pipe, pipe_to_ground, inserter) vers le tag du bâtiment POSÉ par l'item (`place_result`). Les motifs de noms en dur (`StarterConfig.transport_patterns`) ont été **supprimés**.
+## Logistique & transport (raffinement des `is_other`)
 
-| Tag | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_belt` | `type == 'transport-belt'` | `starter_chain` (rôle `belt`) |
-| `is_splitter` | `type == 'splitter'` | `starter_chain` (rôle `splitter`) |
-| `is_underground_belt` | `type == 'underground-belt'` | `starter_chain` (rôle `underground`) |
-| `is_inserter` | `type == 'inserter'` | `starter_chain` (rôle `inserter`, proba `inserter_chance`) |
-| `is_pipe` | `type == 'pipe'` | `starter_chain` (rôle `pipe`) |
-| `is_pipe_to_ground` | `type == 'pipe-to-ground'` | `starter_chain` (rôle `pipe_to_ground`) |
-| `is_fluid_transport` | `is_pipe` ou `is_pipe_to_ground` | dérivé (via les deux ci-dessus) |
-| `is_chest` | `type == 'container'` | raffinage **usage en vue** (relais, kit, spawn) |
-| `is_logistics_chest` | `type == 'logistic-container'` | raffinage **usage en vue** (balayage, réseau robot) |
-| `is_storage` | `is_chest` ou `is_logistics_chest` | raffinage **usage en vue** |
-| `is_roboport` | `type == 'roboport'` | raffinage **usage en vue** (C3 robot↔roboport) |
-| `is_robot` | robots **logistiques/construction** (le robot de combat est `is_combat_robot`, §7 — jamais confondu) | raffinage **usage en vue** (C3, §12) |
+Les tags de transport viennent du type de prototype. Le kit de départ résout chaque rôle vers le bâtiment posé par l'item correspondant. Les motifs de noms ont été supprimés.
 
-## 3. Train & véhicules (raffinement des `is_other`)
+| Rôle | Tag |
+|---|---|
+| courroie | `is_belt` |
+| répartiteur | `is_splitter` |
+| courroie souterraine | `is_underground_belt` |
+| inserteur | `is_inserter` |
+| tuyau | `is_pipe` |
+| tuyau souterrain | `is_pipe_to_ground` |
+| transport fluide | `is_fluid_transport` |
+| stockage | `is_storage` |
 
-Tags **usage en vue** : le pool d'armement des véhicules (§12.1) reste piloté par config, mais la distinction arme montée / arme de poing vient désormais de `entity.guns` dans le dump (`is_mounted_gun`). La constante de test `ARMED_VEHICLES` subsiste comme assertion nominale.
+## Énergie & chaleur (raffinement d'`is_generator`)
 
-| Tag | Déterminé par |
-|-----|---------------|
-| `is_rail` | `type` ∈ `RAIL_TYPES` (droits/courbes/half-diagonal/legacy/surélevés) |
-| `is_rail_support` | `type == 'rail-support'` |
-| `is_rail_signal` | `type` ∈ {`rail-signal`, `rail-chain-signal`} |
-| `is_train_stop` | `type == 'train-stop'` |
-| `is_locomotive` | `type == 'locomotive'` |
-| `is_wagon` | `type` ∈ {`cargo-wagon`, `fluid-wagon`, `artillery-wagon`} |
-| `is_spider_vehicle` | `type == 'spider-vehicle'` |
-| `is_vehicle` | `is_locomotive` ou `is_wagon` ou `is_spider_vehicle` ou `type == 'car'` |
+La chaleur suit une triade. Une source produit la chaleur. Un transport l'emmène. Un consommateur la transforme.
 
-## 4. Production spécialisée (raffinement d'`is_crafter`)
+### Modèle « chaleur » (producteur / transport / consommateur)
 
-| Tag | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_furnace` | catégorie `smelting` | audit (invariant §4) |
-| `is_assembler` | catégorie `crafting` / `advanced-crafting` / `crafting-with-fluid` | audit (invariant §4) |
-| `is_chemical_plant` | catégorie `chemistry` | audit |
-| `is_refinery` | catégorie `oil-processing` | audit |
-| `is_centrifuge` | catégorie `centrifuging` | audit |
-| `is_rocket_parts_crafter` | catégorie `rocket-building` OU pièces de fusée | audit ; `endgame_phase` cible `db.items['rocket-silo']` (jamais ce tag) |
+| Tag | Rôle |
+|---|---|
+| `is_heat_source` | source de chaleur, réacteur ou producteur burner |
+| `is_heat_transport` | conduite de chaleur |
+| `is_heat_sink` | consommateur de chaleur |
 
-NB : `character` (crafting à la main) est lui aussi `is_assembler` — la catégorie `crafting` le qualifie, conformément au signal.
+La triade est tentée quand un consommateur reçoit sa recette fluide à fluide. Quand elle est posée, la source et le transport sont placés dans des technologies strictement antérieures. Sans consommateur dans le pool, le modèle reste inerte. Une erreur de composition est interceptée sans rejeter la seed.
 
-## 5. Énergie & chaleur (raffinement d'`is_generator`)
+`produces_heat` est réservé à la source. Le réacteur n'est pas un producteur de courant. L'accumulateur n'est pas un producteur, malgré sa puissance de décharge.
 
-boiler ET heat-exchanger partagent le type `'boiler'` dans le dump : on les distingue par l'énergie de la source (`burner` vs `heat`). `is_steam_engine` / `is_steam_turbine` ne sont PAS des tags (distinction PAR PUISSANCE via `produces_electricity`, pas de nom).
+### Écart connu
 
-| Tag | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_boiler` | `type == 'boiler'` + `energy_type == 'burner'` | audit — sous-tend `is_fixed_fluid_crafter` (§8, mêmes capacités) |
-| `is_heat_exchanger` | `type == 'boiler'` + `energy_type == 'heat'` | audit — sous-tend `is_fixed_fluid_crafter` (§8, mêmes capacités) |
-| `is_solar` | `type == 'solar-panel'` | audit, tests |
-| `is_reactor` | `type == 'reactor'` | audit (voir §6 `fuel_residues`) |
-| `is_heat_transport` | `type == 'heat-pipe'` | `recursive_phase` (envoyé par `_ensure_heat_prereq`) |
-| `is_burner_generator` | `type == 'burner-generator'` | raffinage **usage en vue** |
+D'anciens textes indiquaient que `buffer_capacity` n'était pas exporté. Le champ est désormais exporté par `exporter/control.lua`, lu par `tool/parsers/vanilla.py` et conservé sur `BuildingDef`. Reste à faire : retirer l'ancienne formulation de repli des commentaires et des notes historiques.
 
-## 6. Extraction (raffinement d'`is_extractor`)
+## Extraction et fabricateurs à recette fixe
 
-`pumpjack` a `type == 'mining-drill'` dans le dump : détection par `resource_categories ⊇ basic-fluid`. `is_offshore_pump` = médium lac — le `pumped_fluid` n'est plus porté par le dump (0.1.5) : il est résolu côté Python par `inject_pumped_fluids` (fluidbox de sortie des sources pures, sinon chaîne de tuiles, puis `mod-data` pour les lacs multiples ; `docs/vanilladb.md` §6.5).
+`is_pumpjack` vient des catégories de ressources fluides. `is_offshore_pump` vient du médium lac. `pumped_fluid` est résolu côté Python depuis la version 0.1.5 de l'exporteur.
 
-| Tag | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_mining_drill` | `type == 'mining-drill'` (minerai solide via médium ground) | via `is_extractor` + `medium` (`extractors_for_medium`), replay (vérif), audit |
-| `is_pumpjack` | `type == 'mining-drill'` + `resource_categories ⊇ basic-fluid` | via `is_extractor` + `fluid_outputs`/`resource_categories` (`starter_chain._extractors_for_resource`), replay (vérif), audit |
-| `is_offshore_pump` | `is_lake_extractor` (médium lac) | via `pumped_fluid`/`pumped_fluids` (`starter_chain`, lacs) ; `mod/control.lua` (`on_built_entity` offshore-pump, runtime) ; replay (vérif), audit |
-| `is_well_pump` | `type == 'pump'` | raffinage **usage en vue** |
+Les bâtiments à recette cachée reçoivent une transformation randomisée. C'est le cas des chaudières et des échangeurs thermiques. Les résidus de combustible restent déduits du dump.
 
-## 7. Sortie spéciale (orthogonale aux rôles)
+## Tags items
 
-Sorties **non recettables** (jamais des produits de recette de craft) — elles se cumulent entre elles et avec les rôles.
+| Tag | Signal utilisé |
+|---|---|
+| `is_environmental` | ensemble figé des matières récoltées à la main |
+| `is_virtual_item` | type de contrôle sans bâtiment posé |
+| `is_science_pack` | coûts de technologies et entrées de laboratoire |
+| `is_mounted_gun` | arme listée dans `entity.guns` |
+| `is_handheld_gun` | arme non montée |
+| `is_stackable` | taille de pile supérieure à un |
 
-| Tag | Signification | Exemples | Consommé par |
-|-----|---------------|----------|--------------|
-| `produces_electricity` | VRAI producteur de **courant** | steam-engine, turbine, burner-generator, solar-panel | `electricity`, `building_fluids` (`_is_steam_generator`), `recursive_phase` (premier générateur craftable à la main) |
-| `produces_heat` | Producteur de **chaleur** (pas de courant) — restreint à la SOURCE | nuclear-reactor | `electricity` (exclut le réacteur du réseau), `recursive_phase` (`_ensure_heat_prereq`), tests |
+Un item environnemental ou virtuel n'est produit par aucune recette vanilla. Un dump moddé peut exposer d'autres liens ; l'audit les classe alors en information.
 
-Le réacteur est `is_generator` + `produces_heat`, jamais `produces_electricity` : il est écarté de l'électricité PAR CAPACITÉS, sans liste de noms. L'accumulateur affiche une puissance de décharge mais n'est ni `produces_electricity` ni `is_generator`.
+## Ensembles dérivés en dur (résiduels)
 
-### 5bis. Modèle « chaleur » (producteur / transport / consommateur)
+Les listes figées vivent dans `tool/common/tagsets.py`. Elles servent de source unique aux modules qui les importent. Elles restent nécessaires quand le dump n'expose pas encore le signal correspondant.
 
-La chaleur est un milieu transportable à la manière d'un fluide, mais qui ne circule qu'entre les bâtiments capables de l'échanger. Trois tags ORTHOGONAUX par capacités (docs/energie.md §10bis) ; `produces_heat` est restreint à la SOURCE (il corrige l'ancien `has_heat_output` qui taguait aussi la heat-pipe et l'échangeur).
+| Ensemble | Rôle |
+|---|---|
+| `ENVIRONMENTAL_ITEMS` | matières premières environnementales |
+| `NON_STACKABLE_ITEM_TYPES` | repli pour les items non empilables |
+| `VEHICLE_GUNS` | repli pour les armes montées vanilla |
+| `ROCKET_CHAIN` | chaîne de victoire |
+| `VALID_RECIPE_CATEGORIES` | catégories de craft reconnues |
+| `RAIL_TYPES` | types de rails |
+| `VIRTUAL_ITEM_TYPES` | types d'items de contrôle |
+| `FLUID_RECIPE_CATEGORIES` | catégories de recettes fluides |
+| `STARTER_TRANSFORMERS` | transformations du départ |
+| `EXCLUDED_BUILDINGS` | bâtiments écartés |
+| `ENDGAME_EXCLUDED` | bâtiments écartés de la fin de partie |
 
-| Tag | Déterminé par | Exemples (vanilla) | Consommé par |
-|-----|---------------|--------------------|--------------|
-| `is_heat_source` | `type == 'reactor'` **ou** (`has_heat_output` ET `energy_type == 'burner'`) | nuclear-reactor | `recursive_phase._ensure_heat_prereq` |
-| `is_heat_transport` | `type == 'heat-pipe'` | heat-pipe | `recursive_phase._ensure_heat_prereq` |
-| `is_heat_sink` | `energy_type == 'heat'` | heat-exchanger | `recursive_phase._ensure_heat_prereq` |
+`ARMED_VEHICLES` reste une constante de test. Les anciennes listes de poteaux et de motifs de transport ont été supprimées au profit des tags.
 
-La triade est garantie « à la volée » : au premier sink qui reçoit sa recette fluide→fluide, la SOURCE et le TRANSPORT manquants sont débloqués dans des techs **isolées strictement antérieures** (jamais fusionnées avec la tech du consommateur). Aucun sink dans le pool → modèle parfaitement inerte.
+## Garanti / non garanti
 
-## 8. « Recette cachée » et fabricateurs à recette fixe
+| Garanti | Non garanti |
+|---|---|
+| Les tags sont calculés depuis les capacités du dump. | Les mods tiers peuvent exposer des capacités nouvelles. |
+| Les rôles sont cumulables sans ambiguïté. | Les ensembles résiduels restent nécessaires. |
+| L'audit contrôle les invariants de classement. | Un dump moddé peut produire des informations supplémentaires. |
 
-Détection **par capacités** (aucune liste de noms), voir `tool/common/db.py`.
+## Aller plus loin
 
-| Tag / Prédicat | Signification | Réglé par | Consommé par |
-|----------------|---------------|-----------|--------------|
-| `has_hidden_recipe` (champ) | Production codée en dur = une VRAIE recette non accessible avant la transformation du mod | estampillé post-parse dans `load_db_from_dump` (dépend des résidus de combustible) | `recipes` (`_is_atelier`), `recursive_phase` |
-| `has_hidden_recipe(b)` (fonction) | Prédicat : tag producteur (`PRODUCING_TAGS`) + entrée (item/fluide/combustible) + sortie item/fluide/residu + **aucune** catégorie de craft valide | — | calcule le champ |
-| `is_fixed_crafter(b)` | Sous-ensemble `has_hidden_recipe` + `is_crafter` + sortie fluide OU item **ou** `fuel_residues` non vide (combusteur à résidu) : reçoit réellement une recette randomisée ; en vanilla boiler/heat-exchanger (item→item → fluide→fluide item) ET **nuclear-reactor** (item→item via `fuel_residues` = depleted-uranium-fuel-cell) | — | `recursive_phase` (`_make_fixed_recipe_for_crafter` / `_make_fixed_residue_recipe`), `recipes`, `mod/data.lua` (catégorie de craft accordée au bâtiment `crafted_in`) |
-| `is_fixed_fluid_crafter(b)` | `is_fixed_crafter` restreint au « fluide → fluide » (boiler, heat-exchanger) | — | `recursive_phase` (pairing IDEES C7), `building_fluids`, `recipes` |
-| `fuel_residues` (champ) | Sorties item issues de la combustion (`burnt_result` des combustibles du bâtiment) | estampillé post-parse | alimente `has_hidden_recipe` et `fuel_item_flow` |
+- [vanilladb.md](vanilladb.md) — à lire quand l'origine d'un tag est cherchée.
+- [energie.md](energie.md) — à lire quand la triade thermique est étudiée.
+- [model.md](model.md) — à lire quand le vocabulaire du modèle est nécessaire.
+- [DEVIANCES.md](DEVIANCES.md) — à lire quand un écart de classement est observé.
+- [testeur.md](testeur.md) — à lire quand l'audit doit être rejoué.
 
-Les générateurs/extracteurs/lab restants (champ → ressource, combustible → électricité, packs → recherche) ont une sortie non recettable : jamais marqués `has_hidden_recipe`, leur comportement reste figé.
+## Lectures associées
 
-Le cas **réacteur** (item quelconque → depleted-uranium-fuel-cell en résidu) est une recette cachée item→item : `is_fixed_crafter` le route vers SA recette `randputf-nuclear-reactor-depleted-uranium-fuel-cell` (crafted_in = nuclear-reactor). Au chargement, `mod/data.lua` accorde au bâtiment la crafting_category de la recette si elle lui manque (un réacteur vanilla ne craft rien par lui-même) — sans liste de noms, via `crafted_in` + recherche de prototype d'entité.
-
-## 9. Capables brut (`has_*`) — métadonnée informative
-
-Déterminées par `tag_parse_entity`, **non consommées** par le générateur (documentation/requalification) :
-
-| Tag | Signification |
-|-----|---------------|
-| `has_crafting` | Possède au moins une catégorie de craft |
-| `has_mining` | Possède des catégories de ressources minables |
-| `has_pumping` | Pompage (fluide pompé ou vitesse de pompage sans entrée) |
-| `has_fluid_input` | Au moins un fluid box d'entrée |
-| `has_fluid_output` | Au moins un fluid box de sortie |
-| `has_fuel` | Source d'énergie `burner` |
-| `has_target_temperature` | Température cible définie |
-| `has_rocket_parts` | Requiert des pièces de fusée (silo) |
-
-## 10. Combat & défense (§7)
-
-Bâtiments `is_other` (aucune production) raffinés par TYPE de prototype : tourelles (4 familles + union `is_turret`), muraille/porte, mine, robot de combat. **Consommés par** `recursive_phase._is_network_dependent_item` : la tourelle LASER (seul usage à réseau du §7) est différée dans un tier tardif du balayage §9.6 — une balistique bootstrap peut arriver tôt. Les autres tags §7 sont des **raffinages vérifiés** (classification + audit) : la tourelle balistique/flamme/artillerie n'a aucun usage réseau et suit le balayage normal. `is_combat_robot` est strictement disjoint de `is_robot` (logistique).
-
-| Tag | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_turret` | union : `ammo-turret` / `electric-turret` / `fluid-turret` / `artillery-turret` | audit |
-| `is_gun_turret` | `type == 'ammo-turret'` | raffinage, audit |
-| `is_laser_turret` | `type == 'electric-turret'` | tier tardif (différé) |
-| `is_flame_turret` | `type == 'fluid-turret'` | raffinage, audit |
-| `is_artillery` | `type == 'artillery-turret'` | raffinage, audit |
-| `is_defensive_wall` | `type` ∈ {`wall`, `gate`} | raffinage, audit |
-| `is_landmine` | `type == 'land-mine'` | raffinage, audit |
-| `is_combat_robot` | `type == 'combat-robot'` | raffinage, audit (disjoint `is_robot`) |
-
-## 11. Signal-réseau & électronique (§8)
-
-Bâtiments `is_other` dépendant du RÉSEAU (courant + circuits) : combinators, lampe, radar. **Consommés par** `recursive_phase._is_network_dependent_item` via l'union `is_circuit_io` + `is_rgb_lamp` + `is_radar` → tier tardif du balayage, jamais posés avant le réseau. `is_circuit_combinator` et `is_constant_combinator` (membres de l'union, signalés indirectement par elle) sont des raffinages vérifiés. ⚠️ Le dump n'exporte PAS `energy_source` pour constant-combinator / power-switch / display-panel : `consumes_electricity` n'y est pas vérifiable (pour l'instant l'invariant d'audit porte sur le typage seul).
-
-| Tag | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_circuit_combinator` | `type` ∈ {arithmetic, decider, selector-combinator} | raffinage (membre de `is_circuit_io`), audit |
-| `is_constant_combinator` | `type == 'constant-combinator'` | raffinage (membre de `is_circuit_io`), audit |
-| `is_circuit_io` | union combinators + {programmable-speaker, display-panel, power-switch} | tier tardif |
-| `is_rgb_lamp` | `type == 'lamp'` (électrique) | tier tardif |
-| `is_radar` | `type == 'radar'` | tier tardif |
-
-## 12. Tags items (§9)
-
-Tags sur `ItemDef`, décidés par type brut du dump (`item_type`), sous-groupe et ensembles — plus les propriétés dérivées :
-
-| Tag / Prédicat | Déterminé par | Consommé par |
-|-----|---------------|--------------|
-| `is_environmental` | `ENVIRONMENTAL_ITEMS` (source de vérité via `_is_environmental_item`) | poids environnementaux (`recipes._environmental_weight`), anti-cycle, pools, `_excludable_items` (map_patches), tests |
-| `is_virtual_item` | `item_type` ∈ types contrôle ET `place_result` absent (le rail, type `rail-planner` mais posable, n'est PAS virtuel) | exclusion des pools craftables / patchs (`_coverage_items`, map_patches) |
-| `is_module` | `item_type == 'module'` | audit (invariant §9), tests |
-| `is_capsule_throwable` | `item_type == 'capsule'` | audit (invariant §9), tests |
-| `is_ammo` | `item_type == 'ammo'` | `_dispatch_vehicle_ammo` (§12.1), `starter_chain` (kit) |
-| `is_gun` | `item_type == 'gun'` | `map_patches` (exclusion `_excludable_items`), audit — `_dispatch_vehicle_ammo` lit `is_ammo`/`ammo_category`, jamais `is_gun` |
-| `is_armor` | `item_type == 'armor'` | documenté, non consommé (usage en vue) |
-| `is_tool` | `item_type == 'tool'` OU fait-pack de science (`science_pack_names`) | `beltable_items` — l'exclut du transport, des pools et des patchs ; audit ; le raffinage `is_science_pack` garantit quand même une recette aux 7 packs (catégorie de progression « science ») |
-| `is_science_pack` | FAITS : `science_pack_names()` = coûts `unit.ingredients` des techs ∪ `lab_inputs` des labs (le `subgroup` « science-pack » n'est plus consulté — `space-science-pack` n'est dans aucun coût de tech, seulement dans les labs) | `starter_chain`, `map_patches` (exclusion), `recursive_phase`, `easeup_phase`, validator, audit, tests |
-| `is_mounted_gun` | arme listée dans `entity.guns` d'une entité du dump | `vehicle_guns` (dump) ∪ `VEHICLE_GUNS` (repli) |
-| `is_handheld_gun` (propriété) | `is_gun` ET non `is_mounted_gun` | pools d'armes de poing, `starter_chain`, `tech_tree` |
-| `is_stackable` (propriété) | `stack_size > 1` du dump ; sinon déduit du type (`NON_STACKABLE_ITEM_TYPES`) | clamp des produits/ingrédients (§9.6) |
-
-Invariant vérifié par l'audit (`tool/audit/tags.py`) : en vanilla, un item environnemental ou virtuel n'est produit par AUCUNE recette (cycle/erreur Factorio). Un dump moddé (`VanillaDB.is_modded`) peut produire `wood`/`stone` : l'audit les liste en information, sans violation, car le dump expose aussi leur source récoltable (arbres, gisement).
-
-## 13. Helpers / API
-
-- `VanillaDB.buildings_with_tag(tag)` — tous les bâtiments portant un tag donné (un multi-tags apparaît dans chaque catégorie qu'il porte).
-- `VanillaDB.items_for_building_tag(tag)` — les items plaçables dont le bâtiment porte un tag (ex. silo via `is_rocket_parts_crafter`).
-- `VanillaDB.extractors_for_medium(medium)` — les `is_extractor` filtrés par `medium` (« lake », « deposit », « ground », ou tout).
-- `VanillaDB.fuel_item_flow(b)` / `has_fuel_item_flow(b)` / `fuel_residues(b)` — vue normalisée d'une machine à combustible (item → item résidu).
-- `equivalent_functional_type(b)` — reconstruit l'ancien rôle exclusif (research → transformer → generator → distribution → extractor → other) : outil de vérification + décisions d'héritage du dump (medium, directives).
-- `medium` (champ associé aux extracteurs) : `lake` (offshore-pump), `deposit` (`resource_categories` contenant `basic-fluid`, ex. pumpjack), `ground` (minerais), `""` (character).
-- `BuildingDef.directives` — héritages bruts du dump (`fluid_inputs`, `rocket_parts_required`, `lab_inputs`).
-
-## 14. Ensembles dérivés en dur (résiduels)
-
-Depuis le chantier D3, les listes figées sont centralisées dans `tool/common/tagsets.py` (UNE source par ensemble ; les modules consommateurs l'importent — `tool.common.db` re-exporte cinq d'entre eux pour compatibilité). Ce module et cette section font référence : nulle part ailleurs ne doit définir l'un de ces ensembles. Certaines listes restent nécessaires en attendant des tags plus fins / un signal exporté :
-
-- `ENVIRONMENTAL_ITEMS` — items récoltés à la main ; **source de vérité** du tag `is_environmental` (`_is_environmental_item`) et consommée en plus par validator/solver/starters. Le tag est consommé par les générateurs ; la constante reste pour lecture directe.
-- `NON_STACKABLE_ITEM_TYPES` — types d'items non-empilables (fallback quand le dump n'emporte pas `stack_size`) : conservateur, fondé sur des TYPES.
-- `VEHICLE_GUNS` — armes MONTÉES historiques, désormais dérivées de `entity.guns` (`VanillaDB.vehicle_guns`). La constante reste en union comme repli des noms vanilla, utile quand un dump moddé remplace les liens (`is_mounted_gun` exporté depuis 0.1.8).
-- `ROCKET_CHAIN` — chaîne fusée (choix de conception, pas une donnée moteur).
-- `ARMED_VEHICLES` (tests) — constante de TEST nominale (tank/spidertron/artillery-wagon), définie dans `tests/test_pipeline_invariants.py` (pas dans `tagsets.py`) : subsiste comme assertion des véhicules armés.
-- Autres ensembles regroupés (`VALID_RECIPE_CATEGORIES`, `RAIL_TYPES`, `VIRTUAL_ITEM_TYPES`, `FLUID_RECIPE_CATEGORIES`, `STARTER_TRANSFORMERS`, `EXCLUDED_BUILDINGS`, `ENDGAME_EXCLUDED`) — ex-constantes privées migrées sans changement de valeur.
-
-Migrés / supprimés : `POWER_POLES` (→ `is_power_pole`), `TOOL_LIKE_ITEMS` (→ `is_virtual_item`, constante supprimée), `transport_patterns` du kit de départ (→ §2, champ `StarterConfig` supprimé).
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [exporter.md](exporter.md) — faits bruts du dump.
+- [runtime.md](runtime.md) — usage des tags pendant la partie.
+- [etat-code.md](etat-code.md) — composants d'audit.

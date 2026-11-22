@@ -1,4 +1,4 @@
-"""Phase 4 : résolution de l'électricité (§10).
+"""Phase 3 : résolution de l'électricité (§10).
 
 L'électricité n'est pas « randputisée » en tant que ressource ; se randomise
 tout ce qui l'entoure :

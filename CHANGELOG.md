@@ -1,28 +1,61 @@
 # Changelog
 
-Résumé des versions, format « highlights ». Le détail technique et le
+Résumé des versions, format « faits saillants ». Le détail technique et le
 catalogue des corrections seed par seed vivent dans
 [`docs/`](docs/README.md) — notamment [DEVIANCES.md](docs/DEVIANCES.md) (bugs et
 dérives), [solvabilite.md](docs/solvabilite.md) (preuves) et
 [nondeterminism.md](docs/nondeterminism.md).
 
 Format : les faits sont repris des docs, jamais inventés ici. « gaté » est le
-vocabulaire du projet (gating, §16 de `seed.md`), pas une faute.
+vocabulaire du projet (gating, la section [« Seed et configuration »](docs/seed.md#seed-et-configuration-1) de `seed.md`), pas une faute.
 
 ---
 
 ## v0.0.2 (en préparation)
 
-Le pipeline devient entièrement piloté par les faits du dump : la résolution
-du fluide pompé, les packs de science et la chaîne de victoire se déduisent
-des données brutes, plus aucun nom vanilla en dur côté outil.
+Le pipeline devient piloté par les faits du dump : la résolution du fluide
+pompé, les packs de science et la chaîne de victoire se déduisent des données
+brutes. Les ensembles figés résiduels restent documentés dans
+[`docs/tags.md`](docs/tags.md).
 
 Le correctif d'auto-sélection des fours et la difficulté comparée à vanilla
 figurent dans **cette** version : la v0.0.1 publiée ne les contient pas
 (étiquetage erroné corrigé dans les docs — le tag `v0.0.1` et son témoin font
 foi).
 
-### Outils — plus de noms vanilla en dur
+### État courant
+
+- Cible : Factorio 2.1, jeu de base, sans Space Age. Les versions 2.0 restent
+  historiques (`v0.0.0`, `v0.0.1`).
+- Documentation réécrite : 35 pages dans [`docs/`](docs/README.md), dont
+  [`glossaire.md`](docs/glossaire.md), `etat-code.md`,
+  `historique-nondeterminisme.md` et `lacs.md`. L'index est organisé par portes ;
+  chaque page distingue le fonctionnement courant, les garanties et les écarts
+  connus.
+- `randputf generate --no-html` produit le mod et crée le dossier de rapports
+  sans écrire de HTML. Sorties : mod dans `output/mods/randputF_<version>/`,
+  rapports dans `output/reports/randputF_<version>/` (racine réglable par
+  `--out`).
+- `randputf compare` écrit `output/reports/compare/seed.difficulty.<seed>.html`
+  et `randputf dump` écrit `output/reports/vanilla/vanilla.dump.html` (racine
+  réglable par `--out`).
+- Repères confirmés : 861 tests et témoin seed 5
+  `74dcb6f89c28ef1277a0e854d9a21a4a`, recalculé depuis le dépôt et depuis
+  `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release vise un
+  zip `randputF_<version>.zip` sans les trois HTML, avec une source à aligner.
+- Précisions : `--playthrough` ne déclenche pas le rejeu, il affiche seulement
+  la section « partie simulée » du rapport.
+- Textes visibles alignés sans changement de comportement : libellé des puits
+  fluides (`N puits de pétrole`), `randputf-neutre` (« Fluide fantôme »), aide de
+  `randputf audit` (« tags bâtiments et items (invariants C8/§9) »), messages
+  `wreck` (`5t + 2a ≤ 100`, `a ≥ 1 et 6t + 3a < 100`), raison HTML « Version
+  affichée et fournie au titre » et commentaires Lua/exporter.
+- Écarts documentés, non corrigés : source du zip de release, commentaire
+  `buffer_capacity`, sections `pools`/`weights` inertes, exclusions de patches,
+  munitions, pylône et source de courant avant accumulateur. Le détail est dans
+  [`DEVIANCES.md`](docs/DEVIANCES.md).
+
+### Outils — inférence depuis le dump
 
 - `tool/audit/difficulty.py` lit la chaîne de lancement dans `meta.rocket`
   (bâtiments, recette, pièce, quantité, produits) : plus de recette ni de
@@ -41,7 +74,8 @@ foi).
 
 - `randputf test` affiche une barre Python pure, sans dépendance : nom de
   l'étape, barre, pourcentage de l'étape courante, numéro `n/5`, action, temps
-  écoulé et fin estimée. Sur terminal la ligne est rafraîchie sur place ;
+  écoulé et fin estimée. Sur un terminal la ligne est rafraîchie sur place
+ ;
   sinon un changement visible produit une ligne.
 - Le découpage en cinq étapes vient de `tool.tester.STAGES` et
   `STAGE_LABELS` : acquisition du dump, contrôle de l'état, rejeu joueur,
@@ -92,8 +126,9 @@ foi).
   L'ETA par pourcentage reste figée au dernier changement au lieu de grandir
   avec le seul temps écoulé ; les phases sans total connu affichent
   `fin étape —`.
-- `randputf test` accepte `--playthrough` pour activer la simulation détaillée
-  (désactivée par défaut), plus `--no-checks`, `--no-complexity`,
+- `randputf test` accepte `--playthrough` pour afficher la section « partie
+  simulée » du rapport ; le rejeu reste exécuté sans lui. Il accepte aussi
+  `--no-checks`, `--no-complexity`,
   `--no-difficulty`, `--no-cache`, `--no-report-html`, `--no-dump-html`,
   `--no-graph-html` et `--no-html` pour ignorer sélectivement calculs, cache
   et pages HTML. `randputf report` accepte aussi `--playthrough`. Les sections
@@ -159,14 +194,15 @@ foi).
 - `mod/data-updates.lua` publie aussi `randputf-water-tiles`
   (`data_type = "randputf.water_tiles"`) ; `mod/control.lua` lit ce `mod-data`
   en priorité, avec repli statique pour les jeux sans `mod-data`.
-- Le tool consomme ces liaisons au lieu de recréer des listes : packs de science
+- L'outil consomme ces liaisons
+ au lieu de recréer des listes : packs de science
   et leur ordre, chaîne de fusée, armes montées (`entity.guns`), recette/parts
   de lancement. Les champs legacy restent émis pour les dumps anciens.
 - `ITEM_LIKE_TYPES` inclut désormais `blueprint-book` et `spidertron-remote`.
 - Dump clean régénéré : SHA-256
   `3a272ee9440e020ebc36f9a92c222720af1c53c4c6b65ce2b136d7ebee2c84ea`.
-  Témoin seed 5 : `12872b9249f37a5f56c0440b3361a0c6` (vérifié depuis un wheel
-  installé hors checkout). **765 tests** verts.
+  Témoin seed 5 : `74dcb6f89c28ef1277a0e854d9a21a4a` (vérifié depuis un wheel
+  installé hors checkout). **861 tests** verts.
 
 ### Exporter 0.1.7 — `mod-data` pour les lacs
 
@@ -244,7 +280,8 @@ foi).
 
 ### Difficulté comparée à vanilla
 
-- `randputf compare` génère une seed et écrit `seed.difficulty.html` : la
+- `randputf compare` génère une seed et écrit
+  `output/reports/compare/seed.difficulty.<seed>.html` : la
   **courbe de difficulté cumulée** (ressources brutes par tech) de la seed
   superposée à une baseline **vanilla** dérivée du dump. La même sortie est
   écrite pendant `generate` quand le dump porte les technologies. Le calcul
@@ -266,7 +303,8 @@ foi).
 
 - `randputf dump` : page HTML unique sans dépendance — inventaire A→Z,
   tuiles, entités (fluidbox, énergie, règles de placement), items/fluides,
-  recettes, technologies, avec recherche globale. `output/vanilla.dump.html`.
+  recettes, technologies, avec recherche globale.
+  `output/reports/vanilla/vanilla.dump.html`.
 
 ### Documentation
 
@@ -275,7 +313,7 @@ foi).
   `seed.difficulty.html`) et la commande `compare` — la fusion de branches
   avait conservé une version antérieure à la courbe de difficulté interactive
   (infobulle, épinglage, légende, tableaux liés).
-- `docs/modules.md` §9 : inventaire des exporters complété (8 modules —
+- `docs/modules.md` : la section [« `tool/exporters/` »](docs/modules.md#toolexporters) complète l'inventaire des exporters (9 modules —
   `complexity_graph`, `difficulty_graph`, `vanilla_complexity`, `dump_html`,
   `report`, `html_ui` manquaient) ; arbre de `docs/architecture.md` aligné.
 - **Auto-sélection & difficulté** : `docs/invariants.md` (invariant n°8),
@@ -291,16 +329,18 @@ foi).
 ### Déterminisme vérifiable
 
 - **Témoin de reproductibilité** : `randputf witness --seed 5 --expect
-  12872b9249f37a5f56c0440b3361a0c6` (état courant du dépôt, dump 0.1.8 ;
+  74dcb6f89c28ef1277a0e854d9a21a4a` (état courant du dépôt, dump 0.1.8 ;
   vérifié depuis un wheel installé hors checkout, comme le job CI). Il
   **changera** au bump vers 0.0.2 (préfixe racine `randputF_<version>`) et la
   seed 5 est touchée par le correctif d'auto-sélection. Les sorties HTML
-  (`seed.graph.html`, `seed.difficulty.html`) sont **exclues** du témoin, comme
+   (`seed.graph.html`, `seed.difficulty.html`, `seed.complexity.html`) sont
+   **exclues** du témoin, comme
+
   le graphe de production l'était déjà.
 
 ### Garanties mesurées
 
-- **765 tests** verts sur le dump réel 0.1.8 (schéma 2).
+- **861 tests** verts sur le dump réel 0.1.8 (schéma 2).
 - Parité du rapport vanilla inchangée (64 entrées, 10 090 834 crafts,
   13 850 040 s de minage, 3 lancements, offshore-pump en bâtiments).
 
@@ -323,9 +363,9 @@ bougent.
 Vos surcharges se recopient telles quelles dans `user.yaml` (mêmes clés, mêmes
 sections). `settings.yaml` n'est plus lu. La config fusionnée est **validée**
 (type, plage, `min <= max`, contraintes croisées) : une clé inconnue ou une
-valeur impossible est une erreur explicite, jamais un défaut silencieux. Plus
-aucune valeur en dur dans le moteur — prototypes, générateurs, CLI et pipeline
-lisent tout depuis le YAML.
+valeur impossible est une erreur explicite, jamais un défaut silencieux. Les
+réglages du moteur viennent du YAML ; les ensembles figés résiduels restent
+documentés dans [`docs/tags.md`](docs/tags.md).
 
 ### Installation
 
@@ -345,12 +385,13 @@ lisent tout depuis le YAML.
 ### Documentation
 
 - **Parcours joueur** : voie rapide sans Python, tableau des dossiers `mods`,
-  section dépannage / FAQ (mod invisible, warning des fours, seed
+  section dépannage / FAQ (mod invisible, avertissement des fours, seed
   injouable, retrouver sa seed, erreur de config).
 - **Conception** : index `docs/` complété (`modules.md`, `pipeline.md`,
   `runtime.md`, `vanilladb.md`), `docs/config.md`, `docs/witness.md`,
-  `docs/release.md` (procédure de publication). `docs/architecture.md` §18
-  remis à jour contre le code réel.
+  `docs/release.md` (procédure de publication). Dans `docs/architecture.md`, la
+  section [« Structure du projet »](docs/architecture.md#structure-du-projet) a
+  été remise à jour contre le code réel.
 - `README_EN.md` aligné sur le README français.
 
 ### Outillage
@@ -387,7 +428,7 @@ prochaine version.
 
 ## v0.0.0
 
-Première release publique. Randomizer total déterministe pour Factorio 2.0
+Première release publique. Randomiseur total déterministe pour Factorio 2.0
 (base, sans Space Age).
 
 ### Déterminisme vérifiable
@@ -403,7 +444,7 @@ Première release publique. Randomizer total déterministe pour Factorio 2.0
 - **722 tests** verts, rendus indépendants de l'environnement.
 - **Rejoueur « fake player »** : **1501/1501 parties** rejouées victorieuses sur
   le balayage de seeds 0-1500 (rejouer une seed = la simuler comme un joueur la
-  découvre). Invariants de solvabilité §15 garantis pour toute seed acceptée.
+  découvre). Les invariants de solvabilité sont garantis pour toute seed acceptée ; voir la section [« Règles de solvabilité »](docs/solvabilite.md#règles-de-solvabilité).
 - **Déterminisme entre processus** et **indépendant de l'ordre** : une seed
   générée après 1400 autres reste byte-identique à celle d'un processus vierge
   (multi-sous-processus sous `PYTHONHASHSEED` 0/1/2).
@@ -415,7 +456,7 @@ significatifs :
 
 - **Bootstrap sûr (seed 13)** : un cycle où l'électricité exigeait déjà
   l'électricité (turbine → landfill → tuyau → atelier électrique) rendait la seed
-  injouable. Le redesign du bootstrap (graphe initial correct par construction)
+  injouable. La refonte du bootstrap (graphe initial correct par construction)
   résout ce cas ; `bootstrap_guard` n'est plus une passe de production, il
   reste un diagnostic de test.
 - **Fabrication d'atelier avec des ingrédients fluides (seed 426)** : la recette

@@ -1,64 +1,103 @@
 # Modèle randput : terminologie et classification des bâtiments
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 3. Terminologie
+Le modèle randput décrit le graphe généré, pas l'interface du jeu. Il donne un vocabulaire stable aux recettes, aux bâtiments et aux technologies. La classification repose sur des rôles, jamais sur des noms figés.
 
-- **Randput** : contraction de *randomize input/output*. C'est le cœur du mod : chaque slot d'item ou de fluide d'une recette reçoit un élément aléatoire parmi tous ceux disponibles dans le jeu.
-- **Item beltable** : tout objet transportable sur un tapis roulant. Il rejoint le pool des ressources brutes de type item.
-- **Fluide pipable** : tout fluide capable de circuler dans un tuyau. Il rejoint le pool des ressources brutes de type fluide.
-- **Ressource brute (raw)** : ressource extraite directement du milieu (gisement fini au sol ou fluide d'extraction infini ou non). Elle alimente le départ de la production. Règle absolue : **un science pack ne se fabrique jamais directement à partir d'une ressource brute** (§13). Sa recette exige des intermédiaires déjà craftés. Cet invariant est validé à la génération par `raw_resources` (§16).
-- **Ressource non automatisable** : objet récolté uniquement à la main ou par interaction directe (arbres, poissons, ...). Elle est exclue des ressources durables (§9.5), mais peut servir d'ingrédient pour des crafts avancés. Comme toute ressource brute, elle reste bannie des recettes de science packs (§13).
-- **Recette relais** : alternative de craft pour un produit dont la recette principale exige une ressource non automatisable. Elle n'utilise que des ressources durables et se débloque parmi les 3 premières technologies (§9.5).
-- **Ressource durable** : ressource disponible à l'infini durant la partie (gisement, objet fabriqué, fluide produit), contrairement aux ressources non automatisables qui finissent par s'épuiser.
-- **Slot** : point d'entrée ou de sortie d'un bâtiment ou d'une recette. Il possède un type précis : item, fluide, combustible ou énergie.
-- **Milieu** : environnement d'extraction d'une ressource brute. Les trois valeurs exactes du code sont `ground`, `fluid` et `water`. Deux extracteurs opérant dans des milieux différents partagent le même type fonctionnel : une pompe et une pompe offshore sont toutes deux des extracteurs.
-- **Directive** : capacité optionnelle déclarée d'un bâtiment. Elle permet de différencier deux machines de même type (§5).
-- **Pool atteignable** : ensemble des éléments accessibles par le joueur à une étape précise de la génération (ressources placées, bâtiments débloqués, recettes validées).
-- **Déblocage sur le tas** : processus où le randomizer génère à la volée les éléments requis pour valider une recette (méthode d'extraction, craft intermédiaire, combustible, ...).
-- **Graine / seed** : valeur déterministe qui régit tous les tirages du randomizer. Unique et basée par défaut sur le temps système (en millisecondes), elle peut être fixée avec l'option `--seed` (§16).
-- **Gaté / gating** (sans accent circonflexe) : ressource volontairement écartée du pool d'une seed pour retarder son apparition dans la partie. Ce terme technique provient de l'anglais *gating*. Il figure dans `seed.md`, `DEVIANCES.md` et `nondeterminism.md` ; le `CHANGELOG.md` le rappelle comme vocabulaire du projet.
+## Ce que ça change pour le joueur
 
-## 5. Le modèle randput : classification des bâtiments
+- Les bâtiments sont classés par ce qu'ils savent faire.
+- Une même machine peut remplir plusieurs rôles dans le graphe.
+- Les technologies forment une progression unique, du départ à la fusée.
 
-Ce modèle est le pilier du moteur de génération. **Aucun bâtiment n'est lié à ses recettes vanilla.** Chaque entité se définit par :
+## Mots à connaître
 
-1. un **type** fonctionnel ;
-2. des **slots** d'entrée et de sortie typés ;
-3. des **directives** décrivant ses capacités optionnelles.
+- [graphe](glossaire.md) — ensemble des recettes, items et technologies liés entre eux.
+- [atelier](glossaire.md) — bâtiment qui transforme des entrées en sorties.
+- [extracteur](glossaire.md) — bâtiment qui prélève une ressource du monde.
+- [tier](glossaire.md) — rang de progression dans l'arbre technologique.
 
-Cette classification rigoureuse permet au randomizer de créer des combinaisons surprenantes tout en garantissant la cohérence logique du monde.
+## Terminologie
 
-### 5.1 Types fonctionnels
+| Mot | Sens dans randputF |
+|---|---|
+| seed | graine qui fixe tous les tirages |
+| dump | photographie des prototypes du jeu |
+| base normalisée | lecture du dump, enrichie par des tags |
+| pool | ensemble fini de candidats pour un tirage |
+| step | lot logique de recettes et de déblocages |
+| tech | technologie issue d'un step |
+| jalon | garantie qu'une catégorie de contenu est disponible |
+| rejeu | simulation de la progression sans interface Factorio |
 
-| Type | Rôle | Exemples vanilla |
-|---|---|---|
-| `extractor` | Extrait une ressource brute d'un milieu | foreuse, pompe offshore, pompe à pétrole |
-| `transformer` | Convertit des entrées en sorties | fours, machines d'assemblage, usine chimique, raffinerie, chaudière |
-| `research` | Convertit des science packs en technologies | laboratoire |
-| `generator` | Produit de l'énergie | turbine, panneau solaire, réacteur |
-| `distribution` | Distribue l'électricité | poteaux électriques |
-| `other` | Autres comportements | coffres, bras robotisés, tapis roulants |
+La seed ne contient pas toutes les décisions internes. Elle contient les tirages, les pools retenus et les listes ordonnées que le mod doit appliquer. Le détail des sections sérialisées figure dans [seed.md](seed.md).
 
-Notez que le transport, la logistique et la consommation d'énergie ne sont pas des types fonctionnels, mais des tags (§2 : `is_belt`, `is_logistics_chest`, `consumes_electricity`).
+### Ce que le modèle ne dit pas
 
-- **Pas de chaîne de production figée** : une pompe et une pompe offshore appartiennent toutes deux au type `extractor`, mais opèrent dans des milieux différents. Le moteur de génération raisonne par types et par milieux, jamais par objets spécifiques.
-- Une **chaudière** est classée comme `transformer` (au même titre que les fours) : elle consomme des entrées (fluide, combustible) pour générer une sortie (autre fluide).
-- Une **turbine** (type `generator`) requiert un fluide en entrée, déterminé uniquement **lors de sa création** par le randomizer.
-- Un **laboratoire** (type `research`) n'est jamais un `transformer`. Identifié par sa consommation de science packs, il est garanti dès le kit de départ (§8) et n'apparaît jamais dans le pool des ateliers de craft.
+Le modèle ne fixe pas la place exacte des bâtiments dans le monde. Il ne décrit pas les graphismes ni les interfaces utilisateur. Il ne garantit pas qu'une seed soit jouable sans le validateur et le rejeu.
 
-### 5.2 Slots typés
+Le contenu vanilla n'est pas remplacé bout à bout. Il est neutralisé en data-stage, puis les prototypes randputF prennent le relais. La chaîne de fusée reste la seule partie exemptée.
 
-Chaque slot est associé à l'un des types suivants :
+### Modèle et rapport de complexité
 
-- **item** : tout élément transportable sur tapis ;
-- **fluide** : tout élément transportable par tuyau ;
-- **combustible** : item ou fluide possédant une valeur énergétique ;
-- **énergie** : cas particulier (§10).
+La complexité mesure la taille et la profondeur du graphe. Elle compte les recettes, les technologies, les prérequis et les chemins de production. Le rapport HTML lit la même seed que le mod, sans la modifier.
 
-### 5.3 Directives : les possibilités par tier
+Le coût de recherche ne se limite pas au nombre de packs. Il dépend des ressources brutes nécessaires pour obtenir ces packs. La vue de complexité est décrite dans [graphe-interactif.md](graphe-interactif.md).
 
-Les directives décrivent les capacités d'action d'un bâtiment, indépendamment de ses recettes vanilla. Elles introduisent des variations de puissance entre les différents tiers d'un même type. Exemples types :
+## Le modèle randput : classification des bâtiments
 
-- Un **assembleur de tier 1** n'accepte que des slots d'items. Un **assembleur de tier 2** peut recevoir une entrée fluide supplémentaire : une recette avec fluide peut donc lui être assignée si la ressource d'entrée requise est un fluide.
-- Une **foreuse électrique** peut exiger un fluide dès le début de la partie (directive d'entrée auxiliaire). Le moteur garantit l'accessibilité de ce fluide : les tuyaux de transport peuvent être fabriqués **avec ce fluide lui-même** ou via une **autre ressource**, mais **jamais à partir de la ressource extraite par cette foreuse** (règle anti-cycle, §8 et §15).
+La classification vient du dump et des tags calculés par le parseur. Elle remplace les anciens types fonctionnels exclusifs. Les rôles sont cumulables.
+
+### Types fonctionnels
+
+| Rôle | Lecture courte |
+|---|---|
+| recherche | consomme des packs et produit de la recherche |
+| atelier | transforme des ingrédients en produit |
+| générateur | produit courant ou chaleur |
+| distribution | transporte courant ou effets |
+| extracteur | prélève une ressource du monde |
+| autre | aucun rôle reconnu |
+
+Un échangeur thermique est à la fois atelier et générateur. Le personnage est à la fois atelier et extracteur. Ces cumuls sont voulus et vérifiés par l'audit.
+
+### Slots typés
+
+| Slot | Contenu |
+|---|---|
+| entrée item | ingrédient solide |
+| entrée fluide | ingrédient liquide ou gazeux |
+| sortie item | produit solide |
+| sortie fluide | produit liquide ou gazeux |
+| énergie | source de courant ou de chaleur |
+
+Les recettes générées respectent ces slots. Un bâtiment à recette fixe reçoit une transformation unique qui correspond à ses slots. Les résidus de combustion restent des sorties distinctes.
+
+### Directives : les possibilités par tier
+
+Le plan de jalons associe chaque ressource à un rang minimal de disponibilité. Les ressources tardives peuvent être dégradées au rang zéro dans une seconde passe. Cette passe est conditionnelle et ne modifie pas les seeds pour lesquelles aucun jalon n'est actif.
+
+La configuration est copiée avant cette passe. Aucune seed ne peut hériter de l'état d'une seed précédente dans le même processus. Le détail de cette mécanique figure dans [pipeline.md](pipeline.md) et [DEVIANCES.md](DEVIANCES.md).
+
+## Garanti / non garanti
+
+| Garanti | Non garanti |
+|---|---|
+| Le vocabulaire est stable d'une seed à l'autre. | Les rôles d'un mod tiers peuvent échapper au modèle. |
+| Les tags sont dérivés des capacités du dump. | Les ensembles résiduels subsistent en attendant de meilleurs signaux. |
+| Le rapport de complexité lit la seed sans la changer. | La complexité ne prédit pas le temps de jeu réel. |
+
+## Aller plus loin
+
+- [tags.md](tags.md) — à lire quand le détail d'un tag est recherché.
+- [vanilladb.md](vanilladb.md) — à lire quand l'origine d'une capacité est cherchée.
+- [pipeline.md](pipeline.md) — à lire quand les jalons sont appliqués.
+- [solvabilite.md](solvabilite.md) — à lire quand la jouabilité est vérifiée.
+- [graphe-interactif.md](graphe-interactif.md) — à lire quand la complexité est consultée.
+
+## Lectures associées
+
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [glossaire.md](glossaire.md) — définitions courtes.
+- [modules.md](modules.md) — modules qui appliquent le modèle.
+- [runtime.md](runtime.md) — passage du modèle au jeu.

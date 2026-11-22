@@ -22,7 +22,7 @@ _SECTIONS = (
 )
 
 _CLASSIFICATION: dict[tuple[str, str], tuple[str, str]] = {
-    ("meta", "game_version"): (CONSUMED, "Version affichée et furnish au titre."),
+    ("meta", "game_version"): (CONSUMED,         "Version affichée et fournie au titre."),
     ("meta", "game_version_numeric"): (CONSUMED, "Graine de base de la VanillaDB."),
     ("meta", "schema_version"): (CONSUMED, "Version du format contrôlée à l'acquisition."),
     ("meta", "exporter_version"): (CONSUMED, "Version de l'exporteur affichée."),

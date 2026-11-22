@@ -74,7 +74,7 @@ def randomise_patches(
     - ``enabled=False`` → liste identique (shallow copy).
     - ``enabled=True`` → re-tire richness, count, cluster_radius avec le PRNG.
     - L'identité (kind + resource) n'est JAMAIS changée.
-    - Richesse ≥ 1, count ≥ 1, radius ≥ 3 (bornes de sécurité).
+    - Richesse ≥ 1, count ≥ 1 si le count initial est positif, radius ≥ 3.
     """
     if not config.enabled:
         return list(patches)

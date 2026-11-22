@@ -1,72 +1,63 @@
 # Les invariants de solvabilité
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-> **Cas partagé** : ces règles sont invoquées par [recettes.md](recettes.md) (génération),
-> [tech.md](tech.md) (arbre), [starter.md](starter.md) (départ) et
-> [ressources.md](ressources.md) (patches). Elles sont **énoncées ici une seule fois** ;
-> la **vérification** (oracle early, rejoueur) vit dans [solvabilite.md](solvabilite.md).
+Cette page donne la liste courte des propriétés de solvabilité. Le détail des
+contrôles reste dans [solvabilite.md](solvabilite.md). Les faits anciens et les
+corrections demandées sont séparés des garanties actuelles.
+
+## État de la page
+
+- Garantie actuelle : seuls les contrôles de `validate_seed` bloquent une seed.
+- Implémentation actuelle : `validate_pipeline` journalise ses constats sans
+  rejeter la seed.
+- Fait historique : cette page portait autrefois le détail complet des règles.
+- Spécification historique : elle suggère de la fusionner dans
+  `solvabilite.md` ; l'ancre `Règles de solvabilité` reste disponible.
+
+## Ce que ça change pour le joueur
+
+- Le départ reste possible avant le réseau électrique.
+- La voie vers la fusée reste complète pour une seed acceptée.
+- Un avertissement du pipeline n'empêche pas le lancement d'une partie.
+
+## Mots à connaître
+
+- [Invariant](glossaire.md) — propriété attendue à chaque génération.
+- [Validateur](glossaire.md) — contrôle qui vérifie cette propriété.
+- [Bootstrap](glossaire.md) — phase initiale du monde généré.
+- [Rejeu](glossaire.md) — vérification séparée de la progression.
 
 ## Règles de solvabilité
 
-Cinq invariants majeurs, plus trois vérifications complémentaires, tous vérifiés par le
-tool avant validation d'une seed (`pipeline_validator.py`, tests et contraintes câblées) :
+- Anti-cycle : `_check_anti_cycle` refuse les boucles de production.
+- Progressivité : chaque élément attend ses prérequis.
+- Complétude : `_check_completeness` couvre toutes les exigences de victoire.
+- Victoire du pipeline : `_check_victory_requirements` ne vérifie que la
+  présence de `randputf-rocket-silo`.
+- Science packs : `_check_packs_no_raw` interdit les ressources brutes.
+- Tuyaux : `_detect_unreachable_products` produit des avertissements non
+  bloquants.
+- Triade chaleur : tentative déterministe de `_ensure_heat_prereq`, sans
+  garantie absolue.
 
-1. **Anti-cycle** : aucun maillon ne peut dépendre de sa propre production.
+## Garanti / non garanti
 
-   Toute entrée auxiliaire d'un bâtiment provient d'une branche déjà valide ; les tuyaux
-   d'un fluide requis peuvent être faits de ce fluide ou d'une autre ressource, jamais de
-   la ressource qui en a besoin (règle des tuyaux, [starter.md](starter.md#8-la-chaîne-initiale-starter)).
+| Garanti | Non garanti |
+|---|---|
+| Une seed acceptée passe `validate_seed`. | Un avertissement de `validate_pipeline` bloque la seed. |
+| Les cycles de production sont signalés comme bloquants. | La triade chaleur est toujours présente. |
+| Le vocabulaire est décrit dans [nomenclature-rejoueur.md](nomenclature-rejoueur.md). | Le rejeu fait partie de `generate`. |
 
-   La vérification se fait au niveau **item** par point fixe (`_detect_unreachable_products`) :
-   un item est solvable dès que **l'une** de ses recettes l'est. Les recettes relais
-   ([recettes.md](recettes.md#95-relais-des-ressources-non-infinies)) sont des routes alternatives, pas des doubles-arêtes
-   cycliques : un aller-retour `relais-A → bootstrap-B → relais-A` n'est pas une boucle
-   bloquante tant que chaque item de la paire reste solvable par une autre route.
-2. **Progressivité** : chaque nouveau maillon (recette, bâtiment, combustible, ressource)
-   n'est ajouté que si ses prérequis sont satisfaits par le pool atteignable — ou rendus
-   satisfaits immédiatement par déblocage sur le tas ([amorcage.md](amorcage.md#les-règles-damorçage)),
-   lui-même soumis à la règle 1.
-3. **Complétude** : la chaîne générée mène nécessairement à tous les composants requis par
-   le lancement de fusée (les 3 ingrédients de `rocket-part` ET le rocket-silo générés et
-   unlockés, [tech.md](tech.md#14-fin-de-partie)) ; les coûts de recherche en matériaux sont couverts
-   par la progression (chaque pack de coût possède une recette unlockée avant la tech qui
-   le consomme, [tech.md](tech.md#13-larbre-technologique)).
-4. **Unlock unique** : toute recette de la seed est déblocable par **au moins une** tech et
-   **une seule**. Les phases peuvent réclamer plusieurs fois la même `randputf-<item>` :
-   au montage de l'arbre, seule la **première** tech qui la revendique compte — l'invariant
-   est garanti par construction, pas par chance ([tech.md](tech.md#13-larbre-technologique)).
-5. **Packs sans ressource brute** : aucune recette de science pack ne consomme une
-   ressource brute (patch au sol, item environnemental récolté à la main, fluide
-   d'extraction — infinis ou non, [ressources.md](ressources.md#les-ressources-au-sol) et
-   [tech.md](tech.md#13-larbre-technologique)). Vérifié en fin de pipeline sur les recettes de la graine
-   (`_check_packs_no_raw`), en plus de l'exclusion appliquée au tirage par la génération.
-6. **Cohérence tech-recettes** (warning) : chaque recette créée par le pipeline apparaît
-   dans les effects d'exactement UNE tech — pas de recette orpheline (jamais débloquée) et
-   pas de double déblocage. Les orphelins émettent un warning plutôt qu'une erreur
-   (certaines recettes créées « sur le tas » sont disponibles dès le début sans unlock
-   explicite).
-7. **Coûts obtainables** : les matériaux de recherche de chaque tech payante doivent être
-   produibles par le joueur au moment de sa place dans l'arbre. Simulation de la
-   progression : on parcourt les techs dans l'ordre, on ajoute les produits débloqués au
-   pool, et on vérifie que chaque coût est couvert.
-8. **Entrées disjointes par bâtiment auto-sélection** : deux recettes hébergées sur un
-   même bâtiment `auto_select` (fours, `rocket-silo`) doivent avoir des ensembles
-   d'ingrédients **disjoints** — sinon Factorio retient la première venue et laisse la
-   suivante inatteignable (recette morte). Garanti à la création par le re-tirage
-   d'ingrédients (`recipes.py`) et en aval par la passe `usage_pass._correct_auto_select`
-   (déplacement, retrait d'ingrédient ou craft manuel). Détail :
-   [recettes.md](recettes.md#99-auto-sélection--ne-pas-ombrager-une-recette) ; tests
-   `test_auto_select_ingredients_disjoints` et `test_auto_select_repli_four_1slot`.
+## Aller plus loin
 
-Une seed qui viole l'un de ces invariants est rejetée et régénérée par le tool, jamais
-livrée au joueur. La **vérification** de ces invariants (oracle early, diagnostic
-`bootstrap_guard`, rejoueur « fake player ») est décrite dans
-[solvabilite.md](solvabilite.md).
-
----
+- [solvabilite.md](solvabilite.md) — à lire pour les contrôles détaillés.
+- [amorcage.md](amorcage.md) — à lire pour les premières recettes jouables.
+- [chaleur.md](chaleur.md) — à lire pour la tentative thermique.
+- [testeur.md](testeur.md) — à lire pour lancer un contrôle sur une seed.
 
 ## Lectures associées
 
-- **Parent** : [solvabilite.md](solvabilite.md) — vérifications de solvabilité.
-- **Concepts liés** : [recettes.md](recettes.md) — la phase récursive ; [tech.md](tech.md) — arbre technologique et fin de partie ; [starter.md](starter.md) — la phase de démarrage ; [ressources.md](ressources.md) — les ressources au sol.
+- **Parent** : [solvabilite.md](solvabilite.md) — règles et vérification.
+- [docs/README.md](README.md) — index de la documentation.
+- [ressources.md](ressources.md) — ressources au sol.

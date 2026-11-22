@@ -206,7 +206,7 @@ def _usage_floors(
     candidates: set[tuple[str, str]],
 ) -> dict[tuple[str, str], int]:
     """Jalon « sûr » d'une raw gatée : le plus petit échelon science où elle est
-    STRUCTURELLEMENT requise, scanné sur la partie REFAIE (passe B) :
+    STRUCTURELLEMENT requise, scannée sur la partie refaite (passe B) :
 
     - 1er usage INGRÉDIENT d'une recette (jalon historique) ;
     - usage MACHINE (`crafted_in`) d'une recette — une raw peut être un
@@ -331,7 +331,7 @@ def plan_from_seed(seed: dict, cfg: LateRawsConfig) -> LateRawsPlan:
     # bootstrap électricité/lab).
     candidates = [key for key in raws if key not in startup_raw]
 
-    # Jalon « sûr » : plancher = plus petit échelon science où la partie REFAIE
+    # Jalon « sûr » : plancher = plus petit échelon science où la partie refaite
     # (passe B) requiert réellement la raw — ingrédients + machines + coûts et
     # déclencheurs des techs (see _usage_floors). Sans cela, un bâtiment gaté
     # utilisé comme machine par un coût de tech early rend la partie refaite

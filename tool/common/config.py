@@ -546,10 +546,10 @@ def _wreck_constraints(errors: list[str], merged: dict) -> None:
         if not (b >= 1):
             _expect(False, errors, "wreck", "b >= 1 requis")
         if any(c < 0 for c in (c0, c1, c2, c3)):
-            _expect(False, errors, "wreck", "comptes négatifs (6t + 3a < 100 requis)")
+            _expect(False, errors, "wreck", "comptes négatifs (5t + 2a ≤ 100 requis)")
         if not (c0 > c1 > c2 > c3):
             _expect(False, errors, "wreck",
-                    "formule non strictement décroissante (exiger 6t + 3a < 100)")
+                    "formule non strictement décroissante (exiger a ≥ 1 et 6t + 3a < 100)")
 
 
 __all__ = [

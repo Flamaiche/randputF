@@ -1,7 +1,7 @@
 """Export du graphe de production d'une seed.
 
-Une seule sortie accompagne ``seed/seed.json`` lors de l'export ``--out``
-(jamais dans ``mod/`` installé) :
+Une seule sortie accompagne la génération lors de l'export ``--out`` : elle est
+écrite dans ``<root>/reports/<mod>/``, jamais dans ``mod/`` installé :
 
 - ``seed.graph.html`` : **version interactive** autonome — SVG du graphe,
   icônes embarquées en data-URI, zoom/pan à la souris et fiche au

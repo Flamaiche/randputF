@@ -1,36 +1,38 @@
 # Feuille de route : redressement documentaire
 
-> **Document de travail, non revu depuis son écriture.** Ses chemins,
-> ses chiffres et le code qu'il cite peuvent avoir changé depuis. L'état
-> courant est dans [`docs/`](../docs/) et
-> [`CHANGELOG.md`](../CHANGELOG.md).
+> **Plan non livré, non revu depuis son écriture.** Ses chemins, ses chiffres
+> et le code qu'il cite peuvent avoir changé depuis. L'état courant est dans
+> [`docs/README.md`](../docs/README.md), le contrôle par le testeur dans
+> [`docs/testeur.md`](../docs/testeur.md), et l'historique dans
+> [`CHANGELOG.md`](../CHANGELOG.md). `atelier/` contient des plans et des idées
+> non livrés ; `notes/` contient les notes de release publiées.
 
 Plan d'action issu de la revue indépendante du 30 septembre 2026
 (*revue complète de la documentation randputF*). Couvre les 10 actions
-priorisées de la revue, plus les divergences doc/code detectees en
-preparant ce plan.
+priorisées de la revue, plus les divergences doc/code détectées en
+préparant ce plan.
 
-Convention : chaque tache est un lot de commits sur `dev` (jamais de push
-direct ; le push reste une decision du mainteneur). Effort indicatif.
+Convention : chaque tâche est un lot de commits sur `dev` (jamais de push
+direct ; le push reste une décision du mainteneur). Effort indicatif.
 
 Retour : [docs/README.md](../docs/README.md).
 
 ---
 
-## Priorites
+## Priorités
 
-| Lot | Contenu | Effort | Depend de |
+| Lot | Contenu | Effort | Dépend de |
 |---|---|---|---|
 | A | Ligne assistant IA + lien branche `dev` | 5 min | - |
 | B | `CHANGELOG.md` | 30 min | - |
-| C | Passe de relecture (typos + densite) | 1 h | - |
-| D | `docs/config.md` + amenagement du README | 30 min | C |
-| E | `docs/witness.md` + release note restructuree | 1 h | - |
+| C | Passe de relecture (typos + densité) | 1 h | - |
+| D | `docs/config.md` + aménagement du README | 30 min | C |
+| E | `docs/witness.md` + note de release restructurée | 1 h | - |
 | F | Divergences doc/code (bootstrap_guard, release) | 45 min | - |
 | G | Section graphe interactif dans `docs/` | 45 min | - |
 | H | Nettoyage de `developpement.md` (separer chantier/release) | 30 min | - |
 | I | Badge + README EN | 2-3 h | D, E |
-| J | GIF / captures d'ecran | 1 h | - |
+| J | GIF / captures d'écran | 1 h | - |
 
 ---
 
@@ -38,8 +40,8 @@ Retour : [docs/README.md](../docs/README.md).
 
 - [x] **A1 — Mention de l'assistant IA** en fin de README, section discrete
       « Outils », pas en gros titre. Une ligne factuelle : l'assistant a
-      assiste a la relecture et a la redaction ; la conception, les decisions
-      et les corrections ont ete pilotees et validees par le mainteneur.
+      assisté à la relecture et à la rédaction ; la conception, les décisions
+      et les corrections ont été pilotées et validées par le mainteneur.
 - [x] **A2 — Lien vers la branche `dev`** (« l'historique complet de
       developpement vit sur la branche `dev` » ; le `master` est squashé en un
       commit de release), dans la section « Structure du projet » ou en fin de
@@ -47,14 +49,14 @@ Retour : [docs/README.md](../docs/README.md).
 
 ## Lot B : CHANGELOG.md (30 min)
 
-- [x] **B1** Creer `CHANGELOG.md` a la racine, format « highlights »
+- [x] **B1** Créer `CHANGELOG.md` à la racine, format « faits saillants »
       (3-5 puces par version), en tete : `## v0.0.0`.
 - [x] **B2** Alimenter v0.0.0 depuis les sources deja ecrites (pas
       d'invention) :
-      - `docs/DEVIANCES.md` §2 : seed 426 (§2.1 ordre d'usage), 255 (§2.2
-        cycle mutuel U2), 1043 (§2.4 cycle long U1), 1299 (§2.5 jalon
-        ingredient/atelier + §2.6 ordre `unlock-recipe` non deterministe),
-        1757 (§2.7 gating inerte), 1269 (§2.8 dependance a l'ordre des seeds).
+      - `docs/DEVIANCES.md` la section [« Bugs corrigés »](../docs/DEVIANCES.md#bugs-corrigés) : seed 426 (la section [« Fabrication d'atelier avec des ingrédients FLUIDES → ordre d'usage impossible »](../docs/DEVIANCES.md#fabrication-datelier-avec-des-ingrédients-fluides--ordre-dusage-impossible) ordre d'usage), 255 (la section [« Cycle d'hébergement MUTUEL créé par le ré-hébergement U2 »](../docs/DEVIANCES.md#cycle-dhébergement-mutuel-créé-par-le-ré-hébergement-u2)
+        cycle mutuel U2), 1043 (la section [« Cycle d'hébergement LONG refermé par le ré-hébergement U1 »](../docs/DEVIANCES.md#cycle-dhébergement-long-refermé-par-le-ré-hébergement-u1) cycle long U1), 1299 (la section [« Jalon d'une raw gatée au 1er INGRÉDIENT alors qu'elle est requise comme ATELIER »](../docs/DEVIANCES.md#jalon-dune-raw-gatée-au-1er-ingrédient-alors-quelle-est-requise-comme-atelier) jalon
+        ingredient/atelier + la section [« Ordre des effets `unlock-recipe` d'une tech non déterministe (set non trié) »](../docs/DEVIANCES.md#ordre-des-effets-unlock-recipe-dune-tech-non-déterministe-set-non-trié) ordre `unlock-recipe` non déterministe),
+        1757 (la section [« Gating « inerte » (jalons tous ≤ 0) rendant la passe B auto-cassante »](../docs/DEVIANCES.md#gating--inerte--jalons-tous--0-rendant-la-passe-b-auto-cassante) gating inerte), 1269 (la section [« Dépendance à l'ordre des seeds d'un même processus (mutation config) »](../docs/DEVIANCES.md#dépendance-à-lordre-des-seeds-dun-même-processus-mutation-config) dependance a l'ordre des seeds).
       - `docs/solvabilite.md` : bootstrap guard seed 13, rejoueur
         **1501/1501 victoires** (balayage 0-1500).
       - `docs/nondeterminism.md` : multi-sous-processus `PYTHONHASHSEED`.
@@ -66,7 +68,7 @@ Retour : [docs/README.md](../docs/README.md).
 Note : la revue parle d'un « parcours de 15 lignes » ; le CHANGELOG doit
 rester court et factuel. Le detail reste dans `docs/`.
 
-## Lot C : relecture typos et densite (1 h)
+## Lot C : relecture typos et densité (1 h)
 
 Passe sur `README.md` + les 16 fichiers de `docs/`. Corrections confirmees
 lors de la preparation de ce plan :
@@ -76,10 +78,10 @@ lors de la preparation de ce plan :
 - [x] **C2 — `docs/solvabilite.md` « ils ne disent rien d'un playlist reel »**
       → « ils ne disent rien d'un parcours reel » (le mot est *playthrough*,
       pas *playlist*).
-- [x] **C3 — `docs/tech.md` « la quantite n'est jamais demandee »** →
-      « demandee » (accords).
+- [x] **C3 — `docs/tech.md` « la quantité n'est jamais demandée »** →
+      « demandée » (accords).
 - [x] **C4 — NE PAS corriger « gaté »** (14 occurrences : `docs/seed.md`,
-      `docs/DEVIANCES.md`, `docs/plan-extracteurs-dispatche.md`,
+      `docs/DEVIANCES.md`, `atelier/plan-extracteurs-dispatche.md`,
       `docs/nondeterminism.md`, `docs/developpement.md`). C'est du jargon du
       projet dérivé de *gating* (`late_raws.gated`, section `late_raws`), pas
       la faute « gatée » signalée par la revue. Corriger cassera le
@@ -90,25 +92,25 @@ lors de la preparation de ce plan :
 - [x] **C6** Balayage des restes (« CALSE », « playlist », doubles espaces,
       accords) sur les autres fichiers, sans toucher au jargon.
 - [x] **C7 — Densite** : `docs/solvabilite.md`, `docs/starter.md`,
-      `docs/recettes.md` ont des paragraphes de 15 lignes imbriquees.
-      Decouper en sous-sections, avec un exemple court en tete de section
-      avant le detail. Les docs de reference (`tags.md`,
-      `nondeterminism.md`) sont laissees telles quelles.
+      `docs/recettes.md` ont des paragraphes de 15 lignes imbriquées.
+      Découper en sous-sections sans ajouter d'exemple. Les docs de référence
+      (`tags.md`,
+      `nondeterminism.md`) sont laissées telles quelles.
 
 ## Lot D : sortir la table de config du README (30 min)
 
-- [x] **D1** Creer `docs/config.md` : reference complete des sections de
+- [x] **D1** Créer `docs/config.md` : reference complete des sections de
       `config/defaults.yaml` (les 17 sections) + regles de surcharge de
       `config/user.yaml` + schema de validation (type, plage, `min <= max`,
-      contraintes croisees) + exemple de surcharge minimal.
+      contraintes croisées) + exemple de surcharge minimal.
 - [x] **D2** Dans le README : ne garder que le resume (les 4 sections
       principales : `factorio_version`, `paths`, `map`, `starter`) + un lien
       vers `docs/config.md`. Le README passe de ~19 lignes de table a ~6.
 - [x] **D3** Ajouter `docs/config.md` a l'index de `docs/README.md`.
 
-## Lot E : temoin de reproductibilite et release note (1 h)
+## Lot E : témoin de reproductibilite et release note (1 h)
 
-- [x] **E1** Creer `docs/witness.md` : ce qu'est le temoin, la commande
+- [x] **E1** Créer `docs/witness.md` : ce qu'est le témoin, la commande
       (`randputf witness --seed 5 --expect <md5 du tag courant>` ; la valeur
       d'origine etait `f41e065e606ce24c8855d458c661988f` en v0.0.0),
       et le detail de canonisation qui est aujourd'hui noye dans la release
@@ -118,12 +120,12 @@ lors de la preparation de ce plan :
       si toujours presente).
 - [x] **E2** Reecrire la release note v0.0.0 selon la structure proposee par
       la revue :
-      1. titre « v0.0.0 — Randomizer total deterministe pour Factorio 2.0 »
+      1. titre « v0.0.0 — Randomiseur total déterministe pour Factorio 2.0 »
          (le « randputF v0.0.0 » fait doublon avec le nom du repo) ;
       2. ~10 lignes : ce que c'est, ce que ca garantit ;
       3. « Determinisme verifiable » : commande witness + hash (**a garder,
          c'est la partie la plus forte**) ;
-      4. « Garanties mesurees » : 1501/1501, invariants §15 ;
+      4. « Garanties mesurees » : 1501/1501, invariants la section [« Règles de solvabilité »](../docs/solvabilite.md#règles-de-solvabilité) ;
       5. installation ;
       6. lien vers `docs/witness.md` pour le detail.
 - [x] **E3** Ajouter ~15 lignes sur le **chemin parcouru** dans la release note
@@ -135,9 +137,9 @@ lors de la preparation de ce plan :
       c'est une action du mainteneur, pas un fichier du depot. Ne pas publier
       automatiquement.
 
-## Lot F : divergences doc/code detectees (45 min)
+## Lot F : divergences doc/code détectées (45 min)
 
-Constate en preparant ce plan (preexistant a la migration config, present
+Constate en préparant ce plan (préexistant à la migration config, présent
 aussi sur `master` `a1719b9e17659d141c95d617508c5a7a11a331fb`).
 
 - [x] **F1 — `bootstrap_guard` n'est plus execute par le pipeline.**
@@ -175,7 +177,7 @@ un choix a remettre en cause, pas une erreur de la revue.
 - [x] **G1** Ecrire `docs/graphe-interactif.md` : pipeline d'export
       (`tool/exporters/seed_graph.py`), graphe produit→ingredient→produit,
       encodage base64 des icones, choix d'auto-suffisance du HTML, navigation
-      et sous-graphes, determinisme de la sortie.
+      et sous-graphes, déterminisme de la sortie.
 - [x] **G2**.decider si `docs/architecture.md` est remplace par un
       renvoi vers ce document.
 - [x] **G3** Indexer le document dans `docs/README.md`.
@@ -195,10 +197,10 @@ un choix a remettre en cause, pas une erreur de la revue.
 - [x] **I1 — README EN** (ou badge « Documentation : FR | EN a venir » en attendant).
       Le public Factorio est massivement anglophone. C'est le verrou a lever
       pour une visibilite au-dela du cercle proche.
-- [x] **I2** Badge licence en tete de README (MIT, deja en section Licence
-      ligne 241).
+- [x] **I2** Badge licence en tête de README (MIT) et ligne discrète en pied
+      de README avec lien vers `LICENSE`.
 - [ ] **I3** Le titre du repo (`randputF`) et la description GitHub meritent
-      d'aligner le nom de produit sur « randomizer total deterministe ».
+      d'aligner le nom de produit sur « randomiseur total déterministe ».
 
 ## Lot J : supports visuels (1 h)
 
@@ -213,10 +215,11 @@ un choix a remettre en cause, pas une erreur de la revue.
 ## Lot K : wiki (optionnel, non prioritaire)
 
 - [ ] **K1** La revue conclut qu'un wiki serait un **downgrade** (doc non
-      versionnee, pas de review, pas d'offline, liens profonds fragiles). La
-      feuille de route **ne prevoit pas** de wiki. Si un jour il en faut un :
-      uniquement un guide joueur illustre (screenshots, exemples de seeds),
-      le contenu visuel leger que personne n'aurait besoin de versionner.
+      versionné, sans relecture ni mode hors ligne, liens profonds fragiles).
+      La feuille de route **ne prévoit pas** de wiki. Si un jour il en faut un :
+      uniquement un guide joueur illustré (captures d'écran, exemples de
+      graines), le contenu visuel léger que personne n'aurait besoin de
+      versionner.
 
 ---
 
@@ -234,18 +237,20 @@ un choix a remettre en cause, pas une erreur de la revue.
 9. **I** (README EN, gros volume mais mecanique)
 10. **J** (visuels, depend d'une seed de showcase stable)
 
-## Regles
+## Règles
 
-- Aucun push sans decision explicite du mainteneur.
+- Aucun push sans décision explicite du mainteneur.
 - Chaque lot = un ou plusieurs commits `0.0.0 : ...` sur `dev`.
-- Un doc modifie qui decrit un comportement du code doit cite `file.py:ligne`.
+- Les documents pour le joueur n'utilisent pas de référence `fichier:ligne`.
 - Le jargon du projet (« gaté », « randput », « watershed », « bootstrap »)
-  n'est pas une typo (cf. C4).
-- Le determinisme est intouchable : le **contenu** du mod pour une seed donnée
-  ne doit pas changer. Le temoin seed 5 vaut
-  `c9566134864507d900f65806ade277d9` (verifie par `.github/workflows/ci.yml`),
-  mais sa **valeur** est legitime amenee a bouger : elle change a chaque bump de
-  version, puisque la racine du zip de reference est `randputF_<version>` et
-  fait partie des entrees hachees (cf. `docs/witness.md`). Ce qui ne doit
-  jamais bouger, c'est le contenu du mod. Aucun lot de ce plan ne doit le
-  modifier (lots A-J : documentation seule).
+  n'est pas une faute de frappe (cf. C4).
+- Le déterminisme est intouchable : le **contenu** du mod pour une graine donnée
+  ne doit pas changer. Le témoin de la v0.0.1 valait
+  `c9566134864507d900f65806ade277d9` ; le témoin courant est
+  `74dcb6f89c28ef1277a0e854d9a21a4a`. La **valeur** est légitimement amenée à
+  bouger : elle change à chaque passage à une nouvelle version, puisque la
+  racine canonique
+  `randputF_<version>` fait partie des entrées hachées (cf.
+  [`docs/witness.md`](../docs/witness.md)). Ce qui ne doit jamais bouger, c'est
+  le contenu du mod. Aucun lot de ce plan ne doit le modifier (lots A-J :
+  documentation seule).

@@ -9,7 +9,7 @@ capables de l'échanger :
 
 Un consommateur ne fonctionne QUE raccordé à une source via des conduites
 (energy_source 'heat' vanilla). Un consommateur ne doit jamais être débloqué
-avant sa source + transport (mirroir « extracteur avant besoin » du starter §7).
+avant sa source + transport (miroir « extracteur avant besoin » du starter §7).
 La garantie est posée à la volée par ``recursive_phase._ensure_heat_prereq`` :
 au premier instant où un sink reçoit sa recette fluide→fluide, des steps
 injectés AVANT la tech du consommateur débloquent la SOURCE et le TRANSPORT.

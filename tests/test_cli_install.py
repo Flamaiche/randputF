@@ -51,7 +51,7 @@ def test_install_factorio_mods_vide_retombe_sur_output(empty_user_config):
     assert out.returncode == 0, out.stderr
 
     assert "mod assemblé dans" in out.stdout
-    assert "Aucun dossier mods configure" in out.stdout
+    assert "Aucun dossier mods configuré" in out.stdout
 
     # Le bug déposait le mod à la racine : ces deux artefacts ne doivent JAMAIS
     # exister ici (le fallback va dans output/).

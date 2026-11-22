@@ -54,7 +54,7 @@ def _step_unlocks_handheld_gun(step: dict, db: VanillaDB) -> bool:
     """Un step débloque une arme de poing ?
 
     Deux steps d'armes ne doivent jamais être fusionnés dans la même tech :
-    chaque arme arrive avec SA munition unique (§11), jamais avec toute celle
+    chaque arme arrive avec sa munition unique (§11), jamais avec toute celle
     du lot (bug « arme + toutes les munitions dans la même tech »)."""
     for recipe in step.get("unlocks_recipes", []):
         name = recipe[len("randputf-"):] if recipe.startswith("randputf-") else recipe

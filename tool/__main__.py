@@ -1,10 +1,5 @@
-"""Point d'entrée CLI de randputF (``python -m tool``).
-
-Expose les commandes ``parse``, ``audit``, ``difficulty``, ``compare``,
-``report``, ``test``, ``dump``, ``generate`` et ``witness``. Chaque commande valide ses arguments via
-``argparse`` puis délègue à ``tool.service`` (chargement de la base, config,
-génération, assemblage) ; ce module ne fait que traduire les exceptions du
-service en codes de sortie et formater la sortie console.
+"""Point d'entrée CLI : parse les arguments et orchestre les neuf commandes via
+service et exporters ; les erreurs attendues deviennent des codes de sortie.
 """
 
 import argparse
@@ -107,7 +102,7 @@ def _canonical_name(label: str) -> str:
 
 
 def _source_label(dump_path: str, dump: dict) -> str:
-    """Retourne le nom canonique du dossier de rapports et des trois HTML."""
+    """Retourne le préfixe canonique de la source pour les HTML (et le dossier sans --mod-dir)."""
     meta = (dump.get("meta") or {})
     label = meta.get("mod_label") or meta.get("dump_label")
     if isinstance(label, str) and label:
@@ -138,13 +133,17 @@ def _report_retry(attempt: int, seed_value: int, issues: list[str]) -> None:
     `attempt` est le numéro de tentative, `seed_value` la graine essayée et `issues` les problèmes du validateur. Écrit une ligne `[RETRY …]` sur stdout et retourne `None`.
     """
     first = issues[0] if issues else "raison inconnue"
-    print(f"[RETRY {attempt}] seed {seed_value} non jouable ({first}), derive...")
+    print(f"[RETRY {attempt}] seed {seed_value} non jouable ({first}), dérive...")
 
 
 def cmd_generate(args: argparse.Namespace) -> None:
-    """Génère une seed, l'assemble dans `out/mods/` et écrit ses HTML dans `out/reports/`.
+    """Génère une seed, assemble le mod dans `<root>/mods/<mod>/` et, sauf
+    `--no-html`, écrit les rapports dans `<root>/reports/<mod>/` (`<root>` =
+    `--out` ou `output/`).
 
-    `args` porte les options CLI (`demo`, `dump`, `seed`, `out`, `install`). Le mod reste toujours séparé des rapports ; `--install` copie seulement le mod dans Factorio. Retourne `None` et termine avec le code 2 après 10 échecs.
+    `args` porte `demo`, `dump`, `seed`, `out`, `install` et `no_html`. `--install`
+    copie le mod dans Factorio et l'active dans `mod-list.json`, sans toucher aux
+    rapports. Retourne `None` et termine avec le code 2 après 10 échecs.
     """
     db = _load_db(args.demo, Path(args.dump))
     cfg = _load_config()
@@ -169,23 +168,26 @@ def cmd_generate(args: argparse.Namespace) -> None:
     report_dir.mkdir(parents=True, exist_ok=True)
     print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
 
-    html_path = report_dir / "seed.graph.html"
-    write_seed_graph_html(seed, html_path)
-    if html_path.exists():
-        print(f"Graphe interactif (cliquable) exporté dans {html_path}")
+    if args.no_html:
+        print("Rapports HTML ignorés (--no-html).")
     else:
-        print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
-    cx_path = report_dir / "seed.complexity.html"
-    write_complexity_html(seed, cx_path, db)
-    print(f"Rapport de complexité exporté dans {cx_path}")
+        html_path = report_dir / "seed.graph.html"
+        write_seed_graph_html(seed, html_path)
+        if html_path.exists():
+            print(f"Graphe interactif (cliquable) exporté dans {html_path}")
+        else:
+            print("Graphe interactif ignoré : Graphviz (dot) n'est pas installé.")
+        cx_path = report_dir / "seed.complexity.html"
+        write_complexity_html(seed, cx_path, db)
+        print(f"Rapport de complexité exporté dans {cx_path}")
 
-    vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
-    if vanilla_seed is not None:
-        diff_path = report_dir / "seed.difficulty.html"
-        write_difficulty_graph_html(seed, vanilla_seed, diff_path)
-        print(f"Comparaison de difficulté vanilla vs mod exportée dans {diff_path}")
-    else:
-        print("Comparaison vanilla ignorée : dump sans technologies (relancer l'exporter).")
+        vanilla_seed = None if args.demo else _vanilla_seed_from_path(args.dump)
+        if vanilla_seed is not None:
+            diff_path = report_dir / "seed.difficulty.html"
+            write_difficulty_graph_html(seed, vanilla_seed, diff_path)
+            print(f"Comparaison de difficulté vanilla vs mod exportée dans {diff_path}")
+        else:
+            print("Comparaison vanilla ignorée : dump sans technologies (relancer l'exporter).")
 
     if args.install:
         paths = cfg.get("paths", {})
@@ -195,7 +197,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
             _install_mod(seed, mods_dir)
             print(f"Mod installé dans {mods_dir}/")
         elif not raw_path:
-            print("Aucun dossier mods configure (paths.factorio_mods vide dans config/user.yaml).")
+            print("Aucun dossier mods configuré (paths.factorio_mods vide dans config/user.yaml).")
         else:
             print(f"Dossier Factorio mods introuvable ({raw_path})")
 
@@ -203,7 +205,8 @@ def cmd_generate(args: argparse.Namespace) -> None:
 def cmd_compare(args: argparse.Namespace) -> None:
     """Génère une seed et écrit la comparaison de difficulté avec le vanilla.
 
-    `args` fournit `demo`, `dump`, `seed` et `out`. La baseline vanilla est dérivée du dump ; le HTML comparatif est écrit dans `out/reports/compare/`. Retourne `None`.
+    `args` fournit `dump`, `seed` et `out` (`demo` est refusé) ; le HTML comparatif
+    va dans `<out>/reports/compare/` (défaut `output/`). Retourne `None`.
     """
     if args.demo:
         sys.exit("La comparaison nécessite le dump vanilla (pas --demo).")
@@ -345,13 +348,14 @@ def cmd_report(args: argparse.Namespace) -> None:
 
 
 def cmd_test(args: argparse.Namespace) -> None:
-    """Teste un dump fixe ou un mod existant et écrit trois pages HTML.
+    """Teste un dump ou un mod existant et écrit les vues HTML non désactivées.
 
     `args` porte `dump`, `mod_dir`, `out`, `--playthrough` et les options
     `--no-...`. Sans `mod_dir`, l'état testé vient directement du dump. Avec
     `mod_dir`, l'état déjà assemblé du mod est lu depuis `seed/seed.json`. Les
-    trois HTML vont dans `out/reports/<source>/` (défaut `output/reports/`).
-    Aucune graine n'est tirée et aucun mod n'est généré.
+    vues vont dans `<root>/reports/<source ou nom du mod>/` (défaut
+    `output/reports/`). Le graphe dépend de Graphviz. Aucune graine n'est tirée
+    et aucun mod n'est généré.
     """
     skip = {"playthrough"}
     flags = (
@@ -508,9 +512,11 @@ def cmd_difficulty(args: argparse.Namespace) -> None:
 
 
 def cmd_witness(args: argparse.Namespace) -> None:
-    """Assemble le mod d'une seed et vérifie son témoin canonique.
+    """Assemble le mod d'une seed et calcule son md5 canonique ; avec `--expect`,
+    vérifie la concordance (sortie 1 si divergence).
 
-    `args` porte `seed` (défaut 5) et `expect`. Imprime le md5 canonique ; si `expect` est fourni et diffère, termine avec le code 1. Retourne `None`.
+    `args` porte `demo`, `dump`, `seed` (défaut 5), `out` et `expect`. Retourne
+    `None`.
     """
     db = _load_db(args.demo, Path(args.dump))
     db.seed_value = args.seed
@@ -531,34 +537,36 @@ def cmd_witness(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     """Point d'entrée de la CLI `randputf`.
 
-    `argv` est la liste d'arguments (ou `None` pour `sys.argv`). Parse la sous-commande, l'exécute et retourne `None` ; les erreurs sont converties en codes de sortie par les commandes.
+    `argv` est la liste d'arguments (ou `None` pour `sys.argv`). Parse la
+    sous-commande, l'exécute et retourne `None` ; les erreurs attendues deviennent
+    des codes de sortie.
     """
     parser = argparse.ArgumentParser(prog="randputf", description="Generateur de seeds randputF")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_parse = sub.add_parser("parse", help="Charge et resume la base vanilla")
-    p_parse.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_parse.add_argument("--demo", action="store_true", help="Utilise une base synthétique")
     p_parse.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_parse.set_defaults(func=cmd_parse)
 
-    p_audit = sub.add_parser("audit", help="Audite les tags de bâtiments (invariants C8)")
-    p_audit.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_audit = sub.add_parser("audit", help="Audite les tags bâtiments et items (invariants C8/§9)")
+    p_audit.add_argument("--demo", action="store_true", help="Utilise une base synthétique")
     p_audit.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_audit.set_defaults(func=cmd_audit)
 
     p_diff = sub.add_parser("difficulty", help="Ardoise de la seed : ressources brutes pour finir une run")
-    p_diff.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_diff.add_argument("--demo", action="store_true", help="Utilise une base synthétique")
     p_diff.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_diff.add_argument("--seed", type=int, default=None,
-                        help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
+                        help="Seed à imposer (défaut : tirée du temps courant en millisecondes)")
     p_diff.set_defaults(func=cmd_difficulty)
 
-    p_cmp = sub.add_parser("compare", help="Compare la difficulte d'une seed a la baseline vanilla (HTML)")
-    p_cmp.add_argument("--demo", action="store_true", help="Utilise une base synthetique (incompatible)")
+    p_cmp = sub.add_parser("compare", help="Compare la difficulté d'une seed à la baseline vanilla (HTML)")
+    p_cmp.add_argument("--demo", action="store_true", help="Utilise une base synthétique (incompatible)")
     p_cmp.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_cmp.add_argument("--seed", type=int, default=None,
-                       help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
-    p_cmp.add_argument("--out", default=None, help="Racine de sortie : HTML dans <out>/reports/compare/ (defaut: output/)")
+                       help="Seed à imposer (défaut : tirée du temps courant en millisecondes)")
+    p_cmp.add_argument("--out", default=None, help="Racine de sortie : HTML dans <out>/reports/compare/ (défaut : output/)")
     p_cmp.set_defaults(func=cmd_compare)
 
     p_report = sub.add_parser(
@@ -567,29 +575,29 @@ def main(argv: list[str] | None = None) -> None:
     p_report.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_report.add_argument(
         "--out", default=None,
-        help="Chemin du HTML (defaut: output/reports/vanilla/vanilla.report.html)",
+        help="Chemin du HTML (défaut : output/reports/vanilla/vanilla.report.html)",
     )
     p_report.add_argument(
         "--playthrough", action="store_true",
-        help="Activer la simulation complete (desactivee par defaut)",
+        help="Activer la simulation complète (désactivée par défaut)",
     )
     p_report.add_argument(
         "--no-cache", action="store_true",
-        help="Ignorer la simulation persistee dans le dump",
+        help="Ignorer la simulation persistée dans le dump",
     )
     p_report.set_defaults(func=cmd_report)
 
     p_test = sub.add_parser(
-        "test", help="Teste un dump ou un mod existant et ecrit trois HTML"
+        "test", help="Teste un dump ou un mod existant et écrit les vues HTML actives"
     )
     p_test.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_test.add_argument(
         "--mod-dir", default=None,
-        help="Mod deja assemble : utilise son seed/seed.json sans rien generer",
+        help="Mod déjà assemblé : utilise son seed/seed.json sans rien générer",
     )
     p_test.add_argument(
         "--out", default=None,
-        help="Racine des rapports HTML (defaut: output/reports/)",
+        help="Racine des rapports HTML (défaut : output/reports/)",
     )
     p_test.add_argument(
         "--no-checks", action="store_true",
@@ -597,23 +605,23 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_test.add_argument(
         "--no-complexity", action="store_true",
-        help="Ignorer le calcul de complexite dans le rapport",
+        help="Ignorer le calcul de complexité dans le rapport",
     )
     p_test.add_argument(
         "--no-difficulty", action="store_true",
-        help="Ignorer le calcul de difficulte",
+        help="Ignorer le calcul de difficulté",
     )
     p_test.add_argument(
         "--playthrough", action="store_true",
-        help="Activer la simulation complete (desactivee par defaut)",
+        help="Activer la simulation complète (désactivée par défaut)",
     )
     p_test.add_argument(
         "--no-playthrough", action="store_true",
-        help="Forcer l'absence de partie simulee (comportement par defaut)",
+        help="Ignorer la partie simulée (défaut ; --playthrough prévaut si fourni)",
     )
     p_test.add_argument(
         "--no-cache", action="store_true",
-        help="Ignorer la simulation persistee dans le dump",
+        help="Ignorer la simulation persistée dans le dump",
     )
     p_test.add_argument(
         "--no-report-html", action="store_true",
@@ -629,7 +637,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_test.add_argument(
         "--no-html", action="store_true",
-        help="Ne pas ecrire les trois HTML",
+        help="Ne pas écrire les rapports HTML (graphe, complexité, difficulté si disponible)",
     )
     p_test.set_defaults(func=cmd_test)
 
@@ -639,24 +647,25 @@ def main(argv: list[str] | None = None) -> None:
     p_dump.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_dump.add_argument(
         "--out", default=None,
-        help="Chemin du HTML (defaut: output/reports/vanilla/vanilla.dump.html)",
+        help="Chemin du HTML (défaut : output/reports/vanilla/vanilla.dump.html)",
     )
     p_dump.set_defaults(func=cmd_dump)
 
-    p_gen = sub.add_parser("generate", help="Genere, valide puis exporte une seed dans le mod")
-    p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_gen = sub.add_parser("generate", help="Génère, valide puis exporte une seed dans le mod")
+    p_gen.add_argument("--demo", action="store_true", help="Utilise une base synthétique")
     p_gen.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
-    p_gen.add_argument("--out", default=None, help="Racine : mod dans <out>/mods/, HTML dans <out>/reports/ (defaut: output/)")
-    p_gen.add_argument("--seed", type=int, default=None, help="Seed a imposer (defaut: tiree du temps courant en millisecondes)")
-    p_gen.add_argument("--install", action="store_true", help="Installe le mod directement dans Factorio")
+    p_gen.add_argument("--out", default=None, help="Racine : mod dans <out>/mods/<mod>/, HTML dans <out>/reports/<mod>/ (défaut : output/)")
+    p_gen.add_argument("--seed", type=int, default=None, help="Seed à imposer (défaut : tirée du temps courant en millisecondes)")
+    p_gen.add_argument("--install", action="store_true", help="Tente d'installer le mod dans Factorio (paths.factorio_mods)")
+    p_gen.add_argument("--no-html", action="store_true", help="Ne pas écrire les rapports HTML (graphe, complexité, difficulté si disponible)")
     p_gen.set_defaults(func=cmd_generate)
 
-    p_witness = sub.add_parser("witness", help="Md5 canonique du mod assemble (temoin de determinisme)")
-    p_witness.add_argument("--demo", action="store_true", help="Utilise une base synthetique")
+    p_witness = sub.add_parser("witness", help="MD5 canonique du mod assemblé (témoin de déterminisme)")
+    p_witness.add_argument("--demo", action="store_true", help="Utilise une base synthétique")
     p_witness.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
-    p_witness.add_argument("--seed", type=int, default=5, help="Seed a assembler puis hacher (defaut: 5, le temoin)")
-    p_witness.add_argument("--out", default=None, help="Dossier des mods (defaut: output/mods/)")
-    p_witness.add_argument("--expect", default=None, help="Md5 attendu ; exit 1 si divergence (utile en CI)")
+    p_witness.add_argument("--seed", type=int, default=5, help="Seed à assembler puis hacher (défaut : 5, le témoin)")
+    p_witness.add_argument("--out", default=None, help="Dossier des mods (défaut : output/mods/)")
+    p_witness.add_argument("--expect", default=None, help="MD5 attendu ; exit 1 si divergence (utile en CI)")
     p_witness.set_defaults(func=cmd_witness)
 
     args = parser.parse_args(argv)

@@ -1,61 +1,62 @@
 # Démarrage et chaîne initiale
 
-Partie de la doc de conception randputF. Retour : [docs/README.md](README.md).
+Retour : [docs/README.md](README.md).
 
-## 7. La phase de démarrage
+Le mod remplace le kit freeplay au premier spawn. Il fournit de quoi extraire, fabriquer et transporter les ressources tirées. Les premières recherches sont gratuites ; les suivantes se débloquent par craft manuel.
 
-Le randomizer détermine tout dès le spawn (l'électricité suivra sa propre logique, §10) :
+## Ce que ça change pour le joueur
 
-1. **Kit de départ randomisé** : le joueur ne commence pas forcément avec le même équipement. Son arme de départ est tirée au hasard, et **les munitions se calent sur l'arme** (`starter.ammo_count` exemplaires, défaut 50, plafonnées au stack du munition, configurable §16) pour qu'il puisse effectivement l'utiliser. Le kit fournit aussi le fabricateur, l'extracteur URPLS de la seed et un combustible si besoin, à raison d'**UNE amorce par type d'extracteur** : une foreuse par type de sol ; côté fluides, une pumpjack pour les patchs et une pompe offshore pour les lacs (§7.5, deux milieux distincts).
+- Le kit contient une arme, ses munitions, un fabricateur et un exemplaire de chaque extracteur retenu.
+- Un combustible est ajouté quand le fabricateur ou un extracteur fonctionne au combustible.
+- Les techs `randputf-starter-extraction` et `randputf-starter-transformation` sont acquises dès l'initialisation.
 
-   Ce n'est PAS la dotation qui rend la suite faisable : c'est l'**unlock**. L'amorce du kit ne fait que briser l'œuf/poule du premier exemplaire. Même pour un extracteur différé, le kit fournit toujours son item.
+## Mots à connaître
 
-   **Chaque ressource du run (patchs ou lacs, §7.5) a la recette de son extracteur débloquée « juste-au-besoin » (§C3)** :
+- **Bootstrap** : phase qui rend les premières recettes fabriquables. Voir le [glossaire](glossaire.md#génération).
+- **Extracteur** : bâtiment qui prélève une ressource brute. Voir [ressources-brutes.md](ressources-brutes.md#les-formes-dune-ressource-brute).
+- **Tech gratuite** : recherche sans coût, marquée comme faite au lancement.
+- **Déblocage sur le tas** : création immédiate d'une méthode d'obtention quand une ressource manque. Voir le [glossaire](glossaire.md#génération).
 
-   - la tech gratuite `starter-extraction` ne garde que les extracteurs utiles dès le spawn (leur ressource est consommée par la chaîne initiale) ;
-   - un extracteur dont la ressource n'est servie qu'en profondeur part avec le **premier consommateur** (tech d'usage, au plus tard, jamais après) ;
-   - un extracteur jamais utilisé suit le balayage de contenu (§9.6), sur une tech payante tirée aléatoirement.
+## Règles de génération
 
-   Contrainte de fabrication : l'extracteur n'est jamais débloqué avant l'atelier qui le fabrique (U2). Quand on a besoin d'une ressource, son extracteur est donc déjà craftable, et on en refabrique autant qu'il faut (le poisson se pêche dans les lacs, §7.5).
-2. **Techs gratuites du starter** : les premières recettes (la chaîne initiale, §8) sont débloquées par les techs du starter (`randputf-starter-*`), **gratuites** — coût nul, auto-complétées au runtime (free_researches). Elles se craftent avec **tout le pool du début**, ressources au sol ET ressources non-infinies (bois/pierre/poisson).
-3. **Techs de prologue** (`randputf-prologue-*`) : juste après ces techs gratuites, les recettes **propres** des produits dont le bootstrap consommait des ressources non-infinies (§9.5) sont regroupées en techs de prologue de **≤ 5 unlocks chacune** (plafond §13, jamais une tech géante — une seule suffit s'il y a peu de recettes, aucune tech si aucune recette). Ce ne sont pas des free_researches : chaque prologue se débloque par **hand-craft** d'un item du bootstrap (§9.3) — façon vanilla (automation/logistics) : le joueur fabrique l'item déclencheur à la main et la tech s'active aussitôt. Le joueur sort vite de la dépendance au bois/pierre/poisson et débloque simultanément l'entrée en science avec le lab du starter.
-4. **Site de crash randomisé** : les conteneurs `crash-site-*` du crash vanilla (munitions, plaques…) sont **vidés puis remplis aléatoirement** : chaque slot reçoit `n` copies d'un matériau aléatoire du pool de loot (`wreck.loot`, §16), avec `n ∈ {0, 1, 2, 3}` tiré selon une loi pondérée **strictement décroissante** (0 le plus fréquent → slot vide, 3 le plus rare) : `seed.wreck.counts = [c0, c1, c2, c3]` calculés par la formule générique `c3 = t`, `c2 = t + a`, `c1 = 100 − 5t − 2a`, `c0 = c1 + b` (exiger `6t + 3a < 100` et `b ≥ 1`), garantissant la somme des valeurs `0·c0 + 1·c1 + 2·c2 + 3·c3 = 100`. Défauts `(t,a,b) = (15, 1, 1)` → P(0) ≈ 30,8 % : le crash est riche (un vaisseau à 5 slots ≈ 6 matériaux en moyenne) et **un conteneur n'est jamais entièrement vide** (force-fill au runtime si le tirage a tout mis à 0). Chaque conteneur n'est traité qu'une fois (loot préservé aux rechargements), le tirage est déterministe par seed (générateur indépendant `game.create_random_generator`). Le pool de loot se limite aux **ressources non-infinies** (bois, pierre, poisson) : ce sont les seules qu'on ne peut pas miner/automatiser, et on évite tout item crafté (plaques, fours…) dont la recette n'est pas garantie débloquée par l'arbre randomisé.
-5. **Lacs de fluide** : 3e type de **raw ressource**, après les items et les fluides pumpjack (§6). La seed tire `seed.map.lakes = [{resource, richness}]` : `count ∈ [min, max]` (défauts `lakes.min = 1`, `lakes.max = 3` dans `config/defaults.yaml`, zéro possible via la config) et **sans remise** — au plus **un lac par fluide pipable** (`lakes.py`). Le mod **supprime toute l'eau vanilla de la carte** (océans, shallow…) puis ne laisse sur l'eau que les fluides tirés : un fluide non tiré n'a **aucun lac** (= indispo à l'extraction par lac), et si aucun lac n'est tiré la carte est sans eau. La mise en scène passe par deux temps, **fantôme puis remplissage** :
-   - **Au data-stage** (`data-updates.lua`) : une tuile `randputf-lac-<fluid>` par fluide tiré (copie de la tuile eau, **recolorée**, `fluid = <fluide>`), **jamais posée par le mapgen** (`autoplace.probability_expression = 0`) ; s'y ajoute une tuile **fantôme** `randputf-lac-neutre` (copie de `water`, fluide neutre, blanc, `effect = nil`) dont l'autoplace est **celle de l'eau** (`water_base(0, 100)`) : le moteur d'altitude la dépose exactement **aux emplacements naturels de l'eau vanilla**. Un premier design par `resource-autoplace` avait été abandonné : les nappes se chevauchaient et un seul liquide (le dernier tiré) dominait.
-   - **Au runtime** (`control.lua`, `on_chunk_generated`) : `fill_lakes_in_area` remplace chaque tuile fantôme par la tuile-lac colorée avec `set_tiles(..., correct_tiles = true)`. Un **flood-fill** borné au chunk privilégie la **continuité spatiale** : un plan d'eau contigu prend le fluide de son voisin déjà rempli (propagation inter-chunks), sinon un tourniquet persisté (`storage.randputf.lake_index`) choisit le fluide suivant. Une pompe offshore posée sur une tuile fantôme déclenche un remplissage local (rayon 128) qui anticipe la génération du chunk.
-   Une **pompe offshore vanilla** posée sur la tuile débite ce fluide, **infini** comme l'eau. Richesse = taille/densité du lac (volume illimité). **Contraste patchs/lacs (§7)** : un *patch* fluide est une **entité** resource `basic-fluid` posée sur la terre → il se mine avec la **pumpjack** (électrique, §10) ; un *lac* est une **tuile** → il se pompe avec la **pompe offshore** (énergie void, sans électricité). Les deux extracteurs ont leur recette au starter et une amorce au kit quand les deux milieux sont présents.
-   **Neutralisation de l'eau vanilla** : forcer `autoplace.probability_expression = 0` sur les prototypes de tuiles d'eau ne suffit pas — le mapgen conserve des tuiles. La neutralisation réelle passe par l'override du mapgen de planète : `property_expression_names["tile:<eau>:probability"] = "randputf-no-water"` (noise-expression à `-999`), appliqué à chaque tuile `water_tile_type_names` de nauvis — résultat : **0 tuile d'eau vanilla**, les seules nappes étant les fantômes qui deviennent les lacs tirés.
-   **Couleur du lac** : chaque nappe utilise une palette **pastel** dérivée de la `base_color` du fluide — luminosité garantie ≥ 0.60, saturation ≥ 0.35, plafond 0.90 (constantes `LAKE_MIN_LUM`/`LAKE_MIN_SAT`/`LAKE_MAX_LUM`) — visible au sol (`variants[].tint` + `effect_color`) ET sur la carte (`map_color`). Les patches ressources utilisent des couleurs vives (composantes 30..130/255) ; les lacs en pastel se distinguent naturellement sans les écraser. Fluides sans chromatisme : teinte de secours distincte par fluide (table `lake_fallbacks` : crude-oil → bleu turquoise clair, steam → bleu pâle, hydrogen → cyan vif, nitric-acid → orange clair, sulfuric-acid → jaune clair).
-   **Bordures : tous les lacs sont bordés** : chaque lac reçoit une **berge** dessinée par les tuiles de TERRE voisines. Le data-stage (`data-updates.lua`) ajoute le nom de chaque tuile-lac (`randputf-lac-<fluid>`) aux `transitions[].to_tiles` de toutes les tuiles de terre qui ciblent déjà l'eau vanilla (les 7 noms de `water_tile_type_names`, pas seulement `water` — couverture complète des biomes). La **berge dépend du biome environnant** : autour du spawn c'est sable/herbe (grass/sand), donc des berges douces ; ailleurs, selon le biome où le lac tombe, la transition varie. Transitions patchées triées au data-stage pour un résultat 100 % déterministe.
-   **Déclenché au runtime** (`control.lua`, `fill_lake`) : le remplacement de la tuile-fantôme par la tuile-lac colorée se fait avec `set_tiles(..., correct_tiles = true)` — le moteur recalcule alors les bords autour des tuiles modifiées (même mécanisme que le landfill), ce qui fait apparaître la berge autour du lac rempli. La marque des lacs bordés est portée par une table Lua locale (`lake_borders`), jamais par une clé de prototype.
-   **Coupe nette** : seul le fantôme (blanc, avant remplissage) « coupe » sans bord — il n'est volontairement pas ciblé par les transitions et est remplacé dès la génération du chunk ; les lacs finis sont toujours bordés.
-   **Position des lacs** : le fantôme ne reçoit **aucune position de la seed** — il s'installe où `water_base` mettrait l'eau vanilla (basses altitudes). Le générateur (`lakes.py`) ne choisit que **quels** fluides existent, **pas où**.
-   **Purge runtime des cartes legacy** (`control.lua`) : les cartes créées avant le fix embarquent `property_expression_names` vide et conservent les tuiles d'eau vanilla du mapgen. Au premier chargement, `purge_chunk_water` remplace ces tuiles (`water`, `deepwater`, `water-shallow`, `water-green`, `deepwater-green`, `water-mud`, `water-wube`) par la tuile de terre dominante du chunk — balayage en carré croissant depuis le spawn, 32 chunks/tick, curseur persisté dans `storage` (reprise après rechargement). Les lacs tirés par la seed sont préservés. La pompe côtière affiche nativement le fluide de sa tuile source (2.0, `tile.fluid`) : aucun tooltip custom nécessaire.
-6. **Landfill garanti dès le prologue si lacs** : un lac est un **mur** infranchissable tant que le joueur ne peut pas le franchir. Quand la seed tire **au moins un lac**, la chaîne du starter appelle `ensure_obtainable` sur le `landfill` dès le bootstrap (recette `randputf-landfill` unlockée par `starter-transformation`, craftée avec le pool de début, §8/§13) : le joueur peut toujours franchir/combler l'eau de la carte dès le départ. Sans lac, inutile d'imposer le landfill — sa recette tombe alors au hasard dans le balayage de couverture (§9.6).
+### La phase de démarrage
 
-### 7.1 Kit et extracteurs en un coup d'œil
+1. L'arme est tirée au hasard ; les munitions suivent sa catégorie et leur quantité est plafonnée par la taille de pile.
+2. La seed rend l'arme, les munitions, le fabricateur et les extracteurs refabriquables. Le kit ne donne qu'un stock initial.
+3. Le site de crash reçoit des matériaux récoltables à la main, jamais des objets craftés.
+4. Quand un lac est tiré, la pompe offshore et le remblai sont garantis dès le départ.
 
-Le kit fournit une amorce par type d'extracteur (foreuse, pumpjack, pompe offshore). Ce qui rend la suite faisable n'est pas cette dotation mais l'**unlock** : chaque ressource a son extracteur débloqué « juste-au-besoin » (§C3, détaillé en §7 point 1).
+### La chaîne initiale (starter)
 
-## 8. La chaîne initiale (starter)
+5. Un extracteur est retenu pour chaque ressource immédiatement nécessaire, d'après son milieu.
+6. Un bâtiment de fabrication est choisi pour créer ou transformer une ressource.
+7. Les transports sont débloqués pour les types extraits ; un inserter peut s'ajouter quand des items sont extraits.
+8. Le lab fait partie du starter : sans lui, la recherche s'arrêterait après les techs gratuites.
+9. Une ressource non automatisable sert d'appoint au début ; les produits qui en consomment reçoivent une recette relais.
 
-Une fois les types de ressources brutes posés, le randomizer construit la première boucle de production :
+### Contraintes de craft
 
-1. **Extraction** : un ou plusieurs bâtiments extracteurs sont choisis en fonction des ressources immédiatement à collecter — le milieu de chaque patch désigne la famille d'extracteurs possibles : foreuses pour le sol, et côté fluides le **support physique** de la ressource : un **patch** est une entité `basic-fluid` → **pumpjack** (électrique) ; un **lac** est une tuile → **pompe offshore** (énergie void).
-2. **Transformation** : un bâtiment de fabrication est choisi pour créer ou transformer une ressource en une autre. Tout peut y passer : selon ses directives, il acceptera items, fluides ou les deux. Un assembleur tier 1 refusera une recette fluide là où un assembleur tier 2 l'acceptera.
-3. **Transport** : en fonction des besoins de ces quelques ressources de début, le joueur se voit débloquer tapis et tuyaux — randomisés, car il en existe plusieurs tiers — ainsi que les périphériques associés : splitters, tunnels/undergrounds côté tapis, équivalents côté tuyaux.
-4. **Logistique** : des bras robotisés sont ajoutés — avec probabilité `starter.inserter_chance` (défaut 0.5, défini dans `config/defaults.yaml` §16).
+10. Le premier générateur électrique et le premier pylône sont forcés au craft manuel. Les autres recettes du starter peuvent utiliser un atelier non électrique.
+11. Les tuyaux et tapis doivent être fabriquables à partir d'une ressource déjà obtenable : c'est une intention de conception, pas une propriété vérifiée. Le champ `required_fluid` n'est pas utilisé pour choisir les extracteurs.
 
-**Contrainte anti-cycle fondamentale** : si un bâtiment de cette phase exige une entrée supplémentaire (le cas d'école : une perceuse électrique qui boit un fluide dès le début), alors :
+## Garanti / non garanti
 
-1. ce fluide doit pouvoir être obtenu ;
-2. les tuyaux qui le transportent peuvent être fabriqués **à partir de ce fluide**, ou **d'une autre ressource** ;
-3. mais **jamais à partir de la ressource qui en a besoin** — l'entrée auxiliaire provient toujours d'une branche déjà valide, indépendante du bâtiment qu'elle alimente.
+| Garanti | Non garanti |
+|---|---|
+| Une arme, des munitions et un fabricateur au premier spawn. | L'absence de dépendance circulaire dans les recettes de transport. |
+| Un lab et les recettes des extracteurs retenus. | Le même kit au retour en jeu : seul un kit mince est fourni. |
 
-**Extracteurs items-only** : la recette qui fabrique un extracteur (perceuse, pumpjack, pompe offshore) n'utilise **jamais de fluide comme ingrédient** — surtout pas celui qu'il sert justement à extraire. Dès le starter, ces bâtiments se craftent uniquement avec des items, ce qui rend leur déblocage possible avant même qu'aucune ressource au sol (et en particulier aucun fluide) ne soit atteignable.
+## Aller plus loin
 
-**Bootstrap non-infinies, puis relais** : au tout début, le joueur possède *toutes* les ressources, y compris les non automatisables (arbres, rochers, poissons). Ces dernières servent de matière première d'appoint du démarrage — leur présence garantit un début de run qui marche, même pour les seeds sans aucun patch item. Mais elles ne sont **pas tenables à long terme** : tout produit dont la recette générée en consomme obtient une **recette relais** (§9.5), débloquée dans les 3 premières techs.
+- [amorcage.md](amorcage.md#les-règles-damorçage) — à lire quand on veut les règles communes de démarrage.
+- [ressources.md](ressources.md) — à lire quand on cherche l'origine des ressources extraites.
+- [lacs.md](lacs.md) — à lire quand la seed tire des nappes de fluide.
+- [energie.md](energie.md) — à lire quand on veut comprendre le générateur et le pylône forcés au craft manuel.
 
-**Le lab est une brique du starter — type « recherche »** : tout bâtiment consommant des science packs (`lab_inputs`) est classé dans un type fonctionnel dédié, `recherche` (§5.1), et non parmi les transformateurs : ce n'est pas un atelier de craft, il n'a rien à faire dans le pool des recettes artisanales (anti-cycle §8). Sans lab, la partie se fige dès les premières techs gratuites consommées : le starter garantit donc par construction qu'un bâtiment de recherche tombe dans la **2e recherche gratuite** (starter-transformation), avec une recette craftée avec le pool de début.
+## Lectures associées
 
-**Un seul combustible — toutes catégories** : le mod redéfinit au data-stage la catégorie de combustible de **chaque brûleur** pour qu'elle accepte *toutes* les catégories du jeu (charbon, bois, combustible solide **et** cellules d'uranium, etc.) — `mod/data-updates.lua`. La seed n'a donc **pas** à filtrer par catégorie : le kit de départ glisse simplement le combustible à la plus grande `fuel_value` du pool obtenu, et il est toujours utilisable quel que soit le brûleur du kit (perceuse, chaudière, four, réacteur…). Sans ce patch, un kit pouvait tirer une cellule d'uranium (catégorie « nuclear ») dans un `burner-mining-drill` n'acceptant que « chemical » : inutilisable.
+- **Parent** : [docs/README.md](README.md) — index de la documentation.
+- [ressources.md](ressources.md#les-ressources-au-sol-1) — tirage et géométrie des patchs.
+- [ressources-brutes.md](ressources-brutes.md#les-formes-dune-ressource-brute) — catalogue des formes et extracteurs.
+- [lacs.md](lacs.md) — génération des lacs.
+- [amorcage.md](amorcage.md#les-règles-damorçage) — règles transverses d'amorçage.
