@@ -19,7 +19,7 @@ AXIS_WEIGHTS = {
 AXIS_LABELS = {
     "structure": "Structure du graphe",
     "volume": "Volume de production",
-    "critical": "Temps critique",
+    "critical": "Goulot de chaîne",
     "novelty": "Nouveauté",
     "infrastructure": "Infrastructure",
 }

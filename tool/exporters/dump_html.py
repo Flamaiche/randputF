@@ -47,8 +47,9 @@ h1{margin:0;font-size:22px}
   gap:10px;margin-bottom:14px}
 .meta-grid .stat .val{font-size:13px;overflow-wrap:anywhere}
 .filterbar{position:sticky;top:0;z-index:5;background:var(--bg);
-  padding:10px 24px;border-bottom:1px solid var(--line)}
-.filterbar input{width:100%;padding:8px 12px;border-radius:8px;
+  padding:10px 24px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.filterbar label{font-size:12px;white-space:nowrap}
+.filterbar input{flex:1;padding:8px 12px;border-radius:8px;
   border:1px solid var(--line);background:var(--panel);color:var(--txt);
   font-size:14px}
 main{padding:0 24px 48px}
@@ -559,7 +560,8 @@ def write_dump_html(dump: dict, out: Path, *, label: str | None = None) -> Path:
         f"<div class='sub'>L'inventaire complet des prototypes, tel qu'exporté par le mod compagnon. "
         f"Structuration du pipeline uniquement (fluide pompé par tuiles, packs de science par les faits) — aucune valeur inventée.</div>"
         f"<div class='stats'>{stats}</div></header>"
-        "<div class='filterbar'><input id='dump-filter' type='text' "
+        "<div class='filterbar'><label for='dump-filter' class='muted'>Filtrer</label>"
+        "<input id='dump-filter' type='search' aria-label='Filtrer le dump' "
         "placeholder='Filtrer partout (items, entités, tuiles, recettes, techs…)'></div>"
         "<main>"
         + _section("Identité du dump (métadonnées)", "identite", _meta_fragment(meta))

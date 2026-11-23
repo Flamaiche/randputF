@@ -7,7 +7,7 @@ from typing import Any
 
 from tool.audit.profile import AXIS_LABELS, INDICATOR_LABELS
 
-PROFILE_CSS = '\n.profile-note{color:#8f8fa0;font-size:11px;margin-top:10px}\n.profile-ratio{font-variant-numeric:tabular-nums}\n'
+PROFILE_CSS = '\n.profile-note{color:#8f8fa0;font-size:11px;margin-top:10px}\n.profile-ratio{font-variant-numeric:tabular-nums}\ndetails.report-section.profile-section>summary.section-title{font-size:1.5em}\n'
 
 
 def _fmt(value: Any) -> str:
@@ -45,7 +45,7 @@ def render_profile_html(profile: dict[str, Any]) -> str:
         weight_text = f"{int(weight * 100)} %" if weight is not None else "—"
         summary_rows.append(
             "<tr>"
-            f"<td>{_html.escape(label)}</td>"
+            f"<td data-tip-title='{_html.escape(label)}' data-tip='{_html.escape('Score global de cet axe, normalisé contre la référence.')}'>{_html.escape(label)}</td>"
             f"<td class='num'>{weight_text}</td>"
             f"<td class='num profile-ratio'>{ratio}</td>"
             "</tr>"
@@ -99,13 +99,13 @@ def render_profile_html(profile: dict[str, Any]) -> str:
         else ""
     )
     return (
-        "<section class='report-section' id='profil-difficulte'>"
-        "<h2>Profil de difficulté (multi-axes)</h2>"
+        "<details class='report-section profile-section' id='profil-difficulte' open>"
+        "<summary class='section-title'>Profil de difficulté (multi-axes)</summary>"
         "<p class='profile-note'>Les rapports sont normalisés contre "
         f"{baseline} : 1,00 = même difficulté. Indice global pondéré : "
         f"{score_html}.</p>"
         "<div class='two'><div>"
-        "<table><thead><tr><th>Axe</th><th>Poids</th><th>Indice</th></tr></thead><tbody>"
+        "<table><thead><tr><th data-tip-title='Axe' data-tip='Famille d’indicateurs de difficulté.'>Axe</th><th data-tip-title='Poids' data-tip='Part de l’axe dans l’indice global.'>Poids</th><th data-tip-title='Indice' data-tip='Rapport normalisé contre la référence (1,00 = même difficulté).'>Indice</th></tr></thead><tbody>"
         f"{''.join(summary_rows)}"
         "</tbody></table>"
         "</div><div>"
@@ -116,7 +116,11 @@ def render_profile_html(profile: dict[str, Any]) -> str:
         "</div></div>"
         "<details class='table-fold' id='profil-difficulte-table'><summary>Tableau des indicateurs</summary>"
         "<div class='scroll'><table><thead><tr>"
-        "<th>Axe</th><th>Indicateur</th><th>Valeur</th><th>Référence</th><th>Ratio</th>"
+        "<th data-tip-title='Axe' data-tip='Famille d’indicateurs.'>Axe</th>"
+        "<th data-tip-title='Indicateur' data-tip='Mesure précise utilisée dans l’axe.'>Indicateur</th>"
+        "<th data-tip-title='Valeur' data-tip='Valeur mesurée sur la seed/mod.'>Valeur</th>"
+        "<th data-tip-title='Référence' data-tip='Valeur de la baseline de comparaison.'>Référence</th>"
+        "<th data-tip-title='Ratio' data-tip='Valeur / référence (×1,00 = égal).'>Ratio</th>"
         f"</tr></thead><tbody>{''.join(detail_rows)}</tbody></table></div>"
-        "</details></section>"
+        "</details></details>"
     )

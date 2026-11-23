@@ -1012,7 +1012,7 @@ _HTML_TEMPLATE = """<!doctype html>
 <aside id="sidebar">
   <header><h1>__TITLE__</h1><div id="subtitle">graphe interactif — cliquez un objet pour sa cascade</div></header>
   <div id="tools">
-    <input id="search" placeholder="Rechercher dans le panneau… (Échap pour effacer)">
+    <input id="search" type="search" aria-label="Rechercher dans la liste" placeholder="Rechercher dans le panneau… (Échap pour effacer)">
     <div id="sorts">
       <button class="sortbtn active" data-sort="science" title="Trier par tech de déblocage dans l'arbre">Tech</button>
       <button class="sortbtn" data-sort="name" title="Trier par nom">Nom</button>

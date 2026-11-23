@@ -482,6 +482,8 @@ def _complexity_from_playthrough(
         "total_research_label": _format_seconds(total_research),
         "total_craft_seconds": round(total_craft_seconds, 2),
         "total_craft_label": _format_seconds(total_craft_seconds),
+        "sequential_seconds": round(total_research + total_craft_seconds, 2),
+        "sequential_label": _format_seconds(total_research + total_craft_seconds),
         "total_packs": total_packs,
         "total_raw": clean_number(total_raw),
         "total_crafts": clean_number(total_crafts),
@@ -608,6 +610,8 @@ def analyze_complexity(
         "total_research_label": _format_seconds(total_research),
         "total_craft_seconds": round(total_craft_seconds, 2),
         "total_craft_label": _format_seconds(total_craft_seconds),
+        "sequential_seconds": round(total_research + total_craft_seconds, 2),
+        "sequential_label": _format_seconds(total_research + total_craft_seconds),
         "total_packs": total_packs,
         "total_raw": clean_number(total_raw),
         "total_crafts": clean_number(total_crafts),
@@ -933,11 +937,14 @@ def render_complexity_html(
                 baseline_label=baseline_label,
             ),
             _stat(
-                "Temps de craft total",
-                data["total_craft_label"],
+                "Temps théorique (1 machine)",
+                data.get("sequential_label") or _format_seconds(
+                    float(data.get("total_research_seconds", 0))
+                    + float(data.get("total_craft_seconds", 0))
+                ),
                 "acc",
-                "somme des crafts, 1 machine",
-                ratio("total_craft_seconds"),
+                "recherche + crafts séquentiels, sans logistique",
+                ratio("sequential_seconds"),
                 baseline_label,
             ),
             _stat(
@@ -946,6 +953,14 @@ def render_complexity_html(
                 "acc",
                 "toutes les techs",
                 ratio("total_research_seconds"),
+                baseline_label,
+            ),
+            _stat(
+                "Temps de craft total",
+                data["total_craft_label"],
+                "acc",
+                "somme des crafts, 1 machine",
+                ratio("total_craft_seconds"),
                 baseline_label,
             ),
             _stat(
@@ -964,10 +979,10 @@ def render_complexity_html(
                 baseline_label,
             ),
             _stat(
-                "Temps critique",
+                "Goulot de chaîne",
                 critical_label or "—",
                 "warn",
-                "machine la plus lente de la chaîne",
+                "étape machine la plus lente (pas un temps de run)",
                 ratio("critical_seconds"),
                 baseline_label,
             ),
@@ -1089,13 +1104,13 @@ def render_complexity_html(
         "<section id='complexite-courbes'><h2>Courbes par technologie</h2>"
         f"<div class='charts'>{charts}</div>"
         f"{comparison_note}"
-        "<div class='note'>Le temps de craft total est la somme des temps de "
-        "tous les crafts nécessaires pour tous les packs de science, comme si "
-        "une seule machine les enchaînait. La profondeur max est la chaîne de "
-        "recettes la plus longue ; le temps critique est le temps machine de "
-        "cette chaîne la plus lente, sans parallélisme ni attente réelle. Le "
-        "score ajoute le temps de recherche, 0,5 × packs et 10 × ateliers "
-        "distincts.</div></section>"
+        "<div class='note'>Le « temps théorique (1 machine) » additionne recherche et "
+        "crafts séquentiels : repère, pas durée réelle de run (parallélisme, "
+        "logistique, minage, déplacements, attentes exclus). Le « goulot de chaîne » "
+        "est l’étape machine la plus lente d’une chaîne, pas un temps de partie. "
+        "Le score ajoute temps de recherche, 0,5 × packs et 10 × ateliers distincts."
+        + (" Les « ×N » comparent chaque valeur à " + _html.escape(baseline_label) + "." if baseline else "")
+        + "</div></section>"
         "<section id='complexite-ateliers'><div class='two'>"
         f"<div>{building_rows}</div><div>{resource_rows}</div>"
         f"</div>{unknown_note}</section>"

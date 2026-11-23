@@ -350,11 +350,15 @@ _TEMPLATE = """<!doctype html>
           padding:10px 16px; }}
   .tot b {{ font-size:20px; }}
   .legend {{ display:flex; gap:20px; flex-wrap:wrap; margin:0 0 10px; }}
-  .legend span {{ cursor:pointer; user-select:none; display:inline-flex;
-                  align-items:center; gap:7px; padding:3px 10px;
-                  border:1px solid var(--line); border-radius:999px; font-size:13px; }}
-  .legend span.off {{ opacity:.38; }}
+  .legend button {{ cursor:pointer; user-select:none; display:inline-flex;
+                    align-items:center; gap:7px; padding:3px 10px;
+                    border:1px solid var(--line); border-radius:999px; font-size:13px;
+                    background:transparent; color:inherit; font:inherit; }}
+  .legend button.off {{ opacity:.38; }}
+  .legend button:focus-visible {{ outline:2px solid #9d9dff; outline-offset:2px; }}
   .legend i {{ width:11px; height:11px; border-radius:50%; display:inline-block; }}
+  .empty-series {{ display:none; color:var(--dim); font-size:12px; margin:0 0 10px; }}
+  .empty-series.show {{ display:block; }}
   .chart {{ position:relative; background:#1a1a20; border:1px solid var(--line);
             border-radius:8px; padding:8px; margin-bottom:22px; }}
   svg {{ width:100%; height:auto; display:block; touch-action:none; }}
@@ -377,7 +381,7 @@ _TEMPLATE = """<!doctype html>
   #tip .prods {{ color:var(--dim); margin-top:6px; max-width:260px; }}
   #tip .delta {{ margin-top:5px; color:var(--dim); }}
   .cols {{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }}
-  .col {{ flex:1 1 480px; min-width:420px; }}
+  .col {{ flex:1 1 360px; min-width:0; }}
   .context {{ color:var(--dim); font-size:12px; margin:6px 0 0; }}
   .note {{ color:var(--dim); font-size:12px; line-height:1.5; margin:12px 0 0; }}
   h2 {{ font-size:16px; margin:6px 0; }}
@@ -396,17 +400,19 @@ _TEMPLATE = """<!doctype html>
 <body>
 <h1>randputF — difficulté comparée</h1>
 <p class="sub">Coût en ressources brutes cumulé, tech par tech (la chaîne de la
-fusée ferme chaque profil). Survole une tech pour le détail, clique pour épingler.</p>
+fusée ferme chaque profil). Survole une tech pour le détail, clique pour épingler ;
+clique une entrée de légende pour masquer/afficher une série.</p>
 <div class="totals">
   <div class="tot">vanilla<br><b style="color:{vanilla_color}">{vanilla_total}</b></div>
    <div class="tot">{mod_label}<br><b style="color:{mod_color}">{mod_total}</b></div>
    <div class="tot">rapport mod/vanilla<br><b>×{ratio:.2f}</b></div>
 </div>
 <p class="context">{context}</p>
-<div class="legend">
-  <span data-series="v"><i style="background:{vanilla_color}"></i>{vanilla_label}</span>
-  <span data-series="m"><i style="background:{mod_color}"></i>{mod_label}</span>
+<div class="legend" aria-label="Séries visibles">
+  <button type="button" data-series="v" aria-pressed="true"><i style="background:{vanilla_color}"></i>{vanilla_label}</button>
+  <button type="button" data-series="m" aria-pressed="true"><i style="background:{mod_color}"></i>{mod_label}</button>
 </div>
+<p id="empty-series" class="empty-series" aria-live="polite">Aucune série visible — réaffiche au moins une courbe via la légende.</p>
 <div class="chart" id="chartwrap">
   {svg}
   <div id="tip"></div>
@@ -515,16 +521,31 @@ const DATA = {data_json};
     }});
   }});
 
-  document.querySelectorAll('.legend span').forEach((el) => {{
+  const emptySeries = document.getElementById('empty-series');
+  function updateEmptyState() {{
+    const anyVisible = !hidden.v || !hidden.m;
+    if (emptySeries) emptySeries.classList.toggle('show', !anyVisible);
+    if (!anyVisible) {{
+      pinned = null;
+      tip.classList.remove('pinned');
+      clearVisual();
+    }}
+  }}
+  document.querySelectorAll('.legend button').forEach((el) => {{
     el.addEventListener('click', (e) => {{
       e.stopPropagation();
       const s = el.dataset.series;
-      hidden[s] = !hidden[s];
+      const willHide = !hidden[s];
+      const visibleCount = (hidden.v ? 0 : 1) + (hidden.m ? 0 : 1);
+      if (willHide && visibleCount <= 1) return;
+      hidden[s] = willHide;
       el.classList.toggle('off', hidden[s]);
+      el.setAttribute('aria-pressed', hidden[s] ? 'false' : 'true');
       svg.querySelectorAll('.series.' + s).forEach((n) => n.classList.toggle('hidden', hidden[s]));
       svg.querySelectorAll('circle.pt.' + s).forEach((n) => n.classList.toggle('hidden', hidden[s]));
-      if (pinned !== null) render(DATA.points[pinned]);
-      else if (lastRec && tip.style.display === 'block') render(lastRec);
+      updateEmptyState();
+      if (pinned !== null && (!hidden.v || !hidden.m)) render(DATA.points[pinned]);
+      else if (lastRec && tip.style.display === 'block' && (!hidden.v || !hidden.m)) render(lastRec);
     }});
   }});
 

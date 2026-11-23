@@ -25,7 +25,7 @@ from tool.exporters.vanilla_complexity import playthrough_report
 _STYLE_RE = re.compile("<style>(.*?)</style>", re.DOTALL)
 _BODY_RE = re.compile("<body>(.*?)</body>", re.DOTALL)
 _FIRST_H1_RE = re.compile("<h1>.*?</h1>", re.DOTALL)
-_REPORT_CSS = '\nbody{padding-right:250px}\n.report-section{margin-top:40px;padding-top:12px;border-top:1px solid #3a3a45}\n.report-section>h2{margin-top:0}\nsection{scroll-margin-top:18px}\ndetails.table-fold{scroll-margin-top:18px}\n.scroll{overflow:auto;max-height:70vh;scrollbar-gutter:stable}\n.flow{color:#8f8fa0;font-size:11px;max-width:260px}\ntd.num{white-space:nowrap}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}\n.toc{position:fixed;top:16px;right:16px;width:214px;\n  max-height:calc(100vh - 32px);overflow:auto;background:#1d1d24;\n  border:1px solid #3a3a45;border-radius:10px;padding:12px;z-index:40;\n  font-size:12px}\n.toc-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;\n  color:#8f8fa0;margin:0 0 8px;padding:0 8px}\n.toc a{display:block;padding:5px 8px;border-radius:6px;color:#c9c9d6;\n  text-decoration:none;overflow-wrap:anywhere}\n.toc a:hover{background:rgba(111,111,230,.15);color:#fff}\n.toc .toc-sub{padding-left:20px;font-size:11px;color:#9a9aac}\n@media(max-width:1700px){\n  body{padding-right:0}\n  .toc{position:static;width:auto;max-height:none;margin:0 24px 18px}\n}\n@media(max-width:1000px){.two{grid-template-columns:1fr}}\n'
+_REPORT_CSS = '\nbody{padding-right:250px}\n.report-section{margin-top:40px;padding-top:12px;border-top:1px solid #3a3a45}\n.report-section>h2,.report-section>summary.section-title{margin-top:0}\ndetails.report-section{scroll-margin-top:18px}\ndetails.report-section>summary.section-title{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-size:1.5em;font-weight:700}\ndetails.report-section>summary.section-title::-webkit-details-marker{display:none}\ndetails.report-section>summary.section-title::before{content:"▾";color:#9d9dff;font-size:.7em;line-height:1}\ndetails.report-section:not([open])>summary.section-title::before{content:"▸"}\ndetails.report-section>summary.section-title:focus-visible{outline:2px solid #9d9dff;outline-offset:4px;border-radius:4px}\nsection{scroll-margin-top:18px}\ndetails.table-fold{scroll-margin-top:18px}\n.scroll{overflow:auto;max-height:70vh;scrollbar-gutter:stable}\n.flow{color:#8f8fa0;font-size:11px;max-width:260px}\ntd.num{white-space:nowrap}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}\n.toc{position:fixed;top:16px;right:16px;width:214px;\n  max-height:calc(100vh - 32px);overflow:auto;background:#1d1d24;\n  border:1px solid #3a3a45;border-radius:10px;padding:12px;z-index:40;\n  font-size:12px}\n.toc-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;\n  color:#8f8fa0;margin:0 0 8px;padding:0 8px}\n.toc a{display:block;padding:5px 8px;border-radius:6px;color:#c9c9d6;\n  text-decoration:none;overflow-wrap:anywhere}\n.toc a:hover{background:rgba(111,111,230,.15);color:#fff}\n.toc .toc-sub{padding-left:20px;font-size:11px;color:#9a9aac}\n@media(max-width:1700px){\n  body{padding-right:0}\n  .toc{position:static;width:auto;max-height:none;margin:0 24px 18px}\n}\n@media(max-width:1000px){.two{grid-template-columns:1fr}}\n'
 
 def _toc(skip: frozenset[str], summary: bool = False) -> str:
     links = []
@@ -67,7 +67,7 @@ def _toc(skip: frozenset[str], summary: bool = False) -> str:
 
 _FULL_REPORT_MAX_RECIPES = 10000
 
-_TOC_SCRIPT = "\n<script>\n(function () {\n  function openTarget() {\n    var el = location.hash ? document.querySelector(location.hash) : null;\n    if (el && el.tagName === 'DETAILS') el.open = true;\n  }\n  window.addEventListener('hashchange', openTarget);\n  openTarget();\n})();\n</script>\n"
+_TOC_SCRIPT = "\n<script>\n(function () {\n  function openDetails(el) {\n    while (el) {\n      if (el.tagName === 'DETAILS') el.open = true;\n      el = el.parentElement;\n    }\n  }\n  function openTarget() {\n    var el = location.hash ? document.querySelector(location.hash) : null;\n    if (el) openDetails(el);\n  }\n  window.addEventListener('hashchange', openTarget);\n  openTarget();\n})();\n</script>\n"
 
 
 def _document_parts(document: str) -> tuple[str, str]:
@@ -90,14 +90,15 @@ def _playthrough_section(report: dict) -> str:
     et fournit les fragments déjà rendus (bandeau, barres, tableau, notes).
     """
     return (
-        "<section class='report-section' id='partie-simulee'><h2>Partie simulée — statistiques par item et fluide</h2>"
+        "<details class='report-section' id='partie-simulee' open>"
+        "<summary class='section-title'>Partie simulée — statistiques par item et fluide</summary>"
         "<div class='sub'>Inventaire porté d'une technologie à l'autre, items produits quand ils manquent (minage ou recette primaire), déclencheurs de recherche inclus.</div>"
         f"<div class='stats'>{report['header_stats']}</div>"
         f"{report['bars']}"
         "<details class='table-fold' id='partie-simulee-table'><summary>Tableau détaillé par item et fluide</summary>"
         f"{report['table']}"
         "</details><div class='note'>Trié par volume simulé (produit + consommé). « Externe » = fourni hors chaîne de craft (pompage, récolte, orbite) : produit mais sans recette ni gisement minable. Puissance = energy_usage × 0,06 ; énergie = puissance × temps.</div>"
-        f"{report['unknown_note']}</section>"
+        f"{report['unknown_note']}</details>"
     )
 
 
@@ -110,8 +111,9 @@ def _checks_section(checks: dict | None) -> str:
     """
     if checks is None or checks.get("skipped"):
         return (
-            "<section class='report-section' id='controles'>"
-            "<h2>Contrôles du testeur</h2><p>Non exécutés pour ce rapport.</p></section>"
+            "<details class='report-section' id='controles' open>"
+            "<summary class='section-title'>Contrôles du testeur</summary>"
+            "<p>Non exécutés pour ce rapport.</p></details>"
         )
     ok = bool(checks.get("ok"))
     status = "OK" if ok else "ÉCHEC"
@@ -125,9 +127,10 @@ def _checks_section(checks: dict | None) -> str:
         f"{' — ' + _html.escape(str(checks['blocker'])) if checks.get('blocker') else ''}</p>"
     )
     return (
-        "<section class='report-section' id='controles'><h2>Contrôles du testeur</h2>"
+        "<details class='report-section' id='controles' open>"
+        "<summary class='section-title'>Contrôles du testeur</summary>"
         f"<p><strong>{status}</strong> — contrôle de structure puis rejeu complet.</p>"
-        f"{replay}<ul>{issue_html}</ul></section>"
+        f"{replay}<ul>{issue_html}</ul></details>"
     )
 
 
@@ -150,11 +153,12 @@ def _coverage_section(audit: dict | None) -> str:
         for field in audit.get("fields") or []
     )
     return (
-        "<section class='report-section' id='couverture-dump'><h2>Couverture du dump</h2>"
+        "<details class='report-section' id='couverture-dump' open>"
+        "<summary class='section-title'>Couverture du dump</summary>"
         f"<p><strong>{summary}</strong></p>"
         "<details class='table-fold' id='couverture-dump-table'><summary>Tableau des champs présents</summary>"
         f"<div class='scroll'><table><thead><tr><th>Section</th><th>Champ</th><th>État</th><th>Usage</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table></div></details></section>"
+        f"<tbody>{rows}</tbody></table></div></details></details>"
     )
 
 
@@ -178,11 +182,12 @@ def _summary_section(seed: dict, dump: dict | None) -> str:
         for label, value in pairs
     )
     return (
-        "<section class='report-section' id='resume'><h2>Résumé du dump testé</h2>"
+        "<details class='report-section' id='resume' open>"
+        "<summary class='section-title'>Résumé du dump testé</summary>"
         "<p>Vue réduite : courbes de complexité et partie simulée détaillée omises "
         "sur ce dump volumineux. Les contrôles, la couverture et la difficulté "
         "restent complets.</p>"
-        f"<table><tbody>{rows}</tbody></table></section>"
+        f"<table><tbody>{rows}</tbody></table></details>"
     )
 
 
@@ -293,11 +298,11 @@ def write_full_report(
                 difficulty_total = None
                 difficulty_html = '<p class="muted">Aucune donnée de difficulté.</p>'
             difficulty_section = (
-                "<section class='report-section' id='difficulte'>"
-                "<h2>Difficulté (ressources brutes)</h2>"
+                "<details class='report-section' id='difficulte' open>"
+                "<summary class='section-title'>Difficulté (ressources brutes)</summary>"
                 "<details class='table-fold' id='difficulte-table'><summary>Tableaux détaillés</summary>"
                 f"<div class='cols'>{difficulty_html}</div>"
-                "</details></section>"
+                "</details></details>"
             )
         emit(88, "assemblage du rapport")
         body = (
@@ -381,12 +386,12 @@ def write_full_report(
         )
         _, difficulty_body = _document_parts(difficulty_doc)
         difficulty_body = _FIRST_H1_RE.sub(
-            "<h2>Difficulté comparée (ressources brutes)</h2>",
+            "<summary class='section-title'>Difficulté comparée (ressources brutes)</summary>",
             difficulty_body,
             count=1,
         )
         difficulty_section = (
-            f"<section class='report-section' id='difficulte'>{difficulty_body}</section>"
+            f"<details class='report-section' id='difficulte' open>{difficulty_body}</details>"
         )
     else:
         series = difficulty_series(
@@ -405,10 +410,11 @@ def write_full_report(
             ),
         )
         difficulty_section = (
-            "<section class='report-section' id='difficulte'><h2>Difficulté (ressources brutes)</h2>"
+            "<details class='report-section' id='difficulte' open>"
+            "<summary class='section-title'>Difficulté (ressources brutes)</summary>"
             "<details class='table-fold' id='difficulte-table'><summary>Détail par technologie</summary><div class='cols'>"
             f"{difficulty_html}"
-            "</div></details></section>"
+            "</div></details></details>"
         )
     emit(65, "partie simulée")
     if "playthrough" in skip:
