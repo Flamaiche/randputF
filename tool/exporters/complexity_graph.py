@@ -439,6 +439,35 @@ def _length_fields(analysis: GraphAnalysis | None) -> dict:
     }
 
 
+_CRAFT_MODE_PALETTE = [
+    "#ff7a45", "#4dabf7", "#51cf66", "#fcc419", "#cc5de8",
+    "#22b8cf", "#f06595", "#94d82d", "#adb5bd", "#ffa94d",
+]
+
+
+def _craft_mode_label(name: str) -> str:
+    return "À la main" if name == HAND else name
+
+
+def _craft_modes(rows: list[dict]) -> list[dict]:
+    totals: Counter[str] = Counter()
+    for row in rows:
+        for name, amount in (row.get("crafts_by_building") or {}).items():
+            totals[name] += float(amount or 0)
+    ordered = [name for name, _ in totals.most_common() if totals.get(name, 0) > 0]
+    modes = []
+    for idx, name in enumerate(ordered):
+        modes.append(
+            {
+                "id": name,
+                "label": _craft_mode_label(name),
+                "color": _CRAFT_MODE_PALETTE[idx % len(_CRAFT_MODE_PALETTE)],
+                "total": clean_number(totals[name]),
+            }
+        )
+    return modes
+
+
 def _complexity_from_playthrough(
     seed: dict,
     playthrough: dict,
@@ -497,6 +526,7 @@ def _complexity_from_playthrough(
         "building_usage": building_usage,
         "resource_usage": resource_usage,
         "unknown_terminals": playthrough.get("unknown_terminals", []),
+        "craft_modes": _craft_modes(rows),
         "tech_rows": rows,
         **_length_fields(graph),
     }
@@ -563,6 +593,13 @@ def analyze_complexity(
             + 10 * len(seen_buildings)
         )
 
+        crafts_by_building = {
+            name: clean_number(value)
+            for name, value in tech_exp.buildings.most_common()
+            if value
+        }
+        if tech_exp.hand_crafts:
+            crafts_by_building[HAND] = clean_number(tech_exp.hand_crafts)
         tech_rows.append(
             {
                 "num": position,
@@ -579,6 +616,7 @@ def analyze_complexity(
                 "crafts": clean_number(crafts_total),
                 "craft_seconds": round(tech_exp.machine_seconds, 2),
                 "hand_crafts": clean_number(tech_exp.hand_crafts),
+                "crafts_by_building": crafts_by_building,
                 "cumulative_time": round(cumulative["time"], 2),
                 "cumulative_packs": cumulative["packs"],
                 "cumulative_raw": clean_number(cumulative["raw"]),
@@ -625,6 +663,7 @@ def analyze_complexity(
         "building_usage": building_usage,
         "resource_usage": resource_usage,
         "unknown_terminals": analysis.unknown,
+        "craft_modes": _craft_modes(tech_rows),
         "tech_rows": tech_rows,
         **_length_fields(analysis),
     }
@@ -642,6 +681,16 @@ _MT = 34
 _MB = 44
 
 
+def _darken(hex_color: str, factor: float = 0.45) -> str:
+    color = hex_color.lstrip("#")
+    if len(color) != 6:
+        return hex_color
+    r = int(int(color[0:2], 16) * factor)
+    g = int(int(color[2:4], 16) * factor)
+    b = int(int(color[4:6], 16) * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _chart_svg(
     title: str,
     values: list[float],
@@ -650,31 +699,37 @@ def _chart_svg(
     *,
     cumulative_label: str = "",
 ) -> str:
-    """Construit un graphique ligne SVG d'une série par technologie.
+    return _multi_chart_svg(
+        title,
+        labels,
+        [{"label": cumulative_label or "valeur", "values": values, "color": color, "area": True}],
+    )
 
-    ``title`` est le titre, ``values``/``labels`` les points et leurs abscisses, ``color`` la couleur de la ligne et ``cumulative_label`` l'étiquette de la série cumulée. Retourne le fragment SVG complet (viewBox 1000×260).
+
+def _multi_chart_svg(
+    title: str,
+    labels: list[str],
+    series: list[dict[str, Any]],
+    *,
+    y_label: str = "",
+) -> str:
+    """Construit un graphique ligne SVG multi-séries.
+
+    Chaque série: {label, values, color, dash?, area?, opacity?, width?}.
     """
     plot_w = _W - _ML - _MR
     plot_h = _H - _MT - _MB
-    count = len(values)
-    top = max(values) if values else 0
+    count = max((len(s.get("values") or []) for s in series), default=0)
+    top = max((max((float(v) for v in (s.get("values") or []) if v is not None), default=0.0) for s in series), default=0.0)
     top = top if top > 0 else 1
     top *= 1.08
 
     def px(index: int) -> float:
-        """Retourne la position horizontale SVG d'un point.
-
-        ``index`` est l'indice du point dans la série ; le résultat est réparti linéairement entre les marges du graphique. Un seul point est centré.
-        """
         if count <= 1:
             return _ML + plot_w / 2
         return _ML + (index / (count - 1)) * plot_w
 
     def py(value: float) -> float:
-        """Retourne la position verticale SVG d'une valeur.
-
-        ``value`` est la mesure à placer ; l'échelle est fixée par le maximum de la série et les marges du graphique. Retourne un ``float`` en coordonnées SVG.
-        """
         return _MT + plot_h - (value / top) * plot_h
 
     parts: list[str] = [
@@ -682,22 +737,23 @@ def _chart_svg(
         f'aria-label="{_html.escape(title)}">',
         f'<text x="{_ML}" y="20" class="chart-title">{_html.escape(title)}</text>',
     ]
+    if y_label:
+        parts.append(
+            f'<text x="{_ML}" y="32" class="chart-sub">{_html.escape(y_label)}</text>'
+        )
 
-    # Grille + graduations Y (4 niveaux).
     for step in range(5):
         fraction = step / 4
         y = _MT + plot_h - fraction * plot_h
         value = top * fraction
         parts.append(
-            f'<line x1="{_ML}" y1="{y:.1f}" x2="{_W - _MR}" y2="{y:.1f}" '
-            f'class="grid"/>'
+            f'<line x1="{_ML}" y1="{y:.1f}" x2="{_W - _MR}" y2="{y:.1f}" class="grid"/>'
         )
         parts.append(
             f'<text x="{_ML - 8}" y="{y + 4:.1f}" text-anchor="end" '
             f'class="tick">{_html.escape(_format_number(value))}</text>'
         )
 
-    # Traits verticaux aux positions des technologies (repères de lecture).
     if count:
         stride_v = max(1, math.ceil(count / 40))
         for i in range(0, count, stride_v):
@@ -707,35 +763,38 @@ def _chart_svg(
                 f'y2="{_MT + plot_h:.1f}" class="grid grid-v"/>'
             )
 
-    # Points + aire + ligne.
-    if count:
-        points = " ".join(f"{px(i):.1f},{py(v):.1f}" for i, v in enumerate(values))
-        area = (
-            f"{_ML:.1f},{_MT + plot_h:.1f} "
-            + points
-            + f" {px(count - 1):.1f},{_MT + plot_h:.1f}"
-        )
-        parts.append(f'<polygon points="{area}" fill="{color}" opacity="0.12"/>')
+    for s in series:
+        values = [float(v or 0) for v in (s.get("values") or [])]
+        if not values:
+            continue
+        color = str(s.get("color") or "#888")
+        opacity = float(s.get("opacity") or 1)
+        width = float(s.get("width") or 2.2)
+        dash = f' stroke-dasharray="{_html.escape(str(s["dash"]))}"' if s.get("dash") else ""
+        pts = [(px(i), py(v), v) for i, v in enumerate(values)]
+        point_str = " ".join(f"{x:.1f},{y:.1f}" for x, y, _ in pts)
+        if s.get("area"):
+            area = f"{_ML:.1f},{_MT + plot_h:.1f} " + point_str + f" {px(len(values)-1):.1f},{_MT + plot_h:.1f}"
+            parts.append(f'<polygon points="{area}" fill="{color}" opacity="{0.10 * opacity:.2f}"/>')
         parts.append(
-            f'<polyline points="{points}" fill="none" stroke="{color}" '
-            f'stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'
+            f'<polyline points="{point_str}" fill="none" stroke="{color}" '
+            f'stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round" '
+            f'opacity="{opacity:.2f}"{dash}/>'
         )
-        # Points et valeurs numériques (échantillonnées si trop nombreux).
-        stride_label = max(1, math.ceil(count / 20))
-        for i, value in enumerate(values):
-            cx, cy = px(i), py(value)
+        stride_label = max(1, math.ceil(len(values) / 20))
+        show_labels = bool(s.get("show_labels", len(series) == 1))
+        for i, (cx, cy, value) in enumerate(pts):
             parts.append(
-                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.6" fill="{color}"/>'
-                f'<title>{_html.escape(labels[i] if i < len(labels) else "")}</title>'
+                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.4" fill="{color}" opacity="{opacity:.2f}">'
+                f'<title>{_html.escape(str(s.get("label","")))} · {_html.escape(labels[i] if i < len(labels) else "")}: {_html.escape(_format_number(value))}</title></circle>'
             )
-            if i % stride_label == 0 or i == count - 1:
+            if show_labels and (i % stride_label == 0 or i == len(values) - 1):
                 label_y = cy - 7 if cy - 7 > _MT + 8 else cy + 14
                 parts.append(
                     f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" '
                     f'class="point-label">{_html.escape(_format_number(value))}</text>'
                 )
 
-    # Graduations X : etiquettes des technologies (au plus 20 pour la lisibilité).
     if count:
         stride = max(1, math.ceil(count / 20))
         for i in range(0, count, stride):
@@ -747,11 +806,22 @@ def _chart_svg(
                 f'class="tick" title="{_html.escape(label)}">{_html.escape(label)}</text>'
             )
 
-    if cumulative_label:
+    # Legend
+    lx = _W - _MR
+    ly = 18
+    for s in reversed(series):
+        label = str(s.get("label") or "")
+        color = str(s.get("color") or "#888")
+        opacity = float(s.get("opacity") or 1)
+        dash = f' stroke-dasharray="{_html.escape(str(s["dash"]))}"' if s.get("dash") else ""
+        tw = max(24, len(label) * 5.5)
+        lx -= tw + 28
         parts.append(
-            f'<text x="{_W - _MR}" y="20" text-anchor="end" class="chart-sub">'
-            f"{_html.escape(cumulative_label)}</text>"
+            f'<line x1="{lx:.1f}" y1="{ly:.1f}" x2="{lx+18:.1f}" y2="{ly:.1f}" '
+            f'stroke="{color}" stroke-width="2.5" opacity="{opacity:.2f}"{dash}/>'
+            f'<text x="{lx+22:.1f}" y="{ly+3:.1f}" class="chart-sub">{_html.escape(label)}</text>'
         )
+
     parts.append("</svg>")
     return "".join(parts)
 
@@ -1008,23 +1078,71 @@ def render_complexity_html(
         ]
     )
 
-    chart_specs = [
-        ("Temps de recherche par tech (s)", [r["research_time"] for r in rows], "#5c6bc0"),
-        ("Ressources brutes par tech", [r["raw_total"] for r in rows], "#29b6f6"),
-        ("Ateliers de fabrication distincts par tech", [r["building_count"] for r in rows], "#4caf50"),
-        ("Ratio ressources / atelier par tech", [r["ratio"] for r in rows], "#ff9800"),
-        ("Score de complexité cumulé", [r["cumulative_score"] for r in rows], "#6f6fe6"),
-        ("Crafts cumulés", [r["cumulative_crafts"] for r in rows], "#26a69a"),
-    ]
+    baseline_rows = (baseline or {}).get("tech_rows") or []
+    baseline_by_num = {int(r.get("num", 0)): r for r in baseline_rows if r.get("num")}
+    baseline_labels = [str(r.get("num", "")) for r in baseline_rows]
+    baseline_by_id = {str(r.get("id", "")): r for r in baseline_rows if r.get("id")}
+    max_len = max(len(rows), len(baseline_rows))
+    chart_labels = [str(i) for i in range(1, max_len + 1)]
+
+    def _series_values(getter, base_getter=None):
+        vals = [float(getter(r) or 0) for r in rows]
+        bvals = [float((base_getter or getter)(baseline_by_num.get(i, {})) or 0) for i in range(1, max_len + 1)]
+        vals += [0.0] * (max_len - len(vals))
+        return vals, bvals
+
+    def _overlay(title, getter, color, *, base_getter=None):
+        vals, bvals = _series_values(getter, base_getter)
+        series = []
+        if baseline_rows:
+            series.append({"label": baseline_label, "values": bvals, "color": _darken(color, 0.45), "opacity": 0.95, "width": 2.0})
+        series.append({"label": data.get("seed_value", "seed"), "values": vals, "color": color, "opacity": 1.0, "width": 2.4, "area": not baseline_rows})
+        return f'<div class="card">{_multi_chart_svg(title, chart_labels, series)}</div>'
+
     chart_parts: list[str] = []
-    for position, (title, values, color) in enumerate(chart_specs, start=1):
-        chart_parts.append(
-            f'<div class="card">{_chart_svg(title, values, labels, color)}</div>'
-        )
-        if on_progress is not None:
-            on_progress(
-                70 + position * 5 // len(chart_specs), "graphiques de complexité"
-            )
+    chart_parts.append(_overlay("Temps de recherche cumulé (s)", lambda r: r.get("cumulative_time", r.get("research_time")), "#5c6bc0"))
+    chart_parts.append(_overlay("Ressources brutes cumulées", lambda r: r.get("cumulative_raw", r.get("raw_total")), "#29b6f6"))
+    chart_parts.append(_overlay("Score de complexité cumulé", lambda r: r.get("cumulative_score"), "#6f6fe6"))
+    chart_parts.append(_overlay("Crafts cumulés", lambda r: r.get("cumulative_crafts", r.get("crafts")), "#26a69a"))
+
+    # Craft modes chart: one color per mode, dump bright, vanilla dark same hue.
+    mode_order = [m["id"] for m in (data.get("craft_modes") or [])]
+    baseline_modes = _craft_modes(baseline_rows)
+    for m in baseline_modes:
+        if m["id"] not in mode_order:
+            mode_order.append(m["id"])
+    mode_colors = {}
+    for i, m in enumerate(data.get("craft_modes") or []):
+        mode_colors[m["id"]] = m["color"]
+    for m in baseline_modes:
+        if m["id"] not in mode_colors:
+            mode_colors[m["id"]] = _CRAFT_MODE_PALETTE[len(mode_colors) % len(_CRAFT_MODE_PALETTE)]
+
+    mode_series = []
+    for mode_id in mode_order:
+        color = mode_colors.get(mode_id, "#888")
+        label = _craft_mode_label(mode_id)
+        dump_vals = []
+        cum = 0.0
+        for i in range(1, max_len + 1):
+            row = next((r for r in rows if int(r.get("num", 0)) == i), None)
+            if row:
+                cum += float((row.get("crafts_by_building") or {}).get(mode_id, 0) or 0)
+            dump_vals.append(cum)
+        base_vals = []
+        cum = 0.0
+        for i in range(1, max_len + 1):
+            row = baseline_by_num.get(i)
+            if row:
+                cum += float((row.get("crafts_by_building") or {}).get(mode_id, 0) or 0)
+            base_vals.append(cum)
+        if baseline_rows and any(v > 0 for v in base_vals):
+            mode_series.append({"label": f"{label} ({baseline_label})", "values": base_vals, "color": _darken(color, 0.42), "opacity": 0.9, "width": 1.8})
+        if any(v > 0 for v in dump_vals):
+            mode_series.append({"label": f"{label} ({data.get('seed_value','seed')})", "values": dump_vals, "color": color, "opacity": 1.0, "width": 2.4})
+    if mode_series:
+        chart_parts.append(f'<div class="card">{_multi_chart_svg("Crafts cumulés par mode (main / machine)", chart_labels, mode_series)}</div>')
+
     charts = "".join(chart_parts)
 
     baseline_buildings = dict(reference.get("building_usage") or [])
