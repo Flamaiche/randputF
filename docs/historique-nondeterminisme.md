@@ -63,7 +63,7 @@ séparés.
 
 - [nondeterminism.md](nondeterminism.md) — à lire pour l'état courant.
 - [witness.md](witness.md) — à lire pour le md5 du mod assemblé.
-- [seed.md](seed.md#seed-et-configuration-1) — à lire pour la graine active.
+- [seed.md](seed.md#seed-et-configuration) — à lire pour la graine active.
 - [pipeline.md](pipeline.md) — à lire pour les flux RNG.
 
 ## Lectures associées

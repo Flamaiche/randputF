@@ -59,7 +59,7 @@ Quelques constantes de structure restent dans le code. C'est le cas du miroir Lu
 
 ### Écart connu
 
-Certains textes plus anciens présentaient les sections `pools` et `weights` comme actives. Elles sont lues et validées, mais sans effet sur le moteur. Reste à faire : retirer ces mentions des notes historiques.
+Certains textes plus anciens présentaient les sections `pools` et `weights` comme actives. Elles sont lues et validées, mais sans effet sur le moteur ; ces anciennes mentions restent historiques.
 
 ## Garanti / non garanti
 

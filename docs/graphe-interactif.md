@@ -15,7 +15,7 @@ La génération peut produire jusqu'à trois vues HTML en plus du mod. Elles exp
 - [rapport HTML](glossaire.md) — vue interactive générée à côté du mod.
 - [graphe](glossaire.md) — réseau de recettes, items et technologies.
 - [témoin](glossaire.md) — empreinte de reproductibilité de la seed 5.
-- [Graphviz](glossaire.md) — outil externe utilisé pour le rendu du graphe.
+- [Graphviz](glossaire.md) — outil externe utilisé pour `seed.graph.html`.
 
 ## Fonctionnement
 
@@ -27,7 +27,7 @@ La génération peut produire jusqu'à trois vues HTML en plus du mod. Elles exp
 | `seed.complexity.html` | rapport de complexité du graphe généré |
 | `seed.difficulty.html` | comparaison vanilla contre mod |
 
-Les fichiers disponibles sont écrits par `generate`, sauf `--no-html`. Le graphe interactif dépend de Graphviz et la comparaison de difficulté exige des technologies dans le dump. Leur absence n'empêche pas la seed ni le mod d'être produits.
+Les fichiers disponibles sont écrits par `generate`, sauf `--no-html`. `seed.graph.html` dépend de Graphviz ; `seed.difficulty.html` et `seed.complexity.html` dessinent leur SVG en Python. La comparaison de difficulté exige des technologies dans le dump. Leur absence n'empêche pas la seed ni le mod d'être produits.
 
 Chaque vue est inspectable sans installer le mod. Elle reprend la seed sérialisée, sans la modifier.
 
@@ -59,7 +59,7 @@ D'anciens textes affirmaient qu'aucun zip n'était attaché à la release, ou d�
 
 | Garanti | Non garanti |
 |---|---|
-| Les vues sont générées à côté du mod, jamais dans le mod. | Graphviz peut manquer sur une machine. |
+| Les vues sont générées à côté du mod, jamais dans le mod. | Graphviz peut manquer pour `seed.graph.html`. |
 | Les fichiers HTML n'entrent pas dans le témoin. | Le zip de release dépend du chemin exact du script. |
 | `--no-html` supprime uniquement les trois vues. | Les vues ne prouvent pas la jouabilité. |
 

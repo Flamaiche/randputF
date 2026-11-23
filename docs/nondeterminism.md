@@ -50,7 +50,7 @@ attendues sont séparés.
 - Le test de la graine 1757 est dans `test_late_raws.py`.
 - Aucun test d'ordre dédié à la graine 1269 n'est conservé dans la suite
   courante.
-- La suite compte 873 tests.
+- La suite compte 876 tests.
 
 ## Garanti / non garanti
 
@@ -65,7 +65,7 @@ attendues sont séparés.
 - [historique-nondeterminisme.md](historique-nondeterminisme.md) — à lire pour
   les diagnostics anciens.
 - [witness.md](witness.md) — à lire pour le déterminisme de l'assemblage.
-- [seed.md](seed.md#seed-et-configuration-1) — à lire pour la valeur de la
+- [seed.md](seed.md#seed-et-configuration) — à lire pour la valeur de la
   graine.
 - [pipeline.md](pipeline.md) — à lire pour l'ordre des flux RNG.
 

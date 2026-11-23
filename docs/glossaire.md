@@ -27,7 +27,7 @@ décrivent leur rôle dans randputF, pas seulement leur sens général.
 | divergence assumée | Écart volontaire par rapport au jeu de base. |
 | tag | Propriété calculée à partir d'une capacité du dump. |
 | cycle | Dépendance circulaire entre recettes ou entre technologies. |
-| Graphviz | Outil externe utilisé pour dessiner le graphe SVG. |
+| Graphviz | Outil externe utilisé pour `seed.graph.html` ; les vues de difficulté et de complexité dessinent leur SVG en Python. |
 
 ## Monde généré
 

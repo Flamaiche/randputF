@@ -74,7 +74,7 @@ Un dump produit avec randputF actif est accepté. Les recettes vanilla neutralis
 
 ### Écart connu
 
-D'anciens commentaires et pages indiquaient que `buffer_capacity` n'était pas exporté. Le code exporte, lit et utilise cette valeur. Reste à faire : mettre à jour ces commentaires et retirer l'ancienne formulation de repli.
+D'anciens commentaires et pages indiquaient que `buffer_capacity` n'était pas exporté. Le code exporte, lit et utilise cette valeur ; l'ancienne formulation de repli ne s'applique qu'aux dumps historiques.
 
 ## Garanti / non garanti
 

@@ -46,7 +46,7 @@ l'implémentation, les faits anciens et les corrections attendues.
 
 ## Ce qui est exclu
 
-- `seed.graph.html` dépend de Graphviz présent sur la machine.
+- `seed.graph.html` dépend de Graphviz ; `seed.difficulty.html` et `seed.complexity.html` dessinent leur SVG en Python.
 - `seed.difficulty.html` compare la seed au vanilla et se régénère.
 - `seed.complexity.html` est une vue de complexité régénérable.
 - Les trois fichiers sont écrits dans `output/reports/randputF_<version>/`.
@@ -70,5 +70,5 @@ l'implémentation, les faits anciens et les corrections attendues.
 ## Lectures associées
 
 - **Parent** : [docs/README.md](README.md) — index de la documentation.
-- [seed.md](seed.md#seed-et-configuration-1) — à lire pour la graine active.
+- [seed.md](seed.md#seed-et-configuration) — à lire pour la graine active.
 - [historique-nondeterminisme.md](historique-nondeterminisme.md) — à lire pour les hash anciens.

@@ -10,7 +10,7 @@ La seed remplace les repères du spawn par des gisements tirés au hasard. Leur 
 
 - Le nombre total de gisements est tiré une fois, entre 3 et 8 avec les réglages par défaut.
 - Une ressource n'apparaît qu'une seule fois sur la carte, en gisement ou en lac.
-- Aucune ressource de départ n'est garantie : tout dépend du tirage.
+- Aucune ressource précise n'est garantie : tout dépend du tirage. Les moyens d'extraction liés au tirage le sont.
 
 ## Mots à connaître
 

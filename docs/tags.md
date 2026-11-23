@@ -78,7 +78,7 @@ La triade est tentée quand un consommateur reçoit sa recette fluide à fluide.
 
 ### Écart connu
 
-D'anciens textes indiquaient que `buffer_capacity` n'était pas exporté. Le champ est désormais exporté par `exporter/control.lua`, lu par `tool/parsers/vanilla.py` et conservé sur `BuildingDef`. Reste à faire : retirer l'ancienne formulation de repli des commentaires et des notes historiques.
+D'anciens textes indiquaient que `buffer_capacity` n'était pas exporté. Le champ est désormais exporté par `exporter/control.lua`, lu par `tool/parsers/vanilla.py` et conservé sur `BuildingDef` ; l'ancienne formulation de repli ne vise que les dumps historiques.
 
 ## Extraction et fabricateurs à recette fixe
 

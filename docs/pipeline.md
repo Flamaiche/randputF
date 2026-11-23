@@ -64,7 +64,7 @@ Les deux passes de jalons de ressources tardives reposent sur le même état de 
 
 ### Écart connu
 
-D'anciens documents décrivaient la reprise comme commune à plusieurs commandes. Le code ne l'applique qu'à `generate`. Reste à faire : limiter cette mention à la seule commande concernée dans les documents historiques.
+D'anciens documents décrivaient la reprise comme commune à plusieurs commandes. Le code ne l'applique qu'à `generate` ; les anciennes mentions historiques ne sont pas la source courante.
 
 ## Garanti / non garanti
 

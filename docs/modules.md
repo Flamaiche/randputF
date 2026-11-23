@@ -49,7 +49,7 @@ Les modules `late_raws.py` et `craft_quantity.py` sont conditionnels. `bootstrap
 
 `mod_seed.py` écrit `seed.json`, `seed.lua` et les localisations. `seed_graph.py`, `complexity_graph.py` et `difficulty_graph.py` écrivent les trois vues HTML. `report.py`, `dump_html.py`, `vanilla_complexity.py`, `profile.py` et `html_ui.py` servent aux rapports et à l'interface.
 
-La génération du graphe dépend de Graphviz. Son absence n'empêche ni la seed ni le mod d'être produits.
+`seed.graph.html` dépend de Graphviz ; `seed.difficulty.html` et `seed.complexity.html` écrivent leur SVG en Python. L'absence de Graphviz n'empêche ni la seed ni le mod d'être produits.
 
 ### La CLI
 
@@ -59,9 +59,9 @@ Les options `--demo` et `--dump` existent sur `parse`, `audit`, `difficulty`, `c
 
 `generate` est la seule commande à passer par `generate_with_retry`. `difficulty` et `witness` appellent `generate_seed` directement. `generate` accepte `--install` et `--no-html`.
 
-### Écart connu
+### Historique
 
-D'anciens documents présentaient `--demo` et `--dump` comme des options globales. Le code les déclare commande par commande. Reste à faire : aligner les anciennes listes d'options sur la CLI actuelle.
+D'anciens documents présentaient `--demo` et `--dump` comme des options globales. Le code les déclare commande par commande ; les anciennes listes ne sont pas la source courante.
 
 ## Garanti / non garanti
 
@@ -69,7 +69,7 @@ D'anciens documents présentaient `--demo` et `--dump` comme des options globale
 |---|---|
 | Les modules branchés sont distincts des modules d'observation. | Un module testé peut rester hors pipeline. |
 | L'inventaire des modules exclut les fichiers `__init__.py`. | Les noms de modules peuvent changer lors d'un refactoring. |
-| Les vues HTML disponibles sont générées par `generate` sauf `--no-html`. | Graphviz ou les technologies peuvent manquer. |
+| Les vues HTML disponibles sont générées par `generate` sauf `--no-html`. | Graphviz peut manquer pour `seed.graph.html` ; les technologies peuvent manquer pour la difficulté. |
 
 ## Aller plus loin
 

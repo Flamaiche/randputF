@@ -559,7 +559,7 @@ def main(argv: list[str] | None = None) -> None:
     p_parse.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_parse.set_defaults(func=cmd_parse)
 
-    p_audit = sub.add_parser("audit", help="Audite les tags bâtiments et items (invariants C8/§9)")
+    p_audit = sub.add_parser("audit", help="Audite les tags bâtiments et items")
     p_audit.add_argument("--demo", action="store_true", help="Utilise une base synthétique")
     p_audit.add_argument("--dump", default=str(DUMP_PATH_DEFAULT))
     p_audit.set_defaults(func=cmd_audit)

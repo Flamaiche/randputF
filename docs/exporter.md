@@ -68,7 +68,7 @@ L'ancien garde-fou qui refusait ces dumps a été retiré. La canonisation à la
 
 ### Écart connu
 
-D'anciens textes annonçaient un refus explicite des dumps moddés. Le comportement courant est l'acceptation puis la canonisation. Reste à faire : remplacer ces avertissements par la description du comportement actuel.
+D'anciens textes annonçaient un refus explicite des dumps moddés. Le comportement courant est l'acceptation puis la canonisation ; les anciens avertissements sont obsolètes.
 
 ## Garanti / non garanti
 

@@ -40,8 +40,6 @@ faits anciens et les corrections demandées sont séparés des garanties actuell
 - `generate_with_retry` essaie la valeur demandée, puis les suivantes, jusqu'à
   dix tentatives.
 
-<a id="seed-et-configuration-1"></a>
-
 ## Configuration lue et données exportées
 
 - `config/defaults.yaml` porte les valeurs par défaut.

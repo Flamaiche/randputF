@@ -91,7 +91,7 @@ L'ancien garde-fou `EXPORT REFUSE` a été retiré de `exporter/control.lua`. Un
 
 ### Écart connu
 
-D'anciens documents décrivaient des garde-fous et des lignes de code précises dans ce fichier. Ces descriptions ne reflètent plus le code courant. Reste à faire : les remplacer par les rôles de fichiers et les événements décrits ci-dessus.
+D'anciens documents décrivaient des garde-fous et des lignes de code précises dans ce fichier. Ces descriptions ne reflètent plus le code courant ; les rôles de fichiers et les événements décrits ci-dessus font foi.
 
 ## Garanti / non garanti
 
