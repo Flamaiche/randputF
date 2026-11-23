@@ -806,21 +806,24 @@ def _multi_chart_svg(
                 f'class="tick" title="{_html.escape(label)}">{_html.escape(label)}</text>'
             )
 
-    # Legend
-    lx = _W - _MR
-    ly = 18
-    for s in reversed(series):
+    # Legend: wrap to avoid overflowing chart bounds.
+    lx = _ML
+    ly = _H - 8
+    for s in series:
         label = str(s.get("label") or "")
         color = str(s.get("color") or "#888")
         opacity = float(s.get("opacity") or 1)
         dash = f' stroke-dasharray="{_html.escape(str(s["dash"]))}"' if s.get("dash") else ""
-        tw = max(24, len(label) * 5.5)
-        lx -= tw + 28
+        item_w = 24 + max(24, len(label) * 5.4)
+        if lx + item_w > _W - _MR:
+            lx = _ML
+            ly -= 14
         parts.append(
-            f'<line x1="{lx:.1f}" y1="{ly:.1f}" x2="{lx+18:.1f}" y2="{ly:.1f}" '
+            f'<line x1="{lx:.1f}" y1="{ly-3:.1f}" x2="{lx+16:.1f}" y2="{ly-3:.1f}" '
             f'stroke="{color}" stroke-width="2.5" opacity="{opacity:.2f}"{dash}/>'
-            f'<text x="{lx+22:.1f}" y="{ly+3:.1f}" class="chart-sub">{_html.escape(label)}</text>'
+            f'<text x="{lx+20:.1f}" y="{ly:.1f}" class="chart-sub">{_html.escape(label)}</text>'
         )
+        lx += item_w
 
     parts.append("</svg>")
     return "".join(parts)
@@ -1105,14 +1108,14 @@ def render_complexity_html(
     chart_parts.append(_overlay("Score de complexité cumulé", lambda r: r.get("cumulative_score"), "#6f6fe6"))
     chart_parts.append(_overlay("Crafts cumulés", lambda r: r.get("cumulative_crafts", r.get("crafts")), "#26a69a"))
 
-    # Craft modes chart: one color per mode, dump bright, vanilla dark same hue.
+    # Craft modes chart: per-tech usage (not cumulative), dump bright, vanilla dark same hue.
     mode_order = [m["id"] for m in (data.get("craft_modes") or [])]
     baseline_modes = _craft_modes(baseline_rows)
     for m in baseline_modes:
         if m["id"] not in mode_order:
             mode_order.append(m["id"])
     mode_colors = {}
-    for i, m in enumerate(data.get("craft_modes") or []):
+    for m in data.get("craft_modes") or []:
         mode_colors[m["id"]] = m["color"]
     for m in baseline_modes:
         if m["id"] not in mode_colors:
@@ -1122,26 +1125,21 @@ def render_complexity_html(
     for mode_id in mode_order:
         color = mode_colors.get(mode_id, "#888")
         label = _craft_mode_label(mode_id)
-        dump_vals = []
-        cum = 0.0
+        dump_vals = [0.0] * max_len
+        base_vals = [0.0] * max_len
         for i in range(1, max_len + 1):
             row = next((r for r in rows if int(r.get("num", 0)) == i), None)
             if row:
-                cum += float((row.get("crafts_by_building") or {}).get(mode_id, 0) or 0)
-            dump_vals.append(cum)
-        base_vals = []
-        cum = 0.0
-        for i in range(1, max_len + 1):
-            row = baseline_by_num.get(i)
-            if row:
-                cum += float((row.get("crafts_by_building") or {}).get(mode_id, 0) or 0)
-            base_vals.append(cum)
+                dump_vals[i - 1] = float((row.get("crafts_by_building") or {}).get(mode_id, 0) or 0)
+            brow = baseline_by_num.get(i)
+            if brow:
+                base_vals[i - 1] = float((brow.get("crafts_by_building") or {}).get(mode_id, 0) or 0)
         if baseline_rows and any(v > 0 for v in base_vals):
-            mode_series.append({"label": f"{label} ({baseline_label})", "values": base_vals, "color": _darken(color, 0.42), "opacity": 0.9, "width": 1.8})
+            mode_series.append({"label": f"{label} ({baseline_label})", "values": base_vals, "color": _darken(color, 0.42), "opacity": 0.85, "width": 1.8})
         if any(v > 0 for v in dump_vals):
-            mode_series.append({"label": f"{label} ({data.get('seed_value','seed')})", "values": dump_vals, "color": color, "opacity": 1.0, "width": 2.4})
+            mode_series.append({"label": f"{label} ({data.get('seed_value','seed')})", "values": dump_vals, "color": color, "opacity": 1.0, "width": 2.2})
     if mode_series:
-        chart_parts.append(f'<div class="card">{_multi_chart_svg("Crafts cumulés par mode (main / machine)", chart_labels, mode_series)}</div>')
+        chart_parts.append(f'<div class="card">{_multi_chart_svg("Crafts par mode par tech (main / machine)", chart_labels, mode_series)}</div>')
 
     charts = "".join(chart_parts)
 

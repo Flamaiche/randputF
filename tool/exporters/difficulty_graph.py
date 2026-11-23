@@ -371,6 +371,7 @@ _TEMPLATE = """<!doctype html>
   #tip {{ position:absolute; z-index:5; pointer-events:none; display:none;
          background:rgba(18,18,24,.97); border:1px solid #3f3f4d; border-radius:8px;
          padding:9px 11px; font-size:12px; line-height:1.45; min-width:200px;
+         max-width:min(320px, calc(100vw - 32px)); overflow-wrap:anywhere;
          box-shadow:0 10px 26px rgba(0,0,0,.55); transform:translate(-50%,-112%); }}
   #tip.pinned {{ border-color:#7a7a8f; box-shadow:0 0 0 1px #7a7a8f, 0 10px 26px rgba(0,0,0,.55); }}
   #tip .tname {{ font-weight:600; margin-bottom:6px; }}
@@ -445,6 +446,18 @@ const DATA = {data_json};
     const py = r.top - w.top + 30;
     tip.style.left = px + 'px';
     tip.style.top = py + 'px';
+    tip.style.transform = 'translate(-50%,-112%)';
+    const tr = tip.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    let shiftX = 0;
+    if (tr.left < wr.left + 8) shiftX = (wr.left + 8 - tr.left);
+    if (tr.right > wr.right - 8) shiftX = (wr.right - 8 - tr.right);
+    if (tr.top < 8) {{
+      tip.style.top = (py + 36) + 'px';
+      tip.style.transform = `translate(calc(-50% + ${{shiftX}}px), 0)`;
+    }} else {{
+      tip.style.transform = `translate(calc(-50% + ${{shiftX}}px), -112%)`;
+    }}
   }}
 
   function render(rec) {{
