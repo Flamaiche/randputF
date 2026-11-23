@@ -879,6 +879,7 @@ def _stat(
     hint: str = "",
     ratio: str | None = None,
     baseline_label: str = "vanilla",
+    tip: str = "",
 ) -> str:
     """Génère une tuile du bandeau de statistiques de complexité.
 
@@ -893,8 +894,13 @@ def _stat(
             f'<span class="ratio">{ratio} {_html.escape(baseline_label)}</span>'
         )
     hint_html = f'<div class="hint">{" · ".join(parts)}</div>' if parts else ""
+    tip_attr = (
+        f" data-tip-title='{_html.escape(lab)}' data-tip='{_html.escape(tip)}'"
+        if tip
+        else ""
+    )
     return (
-        f'<div class="stat"><div class="lab">{_html.escape(lab)}</div>'
+        f'<div class="stat"><div class="lab"{tip_attr}>{_html.escape(lab)}</div>'
         f'<div class="val {cls}">{_html.escape(val)}</div>{hint_html}</div>'
     )
 
@@ -935,6 +941,7 @@ def render_complexity_html(
                 "bad",
                 ratio=ratio("complexity_score"),
                 baseline_label=baseline_label,
+                tip="Indice agrégé: recherche + crafts + 0,5×packs + 10×ateliers distincts. Sert à comparer, pas à mesurer une durée.",
             ),
             _stat(
                 "Temps théorique (1 machine)",
@@ -946,6 +953,7 @@ def render_complexity_html(
                 "recherche + crafts séquentiels, sans logistique",
                 ratio("sequential_seconds"),
                 baseline_label,
+                tip="Somme séquentielle recherche + crafts. Repère de volume de travail, pas une durée réelle de run.",
             ),
             _stat(
                 "Temps de recherche",
@@ -954,6 +962,7 @@ def render_complexity_html(
                 "toutes les techs",
                 ratio("total_research_seconds"),
                 baseline_label,
+                tip="Somme des durées de recherche des technologies (hors techs gratuites).",
             ),
             _stat(
                 "Temps de craft total",
@@ -962,6 +971,7 @@ def render_complexity_html(
                 "somme des crafts, 1 machine",
                 ratio("total_craft_seconds"),
                 baseline_label,
+                tip="Somme des temps machine des crafts requis, comme si une seule machine enchaînait tout.",
             ),
             _stat(
                 "Packs de science",
@@ -969,6 +979,7 @@ def render_complexity_html(
                 "acc",
                 ratio=ratio("total_packs"),
                 baseline_label=baseline_label,
+                tip="Nombre total de packs de science consommés sur les technologies.",
             ),
             _stat(
                 "Profondeur max",
@@ -977,6 +988,7 @@ def render_complexity_html(
                 "chaîne de recettes la plus longue",
                 ratio("chain_depth"),
                 baseline_label,
+                tip="Nombre maximal de maillons dans la chaîne de recettes la plus longue.",
             ),
             _stat(
                 "Goulot de chaîne",
@@ -985,6 +997,7 @@ def render_complexity_html(
                 "étape machine la plus lente (pas un temps de run)",
                 ratio("critical_seconds"),
                 baseline_label,
+                tip="Étape machine la plus lente dans la plus longue chaîne de recettes. Ce n’est pas un temps de partie.",
             ),
             _stat(
                 "Fabricateur le plus utilisé",
