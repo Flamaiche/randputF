@@ -65,14 +65,48 @@ def vanilla_seed_from_dump(dump: dict) -> dict | None:
     if not technologies_raw:
         return None
 
-    recipes = [
-        {
+    entities_raw = dump.get("entities") or {}
+    category_to_buildings: dict[str, list[tuple[float, str]]] = {}
+    for entity_name, entity in entities_raw.items():
+        if not isinstance(entity, dict):
+            continue
+        categories = entity.get("crafting_categories") or []
+        if not categories:
+            continue
+        try:
+            speed = float(entity.get("crafting_speed") or 0)
+        except (TypeError, ValueError):
+            speed = 0.0
+        if speed <= 0:
+            continue
+        for category in categories:
+            category_to_buildings.setdefault(str(category), []).append((speed, str(entity_name)))
+    for category in category_to_buildings:
+        category_to_buildings[category].sort(key=lambda it: (-it[0], it[1]))
+
+    def _crafted_in(recipe: dict) -> str | None:
+        if recipe.get("hand_craftable"):
+            return None
+        category = str(recipe.get("category") or "crafting")
+        candidates = category_to_buildings.get(category)
+        if not candidates:
+            return None
+        return candidates[0][1]
+
+    recipes = []
+    for name, recipe in (dump.get("recipes") or {}).items():
+        entry = {
             "name": name,
+            "category": recipe.get("category") or "crafting",
+            "energy": recipe.get("energy", recipe.get("energy_required", 0.5)),
             "ingredients": recipe.get("ingredients") or [],
             "results": recipe.get("products") or [],
         }
-        for name, recipe in (dump.get("recipes") or {}).items()
-    ]
+        crafted_in = _crafted_in(recipe)
+        if crafted_in:
+            entry["crafted_in"] = crafted_in
+        recipes.append(entry)
+
     technologies = [
         {
             "id": name,
@@ -88,12 +122,27 @@ def vanilla_seed_from_dump(dump: dict) -> dict | None:
     # + fluides d'extraction), via la base parsée — aucune liste en dur ici.
     db = load_db_from_dump(dump)
     raw = sorted(db.raw_resources(set(VANILLA_ORES)))
+    buildings = {}
+    for entity_name, entity in entities_raw.items():
+        if not isinstance(entity, dict):
+            continue
+        speed = entity.get("crafting_speed")
+        if speed is None:
+            continue
+        try:
+            speed_f = float(speed)
+        except (TypeError, ValueError):
+            continue
+        if speed_f <= 0:
+            continue
+        buildings[entity_name] = {"name": entity_name, "crafting_speed": speed_f}
     seed = {
         "meta": {"rocket": rocket_meta_from_chain(rocket_chain_from_dump(dump))},
         "technologies": technologies,
         "recipes": recipes,
         "progression_order": [],
         "pools": {"raw_resources": raw},
+        "buildings": buildings,
     }
     # Ordre de progression requis par les analyseurs graph/complexité.
     _, progression = _tech_sequence(seed)

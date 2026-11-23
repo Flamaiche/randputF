@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tool.audit.difficulty import _tech_sequence
 from tool.audit.graph import Expansion, GraphAnalysis, analyze_graph, clean_number
 from tool.exporters.html_ui import (
     FOLD_TABLES_CSS,
@@ -728,6 +729,7 @@ def _multi_chart_svg(
     """Construit un graphique ligne SVG multi-séries.
 
     Chaque série: {label, values, color, dash?, area?, opacity?, width?}.
+    Le SVG embarque des données pour infobulle/repère vertical au survol.
     """
     count = max((len(s.get("values") or []) for s in series), default=0)
     top = max((max((float(v) for v in (s.get("values") or []) if v is not None), default=0.0) for s in series), default=0.0)
@@ -765,9 +767,10 @@ def _multi_chart_svg(
     def py(value: float) -> float:
         return _MT + plot_h - (value / top) * plot_h
 
+    svg_id = f"chart-{abs(hash((title, tuple(labels), y_label, x_label))) % 10_000_000}"
     parts: list[str] = [
-        f'<svg class="chart" viewBox="0 0 {_W} {_H}" role="img" '
-        f'aria-label="{_html.escape(title)}">',
+        f'<svg id="{svg_id}" class="chart interactive-chart" viewBox="0 0 {_W} {_H}" role="img" '
+        f'aria-label="{_html.escape(title)}" data-chart-id="{svg_id}">',
         f'<text x="{_ML}" y="20" class="chart-title">{_html.escape(title)}</text>',
     ]
     parts.append(
@@ -794,7 +797,8 @@ def _multi_chart_svg(
             xg = px(i)
             parts.append(f'<line x1="{xg:.1f}" y1="{_MT}" x2="{xg:.1f}" y2="{_MT + plot_h:.1f}" class="grid grid-v"/>')
 
-    for s in series:
+    chart_records = []
+    for s_idx, s in enumerate(series):
         values = [float(v or 0) for v in (s.get("values") or [])]
         if not values:
             continue
@@ -810,8 +814,10 @@ def _multi_chart_svg(
         parts.append(f'<polyline points="{point_str}" fill="none" stroke="{color}" stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round" opacity="{opacity:.2f}"{dash}/>')
         stride_label = max(1, math.ceil(len(values) / 20))
         show_labels = bool(s.get("show_labels", len(series) == 1))
+        s_label = str(s.get("label", ""))
         for i, (cx, cy, value) in enumerate(pts):
-            parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.4" fill="{color}" opacity="{opacity:.2f}"><title>{_html.escape(str(s.get("label","")))} · {_html.escape(labels[i] if i < len(labels) else "")}: {_html.escape(_format_number(value))}</title></circle>')
+            chart_records.append({"i": i, "x": cx, "y": cy, "v": value, "s": s_label, "c": color})
+            parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.8" fill="{color}" opacity="{opacity:.2f}"><title>{_html.escape(s_label)} · {_html.escape(labels[i] if i < len(labels) else str(i+1))}: {_html.escape(_format_number(value))}</title></circle>')
             if show_labels and (i % stride_label == 0 or i == len(values) - 1):
                 label_y = cy - 7 if cy - 7 > _MT + 8 else cy + 14
                 parts.append(f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" class="point-label">{_html.escape(_format_number(value))}</text>')
@@ -836,7 +842,27 @@ def _multi_chart_svg(
             x += 24 + max(24, len(label) * 5.4)
         ly += row_h
 
+    parts.append(f'<line id="{svg_id}-guide" x1="{_ML}" y1="{_MT}" x2="{_ML}" y2="{_MT + plot_h}" stroke="#d7d7e0" stroke-width="1" stroke-dasharray="4 4" style="display:none;pointer-events:none"/>')
+    slot = plot_w / (count - 1) if count > 1 else plot_w
+    for i in range(count):
+        cx = px(i)
+        left = max(_ML, cx - slot / 2)
+        right = min(_ML + plot_w, cx + slot / 2)
+        parts.append(f'<rect class="chart-hit" data-i="{i}" x="{left:.1f}" y="{_MT}" width="{max(1.0, right-left):.1f}" height="{plot_h:.1f}" fill="transparent"/>')
     parts.append("</svg>")
+    payload = {
+        "id": svg_id,
+        "labels": labels,
+        "xLabel": x_label,
+        "yLabel": y_label,
+        "points": chart_records,
+        "plot": {"l": _ML, "r": _ML + plot_w, "t": _MT, "b": _MT + plot_h},
+    }
+    data_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    parts.append(
+        f'<div class="chart-tip" id="{svg_id}-tip" style="display:none"></div>'
+        f'<script type="application/json" id="{svg_id}-data">{data_json}</script>'
+    )
     return "".join(parts)
 
 
@@ -920,6 +946,13 @@ h3{font-size:13px;color:var(--muted);margin:0 0 8px;font-weight:600}
   padding:4px 10px;font:inherit;cursor:pointer}
 .card.fullscreen .chart-close{display:inline-block}
 .chart{width:100%;height:auto;display:block}
+.chart-hit{cursor:crosshair}
+.chart-tip{position:absolute;z-index:15;pointer-events:none;background:rgba(20,20,25,.96);
+  border:1px solid #4a4a5a;border-radius:8px;padding:8px 10px;font-size:11px;
+  color:#d7d7e0;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:min(420px,calc(100vw - 40px))}
+.chart-tip .tt-h{font-weight:600;margin-bottom:4px}
+.chart-tip .tt-r{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.chart-tip .tt-dot{width:8px;height:8px;border-radius:50%;flex:none}
 .chart-title{fill:var(--txt);font-size:13px;font-weight:600}
 .chart-sub{fill:var(--muted);font-size:11px}
 .grid{stroke:rgba(255,255,255,.07);stroke-width:1}
@@ -1289,6 +1322,7 @@ def render_complexity_html(
 <script>
 (function(){
   function closeAll(){ document.querySelectorAll('.card.fullscreen').forEach(c=>c.classList.remove('fullscreen')); document.body.style.overflow=''; }
+  function fmt(v){ const n=Number(v); if(!Number.isFinite(n)) return String(v); return Math.abs(n)>=1000 ? n.toLocaleString('fr-FR',{maximumFractionDigits:2}) : n.toLocaleString('fr-FR',{maximumFractionDigits:2}); }
   document.querySelectorAll('.charts .card').forEach(card=>{
     if(card.classList.contains('static-card')) return;
     card.tabIndex=0;
@@ -1296,6 +1330,41 @@ def render_complexity_html(
     card.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); card.click(); } if(e.key==='Escape') closeAll(); });
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeAll(); });
+
+  document.querySelectorAll('.interactive-chart').forEach(svg=>{
+    const id = svg.dataset.chartId;
+    const dataEl = document.getElementById(id+'-data');
+    const tip = document.getElementById(id+'-tip');
+    const guide = document.getElementById(id+'-guide');
+    if(!dataEl || !tip) return;
+    let data; try { data = JSON.parse(dataEl.textContent||'{}'); } catch(e){ return; }
+    const byIndex = new Map();
+    (data.points||[]).forEach(p=>{ const k=String(p.i); if(!byIndex.has(k)) byIndex.set(k,[]); byIndex.get(k).push(p); });
+    function hide(){ tip.style.display='none'; if(guide) guide.style.display='none'; }
+    function show(i, evt){
+      const pts = byIndex.get(String(i)) || [];
+      if(!pts.length){ hide(); return; }
+      const label = (data.labels||[])[i] || String(Number(i)+1);
+      let html = '<div class="tt-h">'+(data.xLabel||'Tech')+': '+label+'</div>';
+      pts.forEach(p=>{ html += '<div class="tt-r"><span class="tt-dot" style="background:'+p.c+'"></span><span>'+p.s+': <b>'+fmt(p.v)+'</b></span></div>'; });
+      tip.innerHTML = html;
+      tip.style.display='block';
+      if(guide){ const x = pts[0].x; guide.setAttribute('x1',x); guide.setAttribute('x2',x); guide.style.display=''; }
+      const card = svg.closest('.card');
+      const rect = card.getBoundingClientRect();
+      const x = (evt?.clientX||rect.left) - rect.left + 12;
+      const y = (evt?.clientY||rect.top) - rect.top + 12;
+      tip.style.left = Math.min(x, rect.width - 260) + 'px';
+      tip.style.top = Math.min(y, rect.height - 120) + 'px';
+    }
+    svg.querySelectorAll('.chart-hit').forEach(hit=>{
+      hit.addEventListener('mousemove', e=>show(hit.dataset.i, e));
+      hit.addEventListener('mouseenter', e=>show(hit.dataset.i, e));
+      hit.addEventListener('mouseleave', hide);
+      hit.addEventListener('click', e=>{ e.stopPropagation(); show(hit.dataset.i, e); });
+    });
+    svg.addEventListener('mouseleave', hide);
+  });
 })();
 </script>
 """
@@ -1446,8 +1515,7 @@ class _Playthrough:
         self.techs = [
             t for t in (seed.get("technologies") or []) if isinstance(t, dict) and t.get("id")
         ]
-        self.tech_by_id = {t["id"]: t for t in self.techs}
-        self.progression = list(seed.get("progression_order") or [])
+        self.tech_by_id, self.progression = _tech_sequence(seed)
 
         # Lancement de fusée : une techno dont le déclencheur envoie un objet
         # en orbite produit les packs déclarés par le payload

@@ -214,24 +214,10 @@ def _tech_order(seed: dict) -> tuple[dict, dict[str, int], set[str], dict[str, l
     """Ordre de progression commun : {tech → n° d'apparition 1..N} (positions
     manquantes comblées par parcours topologique), techs starter ``free`` et
     mapping recette → produits pour attribuer les déblocages. """
-    tmap = {t.get("id"): t for t in (seed.get("technologies") or []) if t.get("id")}
-    prog = list(seed.get("progression_order") or [])
-    order: dict[str, int] = {}
-    for i, tid in enumerate(prog):
-        if tid in tmap:
-            order[tid] = i + 1
-    missing = set(tmap) - set(order)
-    if missing:
-        n = len(order)
-        while missing:
-            frontier = [t for t in missing if all(p in order for p in (tmap[t].get("prerequisites") or []))]
-            if not frontier:  # sécurité (cycles / prérequis hors périmètre)
-                frontier = sorted(missing)
-            frontier.sort(key=lambda t: tmap[t].get("localised_name") or t)
-            for t in frontier:
-                n += 1
-                order[t] = n
-                missing.discard(t)
+    from tool.audit.difficulty import _tech_sequence
+
+    tmap, prog = _tech_sequence(seed)
+    order = {tid: i + 1 for i, tid in enumerate(prog)}
     free = set(seed.get("free_researches") or [])
     rec_by_recipe: dict[str, list[str]] = {}
     for recipe in seed.get("recipes") or []:

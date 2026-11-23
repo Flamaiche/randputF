@@ -9,7 +9,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from tool.audit.difficulty import _primary_recipe, _produced_amount, _rocket_meta
+from tool.audit.difficulty import (
+    _primary_recipe,
+    _produced_amount,
+    _rocket_meta,
+    _tech_sequence,
+)
 
 HAND = "main"
 MAX_DEPTH = 64
@@ -354,8 +359,7 @@ def analyze_graph(
         crafts = math.ceil(amount / produced)
         return cost(item).expansion.scaled(crafts * produced)
 
-    progression = list(seed.get("progression_order") or [])
-    tech_by_id = {t.get("id"): t for t in seed.get("technologies") or [] if t.get("id")}
+    tech_by_id, progression = _tech_sequence(seed)
     tech_expansions: dict[str, Expansion] = {}
     pack_totals: Counter[str] = Counter()
     if on_progress is not None:
