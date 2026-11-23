@@ -502,6 +502,8 @@ def _complexity_from_playthrough(
     ]
     if on_progress is not None:
         on_progress(100, "complexité depuis la simulation terminée")
+    mining_seconds = float(playthrough.get("mining_seconds", 0) or 0)
+    craft_seconds = float(playthrough.get("total_craft_seconds", total_craft_seconds) or 0)
     return {
         "seed_value": (seed.get("meta") or {}).get("seed", "?"),
         "generator_version": (seed.get("meta") or {}).get("generator_version", "?"),
@@ -509,10 +511,14 @@ def _complexity_from_playthrough(
         "free_count": len(seed.get("free_researches") or []),
         "total_research_seconds": round(total_research, 2),
         "total_research_label": _format_seconds(total_research),
-        "total_craft_seconds": round(total_craft_seconds, 2),
-        "total_craft_label": _format_seconds(total_craft_seconds),
-        "sequential_seconds": round(total_research + total_craft_seconds, 2),
-        "sequential_label": _format_seconds(total_research + total_craft_seconds),
+        "total_craft_seconds": round(craft_seconds, 2),
+        "total_craft_label": _format_seconds(craft_seconds),
+        "total_mining_seconds": round(mining_seconds, 2),
+        "total_mining_label": _format_seconds(mining_seconds),
+        "simulated_seconds": round(total_research + craft_seconds + mining_seconds, 2),
+        "simulated_label": _format_seconds(total_research + craft_seconds + mining_seconds),
+        "sequential_seconds": round(total_research + craft_seconds, 2),
+        "sequential_label": _format_seconds(total_research + craft_seconds),
         "total_packs": total_packs,
         "total_raw": clean_number(total_raw),
         "total_crafts": clean_number(total_crafts),
@@ -639,6 +645,7 @@ def analyze_complexity(
     building_usage = clean_counter(global_exp.buildings)
     resource_usage = clean_counter(global_exp.raw)
 
+    sequential = total_research + total_craft_seconds
     return {
         "seed_value": (seed.get("meta") or {}).get("seed", "?"),
         "generator_version": (seed.get("meta") or {}).get("generator_version", "?"),
@@ -648,8 +655,12 @@ def analyze_complexity(
         "total_research_label": _format_seconds(total_research),
         "total_craft_seconds": round(total_craft_seconds, 2),
         "total_craft_label": _format_seconds(total_craft_seconds),
-        "sequential_seconds": round(total_research + total_craft_seconds, 2),
-        "sequential_label": _format_seconds(total_research + total_craft_seconds),
+        "total_mining_seconds": 0.0,
+        "total_mining_label": "0:00",
+        "simulated_seconds": round(sequential, 2),
+        "simulated_label": _format_seconds(sequential),
+        "sequential_seconds": round(sequential, 2),
+        "sequential_label": _format_seconds(sequential),
         "total_packs": total_packs,
         "total_raw": clean_number(total_raw),
         "total_crafts": clean_number(total_crafts),
@@ -948,12 +959,9 @@ def _stat(
     ratio: str | None = None,
     baseline_label: str = "vanilla",
     tip: str = "",
+    baseline_value: str | None = None,
 ) -> str:
-    """Génère une tuile du bandeau de statistiques de complexité.
-
-    ``cls`` choisit la couleur de la valeur et ``hint`` ajoute une infobulle
-    discrète sous celle-ci.
-    """
+    """Génère une tuile du bandeau de statistiques de complexité."""
     parts = []
     if hint:
         parts.append(_html.escape(hint))
@@ -962,9 +970,13 @@ def _stat(
             f'<span class="ratio">{ratio} {_html.escape(baseline_label)}</span>'
         )
     hint_html = f'<div class="hint">{" · ".join(parts)}</div>' if parts else ""
+    tip_text = tip
+    if baseline_value is not None:
+        extra = f"Référence {baseline_label}: {baseline_value}."
+        tip_text = f"{tip} {extra}".strip() if tip else extra
     tip_attr = (
-        f" data-tip-title='{_html.escape(lab)}' data-tip='{_html.escape(tip)}'"
-        if tip
+        f" data-tip-title='{_html.escape(lab)}' data-tip='{_html.escape(tip_text)}'"
+        if tip_text
         else ""
     )
     return (
@@ -1010,18 +1022,7 @@ def render_complexity_html(
                 ratio=ratio("complexity_score"),
                 baseline_label=baseline_label,
                 tip="Indice agrégé: recherche + crafts + 0,5×packs + 10×ateliers distincts. Sert à comparer, pas à mesurer une durée.",
-            ),
-            _stat(
-                "Temps théorique (1 machine)",
-                data.get("sequential_label") or _format_seconds(
-                    float(data.get("total_research_seconds", 0))
-                    + float(data.get("total_craft_seconds", 0))
-                ),
-                "acc",
-                "recherche + crafts séquentiels, sans logistique",
-                ratio("sequential_seconds"),
-                baseline_label,
-                tip="Somme séquentielle recherche + crafts. Repère de volume de travail, pas une durée réelle de run.",
+                baseline_value=_format_number(reference.get("complexity_score")) if reference else None,
             ),
             _stat(
                 "Temps de recherche",
@@ -1031,15 +1032,30 @@ def render_complexity_html(
                 ratio("total_research_seconds"),
                 baseline_label,
                 tip="Somme des durées de recherche des technologies (hors techs gratuites).",
+                baseline_value=_format_seconds(float(reference.get("total_research_seconds", 0))) if reference else None,
             ),
             _stat(
-                "Temps de craft total",
+                "Temps de craft cumulé",
                 data["total_craft_label"],
                 "acc",
-                "somme des crafts, 1 machine",
+                "somme machine, sans parallélisme",
                 ratio("total_craft_seconds"),
                 baseline_label,
-                tip="Somme des temps machine des crafts requis, comme si une seule machine enchaînait tout.",
+                tip="Somme des temps machine des crafts requis. Ce n'est pas une durée de run réaliste.",
+                baseline_value=_format_seconds(float(reference.get("total_craft_seconds", 0))) if reference else None,
+            ),
+            _stat(
+                "Durée simulée (estimée)",
+                data.get("simulated_label") or data.get("sequential_label") or "—",
+                "ok",
+                "recherche + craft + minage simulés",
+                ratio("simulated_seconds"),
+                baseline_label,
+                tip="Estimation issue de la simulation de partie: recherche + temps craft + temps minage. Repère plus réaliste qu'une seule machine, mais reste une approximation (pas de logistique/déplacements/attentes).",
+                baseline_value=(
+                    reference.get("simulated_label")
+                    or (_format_seconds(float(reference.get("simulated_seconds", 0))) if reference.get("simulated_seconds") is not None else None)
+                ) if reference else None,
             ),
             _stat(
                 "Packs de science",
@@ -2182,6 +2198,8 @@ class _Playthrough:
                     for name, value in sorted(self.complexity_buildings.items())
                 },
                 "unknown_terminals": sorted(self.external),
+                "mining_seconds": _number(sum(self.mining_seconds.values())),
+                "total_craft_seconds": _number(self.total_craft_seconds),
             },
         }
 

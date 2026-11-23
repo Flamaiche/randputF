@@ -101,7 +101,7 @@ def test_html_affiche_profondeur_et_temps_critique(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "Ateliers distincts" in text
-    assert "Temps théorique (1 machine)" in text
+    assert "Durée simulée (estimée)" in text
     assert "id='complexite-courbes'" in text
     assert "id='complexite-ateliers'" in text
 
