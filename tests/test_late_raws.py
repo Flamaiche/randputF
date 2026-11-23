@@ -211,11 +211,11 @@ def test_seed_1757_gating_inerte_victoire_comme_baseline():
     gating, toutes les raws gatées ont un jalon ≤ 0 → la seed sert la même
     seed de la passe A ; le rejoueur gagne comme en baseline (89/89), là où la
     passe B re-générée perdait à la tech 21 (atelier assembling-machine-2)."""
-    from tool.__main__ import _load_config
     from tool.replay import player as rp
+    from tool.service import load_config
 
     db = db_for(1757)
-    base_cfg = dict(_load_config())
+    base_cfg = dict(load_config())
     base_cfg["seed"] = 1757
     base = generate_seed(db, base_cfg, validate=False)
     gated_cfg = dict(base_cfg)

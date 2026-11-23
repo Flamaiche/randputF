@@ -130,7 +130,7 @@ Le dépôt ne contient pas de mod pré-généré : le mod est produit par `gener
 - La sortie est déterministe : une même seed produit le même mod, octet pour
   octet, indépendamment du processus et de l'ordre des générations.
 - Le témoin courant de la seed 5 est
-  `e61667692c486e5b9c30efa9f4fbc891`.
+  `647ab8833f639846ba36f9c52f38fb94`.
 - La suite de tests compte 876 tests.
 - Le détail du témoin figure dans [witness.md](docs/witness.md).
 

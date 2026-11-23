@@ -25,7 +25,7 @@ La publication part de la branche `dev` et se déclenche sur `master`. Le workfl
 |---|---|---|
 | v0.0.0 | publiée, Factorio 2.0 | `f41e065e606ce24c8855d458c661988f` |
 | v0.0.1 | publiée, Factorio 2.0 | `c9566134864507d900f65806ade277d9` |
-| v0.0.2 | en préparation, Factorio 2.1 | `e61667692c486e5b9c30efa9f4fbc891` |
+| v0.0.2 | en préparation, Factorio 2.1 | `647ab8833f639846ba36f9c52f38fb94` |
 
 La suite courante compte 876 tests. Les valeurs des versions publiées restent des faits historiques. Elles ne décrivent pas l'état courant.
 

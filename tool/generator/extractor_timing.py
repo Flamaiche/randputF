@@ -490,7 +490,7 @@ def apply_extractor_timing(
         src_items, src_fluids = build_early_sources(
             db, patch_resources or set(), lake_resources or set()
         )
-        early_items, early_fluids = compute_early_reachable(
+        early_items, _ = compute_early_reachable(
             db, starter.state.recipes, src_items, src_fluids
         )
         early_buildings = {

@@ -72,7 +72,7 @@ Les scripts de `tools/` explorent le rejoueur par plages de seeds. Ils ne partic
 
 ### Repères courants
 
-La suite compte 876 tests. Le témoin de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`. La version courante vise Factorio 2.1 et reste en préparation de release.
+La suite compte 876 tests. Le témoin de la seed 5 est `647ab8833f639846ba36f9c52f38fb94`. La version courante vise Factorio 2.1 et reste en préparation de release.
 
 ## Garanti / non garanti
 

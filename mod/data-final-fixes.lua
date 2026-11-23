@@ -1,12 +1,6 @@
 -- data-final-fixes.lua — disable vanilla recipes/techs (after all base mod changes)
 
-local seed = {}
-do
-  local ok, loaded = pcall(require, "seed.seed")
-  if ok and type(loaded) == "table" then
-    seed = loaded
-  end
-end
+local seed = require("seed_loader")
 
 log("[randputF] data-final-fixes.lua start")
 
@@ -65,11 +59,7 @@ end
 -- Resources are placed per-planet in Factorio 2.0+. Force vanilla resources to
 -- size=0 (they stay listed so default_enable_all doesn't re-enable them) and
 -- register the randputF controls/entities with default frequency/size.
-local seed_ok, seed_data = pcall(require, "seed.seed")
-local patches = {}
-if seed_ok and type(seed_data) == "table" then
-  patches = (seed_data.map or {}).patches or {}
-end
+local patches = (seed.map or {}).patches or {}
 
 for planet_name, planet in pairs(data.raw["planet"] or {}) do
   local mgs = (planet.map_gen_settings or {})

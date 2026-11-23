@@ -247,7 +247,7 @@ un choix a remettre en cause, pas une erreur de la revue.
 - Le déterminisme est intouchable : le **contenu** du mod pour une graine donnée
   ne doit pas changer. Le témoin de la v0.0.1 valait
   `c9566134864507d900f65806ade277d9` ; le témoin courant est
-  `e61667692c486e5b9c30efa9f4fbc891`. La **valeur** est légitimement amenée à
+  `647ab8833f639846ba36f9c52f38fb94`. La **valeur** est légitimement amenée à
   bouger : elle change à chaque passage à une nouvelle version, puisque la
   racine canonique
   `randputF_<version>` fait partie des entrées hachées (cf.

@@ -6,7 +6,6 @@ import argparse
 import json
 import re
 import sys
-import time
 from pathlib import Path
 
 from tool.audit.difficulty import compute_difficulty, summarize_difficulty
@@ -36,11 +35,10 @@ from tool.service import (
     build_mod,
     current_seed,
     generate_with_retry,
+    install_mod,
+    load_config,
+    load_db as _load_db_raising,
 )
-from tool.service import build_mod as _build_mod
-from tool.service import install_mod as _install_mod
-from tool.service import load_config as _load_config
-from tool.service import load_db as _load_db_raising
 from tool.tester import Progress, run_dump_test
 
 
@@ -146,7 +144,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
     rapports. Retourne `None` et termine avec le code 2 après 10 échecs.
     """
     db = _load_db(args.demo, Path(args.dump))
-    cfg = _load_config()
+    cfg = load_config()
 
     # Seed tirée de l'horloge (ms) : partie unique à chaque génération. Avec
     # ``--seed N`` la dérivation reste déterministe (N+1, N+2…) pour ne jamais
@@ -163,7 +161,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
         sys.exit(2)
 
     root = Path(args.out) if args.out else OUTPUT_DIR
-    mod_path = _build_mod(seed, root / "mods")
+    mod_path = build_mod(seed, root / "mods")
     report_dir = root / "reports" / MOD_NAME_VERSIONED
     report_dir.mkdir(parents=True, exist_ok=True)
     print(f"Seed {db.seed_value} valide, mod assemblé dans {mod_path}")
@@ -199,7 +197,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
         raw_path = (paths.get("factorio_mods") or "").strip()
         mods_dir = Path(raw_path).expanduser() if raw_path else None
         if mods_dir is not None and mods_dir.is_dir():
-            _install_mod(seed, mods_dir)
+            install_mod(seed, mods_dir)
             print(f"Mod installé dans {mods_dir}/")
         elif not raw_path:
             print("Aucun dossier mods configuré (paths.factorio_mods vide dans config/user.yaml).")
@@ -216,8 +214,8 @@ def cmd_compare(args: argparse.Namespace) -> None:
     if args.demo:
         sys.exit("La comparaison nécessite le dump vanilla (pas --demo).")
     db = _load_db(False, Path(args.dump))
-    cfg = _load_config()
-    db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
+    cfg = load_config()
+    db.seed_value = args.seed if args.seed is not None else current_seed()
     seed = generate_seed(db, config=cfg)
 
     vanilla_seed = _vanilla_seed_from_path(args.dump)
@@ -513,8 +511,8 @@ def cmd_difficulty(args: argparse.Namespace) -> None:
     `args` porte `demo`, `dump` et `seed`. Affiche les coûts bruts par ressource et la chaîne de progression ; retourne `None`.
     """
     db = _load_db(args.demo, Path(args.dump))
-    cfg = _load_config()
-    db.seed_value = args.seed if args.seed is not None else int(time.time() * 1000)
+    cfg = load_config()
+    db.seed_value = args.seed if args.seed is not None else current_seed()
     seed = generate_seed(db, config=cfg)
     report = compute_difficulty(seed)
     print(f"Ardoise de la seed {db.seed_value} (recettes primaires, DAG)")
@@ -530,7 +528,7 @@ def cmd_witness(args: argparse.Namespace) -> None:
     """
     db = _load_db(args.demo, Path(args.dump))
     db.seed_value = args.seed
-    cfg = _load_config()
+    cfg = load_config()
     seed = generate_seed(db, config=cfg)
     out_dir = Path(args.out) if args.out else MOD_DIR
     mod_path = build_mod(seed, out_dir)

@@ -2,13 +2,7 @@
 
 local resource_autoplace = require("resource-autoplace")
 
-local seed = {}
-do
-  local ok, loaded = pcall(require, "seed.seed")
-  if ok and type(loaded) == "table" then
-    seed = loaded
-  end
-end
+local seed = require("seed_loader")
 
 log("[randputF] data-updates.lua start")
 

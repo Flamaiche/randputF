@@ -10,8 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tool.__main__ import _load_config, _load_db
+from tool.__main__ import _load_db
 from tool.generator.pipeline import generate_seed
+from tool.service import load_config as _load_config
 from tool.generator.recipes import _is_atelier
 
 DUMP = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json"
