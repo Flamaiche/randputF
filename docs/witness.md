@@ -34,7 +34,7 @@ l'implémentation, les faits anciens et les corrections attendues.
 
 - `randputf witness --seed <n>` assemble le mod puis calcule son md5 canonique.
 - `--expect` compare le résultat à la valeur attendue et échoue en cas d'écart.
-- Le témoin courant de la seed 5 est `74dcb6f89c28ef1277a0e854d9a21a4a`.
+- Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`.
 - Le préfixe du zip de référence est `randputF_<version>`, lu dans `info.json`.
 - Le job CI recalcule le témoin depuis `/tmp`, hors du checkout.
 - Le workflow de release lance le témoin sans `--expect` ; seule la réussite de

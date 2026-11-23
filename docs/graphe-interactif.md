@@ -49,7 +49,7 @@ Le profil regarde cinq axes : structure, volume, temps critique, nouveauté et i
 
 ## Périmètre du témoin et des releases
 
-Les trois fichiers HTML sont exclus du témoin de déterminisme. Le témoin courant de la seed 5 est `74dcb6f89c28ef1277a0e854d9a21a4a`, vérifié avec `randputf witness --seed 5 --expect 74dcb6f89c28ef1277a0e854d9a21a4a`.
+Les trois fichiers HTML sont exclus du témoin de déterminisme. Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`, vérifié avec `randputf witness --seed 5 --expect e61667692c486e5b9c30efa9f4fbc891`.
 
 Le workflow de release construit le mod dans `/tmp/modrel` et vise un zip nommé `/tmp/randputF_${VERSION}.zip` en excluant les trois vues. La source réelle du zip est signalée dans l'écart connu de [release.md](release.md).
 

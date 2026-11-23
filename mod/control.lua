@@ -26,7 +26,6 @@ local function init_wreck()
   storage.randputf.wreck_processed = storage.randputf.wreck_processed or {}
   if storage.randputf.wreck_stop == nil and game then
     -- `game` est NIL pendant on_load (API 2.0+)
- : stop calculé au runtime.
     -- Saves sans ce champ : stop=nil → pas de balayage (idempotent via marque unit_number).
     storage.randputf.wreck_stop = game.tick + WRECK_SETTLE_TICKS
   end

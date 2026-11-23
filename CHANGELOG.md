@@ -43,8 +43,10 @@ foi).
   contextualisés et en échelle log quand nécessaire, navigateur adapté au
   mobile avec zoom tactile et navigation clavier, titres de dumps moddés et
   libellés de comparaison explicites, icônes de graphe dédupliquées.
+- Un commentaire Lua invalide dans l'initialisation des épaves empêchait le
+  chargement du mod ; il est corrigé et le témoin est recalculé en conséquence.
 - Repères confirmés : 862 tests et témoin seed 5
-  `74dcb6f89c28ef1277a0e854d9a21a4a`, recalculé depuis le dépôt et depuis
+  `e61667692c486e5b9c30efa9f4fbc891`, recalculé depuis le dépôt et depuis
   `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release vise un
   zip `randputF_<version>.zip` sans les trois HTML, avec une source à aligner.
 - Précisions : `--playthrough` ne déclenche pas le rejeu, il affiche seulement
@@ -205,7 +207,7 @@ foi).
 - `ITEM_LIKE_TYPES` inclut désormais `blueprint-book` et `spidertron-remote`.
 - Dump clean régénéré : SHA-256
   `3a272ee9440e020ebc36f9a92c222720af1c53c4c6b65ce2b136d7ebee2c84ea`.
-  Témoin seed 5 : `74dcb6f89c28ef1277a0e854d9a21a4a` (vérifié depuis un wheel
+  Témoin seed 5 : `e61667692c486e5b9c30efa9f4fbc891` (vérifié depuis un wheel
   installé hors checkout). **862 tests** verts.
 
 ### Exporter 0.1.7 — `mod-data` pour les lacs
@@ -333,7 +335,7 @@ foi).
 ### Déterminisme vérifiable
 
 - **Témoin de reproductibilité** : `randputf witness --seed 5 --expect
-  74dcb6f89c28ef1277a0e854d9a21a4a` (état courant du dépôt, dump 0.1.8 ;
+  e61667692c486e5b9c30efa9f4fbc891` (état courant du dépôt, dump 0.1.8 ;
   vérifié depuis un wheel installé hors checkout, comme le job CI). Il
   **changera** au bump vers 0.0.2 (préfixe racine `randputF_<version>`) et la
   seed 5 est touchée par le correctif d'auto-sélection. Les sorties HTML

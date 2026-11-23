@@ -75,7 +75,7 @@ Les mots « bugs corrigés » et « écarts connus » ne sont pas interchangeabl
 
 - Les versions 2.0 appartiennent aux tags `v0.0.0` et `v0.0.1`.
 - La version courante vise Factorio 2.1 avec 862 tests.
-- Le témoin courant de la seed 5 est `74dcb6f89c28ef1277a0e854d9a21a4a`.
+- Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`.
 - Les anciens balayages de graines
  restent des diagnostics historiques, pas la preuve de l'état courant.
 - Les brouillons et plans non livrés vivent dans `atelier/`, hors des livrables.
