@@ -982,22 +982,12 @@ def render_complexity_html(
                 tip="Nombre total de packs de science consommés sur les technologies.",
             ),
             _stat(
-                "Profondeur max",
-                _format_number(chain_depth) if chain_depth is not None else "—",
+                "Ateliers distincts",
+                _format_number(data["distinct_buildings"]),
                 "acc",
-                "chaîne de recettes la plus longue",
-                ratio("chain_depth"),
-                baseline_label,
-                tip="Nombre maximal de maillons dans la chaîne de recettes la plus longue.",
-            ),
-            _stat(
-                "Goulot de chaîne",
-                critical_label or "—",
-                "warn",
-                "étape machine la plus lente (pas un temps de run)",
-                ratio("critical_seconds"),
-                baseline_label,
-                tip="Étape machine la plus lente dans la plus longue chaîne de recettes. Ce n’est pas un temps de partie.",
+                ratio=ratio("distinct_buildings"),
+                baseline_label=baseline_label,
+                tip="Nombre de types d’ateliers/machines différents nécessaires.",
             ),
             _stat(
                 "Fabricateur le plus utilisé",
@@ -1119,8 +1109,7 @@ def render_complexity_html(
         f"{comparison_note}"
         "<div class='note'>Le « temps théorique (1 machine) » additionne recherche et "
         "crafts séquentiels : repère, pas durée réelle de run (parallélisme, "
-        "logistique, minage, déplacements, attentes exclus). Le « goulot de chaîne » "
-        "est l’étape machine la plus lente d’une chaîne, pas un temps de partie. "
+        "logistique, minage, déplacements, attentes exclus). "
         "Le score ajoute temps de recherche, 0,5 × packs et 10 × ateliers distincts."
         + (" Les « ×N » comparent chaque valeur à " + _html.escape(baseline_label) + "." if baseline else "")
         + "</div></section>"

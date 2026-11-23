@@ -100,8 +100,7 @@ def test_html_affiche_profondeur_et_temps_critique(tmp_path: Path) -> None:
     write_complexity_html(_tiny_seed(), path)
     text = path.read_text(encoding="utf-8")
 
-    assert "Profondeur max" in text
-    assert "Goulot de chaîne" in text
+    assert "Ateliers distincts" in text
     assert "Temps théorique (1 machine)" in text
     assert "id='complexite-courbes'" in text
     assert "id='complexite-ateliers'" in text
