@@ -117,6 +117,43 @@ def test_html_marque_les_ratios_vs_vanilla() -> None:
     assert "×2 vanilla" in document
     assert "Les « ×N » comparent chaque valeur à vanilla" in document
     assert "bar-val" in document
+    assert "Technologie (ordre de progression)" in document
+    assert "Secondes cumulées" in document
+
+
+def test_vanilla_seed_from_dump_has_progression_and_research() -> None:
+    from tool.exporters.difficulty_graph import vanilla_seed_from_dump
+
+    dump = {
+        "recipes": {
+            "automation-science-pack": {
+                "ingredients": [{"name": "iron-plate", "amount": 1}],
+                "products": [{"name": "automation-science-pack", "amount": 1}],
+            }
+        },
+        "items": {
+            "automation-science-pack": {},
+            "iron-plate": {},
+        },
+        "technologies": {
+            "automation": {
+                "prerequisites": [],
+                "unit": {
+                    "count": 10,
+                    "time": 10,
+                    "ingredients": [{"name": "automation-science-pack", "amount": 1}],
+                },
+                "effects": [],
+            }
+        },
+    }
+    seed = vanilla_seed_from_dump(dump)
+    assert seed is not None
+    assert seed["progression_order"] == ["automation"]
+    data = analyze_complexity(seed)
+    assert data["tech_count"] == 1
+    assert data["total_research_seconds"] > 0
+    assert data["total_research_label"] != "0:00"
 
 
 def test_starter_items_break_recipe_cycles() -> None:

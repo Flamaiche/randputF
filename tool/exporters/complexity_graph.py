@@ -723,6 +723,7 @@ def _multi_chart_svg(
     series: list[dict[str, Any]],
     *,
     y_label: str = "",
+    x_label: str = "Technologie (ordre de progression)",
 ) -> str:
     """Construit un graphique ligne SVG multi-séries.
 
@@ -752,7 +753,7 @@ def _multi_chart_svg(
         rows_legend[-1].append(item)
         x += item_w
     legend_h = max(row_h, len(rows_legend) * row_h)
-    mb = 34 + legend_h  # x labels + legend
+    mb = 52 + legend_h  # x labels + axis label + legend
     plot_w = _W - _ML - _MR
     plot_h = _H - _MT - mb
 
@@ -769,8 +770,9 @@ def _multi_chart_svg(
         f'aria-label="{_html.escape(title)}">',
         f'<text x="{_ML}" y="20" class="chart-title">{_html.escape(title)}</text>',
     ]
-    if y_label:
-        parts.append(f'<text x="{_ML}" y="32" class="chart-sub">{_html.escape(y_label)}</text>')
+    parts.append(
+        f'<text x="{_ML}" y="32" class="chart-sub">{_html.escape(y_label or "Valeur cumulée · survoler un point pour le détail")}</text>'
+    )
 
     for step in range(5):
         fraction = step / 4
@@ -778,6 +780,13 @@ def _multi_chart_svg(
         value = top * fraction
         parts.append(f'<line x1="{_ML}" y1="{y:.1f}" x2="{_W - _MR}" y2="{y:.1f}" class="grid"/>')
         parts.append(f'<text x="{_ML - 8}" y="{y + 4:.1f}" text-anchor="end" class="tick">{_html.escape(_format_number(value))}</text>')
+
+    if y_label:
+        cx, cy = 16, _MT + plot_h / 2
+        parts.append(
+            f'<text x="{cx:.1f}" y="{cy:.1f}" text-anchor="middle" class="chart-sub" '
+            f'transform="rotate(-90 {cx:.1f} {cy:.1f})">{_html.escape(y_label)}</text>'
+        )
 
     if count:
         stride_v = max(1, math.ceil(count / 40))
@@ -814,8 +823,12 @@ def _multi_chart_svg(
             if len(label) > 30:
                 label = label[:27] + "..."
             parts.append(f'<text x="{px(i):.1f}" y="{_MT + plot_h + 18:.1f}" text-anchor="middle" class="tick" title="{_html.escape(label)}">{_html.escape(label)}</text>')
+        parts.append(
+            f'<text x="{_ML + plot_w / 2:.1f}" y="{_MT + plot_h + 34:.1f}" '
+            f'text-anchor="middle" class="chart-sub">{_html.escape(x_label)}</text>'
+        )
 
-    ly = _MT + plot_h + 34
+    ly = _MT + plot_h + 50
     for row in rows_legend:
         x = _ML
         for label, color, opacity, dash in row:
@@ -1116,10 +1129,10 @@ def render_complexity_html(
     chart_parts: list[str] = []
     def _card(title, svg):
         return f'<div class="card"><button type="button" class="chart-close" aria-label="Fermer">Fermer</button><div class="card-title">{_html.escape(title)}</div>{svg}</div>'
-    chart_parts.append(_card("Temps de recherche cumulé (s)", _multi_chart_svg("Temps de recherche cumulé (s)", chart_labels, _overlay_series(lambda r: r.get("cumulative_time", r.get("research_time")), "#5c6bc0", baseline_rows, rows, data, baseline_label))))
-    chart_parts.append(_card("Ressources brutes cumulées", _multi_chart_svg("Ressources brutes cumulées", chart_labels, _overlay_series(lambda r: r.get("cumulative_raw", r.get("raw_total")), "#29b6f6", baseline_rows, rows, data, baseline_label))))
-    chart_parts.append(_card("Score de complexité cumulé", _multi_chart_svg("Score de complexité cumulé", chart_labels, _overlay_series(lambda r: r.get("cumulative_score"), "#6f6fe6", baseline_rows, rows, data, baseline_label))))
-    chart_parts.append(_card("Crafts cumulés", _multi_chart_svg("Crafts cumulés", chart_labels, _overlay_series(lambda r: r.get("cumulative_crafts", r.get("crafts")), "#26a69a", baseline_rows, rows, data, baseline_label))))
+    chart_parts.append(_card("Temps de recherche cumulé (s)", _multi_chart_svg("Temps de recherche cumulé (s)", chart_labels, _overlay_series(lambda r: r.get("cumulative_time", r.get("research_time")), "#5c6bc0", baseline_rows, rows, data, baseline_label), y_label="Secondes cumulées")))
+    chart_parts.append(_card("Ressources brutes cumulées", _multi_chart_svg("Ressources brutes cumulées", chart_labels, _overlay_series(lambda r: r.get("cumulative_raw", r.get("raw_total")), "#29b6f6", baseline_rows, rows, data, baseline_label), y_label="Quantité cumulée")))
+    chart_parts.append(_card("Score de complexité cumulé", _multi_chart_svg("Score de complexité cumulé", chart_labels, _overlay_series(lambda r: r.get("cumulative_score"), "#6f6fe6", baseline_rows, rows, data, baseline_label), y_label="Score cumulé")))
+    chart_parts.append(_card("Crafts cumulés", _multi_chart_svg("Crafts cumulés", chart_labels, _overlay_series(lambda r: r.get("cumulative_crafts", r.get("crafts")), "#26a69a", baseline_rows, rows, data, baseline_label), y_label="Crafts cumulés")))
 
     # Craft modes chart: per-tech usage (not cumulative), dump bright, vanilla dark same hue.
     mode_order = [m["id"] for m in (data.get("craft_modes") or [])]
@@ -1152,7 +1165,7 @@ def render_complexity_html(
         if any(v > 0 for v in dump_vals):
             mode_series.append({"label": f"{label} ({data.get('seed_value','seed')})", "values": dump_vals, "color": color, "opacity": 1.0, "width": 2.2})
     if mode_series:
-        chart_parts.append(_card("Crafts par mode par tech (main / machine)", _multi_chart_svg("Crafts par mode par tech (main / machine)", chart_labels, mode_series)))
+        chart_parts.append(_card("Crafts par mode par tech (main / machine)", _multi_chart_svg("Crafts par mode par tech (main / machine)", chart_labels, mode_series, y_label="Crafts par technologie")))
 
     # charts already set above; script will be injected later
 
