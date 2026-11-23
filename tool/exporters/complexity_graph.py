@@ -673,12 +673,12 @@ def analyze_complexity(
 # SVG (aucune dépendance, aucun CDN)
 # ---------------------------------------------------------------------------
 
-_W = 1000
-_H = 260
+_W = 1400
+_H = 360
 _ML = 92
 _MR = 24
 _MT = 34
-_MB = 44
+_MB = 74
 
 
 def _darken(hex_color: str, factor: float = 0.45) -> str:

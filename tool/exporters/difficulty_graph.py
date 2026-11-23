@@ -368,19 +368,19 @@ _TEMPLATE = """<!doctype html>
   polyline.series.hidden {{ display:none; }}
   circle.pt.hidden {{ display:none; }}
   rect.hit {{ cursor:crosshair; }}
-  #tip {{ position:absolute; z-index:5; pointer-events:none; display:none;
+  .tip {{ position:absolute; z-index:5; pointer-events:none; display:none;
          background:rgba(18,18,24,.97); border:1px solid #3f3f4d; border-radius:8px;
-         padding:9px 11px; font-size:12px; line-height:1.45; min-width:200px;
-         max-width:min(320px, calc(100vw - 32px)); overflow-wrap:anywhere;
-         box-shadow:0 10px 26px rgba(0,0,0,.55); transform:translate(-50%,-112%); }}
-  #tip.pinned {{ border-color:#7a7a8f; box-shadow:0 0 0 1px #7a7a8f, 0 10px 26px rgba(0,0,0,.55); }}
-  #tip .tname {{ font-weight:600; margin-bottom:6px; }}
-  #tip .srow {{ display:flex; justify-content:space-between; gap:14px; }}
-  #tip .srow b {{ font-variant-numeric:tabular-nums; }}
-  #tip .dot {{ width:8px; height:8px; border-radius:50%; display:inline-block;
+         padding:9px 11px; font-size:12px; line-height:1.45; min-width:180px;
+         max-width:min(300px, calc(100vw - 32px)); overflow-wrap:anywhere;
+         box-shadow:0 10px 26px rgba(0,0,0,.55); }}
+  .tip.pinned {{ border-color:#7a7a8f; box-shadow:0 0 0 1px #7a7a8f, 0 10px 26px rgba(0,0,0,.55); }}
+  .tip .tname {{ font-weight:600; margin-bottom:6px; }}
+  .tip .srow {{ display:flex; justify-content:space-between; gap:14px; }}
+  .tip .srow b {{ font-variant-numeric:tabular-nums; }}
+  .tip .dot {{ width:8px; height:8px; border-radius:50%; display:inline-block;
                margin-right:6px; }}
-  #tip .prods {{ color:var(--dim); margin-top:6px; max-width:260px; }}
-  #tip .delta {{ margin-top:5px; color:var(--dim); }}
+  .tip .prods {{ color:var(--dim); margin-top:6px; max-width:260px; }}
+  .tip .delta {{ margin-top:5px; color:var(--dim); }}
   .cols {{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }}
   .col {{ flex:1 1 360px; min-width:0; }}
   .context {{ color:var(--dim); font-size:12px; margin:6px 0 0; }}
@@ -416,7 +416,8 @@ clique une entrée de légende pour masquer/afficher une série.</p>
 <p id="empty-series" class="empty-series" aria-live="polite">Aucune série visible — réaffiche au moins une courbe via la légende.</p>
 <div class="chart" id="chartwrap">
   {svg}
-  <div id="tip"></div>
+  <div id="tip-v" class="tip"></div>
+  <div id="tip-m" class="tip"></div>
 </div>
 <details class="table-fold" id="difficulte-table"><summary>Tableaux détaillés</summary><div class="cols">{tables}</div></details>
 <p class="note">{note}</p>
@@ -425,8 +426,8 @@ const DATA = {data_json};
 (function () {{
   const svg = document.getElementById('diffsvg');
   const wrap = document.getElementById('chartwrap');
-  const tip = document.getElementById('tip');
-  if (!svg || !DATA.points) return;
+  const tips = {{v: document.getElementById('tip-v'), m: document.getElementById('tip-m')}};
+  if (!svg || !DATA.points || !tips.v || !tips.m) return;
   const guide = document.getElementById('guide');
   const hits = Array.from(svg.querySelectorAll('.hit'));
   const pts = Array.from(svg.querySelectorAll('circle.pt'));
@@ -438,67 +439,85 @@ const DATA = {data_json};
   let lastRec = null;
   let hidden = {{v:false, m:false}};
 
-  function place(rec) {{
-    const r = svg.getBoundingClientRect();
-    const w = wrap.getBoundingClientRect();
-    const k = r.width / DATA.svw;
-    const px = (r.left - w.left) + rec.x * k;
-    const py = r.top - w.top + 30;
-    tip.style.left = px + 'px';
-    tip.style.top = py + 'px';
-    tip.style.transform = 'translate(-50%,-112%)';
-    const tr = tip.getBoundingClientRect();
+  function placeTip(tip, x, y, above) {{
     const wr = wrap.getBoundingClientRect();
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+    tip.style.transform = above ? 'translate(-50%,-112%)' : 'translate(-50%,12px)';
+    const tr = tip.getBoundingClientRect();
     let shiftX = 0;
     if (tr.left < wr.left + 8) shiftX = (wr.left + 8 - tr.left);
     if (tr.right > wr.right - 8) shiftX = (wr.right - 8 - tr.right);
-    if (tr.top < 8) {{
-      tip.style.top = (py + 36) + 'px';
-      tip.style.transform = `translate(calc(-50% + ${{shiftX}}px), 0)`;
-    }} else {{
-      tip.style.transform = `translate(calc(-50% + ${{shiftX}}px), -112%)`;
-    }}
+    let shiftY = 0;
+    if (above && tr.top < 8) {{ above = false; tip.style.transform = `translate(calc(-50% + ${{shiftX}}px),12px)`; }}
+    const tr2 = tip.getBoundingClientRect();
+    if (!above && tr2.bottom > window.innerHeight - 8) shiftY = (window.innerHeight - 8 - tr2.bottom);
+    tip.style.transform = above ? `translate(calc(-50% + ${{shiftX}}px), calc(-112% + ${{shiftY}}px))` : `translate(calc(-50% + ${{shiftX}}px), ${{12 + shiftY}}px)`;
+  }}
+
+  function place(rec) {{
+    const r = svg.getBoundingClientRect();
+    const w = wrap.getBoundingClientRect();
+    const kx = r.width / DATA.svw;
+    const ky = r.height / DATA.svh;
+    const x = (r.left - w.left) + rec.x * kx;
+    const chartMid = (r.top - w.top) + (r.height / 2);
+    const visible = ['v','m'].filter((k) => !hidden[k] && rec[k]);
+    visible.forEach((key, idx) => {{
+      const d = rec[key];
+      const tip = tips[key];
+      const yVal = key === 'v' ? rec.yv : rec.ym;
+      const y = (r.top - w.top) + (yVal == null ? 30 : yVal * ky);
+      const above = y < chartMid ? false : true;
+      // if both visible, bias vanilla up and mod down when close
+      let finalAbove = above;
+      if (visible.length === 2) finalAbove = key === 'v';
+      placeTip(tip, x, y, finalAbove);
+    }});
   }}
 
   function render(rec) {{
     lastRec = rec;
-    const v = hidden.v ? null : rec.v;
-    const m = hidden.m ? null : rec.m;
-    let h = '';
-    const name = (m && m.name) || (v && v.name) || '';
-    h += '<div class="tname">#' + (rec.i + 1) + ' — ' + escapeHtml(name) + '</div>';
-    for (const [key, d] of [['v', v], ['m', m]]) {{
-      if (!d) continue;
-      h += '<div class="srow"><span><span class="dot" style="background:' +
-           cols[key] + '"></span>' + escapeHtml(labels[key]) + '</span></div>';
-      h += '<div class="srow"><span>coût</span><b>' + nf(d.raw) + '</b></div>';
-      h += '<div class="srow"><span>cumul</span><b>' + nf(d.cum) + '</b></div>';
-      if (d.products && d.products.length)
-        h += '<div class="srow prod">' + escapeHtml(d.products.join(', ')) + '</div>';
-    }}
-    if (v && m && !hidden.v && !hidden.m)
-      h += '<div class="srow" style="margin-top:4px;border-top:1px solid #33333d;' +
-           'padding-top:4px"><span>écart</span><b>' +
-           (m.cum - v.cum >= 0 ? '+' : '') + nf(m.cum - v.cum) + '</b></div>';
-    tip.innerHTML = h;
-    tip.style.display = 'block';
     guide.style.display = 'block';
     guide.setAttribute('x1', rec.x);
     guide.setAttribute('x2', rec.x);
     pts.forEach((p) => p.classList.toggle('active', +p.dataset.i === rec.i));
     rows.forEach((r) => r.classList.toggle('active', +r.dataset.i === rec.i));
+    for (const key of ['v','m']) {{
+      const tip = tips[key];
+      const d = hidden[key] ? null : rec[key];
+      if (!d) {{ tip.style.display = 'none'; continue; }}
+      let h = '<div class="tname"><span class="dot" style="background:' + cols[key] + '"></span>' +
+        escapeHtml(labels[key]) + ' · #' + (rec.i + 1) + '</div>';
+      h += '<div class="srow"><span>tech</span><b>' + escapeHtml(d.name || '') + '</b></div>';
+      h += '<div class="srow"><span>coût</span><b>' + nf(d.raw) + '</b></div>';
+      h += '<div class="srow"><span>cumul</span><b>' + nf(d.cum) + '</b></div>';
+      if (d.products && d.products.length)
+        h += '<div class="prods">' + escapeHtml(d.products.join(', ')) + '</div>';
+      tip.innerHTML = h;
+      tip.style.display = 'block';
+    }}
+    // delta on mod tooltip when both visible
+    const v = hidden.v ? null : rec.v;
+    const m = hidden.m ? null : rec.m;
+    if (v && m) {{
+      const delta = m.cum - v.cum;
+      tips.m.innerHTML += '<div class="delta">écart cumul: <b>' + (delta >= 0 ? '+' : '') + nf(delta) + '</b></div>';
+    }}
   }}
 
   function clearVisual() {{
     pts.forEach((p) => p.classList.remove('active'));
     rows.forEach((r) => r.classList.remove('active'));
-    tip.style.display = 'none';
+    tips.v.style.display = 'none';
+    tips.m.style.display = 'none';
     guide.style.display = 'none';
   }}
 
   function show(rec, pin) {{
     pinned = pin ? rec.i : null;
-    tip.classList.toggle('pinned', !!pin);
+    tips.v.classList.toggle('pinned', !!pin);
+    tips.m.classList.toggle('pinned', !!pin);
     render(rec);
     place(rec);
   }}
@@ -524,7 +543,7 @@ const DATA = {data_json};
   }});
 
   svg.addEventListener('mouseleave', hide);
-  wrap.addEventListener('click', () => {{ pinned = null; tip.classList.remove('pinned'); clearVisual(); }});
+  wrap.addEventListener('click', () => {{ pinned = null; tips.v.classList.remove('pinned'); tips.m.classList.remove('pinned'); clearVisual(); }});
 
   rows.forEach((row) => {{
     row.addEventListener('click', (e) => {{
