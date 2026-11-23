@@ -673,12 +673,12 @@ def analyze_complexity(
 # SVG (aucune dépendance, aucun CDN)
 # ---------------------------------------------------------------------------
 
-_W = 1400
-_H = 360
+_W = 1000
+_H = 280
 _ML = 92
 _MR = 24
 _MT = 34
-_MB = 74
+_MB = 64
 
 
 def _darken(hex_color: str, factor: float = 0.45) -> str:
@@ -717,12 +717,33 @@ def _multi_chart_svg(
 
     Chaque série: {label, values, color, dash?, area?, opacity?, width?}.
     """
-    plot_w = _W - _ML - _MR
-    plot_h = _H - _MT - _MB
     count = max((len(s.get("values") or []) for s in series), default=0)
     top = max((max((float(v) for v in (s.get("values") or []) if v is not None), default=0.0) for s in series), default=0.0)
     top = top if top > 0 else 1
     top *= 1.08
+
+    # Legend layout first to reserve bottom space.
+    legend_items = []
+    for s in series:
+        label = str(s.get("label") or "")
+        color = str(s.get("color") or "#888")
+        opacity = float(s.get("opacity") or 1)
+        dash = f' stroke-dasharray="{_html.escape(str(s["dash"]))}"' if s.get("dash") else ""
+        legend_items.append((label, color, opacity, dash))
+    row_h = 14
+    x = _ML
+    rows_legend: list[list[tuple]] = [[]]
+    for item in legend_items:
+        item_w = 24 + max(24, len(item[0]) * 5.4)
+        if x + item_w > _W - _MR and rows_legend[-1]:
+            rows_legend.append([])
+            x = _ML
+        rows_legend[-1].append(item)
+        x += item_w
+    legend_h = max(row_h, len(rows_legend) * row_h)
+    mb = 34 + legend_h  # x labels + legend
+    plot_w = _W - _ML - _MR
+    plot_h = _H - _MT - mb
 
     def px(index: int) -> float:
         if count <= 1:
@@ -738,30 +759,20 @@ def _multi_chart_svg(
         f'<text x="{_ML}" y="20" class="chart-title">{_html.escape(title)}</text>',
     ]
     if y_label:
-        parts.append(
-            f'<text x="{_ML}" y="32" class="chart-sub">{_html.escape(y_label)}</text>'
-        )
+        parts.append(f'<text x="{_ML}" y="32" class="chart-sub">{_html.escape(y_label)}</text>')
 
     for step in range(5):
         fraction = step / 4
         y = _MT + plot_h - fraction * plot_h
         value = top * fraction
-        parts.append(
-            f'<line x1="{_ML}" y1="{y:.1f}" x2="{_W - _MR}" y2="{y:.1f}" class="grid"/>'
-        )
-        parts.append(
-            f'<text x="{_ML - 8}" y="{y + 4:.1f}" text-anchor="end" '
-            f'class="tick">{_html.escape(_format_number(value))}</text>'
-        )
+        parts.append(f'<line x1="{_ML}" y1="{y:.1f}" x2="{_W - _MR}" y2="{y:.1f}" class="grid"/>')
+        parts.append(f'<text x="{_ML - 8}" y="{y + 4:.1f}" text-anchor="end" class="tick">{_html.escape(_format_number(value))}</text>')
 
     if count:
         stride_v = max(1, math.ceil(count / 40))
         for i in range(0, count, stride_v):
-            x = px(i)
-            parts.append(
-                f'<line x1="{x:.1f}" y1="{_MT}" x2="{x:.1f}" '
-                f'y2="{_MT + plot_h:.1f}" class="grid grid-v"/>'
-            )
+            xg = px(i)
+            parts.append(f'<line x1="{xg:.1f}" y1="{_MT}" x2="{xg:.1f}" y2="{_MT + plot_h:.1f}" class="grid grid-v"/>')
 
     for s in series:
         values = [float(v or 0) for v in (s.get("values") or [])]
@@ -776,24 +787,14 @@ def _multi_chart_svg(
         if s.get("area"):
             area = f"{_ML:.1f},{_MT + plot_h:.1f} " + point_str + f" {px(len(values)-1):.1f},{_MT + plot_h:.1f}"
             parts.append(f'<polygon points="{area}" fill="{color}" opacity="{0.10 * opacity:.2f}"/>')
-        parts.append(
-            f'<polyline points="{point_str}" fill="none" stroke="{color}" '
-            f'stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round" '
-            f'opacity="{opacity:.2f}"{dash}/>'
-        )
+        parts.append(f'<polyline points="{point_str}" fill="none" stroke="{color}" stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round" opacity="{opacity:.2f}"{dash}/>')
         stride_label = max(1, math.ceil(len(values) / 20))
         show_labels = bool(s.get("show_labels", len(series) == 1))
         for i, (cx, cy, value) in enumerate(pts):
-            parts.append(
-                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.4" fill="{color}" opacity="{opacity:.2f}">'
-                f'<title>{_html.escape(str(s.get("label","")))} · {_html.escape(labels[i] if i < len(labels) else "")}: {_html.escape(_format_number(value))}</title></circle>'
-            )
+            parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.4" fill="{color}" opacity="{opacity:.2f}"><title>{_html.escape(str(s.get("label","")))} · {_html.escape(labels[i] if i < len(labels) else "")}: {_html.escape(_format_number(value))}</title></circle>')
             if show_labels and (i % stride_label == 0 or i == len(values) - 1):
                 label_y = cy - 7 if cy - 7 > _MT + 8 else cy + 14
-                parts.append(
-                    f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" '
-                    f'class="point-label">{_html.escape(_format_number(value))}</text>'
-                )
+                parts.append(f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" class="point-label">{_html.escape(_format_number(value))}</text>')
 
     if count:
         stride = max(1, math.ceil(count / 20))
@@ -801,29 +802,15 @@ def _multi_chart_svg(
             label = labels[i] if i < len(labels) else ""
             if len(label) > 30:
                 label = label[:27] + "..."
-            parts.append(
-                f'<text x="{px(i):.1f}" y="{_H - 14}" text-anchor="middle" '
-                f'class="tick" title="{_html.escape(label)}">{_html.escape(label)}</text>'
-            )
+            parts.append(f'<text x="{px(i):.1f}" y="{_MT + plot_h + 18:.1f}" text-anchor="middle" class="tick" title="{_html.escape(label)}">{_html.escape(label)}</text>')
 
-    # Legend: wrap to avoid overflowing chart bounds.
-    lx = _ML
-    ly = _H - 8
-    for s in series:
-        label = str(s.get("label") or "")
-        color = str(s.get("color") or "#888")
-        opacity = float(s.get("opacity") or 1)
-        dash = f' stroke-dasharray="{_html.escape(str(s["dash"]))}"' if s.get("dash") else ""
-        item_w = 24 + max(24, len(label) * 5.4)
-        if lx + item_w > _W - _MR:
-            lx = _ML
-            ly -= 14
-        parts.append(
-            f'<line x1="{lx:.1f}" y1="{ly-3:.1f}" x2="{lx+16:.1f}" y2="{ly-3:.1f}" '
-            f'stroke="{color}" stroke-width="2.5" opacity="{opacity:.2f}"{dash}/>'
-            f'<text x="{lx+20:.1f}" y="{ly:.1f}" class="chart-sub">{_html.escape(label)}</text>'
-        )
-        lx += item_w
+    ly = _MT + plot_h + 34
+    for row in rows_legend:
+        x = _ML
+        for label, color, opacity, dash in row:
+            parts.append(f'<line x1="{x:.1f}" y1="{ly-3:.1f}" x2="{x+16:.1f}" y2="{ly-3:.1f}" stroke="{color}" stroke-width="2.5" opacity="{opacity:.2f}"{dash}/><text x="{x+20:.1f}" y="{ly:.1f}" class="chart-sub">{_html.escape(label)}</text>')
+            x += 24 + max(24, len(label) * 5.4)
+        ly += row_h
 
     parts.append("</svg>")
     return "".join(parts)
@@ -896,10 +883,18 @@ section{margin-bottom:36px}
 h2{font-size:17px;margin:0 0 14px;padding-bottom:8px;
   border-bottom:1px solid var(--line)}
 h3{font-size:13px;color:var(--muted);margin:0 0 8px;font-weight:600}
-.charts{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:1000px){.charts{grid-template-columns:1fr}}
-.card{border:1px solid var(--line);border-radius:10px;padding:10px;
-  background:rgba(255,255,255,.02)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;margin-top:10px}
+.card{position:relative;border:1px solid var(--line);border-radius:10px;padding:10px;
+  background:rgba(255,255,255,.02);cursor:zoom-in}
+.card-title{font-size:13px;font-weight:600;color:var(--txt);margin:0 30px 6px 0}
+.card.static-card{cursor:default}
+.card.fullscreen{position:fixed;inset:12px;z-index:1200;margin:0;
+  padding:16px;background:#141419;cursor:zoom-out;overflow:auto}
+.card.fullscreen .chart{max-height:calc(100vh - 120px);width:100%}
+.chart-close{display:none;position:sticky;top:0;float:right;z-index:2;
+  background:#262631;color:#d7d7e0;border:1px solid #3f3f4d;border-radius:6px;
+  padding:4px 10px;font:inherit;cursor:pointer}
+.card.fullscreen .chart-close{display:inline-block}
 .chart{width:100%;height:auto;display:block}
 .chart-title{fill:var(--txt);font-size:13px;font-weight:600}
 .chart-sub{fill:var(--muted);font-size:11px}
@@ -1094,19 +1089,21 @@ def render_complexity_html(
         vals += [0.0] * (max_len - len(vals))
         return vals, bvals
 
-    def _overlay(title, getter, color, *, base_getter=None):
+    def _overlay_series(getter, color, baseline_rows, rows, data, baseline_label, base_getter=None):
         vals, bvals = _series_values(getter, base_getter)
         series = []
         if baseline_rows:
-            series.append({"label": baseline_label, "values": bvals, "color": _darken(color, 0.45), "opacity": 0.95, "width": 2.0})
-        series.append({"label": data.get("seed_value", "seed"), "values": vals, "color": color, "opacity": 1.0, "width": 2.4, "area": not baseline_rows})
-        return f'<div class="card">{_multi_chart_svg(title, chart_labels, series)}</div>'
+            series.append({"label": str(baseline_label), "values": bvals, "color": _darken(color, 0.45), "opacity": 0.95, "width": 2.0})
+        series.append({"label": str(data.get("seed_value", "seed")), "values": vals, "color": color, "opacity": 1.0, "width": 2.4, "area": not baseline_rows})
+        return series
 
     chart_parts: list[str] = []
-    chart_parts.append(_overlay("Temps de recherche cumulé (s)", lambda r: r.get("cumulative_time", r.get("research_time")), "#5c6bc0"))
-    chart_parts.append(_overlay("Ressources brutes cumulées", lambda r: r.get("cumulative_raw", r.get("raw_total")), "#29b6f6"))
-    chart_parts.append(_overlay("Score de complexité cumulé", lambda r: r.get("cumulative_score"), "#6f6fe6"))
-    chart_parts.append(_overlay("Crafts cumulés", lambda r: r.get("cumulative_crafts", r.get("crafts")), "#26a69a"))
+    def _card(title, svg):
+        return f'<div class="card"><button type="button" class="chart-close" aria-label="Fermer">Fermer</button><div class="card-title">{_html.escape(title)}</div>{svg}</div>'
+    chart_parts.append(_card("Temps de recherche cumulé (s)", _multi_chart_svg("Temps de recherche cumulé (s)", chart_labels, _overlay_series(lambda r: r.get("cumulative_time", r.get("research_time")), "#5c6bc0", baseline_rows, rows, data, baseline_label))))
+    chart_parts.append(_card("Ressources brutes cumulées", _multi_chart_svg("Ressources brutes cumulées", chart_labels, _overlay_series(lambda r: r.get("cumulative_raw", r.get("raw_total")), "#29b6f6", baseline_rows, rows, data, baseline_label))))
+    chart_parts.append(_card("Score de complexité cumulé", _multi_chart_svg("Score de complexité cumulé", chart_labels, _overlay_series(lambda r: r.get("cumulative_score"), "#6f6fe6", baseline_rows, rows, data, baseline_label))))
+    chart_parts.append(_card("Crafts cumulés", _multi_chart_svg("Crafts cumulés", chart_labels, _overlay_series(lambda r: r.get("cumulative_crafts", r.get("crafts")), "#26a69a", baseline_rows, rows, data, baseline_label))))
 
     # Craft modes chart: per-tech usage (not cumulative), dump bright, vanilla dark same hue.
     mode_order = [m["id"] for m in (data.get("craft_modes") or [])]
@@ -1139,7 +1136,9 @@ def render_complexity_html(
         if any(v > 0 for v in dump_vals):
             mode_series.append({"label": f"{label} ({data.get('seed_value','seed')})", "values": dump_vals, "color": color, "opacity": 1.0, "width": 2.2})
     if mode_series:
-        chart_parts.append(f'<div class="card">{_multi_chart_svg("Crafts par mode par tech (main / machine)", chart_labels, mode_series)}</div>')
+        chart_parts.append(_card("Crafts par mode par tech (main / machine)", _multi_chart_svg("Crafts par mode par tech (main / machine)", chart_labels, mode_series)))
+
+    # charts already set above; script will be injected later
 
     charts = "".join(chart_parts)
 
@@ -1229,8 +1228,8 @@ def render_complexity_html(
         "Le score ajoute temps de recherche, 0,5 × packs et 10 × ateliers distincts."
         + (" Les « ×N » comparent chaque valeur à " + _html.escape(baseline_label) + "." if baseline else "")
         + "</div></section>"
-        "<section id='complexite-ateliers'><div class='two'>"
-        f"<div>{building_rows}</div><div>{resource_rows}</div>"
+        "<section id='complexite-ateliers'><h2>Ressources et ateliers</h2><div class='two'>"
+        f"<div class='card static-card'>{building_rows}</div><div class='card static-card'>{resource_rows}</div>"
         f"</div>{unknown_note}</section>"
         "<section><details class='table-fold' id='complexite-detail-table'>"
         "<summary>Détail par technologie</summary>"
@@ -1257,6 +1256,20 @@ def render_complexity_html(
         + "</tr></thead><tbody>"
         + "".join(table_rows)
         + "</tbody></table></div></details></section></main>"
+        + """
+<script>
+(function(){
+  function closeAll(){ document.querySelectorAll('.card.fullscreen').forEach(c=>c.classList.remove('fullscreen')); document.body.style.overflow=''; }
+  document.querySelectorAll('.charts .card').forEach(card=>{
+    if(card.classList.contains('static-card')) return;
+    card.tabIndex=0;
+    card.addEventListener('click',e=>{ if(e.target.closest('.chart-close')){ closeAll(); return;} if(!card.classList.contains('fullscreen')){ closeAll(); card.classList.add('fullscreen'); document.body.style.overflow='hidden'; }});
+    card.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); card.click(); } if(e.key==='Escape') closeAll(); });
+  });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeAll(); });
+})();
+</script>
+"""
         + UI_SCRIPT
         + FOLD_TABLES_SCRIPT
         + "</body></html>"
