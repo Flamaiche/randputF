@@ -62,7 +62,6 @@ La configuration est copiée avant la seconde passe. Une seed ne peut plus héri
 
 ## Écarts connus
 
-- Le workflow de release génère le mod dans `/tmp/modrel/mods/randputF_${VERSION}` mais zippe `/tmp/modrel/randputF_${VERSION}`. La source du zip doit être alignée.
 - Le commentaire sur `buffer_capacity` dans `tool/parsers/vanilla.py` décrit encore l'ancien dump. Le champ est désormais exporté, lu et utilisé.
 - Les anciennes pages décrivent encore le rejeu comme optionnel et le garde-fou anti-dump comme actif. Dans `randputf test`, le code courant rejoue par défaut et accepte les dumps moddés.
 - Les sections `pools` et `weights` sont validées mais n'ont aucun effet sur le moteur.
@@ -74,7 +73,7 @@ Les mots « bugs corrigés » et « écarts connus » ne sont pas interchangeabl
 ## Historique
 
 - Les versions 2.0 appartiennent aux tags `v0.0.0` et `v0.0.1`.
-- La version courante vise Factorio 2.1 avec 862 tests.
+- La version courante vise Factorio 2.1 avec 873 tests.
 - Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`.
 - Les anciens balayages de graines
  restent des diagnostics historiques, pas la preuve de l'état courant.

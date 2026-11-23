@@ -45,10 +45,10 @@ foi).
   libellés de comparaison explicites, icônes de graphe dédupliquées.
 - Un commentaire Lua invalide dans l'initialisation des épaves empêchait le
   chargement du mod ; il est corrigé et le témoin est recalculé en conséquence.
-- Repères confirmés : 862 tests et témoin seed 5
+- Repères confirmés : 873 tests et témoin seed 5
   `e61667692c486e5b9c30efa9f4fbc891`, recalculé depuis le dépôt et depuis
-  `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release vise un
-  zip `randputF_<version>.zip` sans les trois HTML, avec une source à aligner.
+  `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release zippe le
+  dossier `randputF_<version>` réellement généré, sans les trois HTML.
 - Précisions : `--playthrough` ne déclenche pas le rejeu, il affiche seulement
   la section « partie simulée » du rapport.
 - Textes visibles alignés sans changement de comportement : libellé des puits
@@ -208,7 +208,7 @@ foi).
 - Dump clean régénéré : SHA-256
   `3a272ee9440e020ebc36f9a92c222720af1c53c4c6b65ce2b136d7ebee2c84ea`.
   Témoin seed 5 : `e61667692c486e5b9c30efa9f4fbc891` (vérifié depuis un wheel
-  installé hors checkout). **862 tests** verts.
+  installé hors checkout). **873 tests** verts.
 
 ### Exporter 0.1.7 — `mod-data` pour les lacs
 
@@ -346,7 +346,7 @@ foi).
 
 ### Garanties mesurées
 
-- **862 tests** verts sur le dump réel 0.1.8 (schéma 2).
+- **873 tests** verts sur le dump réel 0.1.8 (schéma 2).
 - Parité du rapport vanilla inchangée (64 entrées, 10 090 834 crafts,
   13 850 040 s de minage, 3 lancements, offshore-pump en bâtiments).
 

@@ -51,13 +51,9 @@ Le profil regarde cinq axes : structure, volume, temps critique, nouveauté et i
 
 Les trois fichiers HTML sont exclus du témoin de déterminisme. Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`, vérifié avec `randputf witness --seed 5 --expect e61667692c486e5b9c30efa9f4fbc891`.
 
-Le workflow de release construit le mod dans `/tmp/modrel` et vise un zip nommé `/tmp/randputF_${VERSION}.zip` en excluant les trois vues. La source réelle du zip est signalée dans l'écart connu de [release.md](release.md).
+Le workflow de release construit le mod dans `/tmp/modrel/randputF_${VERSION}` et zippe exactement ce dossier vers `/tmp/randputF_${VERSION}.zip`, sans les trois vues HTML. Le détail est dans [release.md](release.md).
 
-### Écart connu
-
-`generate` écrit le mod dans `/tmp/modrel/mods/randputF_${VERSION}`. La commande zip lit `/tmp/modrel/randputF_${VERSION}`. Les deux chemins ne coïncident pas dans le script courant. Reste à faire : aligner la source du zip sur le dossier produit.
-
-D'anciens textes affirmaient qu'aucun zip n'était attaché à la release. Le workflow courant téléverse bien `/tmp/randputF_${VERSION}.zip`. Reste à faire : mettre à jour ces textes.
+D'anciens textes affirmaient qu'aucun zip n'était attaché à la release, ou décrivaient une source de zip différente du dossier généré. Ces deux formulations sont obsolètes.
 
 ## Garanti / non garanti
 

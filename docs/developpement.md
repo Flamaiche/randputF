@@ -39,7 +39,7 @@ Un dump produit avec randputF actif est accepté. Il est canonisé à la lecture
 
 ### Vérifier une modification
 
-La suite compte 862 tests. Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`, avec la commande `randputf witness --seed 5 --expect e61667692c486e5b9c30efa9f4fbc891`. Le script `tools/check_anchors.py` contrôle les liens internes de la documentation. La CI lance les tests puis ce contrôle.
+La suite compte 873 tests. Le témoin courant de la seed 5 est `e61667692c486e5b9c30efa9f4fbc891`, avec la commande `randputf witness --seed 5 --expect e61667692c486e5b9c30efa9f4fbc891`. Le script `tools/check_anchors.py` contrôle les liens internes de la documentation. La CI lance les tests puis ce contrôle.
 
 Un changement de défaut de configuration change le témoin. Il doit alors être reporté dans `.github/workflows/ci.yml` et dans [witness.md](witness.md).
 
