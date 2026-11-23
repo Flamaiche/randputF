@@ -38,7 +38,6 @@ Cette page décrit le réseau électrique. La chaleur possède sa propre page, l
 ### La chaleur
 
 - La triade thermique est décrite dans [chaleur.md](chaleur.md#la-chaleur).
-- Cette section garde l'ancre utilisée par les liens de la documentation.
 
 ## Garanti / non garanti
 

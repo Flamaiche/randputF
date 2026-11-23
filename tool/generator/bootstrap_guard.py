@@ -15,21 +15,6 @@ from __future__ import annotations
 from tool.common.db import SLOT_FLUID, SLOT_ITEM, VanillaDB
 
 
-def _item_products(db: VanillaDB, recipes: list[dict]) -> list[str]:
-    """Retourne les items ayant au moins une recette.
-
-    ``db`` est la base vanilla et ``recipes`` la liste des recettes du seed. Ne conserve que les résultats de type item, déduplique et trie le résultat pour garantir un ordre déterministe.
-    """
-    return sorted(
-        {
-            res["name"]
-            for recipe in recipes
-            for res in recipe.get("results", [])
-            if res["type"] == SLOT_ITEM
-        }
-    )
-
-
 def _product_nodes(db: VanillaDB, recipes: list[dict]) -> list[str]:
     """Produits (items ET fluides) ayant au moins une recette, triés.
 

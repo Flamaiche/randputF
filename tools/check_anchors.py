@@ -1,9 +1,9 @@
 """Vérifie que les ancres des liens Markdown existent.
 
-Calcule les ancres GitHub de chaque titre, puis compare les liens internes
-``fichier.md#ancre`` et ``#ancre`` aux ancres réellement présentes. Les liens
-externes et le contenu des blocs de code sont ignorés. Le script sort en erreur
-dès qu'une cible ou une ancre manque, avec le fichier et la ligne fautifs.
+Calcule les ancres GitHub de chaque titre, puis vérifie les liens internes,
+avec ou sans ancre. Les liens externes et le contenu des blocs de code sont
+ignorés. Le script sort en erreur dès qu'une cible ou une ancre manque, avec le
+fichier et la ligne fautifs.
 
 Usage :
     python tools/check_anchors.py [chemins...]
@@ -130,8 +130,8 @@ def resolve_target(doc: Path, target: str) -> tuple[Path | None, str]:
         ("http://", "https://", "mailto:", "tel:", "data:", "//")
     ):
         return None, ""
-    path_part, separator, anchor = target.partition("#")
-    if not separator or not anchor:
+    path_part, _, anchor = target.partition("#")
+    if not path_part and not anchor:
         return None, ""
     path_part = unquote(path_part.split("?", 1)[0])
     anchor = unquote(anchor)
@@ -200,13 +200,13 @@ def main(argv: list[str] | None = None) -> int:
             resolved, anchor = resolve_target(doc, target)
             if resolved is None:
                 continue
-            if resolved.suffix.lower() != ".md":
-                continue
             if not resolved.exists():
                 errors.append(
-                    f"{display_path(doc)}:{lineno}: fichier cible introuvable "
+                    f"{display_path(doc)}:{lineno}: cible introuvable "
                     f"({target})"
                 )
+                continue
+            if resolved.suffix.lower() != ".md":
                 continue
             if resolved not in cache:
                 try:
@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
                 except OSError as exc:
                     errors.append(f"{resolved}: lecture impossible ({exc})")
                     continue
-            if anchor not in cache[resolved]:
+            if anchor and anchor not in cache[resolved]:
                 errors.append(
                     f"{display_path(doc)}:{lineno}: ancre introuvable "
                     f"({target})"

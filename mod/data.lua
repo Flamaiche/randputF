@@ -1,10 +1,4 @@
-local seed = {}
-do
-  local ok, loaded = pcall(require, "seed.seed")
-  if ok and type(loaded) == "table" then
-    seed = loaded
-  end
-end
+local seed = require("seed_loader")
 
 data:extend({
   {

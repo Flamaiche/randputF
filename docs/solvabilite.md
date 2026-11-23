@@ -43,8 +43,6 @@ indiqués à part.
 
 Les règles ci-dessous s'appliquent à toute seed acceptée par le générateur.
 
-## Règles de vérification
-
 - `_check_anti_cycle` est le contrôle anti-cycle bloquant : il refuse une
   chaîne de production qui dépend d'elle-même.
 - La progressivité impose les prérequis avant chaque nouvel élément.

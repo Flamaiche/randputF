@@ -63,7 +63,7 @@ faits historiques et les corrections attendues sont séparés.
   validateurs.
 - [pipeline.md](pipeline.md) — à lire pour la construction de la seed.
 - [vanilladb.md](vanilladb.md) — à lire pour les faits dérivés du dump.
-- [seed.md](seed.md#seed-et-configuration-1) — à lire pour la graine active.
+- [seed.md](seed.md#seed-et-configuration) — à lire pour la graine active.
 
 ## Lectures associées
 

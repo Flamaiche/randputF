@@ -25,9 +25,9 @@ La publication part de la branche `dev` et se déclenche sur `master`. Le workfl
 |---|---|---|
 | v0.0.0 | publiée, Factorio 2.0 | `f41e065e606ce24c8855d458c661988f` |
 | v0.0.1 | publiée, Factorio 2.0 | `c9566134864507d900f65806ade277d9` |
-| v0.0.2 | en préparation, Factorio 2.1 | `74dcb6f89c28ef1277a0e854d9a21a4a` |
+| v0.0.2 | en préparation, Factorio 2.1 | `647ab8833f639846ba36f9c52f38fb94` |
 
-La suite courante compte 862 tests. Les valeurs des versions publiées restent des faits historiques. Elles ne décrivent pas l'état courant.
+La suite courante compte 876 tests. Les valeurs des versions publiées restent des faits historiques. Elles ne décrivent pas l'état courant.
 
 ### Ce que fait le workflow
 
@@ -59,11 +59,11 @@ Le titre est la première ligne de la note, sans le préfixe de titre Markdown. 
 
 Le semver reprend ses droits après la v0.0.1. Un changement visible prend un numéro mineur. Une correction de documentation ou de test prend un numéro de patch. Le réemploi du numéro v0.0.1 vient d'un brouillon jamais publié, puis supprimé.
 
-### Écart connu
+### Chemin du zip
 
-Le workflow génère le mod dans `/tmp/modrel/mods/randputF_${VERSION}`. La commande zip lit `/tmp/modrel/randputF_${VERSION}`. Les deux chemins ne coïncident pas dans le script actuel. Reste à faire : aligner la source du zip sur le dossier réellement produit, puis vérifier le contenu de l'artefact téléversé.
+Le workflow génère le mod dans `/tmp/modrel/randputF_${VERSION}`. La commande zip lit exactement ce dossier et produit `/tmp/randputF_${VERSION}.zip`, sans les trois vues HTML. Le contenu de l'artefact doit rester conforme au témoin de la seed générée.
 
-D'anciens documents affirmaient qu'aucun zip n'était attaché à la release. Le workflow courant construit et téléverse `/tmp/randputF_${VERSION}.zip`. Reste à faire : remplacer ces mentions par la description du comportement actuel.
+D'anciens documents affirmaient qu'aucun zip n'était attaché à la release ou décrivaient une source de zip différente du dossier généré. Ces deux formulations sont obsolètes.
 
 ## Garanti / non garanti
 

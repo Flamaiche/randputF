@@ -7,7 +7,7 @@ dérives), [solvabilite.md](docs/solvabilite.md) (preuves) et
 [nondeterminism.md](docs/nondeterminism.md).
 
 Format : les faits sont repris des docs, jamais inventés ici. « gaté » est le
-vocabulaire du projet (gating, la section [« Seed et configuration »](docs/seed.md#seed-et-configuration-1) de `seed.md`), pas une faute.
+vocabulaire du projet (gating, la section [« Seed et configuration »](docs/seed.md#seed-et-configuration) de `seed.md`), pas une faute.
 
 ---
 
@@ -43,15 +43,17 @@ foi).
   contextualisés et en échelle log quand nécessaire, navigateur adapté au
   mobile avec zoom tactile et navigation clavier, titres de dumps moddés et
   libellés de comparaison explicites, icônes de graphe dédupliquées.
-- Repères confirmés : 862 tests et témoin seed 5
-  `74dcb6f89c28ef1277a0e854d9a21a4a`, recalculé depuis le dépôt et depuis
-  `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release vise un
-  zip `randputF_<version>.zip` sans les trois HTML, avec une source à aligner.
+- Un commentaire Lua invalide dans l'initialisation des épaves empêchait le
+  chargement du mod ; il est corrigé et le témoin est recalculé en conséquence.
+- Repères confirmés : 876 tests et témoin seed 5
+  `647ab8833f639846ba36f9c52f38fb94`, recalculé depuis le dépôt et depuis
+  `/tmp`. Le dépôt n'a pas de mod pré-généré ; le workflow de release zippe le
+  dossier `randputF_<version>` réellement généré, sans les trois HTML.
 - Précisions : `--playthrough` ne déclenche pas le rejeu, il affiche seulement
   la section « partie simulée » du rapport.
 - Textes visibles alignés sans changement de comportement : libellé des puits
   fluides (`N puits de pétrole`), `randputf-neutre` (« Fluide fantôme »), aide de
-  `randputf audit` (« tags bâtiments et items (invariants C8/§9) »), messages
+  `randputf audit` (« tags bâtiments et items »), messages
   `wreck` (`5t + 2a ≤ 100`, `a ≥ 1 et 6t + 3a < 100`), raison HTML « Version
   affichée et fournie au titre » et commentaires Lua/exporter.
 - Écarts documentés, non corrigés : source du zip de release, commentaire
@@ -205,8 +207,8 @@ foi).
 - `ITEM_LIKE_TYPES` inclut désormais `blueprint-book` et `spidertron-remote`.
 - Dump clean régénéré : SHA-256
   `3a272ee9440e020ebc36f9a92c222720af1c53c4c6b65ce2b136d7ebee2c84ea`.
-  Témoin seed 5 : `74dcb6f89c28ef1277a0e854d9a21a4a` (vérifié depuis un wheel
-  installé hors checkout). **862 tests** verts.
+  Témoin seed 5 : `647ab8833f639846ba36f9c52f38fb94` (vérifié depuis un wheel
+  installé hors checkout). **876 tests** verts.
 
 ### Exporter 0.1.7 — `mod-data` pour les lacs
 
@@ -320,7 +322,7 @@ foi).
 - `docs/modules.md` : la section [« `tool/exporters/` »](docs/modules.md#toolexporters) complète l'inventaire des exporters (9 modules —
   `complexity_graph`, `difficulty_graph`, `vanilla_complexity`, `dump_html`,
   `report`, `html_ui` manquaient) ; arbre de `docs/architecture.md` aligné.
-- **Auto-sélection & difficulté** : `docs/invariants.md` (invariant n°8),
+- **Auto-sélection & difficulté** : `docs/invariants.md` (règles de solvabilité),
   `docs/recettes.md`, `docs/tags.md`, `docs/vanilladb.md` (champ `auto_select`),
   `docs/pipeline.md` et `docs/modules.md` (graphe de difficulté), et
   `docs/graphe-interactif.md` (les vues HTML).
@@ -333,7 +335,7 @@ foi).
 ### Déterminisme vérifiable
 
 - **Témoin de reproductibilité** : `randputf witness --seed 5 --expect
-  74dcb6f89c28ef1277a0e854d9a21a4a` (état courant du dépôt, dump 0.1.8 ;
+  647ab8833f639846ba36f9c52f38fb94` (état courant du dépôt, dump 0.1.8 ;
   vérifié depuis un wheel installé hors checkout, comme le job CI). Il
   **changera** au bump vers 0.0.2 (préfixe racine `randputF_<version>`) et la
   seed 5 est touchée par le correctif d'auto-sélection. Les sorties HTML
@@ -344,7 +346,7 @@ foi).
 
 ### Garanties mesurées
 
-- **862 tests** verts sur le dump réel 0.1.8 (schéma 2).
+- **876 tests** verts sur le dump réel 0.1.8 (schéma 2).
 - Parité du rapport vanilla inchangée (64 entrées, 10 090 834 crafts,
   13 850 040 s de minage, 3 lancements, offshore-pump en bâtiments).
 

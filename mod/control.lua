@@ -4,13 +4,7 @@
 -- Filet SPAWN_SETTLE_TICKS pour cutscene du crash. Normaliseur (300/900/1800 ticks)
 -- corrige les doublons injectés par le scénario sans toucher le loot.
 
-local seed = {}
-do
-  local ok, loaded = pcall(require, "seed.seed")
-  if ok and type(loaded) == "table" then
-    seed = loaded
-  end
-end
+local seed = require("seed_loader")
 
 -- Conteneurs crash-site : on vide le kit vanilla, on remplit avec n copies (0..3)
 -- d'un matériau aléatoire (loi pondérée de la seed). Force-fill si 0 stack.
@@ -26,7 +20,6 @@ local function init_wreck()
   storage.randputf.wreck_processed = storage.randputf.wreck_processed or {}
   if storage.randputf.wreck_stop == nil and game then
     -- `game` est NIL pendant on_load (API 2.0+)
- : stop calculé au runtime.
     -- Saves sans ce champ : stop=nil → pas de balayage (idempotent via marque unit_number).
     storage.randputf.wreck_stop = game.tick + WRECK_SETTLE_TICKS
   end

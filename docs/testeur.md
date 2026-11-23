@@ -49,7 +49,7 @@ Un succès affiche le nombre de technologies recherchées. Un échec affiche le 
 
 ### Écart connu
 
-D'anciens documents présentaient le rejeu comme activé uniquement par `--playthrough`. Le code appelle `play` dans tous les contrôles de `tool/tester.py`. Reste à faire : limiter l'option à son rôle réel de mise en forme du rapport.
+D'anciens documents présentaient le rejeu comme activé uniquement par `--playthrough`. Le code appelle `play` dans tous les contrôles de `tool/tester.py` ; l'option ne met en forme que le rapport.
 
 ## Garanti / non garanti
 

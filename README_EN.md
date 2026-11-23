@@ -126,8 +126,8 @@ prebuilt mod: the mod is produced by `generate`.
 - Output is deterministic: the same seed produces a byte-identical mod,
   independently of the process and of generation order.
 - The current witness for seed 5 is
-  `74dcb6f89c28ef1277a0e854d9a21a4a`.
-- The test suite contains 862 tests.
+  `647ab8833f639846ba36f9c52f38fb94`.
+- The test suite contains 876 tests.
 - Witness details are in [witness.md](docs/witness.md).
 
 ## Where to go next

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 class WeightedItem:
     """Élément candidat d'un ``WeightedPicker``.
 
-    ``name`` est la valeur retournée par le tirage, ``weight`` son poids relatif (positif) et ``tags`` un ensemble libre utilisé par ``filter_by_tags``.
+    ``name`` est la valeur retournée par le tirage, ``weight`` son poids relatif (positif) et ``tags`` un ensemble libre conservé avec le candidat.
     """
     name: str
     weight: float
@@ -50,41 +50,10 @@ class WeightedPicker:
 
         ``name`` identifie l'élément (les doublons sont autorisés mais ``pick``
         les retire tous par nom), ``weight`` est son poids relatif (positif ;
-        un poids nul le rend jamais tiré), ``tags`` alimente
-        ``filter_by_tags``. Retourne ``None``.
+        un poids nul le rend jamais tiré) et ``tags`` est conservé sur
+        l'élément. Retourne ``None``.
         """
         self.items.append(WeightedItem(name=name, weight=weight, tags=tags or set()))
-
-    def add_many(self, items: list[tuple[str, float]]) -> None:
-        """Ajoute en lot des couples ``(name, weight)``.
-
-        Chaque paire est déléguée à ``add`` (sans tags). L'ordre de ``items``
-        est conservé. Retourne ``None``.
-        """
-        for name, weight in items:
-            self.add(name, weight)
-
-    def remove(self, name: str) -> None:
-        """Retire du pool toutes les entrées portant ``name``.
-
-        Reconstruit ``self.items`` sans les éléments correspondants ; un nom
-        absent est ignoré silencieusement. Retourne ``None``.
-        """
-        self.items = [item for item in self.items if item.name != name]
-
-    def filter_by_tags(self, required_tags: set[str]) -> list[WeightedItem]:
-        """Retourne les éléments portant tous les tags requis.
-
-        ``required_tags`` est comparé par inclusion à ``WeightedItem.tags`` ; un ensemble vide retourne tout le pool. L'ordre du pool est conservé.
-        """
-        return [item for item in self.items if required_tags.issubset(item.tags)]
-
-    def filter_by_predicate(self, predicate) -> list[WeightedItem]:
-        """Retourne les éléments satisfaisant ``predicate``.
-
-        ``predicate`` reçoit chaque ``WeightedItem`` et doit retourner un booléen ; l'ordre du pool est conservé. Sert aux filtres ad hoc sans modifier le picker.
-        """
-        return [item for item in self.items if predicate(item)]
 
     def pick(self, rng: random.Random) -> str | None:
         """Sélectionne un élément au hasard pondéré.
@@ -136,23 +105,6 @@ class WeightedPicker:
             self.items = [item for item in self.items if item.name != chosen]
 
         return chosen
-
-    @property
-    def total_weight(self) -> float:
-        """Somme des poids de tous les éléments encore dans le pool.
-
-        Retourne ``0.0`` pour un pool vide. Sert notamment à normaliser des
-        probabilités ou à détecter un pool dégénéré (poids tous nuls).
-        """
-        return sum(item.weight for item in self.items)
-
-    @property
-    def is_empty(self) -> bool:
-        """Indique si le pool ne contient plus aucun candidat.
-
-        Retourne ``True`` quand ``items`` est vide, notamment après des tirages sans remise ; ne tient pas compte des poids nuls.
-        """
-        return len(self.items) == 0
 
     def __len__(self) -> int:
         """Retourne le nombre d'éléments actuellement dans le pool.

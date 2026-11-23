@@ -26,9 +26,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tool.__main__ import _load_config, _load_db
+from tool.__main__ import _load_db
 from tool.common.db import SLOT_FLUID, SLOT_ITEM
 from tool.generator.pipeline import generate_seed
+from tool.service import load_config as _load_config
 
 DUMP = Path(__file__).resolve().parent.parent / "data" / "vanilla_dump.json"
 OUT = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(tempfile.gettempdir()) / "late_raws_classification.csv"

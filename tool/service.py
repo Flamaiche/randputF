@@ -94,16 +94,22 @@ class SeedUnplayableError(RandputfError):
     Conserve `base_seed`, `issues` et `seed_value` pour que l'appelant puisse afficher le dernier diagnostic.
     """
 
-    def __init__(self, base_seed: int, issues: list[str], seed_value: int) -> None:
+    def __init__(
+        self,
+        base_seed: int,
+        issues: list[str],
+        seed_value: int,
+        max_attempts: int = MAX_ATTEMPTS,
+    ) -> None:
         """Mémorise l'échec de génération pour inspection par l'appelant.
 
         ``base_seed`` est la graine demandée, ``issues`` la dernière liste de
-        problèmes du validateur et ``seed_value`` la dernière graine dérivée
-        essayée. Les trois sont exposés en attributs après construction du
-        message d'erreur.
+        problèmes du validateur, ``seed_value`` la dernière graine dérivée
+        essayée et ``max_attempts`` la limite réellement appliquée. Ces valeurs
+        sont exposées en attributs et dans le message d'erreur.
         """
         super().__init__(
-            f"Seed {base_seed} non jouable apres {MAX_ATTEMPTS} tentatives "
+            f"Seed {base_seed} non jouable apres {max_attempts} tentatives "
             f"(derivee jusqu'a {seed_value})."
         )
         self.base_seed = base_seed
@@ -213,7 +219,7 @@ def generate_with_retry(
 ) -> tuple[dict, VanillaDB]:
     """Génère une seed en réessayant avec des graines dérivées.
 
-    `db` est la base vanilla, `cfg` la config validée et `base_seed` la graine demandée. Tente `base_seed`, `base_seed+1`, … jusqu'à `MAX_ATTEMPTS` ; retourne `(seed, db)` avec `db.seed_value` synchronisé sur la graine réussie. Lève `SeedUnplayableError` si aucune tentative ne passe.
+    `db` est la base vanilla, `cfg` la config validée et `base_seed` la graine demandée. Tente `base_seed`, `base_seed+1`, … jusqu'à `max_attempts` ; retourne `(seed, db)` avec `db.seed_value` synchronisé sur la graine réussie. Lève `SeedUnplayableError` si aucune tentative ne passe.
     """
     db.seed_value = base_seed
     seed = generate_seed(db, config=cfg)
@@ -229,5 +235,5 @@ def generate_with_retry(
         issues = validate_seed(seed)
 
     if issues:
-        raise SeedUnplayableError(base_seed, issues, db.seed_value)
+        raise SeedUnplayableError(base_seed, issues, db.seed_value, max_attempts)
     return seed, db

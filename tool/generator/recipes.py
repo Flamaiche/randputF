@@ -661,18 +661,6 @@ def _available_fluid_inputs(db, state, exclude_buildings: frozenset[str],
     return max((fluid_of(b) for b in reachable), default=1)
 
 
-def _max_fluid_inputs(db) -> int:
-    """Retourne le nombre maximal d'entrées fluides d'un atelier.
-
-    ``db`` est la base vanilla ; seuls les bâtiments reconnus comme ateliers sont considérés. Retourne au moins ``1`` pour éviter une division par zéro.
-    """
-    best = 0
-    for b in db.buildings.values():
-        if _is_atelier(b):
-            best = max(best, b.fluid_inputs)
-    return max(best, 1)
-
-
 def _is_atelier(b) -> bool:
     """Un atelier est un bâtiment capable de fabriquer : il possède au moins
     une recipe-category réelle dans ses crafting_categories."""
